@@ -1,0 +1,4 @@
+**/__pycache__/*
+neuwon.egg-info
+dist/
+build/
