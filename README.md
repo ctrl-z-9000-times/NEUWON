@@ -10,23 +10,22 @@ the NEURON simulator. It is accurate, efficient, and easy to use.
 
 This section describes how NEUWON represents the physical shape of a neuron.
 
-Neurons are composed of discrete segments which are connected into a tree
-structure. The shape of each segment is a frustum, also known as a truncated
-cone. The physical locations of the tips of the frustums in the system serve as
-tracking points for all cellular processes: intracellular, extracellular, and
-membrane-related. The extracellular space is partitioned into voronoi cells
-which are centered on the tracking points. NEUWON provides the following
-geometric properties about each tracking point:
+Neurons are composed of many cylindrical segments which are connected into a
+tree structure. The tips of the cylinders serve as tracking points for all
+cellular processes: intracellular, extracellular, and membrane-related. The
+extracellular space is partitioned into Voronoi cells which are centered on the
+tracking points. NEUWON provides the following geometric information about each
+tracking point:
 
-* Cell Segment Properties
-    + Length
+* Tree Structure
+    + Parent Segment, unless segment is root of tree
+    + Child Segments, list
+    + Distance between segment and parent segment
+* Segment Properties
     + Diameter
     + Cross-sectional Area
     + Membrane Surface Area
     + Intracellular Volume
-    + Tree Structure
-        - Parent Segment, unless segment is root of tree
-        - Child Segments, list
 * Extracellular Space Properties
     + Volume
     + Adjacent Tracking Points
@@ -75,6 +74,8 @@ chapter 4 of the NEURON book.
 #### Model Specification
 
 [todo]
+
+[todo: discuss prefix-less unit system]
 
 #### Examples
 
