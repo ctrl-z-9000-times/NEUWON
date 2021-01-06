@@ -5,10 +5,12 @@ The model is a single long axon with Hodgkin-Huxley channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon import Model, Segment
-import neuwon.mechanisms.hh as hh
+from neuwon import Model, Segment, Species
+import neuwon.mechanisms.HH as HH
 import numpy as np
 import bisect
+import matplotlib.pyplot as plt
+import argparse
 
 class Experiment:
     def __init__(self,
@@ -20,6 +22,7 @@ class Experiment:
             stagger       = True,
             probes        = None,
             stimulus      = 2e-10,
+            species       = (),
         ):
         self.time_step = time_step
         self.length_step = length_step
@@ -28,6 +31,7 @@ class Experiment:
         self.axon_diameter = axon_diameter
         self.soma_diameter = soma_diameter
         self.stimulus = stimulus
+        self.species = list(species)
         self.probe_locations = list(probes) if probes is not None else [1.0]
         self.make_model()
         self.generate_input()
@@ -47,17 +51,16 @@ class Experiment:
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
         for x in self.soma:
-            x.insert_mechanism(hh.Leak)
-            x.insert_mechanism(hh.VoltageGatedSodiumChannel)
-            x.insert_mechanism(hh.VoltageGatedPotassiumChannel)
+            x.insert_mechanism(HH.Leak)
+            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
+            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
         for x in self.axon:
-            x.insert_mechanism(hh.Leak)
-            x.insert_mechanism(hh.VoltageGatedSodiumChannel)
-            x.insert_mechanism(hh.VoltageGatedPotassiumChannel)
+            x.insert_mechanism(HH.Leak)
+            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
+            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
         self.model = Model(self.time_step, [self.soma[0]],
             reactions=(),
-            species=(),
-            conductances=(),
+            species=self.species,
             stagger=self.stagger)
         print("Number of Locations:", len(self.model))
         # sa  = sum(self.model.geometry.surface_areas[x.index] for x in self.soma)
@@ -238,25 +241,18 @@ the dynamics near that point."""
     plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
     plt.ylabel('mV')
 
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    import argparse
-    from pathlib import Path
-    args = argparse.ArgumentParser(description='')
-    args.add_argument('experiment',
-        choices=['time', 'length', 'diameter', 'propagation', 'all'])
-    args = args.parse_args()
-    if args.experiment == 'time':
-        analyze_time_step()
-    elif args.experiment == 'length':
-        analyze_length_step()
-    elif args.experiment == 'diameter':
-        analyze_axon_diameter()
-    elif args.experiment == 'propagation':
-        analyze_propagation()
-    elif args.experiment == 'all':
-        analyze_time_step()
-        analyze_length_step()
-        analyze_axon_diameter()
-        analyze_propagation()
-    plt.show()
+experiments_index = {
+    "time":         analyze_time_step,
+    "length":       analyze_length_step,
+    "diameter":     analyze_axon_diameter,
+    "propagation":  analyze_propagation,
+}
+
+args = argparse.ArgumentParser(description='Sanity tests with the Hodgkin-Huxley model')
+args.add_argument('experiment', choices=list(experiments_index.keys()) + ['all'])
+args = args.parse_args()
+if args.experiment == 'all':
+    [x() for name, x in experiments_index.items()]
+else:
+    experiments_index[args.experiment]()
+plt.show()
