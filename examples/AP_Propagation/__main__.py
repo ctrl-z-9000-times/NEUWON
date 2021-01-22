@@ -2,9 +2,10 @@
 
 import numpy as np
 from neuwon import *
-import neuwon.mechanisms.hh as hh
-min_v = hh.g_k.reversal_potential
-max_v = hh.g_na.reversal_potential
+from neuwon.regions import *
+import neuwon.mechanisms.HH as hh
+min_v = hh.k.reversal_potential
+max_v = hh.na.reversal_potential
 from graph_algorithms import depth_first_traversal as dft
 import tempfile
 import os
@@ -44,7 +45,7 @@ for x in axon.segments:
     x.insert_mechanism(hh.Leak)
     x.insert_mechanism(hh.VoltageGatedSodiumChannel)
     x.insert_mechanism(hh.VoltageGatedPotassiumChannel)
-model = Model(.1e-3, soma, reactions=(), species=(), conductances=())
+model = Model(.1e-3, soma, reactions=(), species=())
 print("Number of segments:", len(model))
 # Wait for the system to settle into its steady state.
 for _ in range(int(20e-3 / model.time_step)):

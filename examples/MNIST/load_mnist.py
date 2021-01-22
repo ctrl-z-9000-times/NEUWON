@@ -1,6 +1,8 @@
 import os
 import gzip
 import numpy as np
+import random
+import pathlib
 
 def load_mnist():
     """See: http://yann.lecun.com/exdb/mnist/ for MNIST download and binary file format spec."""
@@ -44,10 +46,16 @@ def load_mnist():
             assert(len(raw) == data_start + img_size * num_imgs)   # All data should be used.
         return imgs
 
-    data_dir = os.path.join(__path__, "MNIST_data")
+    directory = pathlib.Path(__file__).parent.absolute()
+    data_dir = os.path.join(directory, "MNIST_data")
     train_labels = load_labels(os.path.join(data_dir, 'train-labels-idx1-ubyte.gz'))
     train_images = load_images(os.path.join(data_dir, 'train-images-idx3-ubyte.gz'))
     test_labels  = load_labels(os.path.join(data_dir, 't10k-labels-idx1-ubyte.gz'))
     test_images  = load_images(os.path.join(data_dir, 't10k-images-idx3-ubyte.gz'))
 
-    return train_labels, train_images, test_labels, test_images
+    train_data = list(zip(train_images, train_labels))
+    test_data  = list(zip(test_images, test_labels))
+    random.shuffle(train_data)
+    random.shuffle(test_data)
+
+    return train_data, test_data

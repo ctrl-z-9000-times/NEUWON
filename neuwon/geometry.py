@@ -120,7 +120,12 @@ class Geometry:
             neighbors = self._tree.query_ball_point(coords, 2 * self.maximum_extracellular_radius)
             neighbors.remove(location)
             midpoints = np.array((self.coordinates[neighbors] - coords) / 2, dtype=float)
-            normals = midpoints / np.linalg.norm(midpoints)
+            midpoint_distances = np.linalg.norm(midpoints, axis=1)
+            too_close = np.nonzero(midpoint_distances < epsilon / 2 * 1e-6)[0]
+            if len(too_close):
+                raise ValueError("Locations %d & %d are too close together."%(
+                        location, neighbors[too_close[0]]))
+            normals = midpoints / np.expand_dims(midpoint_distances, 1)
             offsets = np.sum(normals * midpoints, axis=1).reshape(-1,1)
             planes = np.vstack((np.hstack((normals, -offsets)), bounding_sphere))
             halfspace_hull = scipy.spatial.HalfspaceIntersection(planes, origin, qhull_options='t')
@@ -142,7 +147,10 @@ class Geometry:
                 for x in halfspace_hull.intersections:
                     if abs(np.dot(x, planes[v,:3]) + planes[v,3]) <= epsilon:
                         projection.append([basis1.dot(x), basis2.dot(x)])
-                facet_hull = scipy.spatial.ConvexHull(projection, qhull_options='t')
+                try:
+                    facet_hull = scipy.spatial.ConvexHull(projection, qhull_options='t')
+                except scipy.spatial.qhull.QhullError:
+                    continue # QHull is brittle.
                 n.border_surface_area = facet_hull.volume
                 self.neighbors[location].append(n)
 

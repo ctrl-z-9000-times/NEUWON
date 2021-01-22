@@ -1,8 +1,11 @@
 import numpy as np
 import scipy.spatial
 import heapq
+from collections.abc import Callable, Iterable
 from graph_algorithms import depth_first_traversal as dft
 from neuwon.regions import Region
+import neuwon
+from neuwon import Segment
 
 class GrowSomata:
     def __init__(self, region, density, diameter):
@@ -32,6 +35,37 @@ class GrowSomata:
         x[1] += cylinder_length / 2
         s2 = Segment(x, cylinder_diameter, s1)
         return [s1, s2]
+
+class GrowSynapses:
+    def __init__(self, axons, dendrites, pre_gap_post, diameter, num_synapses):
+        pre_len, gap_len, post_len = pre_gap_post
+        f_pre = pre_len / sum(pre_gap_post)
+        f_post = post_len / sum(pre_gap_post)
+        self.presynaptic_segments = []
+        self.postsynaptic_segments = []
+        # Find all possible synapses.
+        pre = scipy.spatial.cKDTree([x.coordinates for x in axons])
+        post = scipy.spatial.cKDTree([x.coordinates for x in dendrites])
+        results = pre.query_ball_tree(post, sum(pre_gap_post))
+        results = list(itertools.chain.from_iterable(
+            ((pre, post) for post in inner) for pre, inner in enumerate(results)))
+        # Select some synapses and make them.
+        for pre, post in random.sample(results, min(num_synapses, len(results))):
+            pre = axons[pre]
+            post = dendrites[post]
+            if pre_len and len(pre.children) > 1: continue
+            if post_len and len(post.children) > 1: continue
+            if pre_len == 0:
+                self.presynaptic_segments.append(pre)
+            else:
+                x = (1 - f_pre) * np.array(pre.coordinates) + f_pre * np.array(post.coordinates)
+                self.presynaptic_segments.append(Segment(x, diameter, pre))
+            if post_len == 0:
+                self.postsynaptic_segments.append(post)
+            else:
+                x = (1 - f_post) * np.array(post.coordinates) + f_post * np.array(pre.coordinates)
+                self.postsynaptic_segments.append(Segment(x, diameter, post))
+        self.presynaptic_segments = list(set(self.presynaptic_segments))
 
 class Growth:
     """ Grow dendrites or axons
@@ -80,7 +114,7 @@ class Growth:
         self.maximum_segment_length = float(maximum_segment_length)
         self.diameter               = diameter
         assert(all(isinstance(s, Segment) for s in self.seeds))
-        assert(isinstance(region, regions.Region))
+        assert(isinstance(region, neuwon.regions.Region))
         assert(0 <= self.carrier_point_density)
         assert(0 <= self.balancing_factor)
         assert(0 <= self.extension_angle <= np.pi)

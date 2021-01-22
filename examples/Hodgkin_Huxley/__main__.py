@@ -74,21 +74,21 @@ class Experiment:
         self.input_current = []
         for step in range(int(self.time_span / self.time_step)):
             t = step * self.time_step
-            if 10e-3 <= t < 11e-3:
-                self.input_current.append(self.stimulus)
-            elif 25e-3 <= t < 26e-3:
-                self.input_current.append(self.stimulus)
-            elif 40e-3 <= t < 41e-3:
-                self.input_current.append(self.stimulus)
+            if 10e-3 <= t < 10e-3 + 1e-6:
+                self.input_current.append(True)
+            elif 25e-3 <= t < 25e-3 + 1e-6:
+                self.input_current.append(True)
+            elif 40e-3 <= t < 40e-3 + 1e-6:
+                self.input_current.append(True)
             else:
-                self.input_current.append(None)
+                self.input_current.append(False)
 
     def run_experiment(self):
         self.time_stamps = []
         self.v = [[] for _ in self.probes]
         for t, inp in enumerate(self.input_current):
-            if inp is not None:
-                self.soma[0].inject_current(inp)
+            if inp:
+                self.soma[0].inject_current(self.stimulus, duration=1e-3)
             self.model.advance()
             self.time_stamps.append((t + 2) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
