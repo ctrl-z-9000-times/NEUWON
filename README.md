@@ -42,6 +42,9 @@ between cells, and across cell membranes. Electrically charged ions flow
 throughout neurons; a phenomenon which is modeled with an equivalent electrical
 circuit.
 
+[todo state which things NEUWON covers and which things the user needs to
+specify and integrate over time and w/ neuwon]
+
 ## Integration Methods
 
 #### Exact Integration
@@ -62,9 +65,16 @@ chapter 4 of the NEURON book.
 
 ## Usage
 
+#### Prerequisites
+
+* An NVIDIA graphics card
+* CUDA
+* [Python 3](https://www.python.org/)
+* Numba
+* CuPY
+
 #### Installation
 
-* Prerequisite: [Python 3](https://www.python.org/)
 * `$ pip install neuwon`
 
 #### Documentation

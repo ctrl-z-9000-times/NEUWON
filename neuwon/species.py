@@ -1,6 +1,9 @@
 import numpy as np
+import cupy as cp
+import math
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
+import cupyx.scipy.sparse
 from neuwon import Real, epsilon, F, R, T
 
 class Species:
@@ -42,35 +45,25 @@ class Species:
         else:
             self.reversal_potential = float(reversal_potential)
             self._reversal_potential_method = lambda i, o, v: self.reversal_potential
-        # The Model initializes the following attributes in a copy of this object:
+        # These attributes are initialized on a copy of this object:
         self.intra = None # Diffusion instance
         self.extra = None # Diffusion instance
         self.conductances = None # Numpy array
 
-    def nerst_potential(self, intra_concentration, extra_concentration):
-        """ Returns the reversal voltage of this ionic species. """
-        z = self.charge
-        if z == 0: return np.full_like(intra_concentration, np.nan)
-        ratio = np.divide(extra_concentration, intra_concentration)
-        return np.nan_to_num(R * T / F / z * np.log(ratio))
-
-    def goldman_hodgkin_katz(self, intra_concentration, extra_concentration, voltages):
-        """ Returns the reversal voltage of this ionic species. """
-        if self.charge == 0: return np.full_like(intra_concentration, np.nan)
-        def efun(z):
-            if abs(z) < 1e-4:
-                return 1 - z / 2
-            else:
-                return z / (np.exp(z) - 1)
-        z = self.charge * F / (R * T) * voltages
-        return self.charge * F * (intra_concentration * efun(-z) - extra_concentration * efun(z))
+    def _initialize(self, time_step, geometry):
+        if self.intra_diffusivity is not None:
+            self.intra = Diffusion(time_step, geometry, self, "intracellular")
+        if self.extra_diffusivity is not None:
+            self.extra = Diffusion(time_step, geometry, self, "extracellular")
+        if self.transmembrane:
+            self.conductances = cp.zeros(len(geometry), dtype=Real)
 
 class Diffusion:
     def __init__(self, time_step, geometry, species, where):
         self.time_step                  = time_step
-        self.concentrations             = np.zeros(len(geometry), dtype=Real)
-        self.previous_concentrations    = np.zeros(len(geometry), dtype=Real)
-        self.release_rates              = np.zeros(len(geometry), dtype=Real)
+        self.concentrations             = cp.zeros(len(geometry), dtype=Real)
+        self.previous_concentrations    = cp.zeros(len(geometry), dtype=Real)
+        self.release_rates              = cp.zeros(len(geometry), dtype=Real)
         # Compute the coefficients of the derivative function:
         # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
         cols = [] # Source
@@ -113,3 +106,83 @@ class Diffusion:
         # Prune the impulse response matrix at epsilon nanomolar (mol/L).
         self.irm.data[np.abs(self.irm.data) < epsilon * 1e-6] = 0
         self.irm = csr_matrix(self.irm, dtype=Real)
+        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm)
+
+def nerst_potential(charge, intra_concentration, extra_concentration):
+    """ Returns the reversal voltage of this ionic species. """
+    xp = cp.get_array_module(intra_concentration)
+    if charge == 0: return xp.full_like(intra_concentration, xp.nan)
+    ratio = xp.divide(extra_concentration, intra_concentration)
+    return xp.nan_to_num(R * T / F / charge * np.log(ratio))
+
+@cp.fuse()
+def _efun(z):
+    if abs(z) < 1e-4:
+        return 1 - z / 2
+    else:
+        return z / (math.exp(z) - 1)
+
+def goldman_hodgkin_katz(charge, intra_concentration, extra_concentration, voltages):
+    """ Returns the reversal voltage of this ionic species. """
+    xp = cp.get_array_module(intra_concentration)
+    if charge == 0: return xp.full_like(intra_concentration, np.nan)
+    z = charge * F / (R * T) * voltages
+    return charge * F * (intra_concentration * _efun(-z) - extra_concentration * _efun(z))
+
+class Electrics:
+    def __init__(self, time_step, geometry,
+            intracellular_resistance = 1,
+            membrane_capacitance = 1e-2,):
+        # Save and check the arguments.
+        self.time_step                  = time_step
+        self.intracellular_resistance   = float(intracellular_resistance)
+        self.membrane_capacitance       = float(membrane_capacitance)
+        assert(self.intracellular_resistance > 0)
+        assert(self.membrane_capacitance > 0)
+        # Initialize data buffers.
+        self.voltages           = cp.zeros(len(geometry), dtype=Real)
+        self.previous_voltages  = cp.zeros(len(geometry), dtype=Real)
+        self.driving_voltages   = cp.zeros(len(geometry), dtype=Real)
+        self.conductances       = cp.zeros(len(geometry), dtype=Real)
+        # Compute passive properties.
+        self.axial_resistances  = np.empty(len(geometry), dtype=Real)
+        self.capacitances       = np.empty(len(geometry), dtype=Real)
+        for location in range(len(geometry)):
+            l = geometry.lengths[location]
+            sa = geometry.surface_areas[location]
+            xa = geometry.cross_sectional_areas[location]
+            self.axial_resistances[location] = self.intracellular_resistance * l / xa
+            self.capacitances[location] = self.membrane_capacitance * sa
+        # Compute the coefficients of the derivative function:
+        # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
+        cols = [] # Source
+        rows = [] # Destintation
+        data = [] # Weight
+        for location in range(len(geometry)):
+            if geometry.is_root(location):
+                continue
+            parent = geometry.parents[location]
+            r = self.axial_resistances[location]
+            cols.append(location)
+            rows.append(parent)
+            data.append(+1 / r / self.capacitances[parent])
+            cols.append(location)
+            rows.append(location)
+            data.append(-1 / r / self.capacitances[location])
+            cols.append(parent)
+            rows.append(location)
+            data.append(+1 / r / self.capacitances[location])
+            cols.append(parent)
+            rows.append(parent)
+            data.append(-1 / r / self.capacitances[parent])
+        # Note: always use double precision floating point for building the impulse response matrix.
+        coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=float)
+        coefficients.data *= self.time_step
+        self.irm = expm(coefficients)
+        # Prune the impulse response matrix at epsilon millivolts.
+        self.irm.data[np.abs(self.irm.data) < epsilon * 1e-3] = 0
+        self.irm = csr_matrix(self.irm, dtype=Real)
+        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm)
+        # Move this data to the GPU now that the CPU is done with it.
+        self.axial_resistances  = cp.array(self.axial_resistances)
+        self.capacitances       = cp.array(self.capacitances)

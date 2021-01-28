@@ -9,14 +9,11 @@ All units are prefix-less.
 * Concentration are in units of Moles / Meter^3
 """
 # Public API Entry Points:
-__all__ = """Segment Mechanism Reaction Species Model Geometry Neighbor
-GrowSomata Growth make_kinetic_table KineticModelTable""".split()
+__all__ = """Segment Mechanism Reaction Species Model Geometry Neighbor""".split()
 # Numeric/Scientific Library Imports.
 import numpy as np
-import scipy
-import scipy.spatial
-from scipy.sparse import csr_matrix, csc_matrix
-import scipy.sparse.linalg
+import cupy as cp
+import numba.cuda
 # Standard Library Imports.
 import math
 import random
@@ -26,7 +23,7 @@ import copy
 import subprocess
 import tempfile
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from collections import namedtuple
 # Third Party Imports.
 from graph_algorithms import depth_first_traversal as dft
@@ -37,9 +34,14 @@ R = 8.31446261815324 # Universal gas constant
 celsius = 37 # Human body temperature
 T = celsius + 273.15 # Human body temperature in Kelvins
 
-Real = np.dtype('f4')
+Real = np.dtype('f8')
 epsilon = np.finfo(Real).eps
 Location = np.dtype('u4')
+
+from neuwon.geometry import Neighbor, Geometry
+from neuwon.species import Species, Diffusion, Electrics
+from neuwon.mechanisms import Mechanism
+import neuwon.mechanisms
 
 class Reaction:
     """ Abstract class for specifying reactions between omnipresent species. """
@@ -50,9 +52,6 @@ class Reaction:
     def advance_reaction(self, time_step, location, reaction_inputs, reaction_outputs):
         """ """
         pass
-
-from neuwon.mechanisms import Mechanism
-import neuwon.mechanisms
 
 def _docstring_wrapper(property_name, docstring):
         def get_prop(self):
@@ -136,7 +135,6 @@ class Segment:
         assert(self.model is not None)
         self.model.inject_current(self.location, current, duration)
 
-from neuwon.growth import Growth, GrowSomata
 
 class Model:
     def __init__(self, time_step,
@@ -151,11 +149,12 @@ class Model:
         self.geometry = Geometry(coordinates, parents, diameters)
         self.reactions = tuple(reactions)
         assert(all(issubclass(r, Reaction) for r in self.reactions))
-        self._init_mechansisms(insertions)
+        neuwon.mechanisms._init_mechansisms(self, insertions)
         self._init_species(species)
         self.electrics = Electrics(self.time_step / 2, self.geometry)
         self._injected_currents = Model._InjectedCurrents()
         self._ap_detector = Model._AP_Detector()
+        numba.cuda.synchronize()
 
     def _build_model(self, neurons):
         roots = set()
@@ -176,21 +175,6 @@ class Model:
         diameters = [x.diameter for x in segments]
         insertions = [x.insertions for x in segments]
         return (coordinates, parents, diameters, insertions)
-
-    def _init_mechansisms(self, insertions):
-        self.mechanisms = {}
-        for location, insertions_list in enumerate(insertions):
-            for mech_type, args, kwargs in insertions_list:
-                if mech_type not in self.mechanisms:
-                    self.mechanisms[mech_type] = ([], [])
-                instance = mech_type.new_instance(
-                        self.time_step, location, self.geometry, *args, **kwargs)
-                self.mechanisms[mech_type][0].append(location)
-                self.mechanisms[mech_type][1].append(instance)
-        for mech_type, (locations, instances) in self.mechanisms.items():
-            self.mechanisms[mech_type] = (
-                    np.array(locations, dtype=Location),
-                    np.array(instances, dtype=mech_type.instance_dtype()))
 
     def _add_species(self, s):
         """ Add a species if its name is unique. Accepts placeholder strings. """
@@ -230,12 +214,7 @@ class Model:
                 raise ValueError("Unresolved species: "+str(name))
         # Initialize the species internal data.
         for s in self.species.values():
-            if s.intra_diffusivity is not None:
-                s.intra = Diffusion(self.time_step / 2, self.geometry, s, "intracellular")
-            if s.extra_diffusivity is not None:
-                s.extra = Diffusion(self.time_step / 2, self.geometry, s, "extracellular")
-            if s.transmembrane:
-                s.conductances = np.zeros(len(self), dtype=Real)
+            s._initialize(self.time_step / 2, self.geometry)
         # Setup the reaction input & output structures.
         self.ReactionInputs = namedtuple("ReactionInputs", "v intra extra")
         self.ReactionOutputs = namedtuple("ReactionOutputs", "conductances intra extra")
@@ -268,6 +247,7 @@ class Model:
         for outter in r_out:
             for inner in outter:
                 inner.fill(0)
+        numba.cuda.synchronize()
         return r_in, r_out
 
     def __len__(self):
@@ -285,9 +265,13 @@ class Model:
             For more information see: The NEURON Book, 2003.
             Chapter 4, Section: Efficient handling of nonlinearity.
             """
+            self._check_data()
             self._diffusions_advance()
+            self._check_data()
             self._reactions_advance()
+            self._check_data()
             self._diffusions_advance()
+            self._check_data()
         else:
             """
             Naive integration strategy, for reference only.
@@ -300,6 +284,33 @@ class Model:
             # concentrations & voltages from halfway through the time step.
             self._reactions_advance()
 
+    def _check_data(self):
+        for mech_type, (locations, instances) in self.mechanisms.items():
+            if isinstance(instances, Mapping):
+                for key, array in instances.items():
+                    assert cp.all(cp.isfinite(array)), (mech_type, key)
+            elif instances.dtype.kind in "fc":
+                assert cp.all(cp.isfinite(instances)), mech_type
+            elif instances.dtype.fields is not None:
+                instances = instances.copy_to_host()
+                for name in instances.dtype.fields:
+                    assert np.all(np.isfinite(instances[name])), (mech_type, name)
+        for s in self.species.values():
+            if s.transmembrane:
+                assert cp.all(cp.isfinite(s.conductances)), s.name
+            if s.intra is not None:
+                assert cp.all(cp.isfinite(s.intra.concentrations)), s.name
+                assert cp.all(cp.isfinite(s.intra.previous_concentrations)), s.name
+                assert cp.all(cp.isfinite(s.intra.release_rates)), s.name
+            if s.extra is not None:
+                assert cp.all(cp.isfinite(s.extra.concentrations)), s.name
+                assert cp.all(cp.isfinite(s.extra.previous_concentrations)), s.name
+                assert cp.all(cp.isfinite(s.extra.release_rates)), s.name
+        assert(cp.all(cp.isfinite(self.electrics.voltages)))
+        assert(cp.all(cp.isfinite(self.electrics.previous_voltages)))
+        assert(cp.all(cp.isfinite(self.electrics.driving_voltages)))
+        assert(cp.all(cp.isfinite(self.electrics.conductances)))
+
     def _reactions_advance(self):
         dt = self.time_step
         reaction_inputs, reaction_outputs = self._setup_reaction_io()
@@ -307,20 +318,21 @@ class Model:
             f = reaction.advance_reaction
             for location in range(len(self)):
                 f(dt, location, reaction_inputs, reaction_outputs)
+            numba.cuda.synchronize()
         for mechanisms, (locations, instances) in self.mechanisms.items():
-            f = mechanisms.advance_instance
-            for location, instance in zip(locations, instances):
-                f(instance, dt, location, reaction_inputs, reaction_outputs)
+            mechanisms.advance(locations, instances, dt, reaction_inputs, reaction_outputs)
+            numba.cuda.synchronize()
 
     def _diffusions_advance(self):
         """ Note: Each call to this method integrates over half a time step. """
         dt = self.electrics.time_step
         # Save prior state.
-        self.electrics.previous_voltages = np.array(self.electrics.voltages, copy=True)
+        self.electrics.previous_voltages = cp.array(self.electrics.voltages, copy=True)
         for s in self.species.values():
             for x in (s.intra, s.extra):
                 if x is not None:
-                    x.previous_concentrations = np.array(x.concentrations, copy=True)
+                    x.previous_concentrations = cp.array(x.concentrations, copy=True)
+        numba.cuda.synchronize()
         # Accumulate the net conductances and driving voltages from the chemical data.
         self.electrics.conductances.fill(0)     # Zero accumulator.
         self.electrics.driving_voltages.fill(0) # Zero accumulator.
@@ -332,19 +344,24 @@ class Model:
                 self.electrics.voltages)
             self.electrics.conductances += s.conductances
             self.electrics.driving_voltages += s.conductances * s.reversal_potential
+            numba.cuda.synchronize()
         self.electrics.driving_voltages /= self.electrics.conductances
-        np.nan_to_num(self.electrics.driving_voltages, copy=False)
+        numba.cuda.synchronize()
+        self.electrics.driving_voltages = cp.nan_to_num(self.electrics.driving_voltages)
+        numba.cuda.synchronize()
         # Calculate the transmembrane currents.
         diff_v = self.electrics.driving_voltages - self.electrics.voltages
         rc = self.electrics.capacitances / self.electrics.conductances
-        alpha = np.exp(-dt / rc)
+        alpha = cp.exp(-dt / rc)
         self.electrics.voltages += diff_v * (1.0 - alpha)
+        numba.cuda.synchronize()
         # Calculate the externally applied currents.
         self._injected_currents.advance(dt, self.electrics)
         # Calculate the lateral currents throughout the neurons.
         self.electrics.voltages = self.electrics.irm.dot(self.electrics.voltages)
-        self._ap_detector.advance(dt, self.electrics.voltages)
+        # self._ap_detector.advance(dt, self.electrics.voltages)
         # Calculate the transmembrane ion flows.
+        numba.cuda.synchronize()
         for s in self.species.values():
             if not s.transmembrane: continue
             if s.intra is None and s.extra is None: continue
@@ -359,9 +376,10 @@ class Model:
         for s in self.species.values():
             for x in (s.intra, s.extra):
                 if x is None: continue
-                x.concentrations = np.maximum(0, x.concentrations + x.release_rates * dt)
+                x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
                 # Calculate the lateral diffusion throughout the space.
                 x.concentrations = x.irm.dot(x.concentrations)
+                numba.cuda.synchronize()
 
     class _InjectedCurrents:
         def __init__(self):
@@ -380,16 +398,16 @@ class Model:
             self.locations = [x for k, x in zip(keep, self.locations) if k]
             self.remaining = [x for k, x in zip(keep, self.remaining) if k]
 
-    def inject_current(self, location, current = None, duration = 1e-3):
+    def inject_current(self, location, current = None, duration = 1.4e-3):
         location = int(location)
         assert(location < len(self))
+        duration = float(duration)
+        assert(duration >= 0)
         if current is None:
-            target_voltage = 100e-3
+            target_voltage = 200e-3
             current = target_voltage * self.electrics.capacitances[location] / duration
         else:
             current = float(current)
-        duration = float(duration)
-        assert(duration >= 0)
         self._injected_currents.currents.append(current)
         self._injected_currents.locations.append(location)
         self._injected_currents.remaining.append(duration)
@@ -491,206 +509,3 @@ class Model:
             stderr=subprocess.STDOUT, stdout=subprocess.DEVNULL,
             check=True,)
         os.remove(pov_file.name)
-
-from neuwon.geometry import Neighbor, Geometry
-
-from neuwon.species import Species, Diffusion
-
-class Electrics:
-    def __init__(self, time_step, geometry,
-            intracellular_resistance = 1,
-            membrane_capacitance = 1e-2,):
-        # Save and check the arguments.
-        self.time_step                  = time_step
-        self.intracellular_resistance   = float(intracellular_resistance)
-        self.membrane_capacitance       = float(membrane_capacitance)
-        assert(self.intracellular_resistance > 0)
-        assert(self.membrane_capacitance > 0)
-        # Initialize data buffers.
-        self.voltages           = np.zeros(len(geometry), dtype=Real)
-        self.previous_voltages  = np.zeros(len(geometry), dtype=Real)
-        self.driving_voltages   = np.zeros(len(geometry), dtype=Real)
-        self.conductances       = np.zeros(len(geometry), dtype=Real)
-        # Compute passive properties.
-        self.axial_resistances  = np.empty(len(geometry), dtype=Real)
-        self.capacitances       = np.empty(len(geometry), dtype=Real)
-        for location in range(len(geometry)):
-            l = geometry.lengths[location]
-            sa = geometry.surface_areas[location]
-            xa = geometry.cross_sectional_areas[location]
-            self.axial_resistances[location] = self.intracellular_resistance * l / xa
-            self.capacitances[location] = self.membrane_capacitance * sa
-        # Compute the coefficients of the derivative function:
-        # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
-        cols = [] # Source
-        rows = [] # Destintation
-        data = [] # Weight
-        for location in range(len(geometry)):
-            if geometry.is_root(location):
-                continue
-            parent = geometry.parents[location]
-            r = self.axial_resistances[location]
-            cols.append(location)
-            rows.append(parent)
-            data.append(+1 / r / self.capacitances[parent])
-            cols.append(location)
-            rows.append(location)
-            data.append(-1 / r / self.capacitances[location])
-            cols.append(parent)
-            rows.append(location)
-            data.append(+1 / r / self.capacitances[location])
-            cols.append(parent)
-            rows.append(parent)
-            data.append(-1 / r / self.capacitances[parent])
-        # Note: always use double precision floating point for building the impulse response matrix.
-        coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=float)
-        coefficients.data *= self.time_step
-        self.irm = scipy.sparse.linalg.expm(coefficients)
-        # Prune the impulse response matrix at epsilon millivolts.
-        self.irm.data[np.abs(self.irm.data) < epsilon * 1e-3] = 0
-        self.irm = csr_matrix(self.irm, dtype=Real)
-
-# I don't know how to orgranize this code in an intuitive way...
-
-_tables = {} # tables[name][time_step] = KineticModelTable
-def make_kinetic_table(name, time_step, *args, **kwargs):
-        name = str(name)
-        time_step = float(time_step)
-        if name in _tables:
-            if time_step in _tables[name]:
-                return _tables[name][time_step]
-        else:
-            _tables[name] = {}
-        _tables[name][time_step] = KineticModelTable(name=name, time_step=time_step, *args, **kwargs)
-        return _tables[name][time_step]
-
-class KineticModelTable:
-    def __init__(self, time_step, inputs, states, kinetics,
-        name="",
-        initial_state=None,
-        conserve_sum=False,
-        atol=1e-6):
-        """ """
-        # Save and check the arguments.
-        self.time_step = float(time_step)
-        self.name = name = str(name)
-        if self.name:
-            if self.name[-1].isnumeric() or self.name[-1].isupper():
-                name = self.name + "_"
-        if isinstance(inputs, int):
-            assert(inputs >= 0)
-            self.inputs = namedtuple(name+"Inputs", ("input%i"%i for i in range(inputs)))
-        else:
-            if isinstance(inputs, str):
-                inputs = [x.strip(",") for x in inputs.split()]
-            self.inputs = namedtuple(name+"Inputs", (str(i) for i in inputs))
-        self.states = namedtuple(name+"States", (str(s) for s in states))
-        self.conserve_sum = float(conserve_sum) if conserve_sum else None
-        if initial_state is not None:
-            initial_state = str(initial_state)
-            assert(initial_state in self.states._fields)
-            assert(self.conserve_sum is not None)
-            zeros = self.states(*[0]*len(self.states._fields))
-            self.initial_state = zeros._replace(**{initial_state: self.conserve_sum})
-        # List of non-zero elements of the coefficients matrix in the derivative function:
-        #       dX/dt = C * X, where C is Coefficients matrix and X is state vector.
-        # Stored as tuples of (src, dst, coef, func)
-        #       Where "src" and "dst" are indexes into the state vector.
-        #       Where "coef" is constant rate mulitplier.
-        #       Where "func" is optional function: func(*inputs) -> coefficient
-        self.kinetics = []
-        for reactant, product, forward, reverse in kinetics:
-            r_idx = self.states._fields.index(str(reactant))
-            p_idx = self.states._fields.index(str(product))
-            for src, dst, rate in ((r_idx, p_idx, forward), (p_idx, r_idx, reverse)):
-                if isinstance(rate, str):
-                    coef = 1
-                    inp_idx = self.inputs.index(rate)
-                    func = functools.partial(lambda inp_idx, *args: args[inp_idx], inp_idx)
-                elif isinstance(rate, Callable):
-                    coef = 1
-                    func = rate
-                else:
-                    coef = float(rate)
-                    func = None
-                self.kinetics.append((src, dst, +coef, func))
-                self.kinetics.append((src, src, -coef, func))
-        # Initialize the interpolation grid.
-        self.lower = np.full(len(self.inputs._fields), +np.inf, dtype=Real)
-        self.upper = np.full(len(self.inputs._fields), -np.inf, dtype=Real)
-
-    def advance(self, inputs, states):
-        assert(len(inputs) == len(self.inputs._fields))
-        assert(len(states) == len(self.states._fields))
-        # Bounds check the inputs, resize interpolation grid if necessary.
-        if any(self.lower > inputs) or any(self.upper < inputs):
-            self._compute_interpolation_grid(inputs)
-        # Determine which grid box the inputs are inside of.
-        inputs = self.grid_factor * np.subtract(inputs, self.lower)
-        lower_idx = np.array(np.floor(inputs), dtype=int)
-        upper_idx = np.array(np.ceil(inputs), dtype=int)
-        upper_idx = np.minimum(upper_idx, self.grid_size - 1) # Protect against floating point error.
-        # Prepare to find the interpolation weights, by finding the distance
-        # from the input point to each corner of its grid box.
-        inputs -= lower_idx
-        corner_weights = [np.subtract(1, inputs), inputs]
-        # Visit each corner of the grid box and accumulate the results.
-        results = np.zeros(len(self.states._fields), dtype=Real)
-        for corner in itertools.product(*([(0,1)] * len(self.inputs._fields))):
-            idx = np.choose(corner, [lower_idx, upper_idx])
-            weight = np.product(np.choose(corner, corner_weights))
-            results += weight * self.data[idx].dot(states).flat
-        # Enforce the invariant sum of states.
-        if self.conserve_sum is not None:
-            results *= self.conserve_sum / sum(results)
-        return self.states._make(results)
-
-    def _compute_interpolation_grid(self, inputs):
-        # Find the min & max of the input domain.
-        old_range  = self.upper - self.lower
-        self.lower = np.minimum(self.lower, inputs)
-        self.upper = np.maximum(self.upper, inputs)
-        new_range  = self.upper - self.lower
-        grid_range = self.upper - self.lower
-        grid_range[grid_range == 0] = 1
-        if not all(old_range > 0):
-            self.grid_size = np.full(len(self.inputs._fields), 2, dtype=int)
-        else:
-            # Expand the interpolation grid in proportion to the increase in the input domain.
-            # pct_change = new_range / old_range
-            # self.grid_size = np.array(np.round(self.grid_size * pct_change), dtype=int)
-            self.grid_size = np.array([100])
-        self.grid_factor = (self.grid_size - 1) / grid_range
-        self.data = np.empty(list(self.grid_size) + [len(self.states._fields)]*2, dtype=Real)
-        # Visit every location on the new interpolation grid.
-        grid_axes = [list(enumerate(np.linspace(*args, dtype=float)))
-                    for (args) in zip(self.lower, self.upper, self.grid_size)]
-        for inputs in itertools.product(*grid_axes):
-            index, inputs = zip(*inputs)
-            self.data[index] = self._compute_impulse_response_matrix(inputs)
-        # TODO: Determine if interpolation accuracy is sufficient or if it needs
-        # more grid points. This will require an additional "accuracy" parameter.
-        print(self.name, "atol", self._compute_min_accuracy())
-
-    def _compute_min_accuracy(self, num_test_points=100):
-        atol = 0
-        for _ in range(num_test_points):
-            inputs = np.random.uniform(self.lower, self.upper)
-            state = np.random.uniform(size=len(self.states._fields))
-            if self.conserve_sum is not None:
-                state *= self.conserve_sum / sum(state)
-            exact = self._compute_impulse_response_matrix(inputs).dot(state)
-            if self.conserve_sum is not None:
-                exact *= self.conserve_sum / sum(exact)
-            interp = np.array(self.advance(inputs, state))
-            atol = max(atol, np.max(np.abs(exact - interp)))
-        return atol
-
-    def _compute_impulse_response_matrix(self, inputs):
-        A = np.zeros([len(self.states._fields)] * 2, dtype=float)
-        for src, dst, coef, func in self.kinetics:
-            if func is not None:
-                A[dst, src] += coef * func(*inputs)
-            else:
-                A[dst, src] += coef
-        return scipy.linalg.expm(A * self.time_step)

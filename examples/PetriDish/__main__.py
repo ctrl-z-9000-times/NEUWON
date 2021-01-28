@@ -1,5 +1,3 @@
-# TODO: DELETE THIS FILE ONCE MNIST WORKS.
-
 import numpy as np
 import scipy.spatial
 import random
@@ -10,45 +8,13 @@ import argparse
 from graph_algorithms import depth_first_traversal as dft
 from neuwon import *
 from neuwon.regions import *
+from neuwon.growth import *
 from neuwon.mechanisms import HH, Destexhe1994, Mongillo2008
-
-class GrowSynapses:
-    def __init__(self, axons, dendrites, pre_gap_post, diameter, num_synapses):
-        pre_len, gap_len, post_len = pre_gap_post
-        f_pre = pre_len / sum(pre_gap_post)
-        f_post = post_len / sum(pre_gap_post)
-        self.presynaptic_segments = []
-        self.postsynaptic_segments = []
-        # Find all possible synapses.
-        pre = scipy.spatial.cKDTree([x.coordinates for x in axons])
-        post = scipy.spatial.cKDTree([x.coordinates for x in dendrites])
-        results = pre.query_ball_tree(post, sum(pre_gap_post))
-        results = list(itertools.chain.from_iterable(
-            ((pre, post) for post in inner) for pre, inner in enumerate(results)))
-        # Select some synapses and make them.
-        for pre, post in random.sample(results, min(num_synapses, len(results))):
-            pre = axons[pre]
-            post = dendrites[post]
-            if pre_len and len(pre.children) > 1: continue
-            if post_len and len(post.children) > 1: continue
-            if pre_len == 0:
-                self.presynaptic_segments.append(pre)
-            else:
-                x = (1 - f_pre) * np.array(pre.coordinates) + f_pre * np.array(post.coordinates)
-                self.presynaptic_segments.append(Segment(x, diameter, pre))
-            if post_len == 0:
-                self.postsynaptic_segments.append(post)
-            else:
-                x = (1 - f_post) * np.array(post.coordinates) + f_post * np.array(pre.coordinates)
-                self.postsynaptic_segments.append(Segment(x, diameter, post))
-        self.presynaptic_segments = list(set(self.presynaptic_segments))
 
 class Experiment:
     def __init__(self):
         self.time_step = .1e-3
-        self.stimulus  = 5e-9
         self.make_model()
-        self.generate_input()
         self.run_experiment()
 
     def make_model(self):
@@ -94,50 +60,39 @@ class Experiment:
             x.insert_mechanism(HH.VoltageGatedSodiumChannel)
             x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
             x.insert_mechanism(HH.Leak)
-        presyn_config = Mongillo2008.PresynapseConfiguration(
+        presyn_config = Mongillo2008.Presynapses(
             transmitter = "glutamate",
             minimum_utilization = .2,
             utilization_decay = 200e-3,
-            resource_recovery =  10e-3)
+            resource_recovery =  1e-3)
         for x in synapses.presynaptic_segments:
-            x.insert_mechanism(Mongillo2008.Presynapse, presyn_config,
-                strength=100e-21)
+            x.insert_mechanism(presyn_config, strength=100e-15)
         for x in synapses.postsynaptic_segments:
             x.insert_mechanism(Destexhe1994.AMPA5)
-            x.insert_mechanism(Destexhe1994.NMDA5)
+            # x.insert_mechanism(Destexhe1994.NMDA5)
         # Assemble the model.
         self.model = Model(self.time_step, presyn + postsyn,
                     reactions=(),
-                    species=())
+                    species=(Destexhe1994.glutamate,))
         self.glu_data = self.model.species["glutamate"]
         # Measure the voltage at these points:
         self.probes = [presyn[0], postsyn[0],
                         synapses.presynaptic_segments[0], synapses.postsynaptic_segments[0]]
 
-    def generate_input(self):
-        """ Subject the soma to three pulses of current injection. """
-        self.time_span = 50e-3
-        self.input_current = []
-        for step in range(int(self.time_span / self.time_step)):
-            t = step * self.time_step
-            if 20e-3 <= t < 21e-3:
-                self.input_current.append(self.stimulus)
-            # elif 25e-3 <= t < 26e-3:
-            #     self.input_current.append(self.stimulus)
-            elif 40e-3 <= t < 41e-3:
-                self.input_current.append(self.stimulus)
-            else:
-                self.input_current.append(None)
-
     def run_experiment(self):
         self.time_stamps = []
         self.v = [[] for _ in self.probes]
         self.glu = [[] for _ in self.probes]
-        for t, inp in enumerate(self.input_current):
-            if inp is not None:
-                self.presyn[0].inject_current(inp)
+        input_times = [20, 40]
+        input_times.append(np.inf); input_times.sort(reverse=True)
+        t = 0
+        while t <= 50:
+            if t > input_times[-1]:
+                input_times.pop()
+                self.presyn[0].inject_current(.5e-9, 1e-3)
             self.model.advance()
-            self.time_stamps.append((t + 2) * self.time_step * 1e3)
+            t += self.time_step * 1e3
+            self.time_stamps.append(t)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.get_voltage() * 1e3)
             for idx, p in enumerate(self.probes):
@@ -164,3 +119,7 @@ plt.figure()
 plt.plot(x.time_stamps, x.glu[2], 'r',
          x.time_stamps, x.glu[3], 'b')
 plt.show()
+
+args = argparse.ArgumentParser(description='')
+# args.add_argument()
+args = args.parse_args()

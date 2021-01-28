@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.spatial
 import heapq
+import itertools
+import random
 from collections.abc import Callable, Iterable
 from graph_algorithms import depth_first_traversal as dft
 from neuwon.regions import Region

@@ -1,12 +1,13 @@
 import numpy as np
-
-from neuwon import Mechanism, Species, make_kinetic_table
+import numba
+from neuwon import Mechanism, Species, Real
+from neuwon.mechanisms import KineticModel
 
 # TODO: Look up the real glutamate diffusivity constant...
-glutamate = Species("glutamate", extra_diffusivity = 0.01)
+glutamate = Species("glutamate", extra_diffusivity = 1)
 rev0 = Species("rev0", transmembrane=True, reversal_potential=0)
 
-class AMPA5(Mechanism):
+class AMPA5_model(Mechanism):
     """ Detailed model of glutamate AMPA receptors
 
           Kinetic model of AMPA receptors
@@ -34,22 +35,36 @@ class AMPA5(Mechanism):
 
     Alain Destexhe and Zach Mainen, 1995
     """
-    species = [glutamate, rev0]
-    gmax = .5e-9 # maximal conductance
-    # Rates
-    Rb      = 13        # Units: 1/mM /ms   Rate of binding, diffusion limited (DO NOT ADJUST).
-    Ru1     = 0.0059    # Units: 1/ms       Rate of unbinding (1st site).
-    Ru2     = 86        # Units: 1/ms       Rate of unbinding (2nd site).
-    Rd      = 0.9       # Units: 1/ms       Rate of desensitization.
-    Rr      = 0.064     # Units: 1/ms       Rate of resensitization.
-    Ro      = 2.7       # Units: 1/ms       Rate of opening.
-    Rc      = 0.2       # Units: 1/ms       Rate of closing.
-    def __init__(self, time_step, location, geometry, *args):
-        self.location = location
-        self.kinetics = make_kinetic_table(
-                name = "AMPA5",
+    def required_species(self):
+        return [glutamate, rev0]
+
+    def instance_dtype(self):
+        return (Real, 6)
+
+    def __init__(self,
+            gmax = .5e-9,   # maximal conductance
+            Rb   = 13,      # Units: 1/mM /ms   Rate of binding, diffusion limited (DO NOT ADJUST).
+            Ru1  = 0.0059,  # Units: 1/ms       Rate of unbinding (1st site).
+            Ru2  = 86,      # Units: 1/ms       Rate of unbinding (2nd site).
+            Rd   = 0.9,     # Units: 1/ms       Rate of desensitization.
+            Rr   = 0.064,   # Units: 1/ms       Rate of resensitization.
+            Ro   = 2.7,     # Units: 1/ms       Rate of opening.
+            Rc   = 0.2,     # Units: 1/ms       Rate of closing.
+        ):
+        """ Use global variable AMPA5 for instance with default values. """
+        self.gmax = float(gmax)
+        self.Rb   = float(Rb)
+        self.Ru1  = float(Ru1)
+        self.Ru2  = float(Ru2)
+        self.Rd   = float(Rd)
+        self.Rr   = float(Rr)
+        self.Ro   = float(Ro)
+        self.Rc   = float(Rc)
+
+    def set_time_step(self, time_step):
+        self.kinetics = KineticModel(
                 time_step = time_step * 1e3,
-                inputs = ["glutamate"],
+                input_ranges = [(0, 100)],
                 states = [
                     "C0",   # unbound
                     "C1",   # single glutamate bound
@@ -66,12 +81,31 @@ class AMPA5(Mechanism):
                     ("C2", "D2", self.Rd, self.Rr),
                     ("C2", "O",  self.Ro, self.Rc),],
                 conserve_sum = 1,)
-        self.state = self.kinetics.initial_state
 
-    def advance(self, reaction_inputs, reaction_outputs):
-        glutamate  = reaction_inputs.extra.glutamate[self.location]
-        self.state = self.kinetics.advance((glutamate,), self.state)
-        reaction_outputs.conductances.rev0[self.location] += self.gmax * self.state.O
+    def new_instance(self, time_step, location, geometry, *args):
+        return self.kinetics.initial_state
+
+    def advance(self, locations, instances, time_step, reaction_inputs, reaction_outputs):
+        glutamate = reaction_inputs.extra.glutamate[locations]
+        instances = numba.cuda.cudadrv.devicearray.DeviceNDArray(
+            instances.shape, instances.strides, np.float64,
+            gpu_data=instances)
+        self.kinetics.advance((glutamate,), instances)
+        threads = 128
+        blocks = (instances.shape[0] + (threads - 1)) // threads
+        _AMPA5_output[blocks,threads](locations, instances,
+                self.kinetics.states.index("O"),
+                self.gmax, reaction_outputs.conductances.rev0)
+@numba.cuda.jit()
+def _AMPA5_output(locations, instances, open_state, gmax, conductances):
+    index = numba.cuda.grid(1)
+    if index >= instances.shape[0]:
+        return
+    location = locations[index]
+    instance = instances[index]
+    conductances[location] += gmax * instance[open_state]
+
+AMPA5 = AMPA5_model()
 
 class NMDA5(Mechanism):
     """ Detailed model of glutamate NMDA receptors

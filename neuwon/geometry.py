@@ -119,6 +119,7 @@ class Geometry:
             coords = self.coordinates[location]
             neighbors = self._tree.query_ball_point(coords, 2 * self.maximum_extracellular_radius)
             neighbors.remove(location)
+            # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
             midpoints = np.array((self.coordinates[neighbors] - coords) / 2, dtype=float)
             midpoint_distances = np.linalg.norm(midpoints, axis=1)
             too_close = np.nonzero(midpoint_distances < epsilon / 2 * 1e-6)[0]
@@ -128,7 +129,7 @@ class Geometry:
             normals = midpoints / np.expand_dims(midpoint_distances, 1)
             offsets = np.sum(normals * midpoints, axis=1).reshape(-1,1)
             planes = np.vstack((np.hstack((normals, -offsets)), bounding_sphere))
-            halfspace_hull = scipy.spatial.HalfspaceIntersection(planes, origin, qhull_options='t')
+            halfspace_hull = scipy.spatial.HalfspaceIntersection(planes, origin)
             convex_hull = scipy.spatial.ConvexHull(halfspace_hull.intersections)
             self.extra_volumes[location] = convex_hull.volume
             self.neighbors[location] = []
@@ -148,8 +149,8 @@ class Geometry:
                     if abs(np.dot(x, planes[v,:3]) + planes[v,3]) <= epsilon:
                         projection.append([basis1.dot(x), basis2.dot(x)])
                 try:
-                    facet_hull = scipy.spatial.ConvexHull(projection, qhull_options='t')
-                except scipy.spatial.qhull.QhullError:
+                    facet_hull = scipy.spatial.ConvexHull(projection)
+                except scipy.spatial.qhull.QhullError as err:
                     continue # QHull is brittle.
                 n.border_surface_area = facet_hull.volume
                 self.neighbors[location].append(n)
