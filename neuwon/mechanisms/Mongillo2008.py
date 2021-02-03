@@ -34,7 +34,7 @@ class Presynapses(Mechanism):
     def new_instance(self, time_step, location, geometry, strength):
         assert(strength >= 0)
         instance = np.empty(1, dtype=self.instance_dtype())
-        instance["strength"]        = float(strength) / geometry.extra_volumes[location]
+        instance["strength"]        = float(strength) / geometry.extra_volumes[location] / time_step
         instance["last_update"]     = 0
         instance["utilization"]     = self.minimum_utilization
         instance["resources"]       = 1
@@ -86,4 +86,4 @@ def _release(locations, instances, time_step, release_rate,
     instance["utilization"] += minimum_utilization * (1.0 - instance["utilization"])
     instance["resources"]   -= release_percent
     delta_concentration = instance["strength"] * release_percent
-    release_rate[location] += delta_concentration / time_step
+    release_rate[location] += delta_concentration

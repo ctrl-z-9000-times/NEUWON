@@ -7,119 +7,116 @@ import argparse
 
 from graph_algorithms import depth_first_traversal as dft
 from neuwon import *
-from neuwon.regions import *
+from neuwon.analysis import *
 from neuwon.growth import *
+from neuwon.regions import *
 from neuwon.mechanisms import HH, Destexhe1994, Mongillo2008
+min_v = HH.k.reversal_potential
+max_v = HH.na.reversal_potential
 
-class Experiment:
-    def __init__(self):
-        self.time_step = .1e-3
-        self.make_model()
-        self.run_experiment()
+from neurons import ExcitatoryNeuron, InhibitoryNeuron, excitatory_synapses
 
-    def make_model(self):
-        width = 120e-6 # X & Y dimensions.
-        depth = 10e-6 # Z dimension.
-        rgn = Intersection([
-                Rectangle([-width/2,-width/2,-depth/2], [width/2,width/2,depth/2]),
-                Sphere([0,0,0], width/2)]
-        )
-        soma_diameter = 5e-6
-        self.presyn = presyn = GrowSomata.single([-width/2,0, 0], soma_diameter)
-        self.postsyn = postsyn = GrowSomata.single([width/2,0, 0], soma_diameter)
-        axon = Growth(presyn, rgn, 0.002e18,
-            balancing_factor = 0,
-            extension_angle = np.pi / 4,
-            extension_distance = 60e-6,
-            bifurcation_angle = np.pi / 3,
-            bifurcation_distance = 20e-6,
-            extend_before_bifurcate = True,
-            only_bifurcate = True,
-            maximum_segment_length = 10e-6,
-            diameter = .8e-6,
-        )
-        dendrite = Growth(postsyn, rgn, 0.002e18,
-            balancing_factor = .7,
-            extension_distance = 50e-6,
-            bifurcation_distance = 50e-6,
-            extend_before_bifurcate = False,
-            only_bifurcate = True,
-            maximum_segment_length = 10e-6,
-            diameter = None,
-        )
-        self.synapses = synapses = GrowSynapses(axon.segments, dendrite.segments,
-            (0, .6e-6, 3e-6),
-            diameter = 1e-6,
-            num_synapses = 100)
-        # Insert mechansisms.
-        for x in dft(presyn[0], lambda x: x.children):
-            x.insert_mechanism(HH.Leak)
-            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
-            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
-        for x in postsyn:
-            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
-            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
-            x.insert_mechanism(HH.Leak)
-        presyn_config = Mongillo2008.Presynapses(
-            transmitter = "glutamate",
-            minimum_utilization = .2,
-            utilization_decay = 200e-3,
-            resource_recovery =  1e-3)
-        for x in synapses.presynaptic_segments:
-            x.insert_mechanism(presyn_config, strength=100e-15)
-        for x in synapses.postsynaptic_segments:
-            x.insert_mechanism(Destexhe1994.AMPA5)
-            # x.insert_mechanism(Destexhe1994.NMDA5)
+class PetriDish:
+    def __init__(self, number_of_cells, EI_ratio, synapses_per_cell):
+        self.diameter = .2e-3
+        self.radius = self.diameter / 2
+        self.height = self.diameter / 10
+        self.region = Cylinder([0,0,0], [0,0,self.height], self.radius)
+        self.camera_position = (0, 0, -self.diameter * 1.1)
+        num_excit  = int(round(number_of_cells * (EI_ratio / (EI_ratio + 1))))
+        self.excit = [ExcitatoryNeuron(self.region) for _ in range(num_excit)]
+        self.inhib = [InhibitoryNeuron(self.region) for _ in range(number_of_cells - num_excit)]
+        self.glu = excitatory_synapses(
+                itertools.chain.from_iterable(n.axon.segments for n in self.excit),
+                itertools.chain.from_iterable(n.dendrite.segments for n in self.excit),
+                int(round(number_of_cells * synapses_per_cell)))
         # Assemble the model.
-        self.model = Model(self.time_step, presyn + postsyn,
-                    reactions=(),
-                    species=(Destexhe1994.glutamate,))
-        self.glu_data = self.model.species["glutamate"]
-        # Measure the voltage at these points:
-        self.probes = [presyn[0], postsyn[0],
-                        synapses.presynaptic_segments[0], synapses.postsynaptic_segments[0]]
+        self.time_step = .1e-3
+        self.model = Model(self.time_step, (
+                    list(n.segments[0] for n in self.excit) +
+                    list(n.segments[0] for n in self.inhib)),
+                species=(Destexhe1994.glutamate,))
 
-    def run_experiment(self):
-        self.time_stamps = []
-        self.v = [[] for _ in self.probes]
-        self.glu = [[] for _ in self.probes]
-        input_times = [20, 40]
-        input_times.append(np.inf); input_times.sort(reverse=True)
-        t = 0
-        while t <= 50:
-            if t > input_times[-1]:
-                input_times.pop()
-                self.presyn[0].inject_current(.5e-9, 1e-3)
-            self.model.advance()
-            t += self.time_step * 1e3
-            self.time_stamps.append(t)
-            for idx, p in enumerate(self.probes):
-                self.v[idx].append(p.get_voltage() * 1e3)
-            for idx, p in enumerate(self.probes):
-                self.glu[idx].append(self.glu_data.extra.concentrations[p.location] * 1e-3)
-
-x = Experiment()
-if True:
-    colors = [(0, 0, 0) for _ in range(len(x.model))]
-    for l in dft(x.presyn[0], lambda l: l.children):
-        colors[l.location] = (1, 0, 0)
-    for l in dft(x.postsyn[0], lambda l: l.children):
-        colors[l.location] = (0, 0, 1)
-    for l in x.synapses.presynaptic_segments:
-        colors[l.location] = (1, 1, 0)
-    for l in x.synapses.postsynaptic_segments:
-        colors[l.location] = (0, 1, 1)
-    x.model.draw_image("test.png", (640*4, 480*4), (0, 0, -180e-6), (0,0,0), colors)
-
-plt.figure()
-plt.plot(x.time_stamps, x.v[0], 'r',
-         x.time_stamps, x.v[3], 'g',
-         x.time_stamps, x.v[1], 'b',)
-plt.figure()
-plt.plot(x.time_stamps, x.glu[2], 'r',
-         x.time_stamps, x.glu[3], 'b')
-plt.show()
+    def draw_schematic(self, filename="schematic.png"):
+        colors = [(.2, .2, .2) for _ in range(len(self.model))]
+        for x in self.excit:
+            for segment in x.axon.segments:
+                colors[segment.location] = (0, 0, .7)
+            for segment in x.dendrite.segments:
+                colors[segment.location] = (0, .7, 0)
+        for segment in self.glu.postsynaptic_segments:
+            colors[segment.location] = (.7, 0, 0)
+        r = 4
+        draw_image(self.model, colors, filename, (640*r, 480*r), self.camera_position, (0,0,0))
 
 args = argparse.ArgumentParser(description='')
-# args.add_argument()
+args.add_argument("input_generator", choices=["single"])
+args.add_argument("--cells", type=int, default=1)
+args.add_argument("--EI", type=float, default=8.0)
+args.add_argument("--syn", "--synapses_per_cell", type=int, default=100.0)
+args.add_argument("--run_time", type=float, default=20.0, help="Milliseconds")
+# Output options.
+args.add_argument("--schematic", action="store_true", help="Draw 2D image.")
+args.add_argument("--voltage", action="store_true", help="Make 3D animation.")
+args.add_argument("--glutamate", action="store_true", help="Make 3D animation.")
+args.add_argument("--gaba", action="store_true", help="Make 3D animation.")
 args = args.parse_args()
+print("Initializing model...")
+x = PetriDish(args.cells, args.EI, args.syn)
+if args.schematic: x.draw_schematic()
+# Setup data collection.
+time_stamps = []
+excit_soma = [n.segments[0] for n in x.excit]
+excit_v = [[] for _ in excit_soma]
+inhib_soma = [n.segments[0] for n in x.excit]
+inhib_v = [[] for _ in inhib_soma]
+r = 2 # Resolution multipler.
+skip = 0
+voltage_camera = None
+if args.voltage:
+    voltage_camera = Animation(x.model, skip=skip, resolution=(640*r, 480*r), camera_coordinates=x.camera_position,)
+glutamate_camera = None
+if args.glutamate:
+    glutamate_camera = Animation(x.model, skip=skip, resolution=(640*r, 480*r), camera_coordinates=x.camera_position,)
+# Make input sequence, which is a list of pairs of (time_stamp, segment).
+input_sequence = []
+if args.input_generator == "single":
+    input_sequence.append((1e-3, random.choice(excit_soma)))
+# elif args.input_generator == "foobar":
+input_sequence.sort(reverse=True)
+print("Advancing to steady state...")
+for _ in range(int(30e-3 / x.model.time_step)):
+    x.model.advance()
+print("Running for %g milliseconds with %s input generator"%(args.run_time, args.input_generator))
+for tick in range(int(round(args.run_time * 1e-3 / x.model.time_step))):
+    t = tick * x.model.time_step
+    while input_sequence and input_sequence[-1][0] > t:
+        _, segment = input_sequence.pop()
+        segment.inject_current(2e-9, 1.4e-3)
+    x.model.advance()
+    t += x.model.time_step
+    time_stamps.append(t * 1e3)
+    for soma, v_signal in zip(excit_soma, excit_v):
+        v_signal.append(soma.get_voltage())
+    for soma, v_signal in zip(inhib_soma, inhib_v):
+        v_signal.append(soma.get_voltage())
+    if voltage_camera is not None:
+        v = ((x.model.electrics.voltages - min_v) / (max_v - min_v)).get()
+        voltage_camera.add_frame(
+            colors = [(x, 0, 1-x) for x in v],
+            text = "{:6.2f} milliseconds".format(t * 1e3))
+    if glutamate_camera is not None:
+        glu = x.model.electrics.species["glutamate"]
+        glu = glu.extra.concentrations / 1000
+        glutamate_camera.add_frame(
+            colors = [(x, 0, 1-x) for x in glu],
+            text = "{:6.2f} milliseconds".format(t * 1e3))
+print("Plotting outputs...")
+if voltage_camera is not None:
+    voltage_camera.save("voltages.gif")
+if glutamate_camera is not None:
+    glutamate_camera.save("glutamate.gif")
+plt.figure()
+for v in excit_v:
+    plt.plot(time_stamps, v, 'r')
+plt.show()

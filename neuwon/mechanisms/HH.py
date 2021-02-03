@@ -13,6 +13,9 @@ k = Species("k", transmembrane=True, reversal_potential = -72.14e-3)
 class Leak(Mechanism):
     G_LEAK = .0003 * 10000
     @classmethod
+    def name(self):
+        return "HH_Leak"
+    @classmethod
     def required_species(cls):
         return leak
     @classmethod
@@ -38,6 +41,9 @@ def _leak_advance(locations, instances, time_step, g_leak):
 
 class VoltageGatedSodiumChannel(Mechanism):
     G_NA = .12 * 10000
+    @classmethod
+    def name(self):
+        return "HH_VoltageGatedSodiumChannel"
     @classmethod
     def required_species(cls):
         return na
@@ -78,6 +84,9 @@ def _vgsc_advance(locations, instances, time_step, v, g_na):
 
 class VoltageGatedPotassiumChannel(Mechanism):
     G_K = .036 * 10000
+    @classmethod
+    def name(self):
+        return "HH_VoltageGatedPotassiumChannel"
     @classmethod
     def required_species(cls):
         return k

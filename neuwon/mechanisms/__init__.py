@@ -11,6 +11,11 @@ from neuwon import Real, Location
 
 class Mechanism:
     """ Abstract class for specifying mechanisms which are localized and stateful. """
+    @classmethod
+    def name(self):
+        """ A unique name to refer to all of instances this type of mechanism by. """
+        raise TypeError("Abstract method called: %s.%s()"%(repr(self), "name"))
+    @classmethod
     def required_species(self):
         """ Optional, Returns the Species required by this mechanism.
         Allowed return types: Species, names of species, and lists either. """
@@ -18,6 +23,7 @@ class Mechanism:
     @classmethod
     def set_time_step(self, time_step):
         """ Optional, This method is called on a deep copy of each mechanism type."""
+    @classmethod
     def instance_dtype(self):
         """ Returns the numpy data type for an instance of this mechanism.
 
@@ -29,76 +35,96 @@ class Mechanism:
         Examples
             Real
             (Real, 7)
-            (Location, (Real, 3))
             {"a": Location, "b": (Real, 3)}
         """
-        raise TypeError("Abstract method called!")
+        raise TypeError("Abstract method called: %s.%s()"%(repr(self), "instance_dtype"))
+    @classmethod
     def new_instance(self, time_step, location, geometry, *args):
         """ Returns initial state as or compatible with an instance_dtype. """
-        raise TypeError("Abstract method called!")
+        raise TypeError("Abstract method called: %s.%s()"%(repr(self), "new_instance"))
+    @classmethod
     def advance(self, locations, instances, time_step, reaction_inputs, reaction_outputs):
         """ Advance all instances of this mechanism. """
-        raise TypeError("Abstract method called!")
+        raise TypeError("Abstract method called: %s.%s()"%(repr(self), "advance"))
 
-def _add_mechanism_type(self, mech_type):
-    if hasattr(mech_type, "set_time_step"):
-        original_type = mech_type
-        mech_type = copy.deepcopy(mech_type)
-        mech_type.set_time_step(self.time_step)
-        self.original_mechanisms[original_type] = mech_type
-    else:
-        self.original_mechanisms[mech_type] = mech_type
-    dtype = mech_type.instance_dtype()
-    if isinstance(dtype, Mapping):
-        instances = {k: [] for k in dtype}
-    else:
-        instances = []
-    locations = []
-    self.mechanisms[mech_type] = (locations, instances)
+def _init_mechansisms(mechanisms_argument, insertions, time_step, geometry):
+    mechanisms = {}
+    # The given argument mechanisms take priority, add them first.
+    for mech in mechanisms_argument: _add_mechanism(mechanisms, mech, time_step)
+    # Add all inserted mechanism.
+    for location, insertions_here in enumerate(insertions):
+        for mech, args, kwargs in insertions_here:
+            container = _add_mechanism(mechanisms, mech, time_step)
+            instance = container.mechanism.new_instance(time_step, location, geometry, *args, **kwargs)
+            container.locations.append(location)
+            container.instances.append(instance)
+    # Copy data from python objects to GPU arrays.
+    for container in mechanisms.values(): container._to_cuda_device()
+    return mechanisms
 
-def _to_cuda_device(dtype, instances):
-    """ Copy a python list of new instances to a cuda device array. """
-    if isinstance(dtype, Mapping):
-        assert(not any(isinstance(dt, Mapping) for dt in dtype.values())) # Nested structures are not allowed.
-        structure_of_arrays = {}
-        for k, dt in dtype.items():
-            structure_of_arrays[k] = to_cuda_device(dt, instances[k])
-        return structure_of_arrays
-    else:
-        if isinstance(dtype, Iterable):
-            dt, shape = dtype
-            if not isinstance(shape, Iterable):
-                shape = (shape,)
-            cuda_array = np.array(instances, dtype=dt).reshape([-1] + list(shape))
-        else:
-            cuda_array = np.array(instances, dtype=dtype).flatten()
-        return numba.cuda.to_device(cuda_array)
+def _add_mechanism(mechanisms_dict, new_mechanism, time_step):
+    """ Adds a new mechanism to the dictionary if its name is new/unique.
 
-def _init_mechansisms(self, insertions):
-    self.original_mechanisms = {}
-    self.mechanisms = {}
-    for location, insertions_list in enumerate(insertions):
-        for mech_type, args, kwargs in insertions_list:
-            if mech_type not in self.original_mechanisms:
-                _add_mechanism_type(self, mech_type)
-            mech_type = self.original_mechanisms[mech_type]
-            self.mechanisms[mech_type][0].append(location)
-            instance = mech_type.new_instance(
-                    self.time_step, location, self.geometry, *args, **kwargs)
-            if isinstance(instance, Mapping):
-                dtype = mech_type.instance_dtype()
-                assert(isinstance(dtype, Mapping))
-                assert(len(dtype) == len(instance))
-                for k in mech_type.instance_dtype().keys():
-                    self.mechanisms[mech_type][1][k].append(instance[k])
+    Argument new_mechanism must be one of:
+      * An instance or subclass of the Mechanism class, or
+      * The name of a mechanism from the standard library.
+
+    Returns the MechanismContainer for the new_mechanism.
+    """
+    if isinstance(new_mechanism, Mechanism) or issubclass(new_mechanism, Mechanism):
+        name = str(new_mechanism.name())
+        if name not in mechanisms_dict:
+            mechanisms_dict[name] = MechanismContainer(new_mechanism, time_step)
+    else:
+        name = str(new_mechanism)
+        if name not in mechanisms_dict:
+            if name in mechanisms_library:
+                mechanisms_dict[name] = MechanismContainer(library[name], time_step)
             else:
-                self.mechanisms[mech_type][1].append(instance)
-    # Construct final data arrays.
-    for mech_type, (locations, instances) in self.mechanisms.items():
-        dtype = mech_type.instance_dtype()
-        self.mechanisms[mech_type] = (
-                cp.array(locations, dtype=Location),
-                _to_cuda_device(dtype, instances))
+                raise ValueError("Unrecognised Mechanism: %s."%name)
+    return mechanisms_dict[name]
+
+def _move_array(dtype, data_array):
+    """ Interpret the dtype & shape argument for an array.
+    Moves data_array from python objects to GPU arrays. """
+    if isinstance(dtype, Iterable):
+        dtype, shape = dtype
+        if isinstance(shape, Iterable):
+            shape = list(shape)
+        else:
+            shape = [shape]
+    else:
+        shape = []
+    assert(isinstance(dtype, np.dtype))
+    data_array = np.array(data_array, dtype=dtype).reshape([-1] + shape)
+    return numba.cuda.to_device(data_array)
+
+class MechanismContainer:
+    """ Container to hold all instances of a type of mechanism. """
+    def __init__(self, mechanism, time_step):
+        if hasattr(mechanism, "set_time_step"):
+            mechanism = copy.deepcopy(mechanism)
+            mechanism.set_time_step(time_step)
+        self.mechanism = mechanism
+        self.locations = []
+        self.instances = []
+
+    def _to_cuda_device(self):
+        """ Move locations and instances from python lists to cuda device array. """
+        self.locations = cp.array(self.locations, dtype=Location)
+        dtype = self.mechanism.instance_dtype()
+        if isinstance(dtype, Mapping):
+            if any(isinstance(inner_dt, Mapping) for inner_dt in dtype.values()):
+                raise ValueError("Nested structures are not allowed.")
+            # Convert from array of structures (list of dicts) to structure of arrays (dict of lists)
+            structure_of_arrays = {k: [] for k in dtype.keys()}
+            for instance in self.instances:
+                assert(len(instance) == len(dtype))
+                for k, array in structure_of_arrays.items():
+                    array.append(instance[k])
+            self.instances = {k: _move_array(dtype[k], structure_of_arrays[k]) for k in dtype.keys()}
+        else:
+            self.instances = _move_array(dtype, self.instances)
 
 # TODO: What are the units on atol? How does the timestep factor into it?
 
@@ -107,7 +133,9 @@ class KineticModel:
         initial_state=None,
         conserve_sum=False,
         atol=1e-3):
-        """ """
+        """
+        Argument kinetics is list of tuples of (reactant, product, forward, reverse)
+        """
         # Save and check the arguments.
         self.time_step = float(time_step)
         self.input_ranges = np.array(input_ranges, dtype=Real)
@@ -246,7 +274,7 @@ def _1d(inputs, states, scratch, input_lower_bound, grid_size, grid_factor, data
         return
     inpt = inputs[index]
     state = states[index]
-    scrtch = scratch[index]
+    accum = scratch[index]
     # Determine which grid box the inputs are inside of.
     inpt = (inpt - input_lower_bound) * grid_factor
     lower_idx = int(math.floor(inpt))
@@ -255,11 +283,11 @@ def _1d(inputs, states, scratch, input_lower_bound, grid_size, grid_factor, data
     inpt -= lower_idx
     # Visit each corner of the grid box and accumulate the results.
     _weighted_matrix_vector_multiplication(
-        1 - inpt, data[lower_idx], state, scrtch)
+        1 - inpt, data[lower_idx], state, accum)
     _weighted_matrix_vector_multiplication(
-        inpt, data[upper_idx], state, scrtch)
+        inpt, data[upper_idx], state, accum)
     for i in range(len(state)):
-        state[i] = scrtch[i]
+        state[i] = accum[i]
 
 @numba.cuda.jit(device=True)
 def _weighted_matrix_vector_multiplication(w, m, v, results):
@@ -270,9 +298,10 @@ def _weighted_matrix_vector_multiplication(w, m, v, results):
         [m]atrix
         [v]ector
         results - output accumulator """
-    for r in range(len(v)):
+    l = len(v)
+    for r in range(l):
         dot = 0
-        for c in range(len(v)):
+        for c in range(l):
             dot += m[r, c] * v[c]
         results[r] += w * dot
 
@@ -283,8 +312,9 @@ def _conserve_sum(states, target_sum):
         return
     state = states[index]
     accumulator = 0.
-    for i in range(len(state)):
+    num_states = len(state)
+    for i in range(num_states):
         accumulator += state[i]
     correction_factor = target_sum / accumulator
-    for i in range(len(state)):
+    for i in range(num_states):
         state[i] *= correction_factor

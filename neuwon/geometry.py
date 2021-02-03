@@ -1,22 +1,37 @@
 import numpy as np
 import scipy.spatial
-from neuwon import Location, Real, epsilon
-
+from neuwon import Location, Real, epsilon, docstring_wrapper
 ROOT = np.iinfo(Location).max
-
-class Neighbor:
-    """ Adjacent location in the partitioning of the extracellular medium """
-    __slots__ = ("location", "distance", "border_surface_area")
+import neuwon.voronoi
+Neighbor = neuwon.voronoi.Neighbor
 
 class Geometry:
+    coordinates = docstring_wrapper("coordinates", "")
+    parents = docstring_wrapper("parents", "")
+    diameters = docstring_wrapper("diameters", "")
+    maximum_extracellular_radius = docstring_wrapper("maximum_extracellular_radius", "")
+    children = docstring_wrapper("children", "")
+    parents = docstring_wrapper("parents", "")
+    cross_sectional_areas = docstring_wrapper("cross_sectional_areas", "")
+    surface_areas = docstring_wrapper("surface_areas", "")
+    intra_volumes = docstring_wrapper("intra_volumes", "")
+    extra_volumes = docstring_wrapper("extra_volumes", "")
+    neighbors = docstring_wrapper("neighbors",
+        """Adjacent locations in the partitioning of the extracellular medium.
+        geometry.neighbors[location] = array with data type neuwon.geometry.Neighbor""")
+
     """ Physical shapes & structures of neurons """
     def __init__(self, coordinates, parents, diameters,
-            maximum_extracellular_radius=100e-6,):
+            maximum_extracellular_radius=3e-6,
+            extracellular_volume_fraction=.20,
+            extracellular_tortuosity=1.55,):
         # Save the arguments.
         self.coordinates = np.array(coordinates, dtype=Real)
         self.parents = np.array([ROOT if p is None else p for p in parents], dtype=Location)
         self.diameters = np.array(diameters, dtype=Real)
         self.maximum_extracellular_radius = float(maximum_extracellular_radius)
+        self.extracellular_volume_fraction = float(extracellular_volume_fraction)
+        self.extracellular_tortuosity = float(extracellular_tortuosity)
         # Check the arguments.
         assert(len(self.coordinates) == len(self))
         assert(len(self.parents)     == len(self))
@@ -25,6 +40,8 @@ class Geometry:
         assert(all(p < len(self) or p == ROOT for p in self.parents))
         assert(all(d >= 0 for d in self.diameters))
         assert(self.maximum_extracellular_radius > epsilon * 1e-6)
+        assert(1 >= self.extracellular_volume_fraction >= 0)
+        assert(self.extracellular_tortuosity >= 1)
         # Initialize the geometric properties.
         self._init_tree_properties()
         self._init_cellular_properties()
@@ -93,7 +110,7 @@ class Geometry:
                     # from the center of the parent instead of the surface.
                     pass
             self.surface_areas[location] = 2 * np.pi * radius * length
-            self.intra_volumes[location] = np.pi * radius ** 2 * length
+            self.intra_volumes[location] = np.pi * radius ** 2 * length * 1e3
             # Account for the surface area on the tips of terminal/leaf segments.
             num_children = len(self.children[location])
             if num_children == 0 or (self.is_root(location) and num_children == 1):
@@ -103,57 +120,23 @@ class Geometry:
         assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
 
     def _init_extracellular_properties(self):
+        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
         self._tree = scipy.spatial.cKDTree(self.coordinates)
         self.extra_volumes = np.empty(len(self), dtype=Real)
         self.neighbors = np.zeros(len(self), dtype=object)
-        bounding_sphere = np.array([
-                [ 1, 0,  0, -self.maximum_extracellular_radius],
-                [-1, 0,  0, -self.maximum_extracellular_radius],
-                [0,  1,  0, -self.maximum_extracellular_radius],
-                [0, -1,  0, -self.maximum_extracellular_radius],
-                [0,  0,  1, -self.maximum_extracellular_radius],
-                [0,  0, -1, -self.maximum_extracellular_radius],
-            ])
-        origin = np.zeros(3)
         for location in range(len(self)):
             coords = self.coordinates[location]
-            neighbors = self._tree.query_ball_point(coords, 2 * self.maximum_extracellular_radius)
+            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
+            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
             neighbors.remove(location)
-            # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
-            midpoints = np.array((self.coordinates[neighbors] - coords) / 2, dtype=float)
-            midpoint_distances = np.linalg.norm(midpoints, axis=1)
-            too_close = np.nonzero(midpoint_distances < epsilon / 2 * 1e-6)[0]
-            if len(too_close):
-                raise ValueError("Locations %d & %d are too close together."%(
-                        location, neighbors[too_close[0]]))
-            normals = midpoints / np.expand_dims(midpoint_distances, 1)
-            offsets = np.sum(normals * midpoints, axis=1).reshape(-1,1)
-            planes = np.vstack((np.hstack((normals, -offsets)), bounding_sphere))
-            halfspace_hull = scipy.spatial.HalfspaceIntersection(planes, origin)
-            convex_hull = scipy.spatial.ConvexHull(halfspace_hull.intersections)
-            self.extra_volumes[location] = convex_hull.volume
-            self.neighbors[location] = []
-            for v in halfspace_hull.dual_vertices:
-                if v not in range(len(neighbors)): continue # Adjacency to the bounding sphere.
-                n = Neighbor()
-                n.location = neighbors[v]
-                n.distance = np.linalg.norm(coords - self.coordinates[n.location])
-                # The scipy bindings to QHull don't appear expose the area of
-                # each facet. Instead find the vertexes of this facet, project
-                # the vertexes onto the facets plane, and recompute the convex
-                # hull in 2D to get the surface area.
-                basis1 = scipy.spatial.transform.Rotation.from_rotvec([np.pi/2, 0, 0]).apply(planes[v,:3])
-                basis2 = scipy.spatial.transform.Rotation.from_rotvec([0, np.pi/2, 0]).apply(planes[v,:3])
-                projection = []
-                for x in halfspace_hull.intersections:
-                    if abs(np.dot(x, planes[v,:3]) + planes[v,3]) <= epsilon:
-                        projection.append([basis1.dot(x), basis2.dot(x)])
-                try:
-                    facet_hull = scipy.spatial.ConvexHull(projection)
-                except scipy.spatial.qhull.QhullError as err:
-                    continue # QHull is brittle.
-                n.border_surface_area = facet_hull.volume
-                self.neighbors[location].append(n)
+            neighbors = np.array(neighbors, dtype=Location)
+            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
+                    neighbors, self.coordinates)
+            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
+            self.neighbors[location] = n
+            for n in self.neighbors[location]:
+                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
+        # TODO: Cast neighbors from list of lists to a sparse array.
 
     def __len__(self):
         return len(self.coordinates)

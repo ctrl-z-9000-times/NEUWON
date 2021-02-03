@@ -40,21 +40,27 @@ class GrowSomata:
 
 class GrowSynapses:
     def __init__(self, axons, dendrites, pre_gap_post, diameter, num_synapses):
+        self.axons = list(axons)
+        self.dendrites = list(dendrites)
+        num_synapses = int(num_synapses)
         pre_len, gap_len, post_len = pre_gap_post
         f_pre = pre_len / sum(pre_gap_post)
         f_post = post_len / sum(pre_gap_post)
         self.presynaptic_segments = []
         self.postsynaptic_segments = []
         # Find all possible synapses.
-        pre = scipy.spatial.cKDTree([x.coordinates for x in axons])
-        post = scipy.spatial.cKDTree([x.coordinates for x in dendrites])
+        pre = scipy.spatial.cKDTree([x.coordinates for x in self.axons])
+        post = scipy.spatial.cKDTree([x.coordinates for x in self.dendrites])
         results = pre.query_ball_tree(post, sum(pre_gap_post))
         results = list(itertools.chain.from_iterable(
             ((pre, post) for post in inner) for pre, inner in enumerate(results)))
         # Select some synapses and make them.
-        for pre, post in random.sample(results, min(num_synapses, len(results))):
-            pre = axons[pre]
-            post = dendrites[post]
+        random.shuffle(results)
+        for pre, post in results:
+            if num_synapses <= 0:
+                break
+            pre = self.axons[pre]
+            post = self.dendrites[post]
             if pre_len and len(pre.children) > 1: continue
             if post_len and len(post.children) > 1: continue
             if pre_len == 0:
@@ -67,7 +73,9 @@ class GrowSynapses:
             else:
                 x = (1 - f_post) * np.array(post.coordinates) + f_post * np.array(pre.coordinates)
                 self.postsynaptic_segments.append(Segment(x, diameter, post))
+            num_synapses -= 1
         self.presynaptic_segments = list(set(self.presynaptic_segments))
+        self.segments = self.presynaptic_segments + self.postsynaptic_segments
 
 class Growth:
     """ Grow dendrites or axons

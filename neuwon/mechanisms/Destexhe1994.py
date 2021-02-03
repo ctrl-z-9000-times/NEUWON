@@ -1,10 +1,29 @@
+"""
+Synthesis of Models for Excitable Membranes,
+Synaptic Transmission and Neuromodulation
+Using a Common Kinetic Formalism
+
+ALAIN DESTEXHE AND ZACHARY F. MAINEN
+    The Howard Hughes Medical Institute and The Salk Institute for Biological
+    Studies, Computational Neurobiology Laboratory, 10010 North Torrey Pines
+    Road, La JotIa, CA 92037, USA
+
+TERRENCE J. SEJNOWSKI
+    The Howard Hughes Medical Institute and The Salk Institute for Biological
+    Studies, Computational NeurobioIogy Laboratory, 10010 North Torrey Pines
+    Road, La Jolla, CA 92037, USA and Dept. of Biology, University of
+    California-San Diego, La JoIla, CA 92037
+
+Journal of Computational Neuroscience, 1, 195-230 (1994)
+9 1994 Kluwer Academic Publishers. Manufactured in The Netherlands.
+"""
 import numpy as np
 import numba
 from neuwon import Mechanism, Species, Real
 from neuwon.mechanisms import KineticModel
 
-# TODO: Look up the real glutamate diffusivity constant...
-glutamate = Species("glutamate", extra_diffusivity = 1)
+um2_per_msec = (1e-6)**2 / (1e-3)
+glutamate = Species("glutamate", extra_diffusivity = .1 *um2_per_msec)
 rev0 = Species("rev0", transmembrane=True, reversal_potential=0)
 
 class AMPA5_model(Mechanism):
@@ -64,7 +83,7 @@ class AMPA5_model(Mechanism):
     def set_time_step(self, time_step):
         self.kinetics = KineticModel(
                 time_step = time_step * 1e3,
-                input_ranges = [(0, 100)],
+                input_ranges = [(0, 100e3)],
                 states = [
                     "C0",   # unbound
                     "C1",   # single glutamate bound
@@ -75,8 +94,8 @@ class AMPA5_model(Mechanism):
                 ],
                 initial_state = "C0",
                 kinetics = [
-                    ("C0", "C1", lambda glutamate: glutamate * self.Rb, self.Ru1),
-                    ("C1", "C2", lambda glutamate: glutamate * self.Rb, self.Ru2),
+                    ("C0", "C1", lambda glutamate: glutamate * 1e-6 * self.Rb, self.Ru1),
+                    ("C1", "C2", lambda glutamate: glutamate * 1e-6 * self.Rb, self.Ru2),
                     ("C1", "D1", self.Rd, self.Rr),
                     ("C2", "D2", self.Rd, self.Rr),
                     ("C2", "O",  self.Ro, self.Rc),],

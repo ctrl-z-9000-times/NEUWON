@@ -1,16 +1,18 @@
+""" Tools for specifying 3-Dimensional volumes
+
+This file provides tools for performing constructive solid geometry:
+  * Geometric primitives: Rectangle, Sphere, Cylinder.
+  * Logical operators for combining regions: Intersection, Union, Not.
+  * The abstract class "Region" allows for defining new types of 3-D volumes.
+"""
 import numpy as np
 
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
 
-    NEUWON provides tools for performing Constructive Solid Geometry.
-    The geometric primitives are: Rectangle, Sphere, Cylinder.
-    The Region subclasses "Intersection", "Union", and "Not" are logical
-    operators for combining regions.
-
     Region subclasses must implement the following abstract methods:
-        -   Region.contains(self, coordinates) -> bool
-        -   Region.aabb(self) -> (lower_corner, upper_corner)
+      * Region.contains(self, coordinates) -> bool
+      * Region.aabb(self) -> (lower_corner, upper_corner)
     """
     def contains(self, coordinates):
         """ Returns bool: does this region contain the given coordinates? """
