@@ -1,0 +1,50 @@
+
+//----------------------------------------------------------------------------
+//  define a panel to run the different demos
+//----------------------------------------------------------------------------
+load_file("nrngui.hoc")
+
+proc make_demopanel() {
+	xpanel("Simulations of synaptic currents")
+	xbutton("synaptic release","restart(\"release\")")
+	xbutton("AMPA - simple","restart(\"ampa\")")
+	xbutton("AMPA - detailed","restart(\"ampa5\")")
+        xbutton("NMDA - simple","restart(\"nmda\")")
+        xbutton("NMDA - detailed","restart(\"nmda5\")")
+	xbutton("GABA_A - simple","restart(\"gabaa\")")
+	xbutton("GABA_A - detailed","restart(\"gabaa5\")")
+        xbutton("GABA_B - simple","restart(\"gabab\")")
+        xbutton("GABA_B - detailed","restart(\"gabab3\")")
+	xpanel()
+}
+
+
+pwmcnt = PWManager[0].count  // the initial GUIs should not be dismissed
+ismenu=0		// determines if electrode is defined
+
+
+proc restart() { local i
+
+	forall delete_section()
+
+	for i=0, n_graph_lists-1 {
+		graphList[i].remove_all()
+	}
+	flush_list.remove_all()
+	fast_flush_list.remove_all()
+	doNotify()
+	for (i= PWManager[0].count-1; i >= pwmcnt; i -= 1) {
+		PWManager[0].close(i)
+		doNotify()
+	}
+	stoprun = 0
+	cvode_active(0)
+	
+	sprint(tstr, "%s.hoc", $s1)
+	load_file(1, tstr)
+
+	ismenu=0	// instructs code to keep creating a run control windows
+
+}
+
+make_demopanel()

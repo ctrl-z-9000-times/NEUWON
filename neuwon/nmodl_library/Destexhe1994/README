@@ -1,0 +1,123 @@
+
+    NEURON TUTORIAL FOR IMPLEMENTING SIMULATIONS OF SYNAPTIC CURRENTS 
+           AND SYNAPTIC INTERACTIONS IN NETWORK SIMULATIONS
+
+                          Alain Destexhe
+
+            Department of Physiology, Laval University,
+                      Quebec G1K 7P4, Canada
+
+Present address: CNRS, UNIC (Bat-33), Avenue de la Terrasse,
+                 91198 Gif-sur-Yvette, France
+
+                      Destexhe@iaf.cnrs-gif.fr
+                     http://cns.iaf.cnrs-gif.fr
+
+
+This package is running with the NEURON simulation program written by Michael
+Hines and available on internet at:
+  http://www.neuro.duke.edu/neuron/home.html
+
+The package contains mechanisms (.mod files) and programs (.oc files) needed
+to simulate excitatory and inhibitory synaptic currents corresponding to the
+most common types of postsynaptic receptors (glutamate AMPA and NMDA, GABA-A
+and GABA-B).  The "detailed" simulations include multistate kinetic models and
+a model for the release of transmitter.  The "minimal" models use the simplest
+kinetic schemes but are computationally much faster while still capturing the
+most salient features of synaptic interactions.  The latter are well suited
+for being implemented in network simulations.
+
+The models given here are described in detail in the following paper:
+
+  Destexhe, A., Mainen, Z.F. and Sejnowski, T.J.  Biophysical models of 
+  synaptic transmission.  In: Methods in Neuronal Modeling (2nd edition; 
+  edited by Koch, C. and Segev, I.), MIT press, Cambridge, 1998, pp. 1-25.
+
+An electronic version of this paper is available at  http://cns.iaf.cnrs-gif.fr
+
+
+
+  PROGRAMS
+  ========
+
+release.hoc : detailed kinetic model for the release of transmitter
+                  (reproduces Fig. 1 of the paper)
+
+ampa5.hoc   : detailed kinetic model for glutamate AMPA receptors
+                  (shown in Fig. 2A)
+nmda5.hoc   : detailed kinetic model for glutamate NMDA receptors
+                  (shown in Fig. 2B)
+gabaa5.hoc  : detailed kinetic model for GABA-A receptors
+                  (shown in Fig. 2C)
+gabab3.hoc  : detailed kinetic model for GABA-B receptors
+                  (shown in Fig. 2D)
+
+ampa.hoc    : minimal kinetic model for glutamate AMPA receptors
+                  (shown in Fig. 3A and Fig. 4A)
+nmda.hoc    : minimal kinetic model for glutamate NMDA receptors
+                  (shown in Fig. 3B and Fig. 4B)
+gabaa.hoc   : minimal kinetic model for GABA-A receptors
+                  (shown in Fig. 3C and Fig. 4C)
+gabab.hoc   : minimal kinetic model for GABA-B receptors
+                  (shown in Fig. 3D and Fig. 4D)
+
+
+  MECHANISMS
+  ==========
+
+release.mod     : kinetic model for the release of transmitter
+HH.mod          : Hodgkin-Huxley kinetics for action potentials
+caL3d.mod       : high-threshold calcium current in the presynaptic terminal
+capump.mod      : calcium clearance mechanisms
+
+ampa5.mod       : detailed kinetic model for glutamate AMPA receptors
+nmda5.mod       : detailed kinetic model for glutamate NMDA receptors
+gabaa5.mod      : detailed kinetic model for GABA-A receptors
+gabab3.mod      : detailed kinetic model for GABA-B receptors
+
+ampa.mod        : minimal kinetic model for glutamate AMPA receptors
+nmda.mod        : minimal kinetic model for glutamate NMDA receptors
+gabaa.mod       : minimal kinetic model for GABA-A receptors
+gabab.mod       : minimal kinetic model for GABA-B receptors
+
+Note from ModelDB admin Tom Morse: capump.mod (cad mechanism) was 
+incorporated into release.mod (rel mechanism) to take care of problem
+where each mechanism was writting cai. 9/16/2002
+
+  HOW TO RUN
+  ==========
+
+To compile the demo, NEURON and INTERVIEWS must be installed and working on
+the machine you are using.  Just type "nrnivmodl" to compile the mechanisms
+given in the mod files.
+
+Then, execute the main demo program by typing:
+
+nrngui rundemo.hoc
+
+Once the menu and graphics interface has appeared, click on "Init and Run"
+button to start the simulation...
+
+For more information about how to get NEURON and how to install it, please
+refer to the following sites:
+  http://neuron.duke.edu/
+  http://www.neuron.yale.edu/
+
+For further information, please contact:
+
+Alain Destexhe
+
+CNRS, UNIC (Bat-33), 
+Avenue de la Terrasse,
+91198 Gif-sur-Yvette, 
+France
+
+email: Destexhe@iaf.cnrs-gif.fr
+http://cns.iaf.cnrs-gif.fr
+
+10-2007: AD, better synaptic mechanisms using counters
+20120111: removed some .old files and updated gabab3.mod (GABAb3)
+gabab.mod (GABAb) release.mod (rel) mechanisms from euler method to
+cnexp, and derivimplicit for rel as per
+http://www.neuron.yale.edu/phpbb/viewtopic.php?f=28&t=592
+20150608 GABAb.mod was fixed from cnexp to derivimplicit

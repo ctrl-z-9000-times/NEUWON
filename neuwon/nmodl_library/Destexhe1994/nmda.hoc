@@ -1,0 +1,138 @@
+/*----------------------------------------------------------------------------
+
+    Simplified kinetic synapse mechanism
+    ------------------------------------
+
+    Demo file to show the behavior of a synaptic currents mediated by
+    glutamate NMDA receptors, modeled using a minimal two-state kinetic
+    model.
+
+    Kinetic model from Destexhe, A., Mainen, Z.F. and Sejnowski, T.J.
+    Neural Computation, 6: 14-18, 1994.
+
+  See details in:
+
+  Destexhe, A., Mainen, Z.F. and Sejnowski, T.J.  Kinetic models of 
+  synaptic transmission.  In: Methods in Neuronal Modeling (2nd edition; 
+  edited by Koch, C. and Segev, I.), MIT press, Cambridge, 1998, pp. 1-25.
+
+  (electronic copy available at http://cns.iaf.cnrs-gif.fr)
+
+
+  Written by Alain Destexhe, Laval University, 1995
+
+----------------------------------------------------------------------------*/
+
+
+
+//----------------------------------------------------------------------------
+//  load and define general graphical procedures
+//----------------------------------------------------------------------------
+
+// xopen("$(NEURONHOME)/lib/hoc/stdrun.hoc")
+
+objectvar g[20]         // max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii  // define subroutine to add a new graph
+                // addgraph("variable", minvalue, maxvalue)
+    ngraph = ngraph+1
+    ii = ngraph-1
+    g[ii] = new Graph()
+    g[ii].size(0,tstop,$2,$3)
+    g[ii].xaxis()
+    g[ii].yaxis()
+    g[ii].addvar($s1,1,0)
+    g[ii].save_name("graphList[0].")
+    graphList[0].append(g[ii])
+}
+
+if(ismenu==0) {
+  nrnmainmenu()         // create main menu
+  nrncontrolmenu()      // crate control menu
+  ismenu=1
+}
+
+
+
+//----------------------------------------------------------------------------
+//  general parameters
+//----------------------------------------------------------------------------
+
+dt=0.1
+tstop = 500
+runStopAt = tstop
+steps_per_ms = 1/dt
+celsius = 36
+v_init = -70
+
+
+
+//----------------------------------------------------------------------------
+//  create compartments and insert passive properties
+//----------------------------------------------------------------------------
+
+create PRE,POST
+forall {
+  diam=10
+  L=10
+  insert pas
+  g_pas=1/5000
+  e_pas=v_init
+}
+
+
+
+//----------------------------------------------------------------------------
+//  insert presynaptic mechanisms
+//----------------------------------------------------------------------------
+
+access PRE      // insert Hodgk-Hux. Na+ and K+ currents for spikes
+insert hh2
+ek = -90
+gnabar_hh2 = 0.1
+gkbar_hh2 = 0.03
+
+objectvar stim      // insert current injection
+PRE stim = new IClamp(.5)
+// note: for older versions of neuron, use PulseStim instead of IClamp
+stim.del = 10
+stim.dur = 2        // 2 ms for single psp, 10 ms for train of psps
+stim.amp = 0.1
+
+
+
+
+//----------------------------------------------------------------------------
+//  insert postsynaptic mechansisms
+//----------------------------------------------------------------------------
+
+objectvar c
+c = new NMDA()          // create synapse
+POST c.loc(0.5)         // assign postsynaptic compartment
+setpointer c.pre, PRE.v(0.5)    // assign presynaptic compartment
+
+Cmax_NMDA   = 1 //  (mM)     max transmitter concentration
+Cdur_NMDA   = 1 //  (ms)     transmitter duration (rising phase)
+Alpha_NMDA  = 0.072 //  (/ms mM)     forward (binding) rate
+Beta_NMDA   = 0.0066 // (/ms)        backward (unbinding) rate
+Erev_NMDA   = 0 //  (mV)         reversal potential
+Prethresh_NMDA  = 0     //  (mV)         voltage level nec for release
+Deadtime_NMDA   = 1 //  (ms)     mimimum time between release events
+mg_NMDA     = 2 //  (mM)    physiological extracell magnesium
+c.gmax      = 0.0002 // (umho)       maximum conductance
+
+
+mg_NMDA     = 0 //  put in zero magnesium for the demo
+
+
+//----------------------------------------------------------------------------
+//  add graphs
+//----------------------------------------------------------------------------
+
+addgraph("PRE.v(0.5)",-90,40)
+addgraph("c.C",0,1)
+g[1].addvar("c.R",1,0)
+
+addgraph("c.i",-0.001, 0.0001)
+addgraph("POST.v(0.5)",v_init-2,v_init+4)

@@ -1,0 +1,141 @@
+objref volt_cl			  // variable for Point-Process
+objref vbox1, vbox2		  // graphs variables
+objref g_v, g_i	          // graphs variables
+objref recV, allV, recT, allT                // record voltage
+// strdef file_name   to save runs
+//objref savv, savt   to save
+
+y_min=-2.1
+
+proc Tstop() {
+	tstop = volt_cl.dur[0]+volt_cl.dur[1]
+}
+
+create soma
+soma {
+	diam = 50        // micron
+	L    = 63.66198  // micron, so that area = 10000 micron2
+	nseg = 1 	     // dimensionless
+	cm   = 1         // uF/cm2
+	Ra   = 70        // ohm-cm
+	
+	insert na15a
+	volt_cl = new VClamp_plus(.5)
+}
+
+proc start() {
+	volt_cl.amp[0] = -10
+	
+	volt_cl.dur[0]=0.25
+	volt_cl.dur[1]=5.75
+	
+	g_v.erase()
+	g_i.erase()
+	g_v.size(0, tstop, -130, end_cl+10)
+	g_i.size(0, 6, y_min, 0.1)
+	
+	allV = new Vector()
+	allT = new Vector()
+	recV = new Vector()
+	recV.record(&dens)
+	recT = new Vector()
+	recT.record(&t)
+
+	for (i=st_cl; i<=end_cl; i=i+incr1) {
+       volt_cl.amp[1]=i
+       //file_number = num_to_strg(i)
+       //sprint(file_name, "%s%s", "/home/carol/Sinkin_model/SinKin_ModelDB/na15v_fig2g_run_",i)
+       
+       finitialize(v_init)
+       g_v.beginline()
+       g_i.beginline()
+       
+       while (t<tstop) {
+       		
+			// clamping current without capacitive current, in mA/cm2       		
+       		dens=volt_cl.i/area(.5)*100-soma.i_cap(0.5) 
+       		
+       		g_i.line(t, dens)
+       		g_v.line(t, soma.v(.5))
+       		
+       		fadvance()
+       }
+       g_v.size(0, tstop, -130, end_cl+10)
+	   g_i.size(0, 6, y_min, 0.1)
+	   g_v.flush
+	   g_i.flush
+	     //savv = new File()
+		//savv.wopen(file_name)
+		//recV.printf(savv)
+		allV.append(recV)
+		allT.append(recT)
+    }
+		//savv = new File()
+		//savv.wopen("na15v_fig2gV")
+		//allV.printf(savv)
+		//savt = new File()
+		//savt.wopen("/na15v_fig2gT")
+		//allT.printf(savt) 
+}
+
+{
+xpanel("RunControl", 0)
+v_init = -120
+xvalue("Init","v_init", 1,"stdinit()", 1, 1 )
+xbutton("Init & Run","run()")
+xbutton("Stop","stoprun=1")
+runStopAt = 5
+xvalue("Continue til","runStopAt", 1,"{continuerun(runStopAt) stoprun=1}", 1, 1 )
+runStopIn = 1
+xvalue("Continue for","runStopIn", 1,"{continuerun(t + runStopIn) stoprun=1}", 1, 1 )
+xbutton("Single Step","steprun()")
+t = 20.25
+xvalue("t","t", 2 )
+tstop = 6
+xvalue("Tstop","tstop", 1,"tstop_changed()", 0, 1 )
+dt = 0.0125
+xvalue("dt","dt", 1,"setdt()", 0, 1 )
+steps_per_ms = 40
+xvalue("Points plotted/ms","steps_per_ms", 1,"setdt()", 0, 1 )
+screen_update_invl = 0.05
+xvalue("Scrn update invl","screen_update_invl", 1,"", 0, 1 )
+realtime = 0.00999999
+xvalue("Real Time","realtime", 0,"", 0, 1 )
+xpanel(3,102)
+}
+
+{
+xpanel("Avvio", 0)
+xbutton("Avvio","start()")
+celsius=22
+xvalue("celsius")
+ena=65
+xvalue("ena")
+st_cl=-100
+xvalue("start clamp", "st_cl")
+end_cl=-30
+xvalue("end clamp", "end_cl")
+incr1=10
+xvalue("incr clamp", "incr1")
+hold_pot=v_init
+xvalue("holding_pot", "hold_pot")
+xpanel(280,102)
+}
+
+// graph for soma voltage
+
+vbox1=new VBox()
+vbox1.intercept(1)
+g_v=new Graph()
+g_v.size(0, tstop, -130, end_cl+10)
+vbox1.intercept(0)
+vbox1.map("Membrane voltage", 3, 500, -1, 0)
+
+// graph for clamping current (clamp.i)
+
+vbox2=new VBox()
+vbox2.intercept(1)
+g_i=new Graph()
+g_i.size(0, 5, y_min, 0.1)
+vbox2.intercept(0)
+vbox2.map("Soma clamp current", 520, 20, 600, 450)

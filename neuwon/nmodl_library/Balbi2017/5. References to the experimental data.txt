@@ -1,0 +1,28 @@
+References to the experimental data
+
+Nav1.1
+Rhodes TH, Lossin C, Vanoye CG, Wang DW, George AL. Noninactivating voltage-gated sodium channels in severe myoclonic epilepsy of infancy. Proc Natl Acad Sci U S A. 2004 Jul 27; 101(30): 11147-52.
+
+Nav1.2
+Misra SN, Kahlig KM, George AL Jr. Impaired NaV1.2 function and reduced cell surface expression in benign familial neonatal-infantile seizures. Epilepsia. 2008 Sep; 49(9): 1535-45.
+
+Nav1.3
+Cusdin FS, Nietlispach D, Maman J, Dale TJ, Powell AJ, Clare JJ, Jackson AP. The Sodium Channel ?3-Subunit Induces Multiphasic Gating in NaV1.3 and Affects Fast Inactivation via Distinct Intracellular Regions. J Biol Chem 2010, 285 (43): 33404-33412.
+
+Nav1.4
+Arnold WD, Feldman DH, Ramirez S, He L, Kassar D, Quick A, Klassen TL, Lara M, Nguyen J, Kissel JT, Lossin C, Maselli RA. Defective fast inactivation recovery of Nav 1.4 in congenital myasthenic syndrome. Ann Neurol. 2015 May;77(5):840-50.
+
+Nav1.5
+Zhang Z, Zhao Z, Liu Y, Wang W, Wu Y, Ding J. Kinetic model of Nav1.5 channel provides a subtle insight into slow inactivation associated excitability in cardiac cells. PLoS One. 2013 May 16; 8(5): e64286.
+
+Nav1.6
+Burbidge SA, Daleb TJ, Powell AJ, Whitaker WRJ, Xie XM, Romanos MA, Clare JJ. Molecular cloning, distribution and functional analysis of the Nav 1.6 voltage-gated sodium channel from human brain. Molecular Brain Research 103 (2002) 80-90
+
+Nav1.7
+Chatelier A, Dahllund L, Eriksson A, Krupp J, Chahine M. Biophysical properties of human Nav1.7 splice variante and their regulation by protein kinase A. J Neurophysiol 2008, 99: 2241-2250.
+
+Nav1.8
+Huang J, Yang Y, Zhao P, Gerrits MM, Hoeijmakers JG, Bekelaar K, Merkies IS, Faber CG, Dib-Hajj SD, Waxman SG. Small-fiber neuropathy Nav1.8 mutation shifts activation to hyperpolarized potentials and increases excitability of dorsal root ganglion neurons. J Neurosci. 2013 Aug 28; 33(35): 14087-97.
+
+Nav1.9
+Vanoye CG, Kunic JD, Ehring GR, George AL Jr. Mechanism of sodium channel NaV1.9 potentiation by G-protein signaling. J Gen Physiol. 2013 Feb; 141(2): 193-202.

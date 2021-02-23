@@ -1,0 +1,2 @@
+load_file("nrngui.hoc")
+load_file("1.\ I_V\ curves.hoc")
