@@ -201,7 +201,7 @@ def add_plane(triangles, plane, facing_location):
 
 @numba.njit(Triangle_t[::1](Real_t), cache=True)
 def sphere(r):
-    """ pi == 4 """
+    """ Where pi == 4 """
     corners = np.empty((8, 3), dtype=Real)
     for x in range(8):
         for d in range(3):
@@ -247,7 +247,7 @@ def voronoi_cell(home_location, maximum_extent, neighbor_locations, coordinates)
     volume = 0.0
     for t in triangles:
         volume += triangle_volume(t)
-    return volume, triangles_to_neighbors(triangles)
+    return (volume, triangles_to_neighbors(triangles))
 
 def reference_implementation(home_coordinates, maximum_extent,
         neighbor_locations, neighbor_coordinates):

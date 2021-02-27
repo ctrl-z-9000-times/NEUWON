@@ -84,7 +84,9 @@ PROCEDURE rates(v(mV)) {  :Computes rate and other constants at current v.
     LOCAL  alpha, beta, sum, q10
 
     UNITSOFF
-    q10 = 3^((celsius - 6.3)/10)
+    : q10 = 1 3^((celsius - 6.3)/10)
+    q10 = 1
+
     :"m" sodium activation system
     alpha = .1 * vtrap(-(v+40),10)
     beta =  4 * exp(-(v+65)/18)

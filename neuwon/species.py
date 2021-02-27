@@ -10,7 +10,6 @@ from neuwon import Real, epsilon, F, R, T
 
 library = {
     "Na": {
-        "name": "Na",
         "charge": 1,
         "transmembrane": True,
         "reversal_potential": "nerst",
@@ -61,7 +60,7 @@ def _init_species(species_argument, time_step, geometry, reactions, mechanisms):
     for name, species_instance in species.items():
         if species_instance is None:
             if name in library:
-                _add_species(species, library[name])
+                _add_species(species, Species(name, **library[name]))
             else:
                 raise ValueError("Unresolved species: %s."%name)
     # Initialize the species internal data.
@@ -82,13 +81,13 @@ def _add_species(species_dict, new_species):
         if new_species.name not in species_dict or species_dict[new_species.name] is None:
             species_dict[new_species.name] = copy.copy(new_species)
     elif isinstance(new_species, Mapping):
-        _add_species(Species(**new_species))
+        _add_species(species_dict, Species(**new_species))
     elif isinstance(new_species, str):
         if new_species not in species_dict:
             species_dict[new_species] = None
     elif isinstance(new_species, Iterable):
         for x in new_species:
-            _add_species(x)
+            _add_species(species_dict, x)
     else:
         raise TypeError("Invalid species: %s."%repr(new_species))
 
@@ -127,10 +126,10 @@ class Species:
             self.reversal_potential = str(reversal_potential)
             # Compute the reversal potential in advance if able.
             if self.intra_diffusivity is None and self.extra_diffusivity is None:
-                x = self.nerst_potential(self.intra_concentration, self.extra_concentration)
+                x = nerst_potential(self.charge, self.intra_concentration, self.extra_concentration)
                 self._reversal_potential_method = lambda i, o, v: x
             else:
-                self._reversal_potential_method = lambda i, o, v: self.nerst_potential(i, o)
+                self._reversal_potential_method = lambda i, o, v: nerst_potential(self.charge, i, o)
         elif reversal_potential == "goldman_hodgkin_katz":
             self.reversal_potential = str(reversal_potential)
             self._reversal_potential_method = self.goldman_hodgkin_katz

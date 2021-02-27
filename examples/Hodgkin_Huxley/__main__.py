@@ -6,11 +6,14 @@ Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
 from neuwon import Model, Segment, Species
+import neuwon.nmodl
 import neuwon.mechanisms.HH as HH
 import numpy as np
 import bisect
 import matplotlib.pyplot as plt
 import argparse
+
+HH2 = neuwon.nmodl.NmodlMechanism("neuwon/nmodl_library/hh.mod", method_override="exact")
 
 class Experiment:
     def __init__(self,
@@ -22,7 +25,6 @@ class Experiment:
             stagger       = True,
             probes        = None,
             stimulus      = 2e-10,
-            species       = (),
         ):
         self.time_step = time_step
         self.length_step = length_step
@@ -31,7 +33,6 @@ class Experiment:
         self.axon_diameter = axon_diameter
         self.soma_diameter = soma_diameter
         self.stimulus = stimulus
-        self.species = list(species)
         self.probe_locations = list(probes) if probes is not None else [1.0]
         self.make_model()
         self.generate_input()
@@ -51,16 +52,20 @@ class Experiment:
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
         for x in self.soma:
+            # x.insert_mechanism(HH2)
             x.insert_mechanism(HH.Leak)
             x.insert_mechanism(HH.VoltageGatedSodiumChannel)
             x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
         for x in self.axon:
+            # x.insert_mechanism(HH2)
             x.insert_mechanism(HH.Leak)
             x.insert_mechanism(HH.VoltageGatedSodiumChannel)
             x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
         self.model = Model(self.time_step, [self.soma[0]],
             reactions=(),
-            species=self.species,
+            species=[
+                neuwon.Species("L", transmembrane = True, reversal_potential = -54.3e-3,)
+            ],
             stagger=self.stagger)
         print("Number of Locations:", len(self.model))
         # sa  = sum(self.model.geometry.surface_areas[x.index] for x in self.soma)
@@ -72,16 +77,10 @@ class Experiment:
         """ Subject the soma to three pulses of current injection. """
         self.time_span = 50e-3
         self.input_current = []
+        ap_times = [10e-3, 25e-3, 40e-3]
         for step in range(int(self.time_span / self.time_step)):
             t = step * self.time_step
-            if 10e-3 <= t < 10e-3 + 1e-6:
-                self.input_current.append(True)
-            elif 25e-3 <= t < 25e-3 + 1e-6:
-                self.input_current.append(True)
-            elif 40e-3 <= t < 40e-3 + 1e-6:
-                self.input_current.append(True)
-            else:
-                self.input_current.append(False)
+            self.input_current.append(any(abs(x - t) < self.time_step / 2 for x in ap_times))
 
     def run_experiment(self):
         self.time_stamps = []

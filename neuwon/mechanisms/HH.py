@@ -17,7 +17,7 @@ class Leak(Mechanism):
         return "HH_Leak"
     @classmethod
     def required_species(cls):
-        return leak
+        return "L"
     @classmethod
     def instance_dtype(cls):
         return np.dtype([("g", Real)])
@@ -29,7 +29,7 @@ class Leak(Mechanism):
         threads = 128
         blocks = (instances.size + (threads - 1)) // threads
         _leak_advance[blocks, threads](locations, instances, time_step,
-                reaction_outputs.conductances.leak)
+                reaction_outputs.conductances.L)
 @numba.cuda.jit()
 def _leak_advance(locations, instances, time_step, g_leak):
     index = numba.cuda.grid(1)
@@ -46,7 +46,7 @@ class VoltageGatedSodiumChannel(Mechanism):
         return "HH_VoltageGatedSodiumChannel"
     @classmethod
     def required_species(cls):
-        return na
+        return "Na"
     @classmethod
     def instance_dtype(cls):
         return np.dtype([("g", Real), ("m", Real), ("h", Real)])
@@ -60,7 +60,7 @@ class VoltageGatedSodiumChannel(Mechanism):
         blocks = (instances.size + (threads - 1)) // threads
         _vgsc_advance[blocks, threads](locations, instances, time_step,
                 reaction_inputs.v,
-                reaction_outputs.conductances.na)
+                reaction_outputs.conductances.Na)
 @numba.cuda.jit()
 def _vgsc_advance(locations, instances, time_step, v, g_na):
     index = numba.cuda.grid(1)
@@ -89,7 +89,7 @@ class VoltageGatedPotassiumChannel(Mechanism):
         return "HH_VoltageGatedPotassiumChannel"
     @classmethod
     def required_species(cls):
-        return k
+        return "K"
     @classmethod
     def instance_dtype(cls):
         return np.dtype([('g', Real), ('n', Real)])
@@ -103,7 +103,7 @@ class VoltageGatedPotassiumChannel(Mechanism):
         blocks = (instances.size + (threads - 1)) // threads
         _vgkc_advance[blocks, threads](locations, instances, time_step,
                 reaction_inputs.v,
-                reaction_outputs.conductances.k)
+                reaction_outputs.conductances.K)
 @numba.cuda.jit()
 def _vgkc_advance(locations, instances, time_step, v, g_k):
     index = numba.cuda.grid(1)

@@ -99,7 +99,8 @@ class Model:
         return len(self.geometry)
 
     def advance(self):
-        # self._check_data()
+        # Calculate the externally applied currents.
+        self._injected_currents.advance(self.time_step, self.electrics)
         if self.stagger:
             """
             All systems (reactions & mechanisms, diffusions & electrics) are
@@ -200,8 +201,6 @@ class Model:
         alpha = cp.exp(-dt / rc)
         self.electrics.voltages += diff_v * (1.0 - alpha)
         numba.cuda.synchronize()
-        # Calculate the externally applied currents.
-        self._injected_currents.advance(dt, self.electrics)
         # Calculate the lateral currents throughout the neurons.
         self.electrics.voltages = self.electrics.irm.dot(self.electrics.voltages)
         # Calculate the transmembrane ion flows.

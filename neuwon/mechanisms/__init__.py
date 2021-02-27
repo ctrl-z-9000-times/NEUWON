@@ -78,8 +78,8 @@ def _add_mechanism(mechanisms_dict, new_mechanism, time_step):
     else:
         name = str(new_mechanism)
         if name not in mechanisms_dict:
-            if name in mechanisms_library:
-                mechanisms_dict[name] = MechanismContainer(library[name], time_step)
+            if name in mechanisms_library: # TODO: Make the mechanisms_library.
+                mechanisms_dict[name] = MechanismContainer(mechanisms_library[name], time_step)
             else:
                 raise ValueError("Unrecognised Mechanism: %s."%name)
     return mechanisms_dict[name]
