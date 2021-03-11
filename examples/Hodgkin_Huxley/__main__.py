@@ -13,7 +13,11 @@ import bisect
 import matplotlib.pyplot as plt
 import argparse
 
-HH2 = neuwon.nmodl.NmodlMechanism("neuwon/nmodl_library/hh.mod", method_override="exact")
+# HH2 = neuwon.nmodl.NmodlMechanism("neuwon/nmodl_library/hh.mod", method_override="exact")
+
+nav11 = neuwon.nmodl.NmodlMechanism("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", method_override="cnexp")
+# nav12 = neuwon.nmodl.NmodlMechanism("neuwon/nmodl_library/Balbi2017/Nav12_a.mod", method_override="cnexp")
+kv11 = neuwon.nmodl.NmodlMechanism("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", method_override="cnexp")
 
 class Experiment:
     def __init__(self,
@@ -51,16 +55,13 @@ class Experiment:
             self.axon = []
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
-        for x in self.soma:
-            # x.insert_mechanism(HH2)
+        for x in self.soma + self.axon:
             x.insert_mechanism(HH.Leak)
-            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
-            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
-        for x in self.axon:
+            # x.insert_mechanism(HH.VoltageGatedSodiumChannel)
+            # x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
             # x.insert_mechanism(HH2)
-            x.insert_mechanism(HH.Leak)
-            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
-            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
+            x.insert_mechanism(nav11, scale=3)
+            x.insert_mechanism(kv11, scale=3)
         self.model = Model(self.time_step, [self.soma[0]],
             reactions=(),
             species=[

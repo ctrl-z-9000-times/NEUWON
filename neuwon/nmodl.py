@@ -23,13 +23,6 @@ import numpy as np
 import math
 import numba.cuda
 
-# Helpful routines:
-# print(dsl.to_nmodl(AST))
-# ast.view(AST)
-# print(self.symbols)
-# help(visitor.AstVisitor)
-# help(ast.AstNodeType)
-
 default_parameters = {
     "celsius": (neuwon.celsius, "degC")
 }
@@ -47,6 +40,11 @@ class NmodlMechanism(neuwon.Mechanism):
         symtab.SymtabVisitor().visit_program(AST)
         visitor.InlineVisitor().visit_program(AST)
         visitor.SympyConductanceVisitor().visit_program(AST)
+        visitor.KineticBlockVisitor().visit_program(AST)
+        # Helpful debugging printouts:
+        if False: print(dsl.to_nmodl(AST))
+        if False: print(AST.get_symbol_table())
+        if False: ast.view(AST)
         self._set_ast(AST)
         self._check_for_unsupported()
         self._gather_documentation()
@@ -55,8 +53,8 @@ class NmodlMechanism(neuwon.Mechanism):
         self.states = [v.get_name() for v in
                 self.symbols.get_variables_with_properties(symtab.NmodlType.state_var)]
         self._gather_functions(method_override)
-        self._get_initial_state()
         self._discard_ast()
+        self._run_initial_block()
 
     def _set_ast(self, AST):
         """ Sets visitor, lookup, and symbols. """
@@ -84,9 +82,6 @@ class NmodlMechanism(neuwon.Mechanism):
         # TODO: No support for Independent!
         # TODO: No support for Nonlinear!
         # TODO: No support for Include!
-        # TODO: No support for solver methods SPARSE or EULER!
-        for x in self.lookup(ANT.SOLVE_BLOCK):
-            pass
 
     def _gather_documentation(self):
         """ Sets name, title, and description.
@@ -116,16 +111,18 @@ class NmodlMechanism(neuwon.Mechanism):
         """ Sets write_currents and write_conductances. """
         self.write_currents = []
         self.write_conductances = []
+        self.write_species = []
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
             self.write_conductances.append(x.conductance.get_node_name())
             ion = x.ion.get_node_name() if x.ion else None
+            self.write_species.append(ion.title())
         for x in self.lookup(ANT.WRITE_ION_VAR):
             self.write_currents.append(x.name.get_node_name())
         for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
             self.write_currents.append(x.name.get_node_name())
 
     def required_species(self):
-        return [x.lstrip('g').title() for x in self.write_conductances]
+        return self.write_species
 
     def _gather_parameters(self, default_parameters, parameter_overrides):
         """ Sets parameters & surface_area_parameters.
@@ -158,19 +155,20 @@ class NmodlMechanism(neuwon.Mechanism):
         # TODO: Convert all units to prefix-less units. 
         self.surface_area_parameters = []
         for name, (value, units) in self.parameters.items():
-            if "/cm2" in units:
+            if units is not None and "/cm2" in units:
                 value = value * 100 * 100
                 self.surface_area_parameters.append((name, value, units))
         for name, value, units in self.surface_area_parameters: self.parameters.pop(name)
 
     def _gather_functions(self, method_override):
         """ Sets initial_block, breakpoint_block, and derivative_blocks. """
-        self.method_override = method_override
+        self.method_override = str(method_override) if method_override else False
         assert(self.method_override in (False, "euler", "derivimplicit", "cnexp", "exact"))
         self.derivative_blocks = {}
         for x in self.lookup(ANT.DERIVATIVE_BLOCK):
             name = x.name.get_node_name()
             self.derivative_blocks[name] = CodeBlock(self, x)
+        assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
         self.initial_block = CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
 
@@ -179,6 +177,7 @@ class NmodlMechanism(neuwon.Mechanism):
         if AST.is_local_list_statement(): return []
         if AST.is_conductance_hint(): return []
         if AST.is_if_statement(): return [IfStatement(self, AST)]
+        if AST.is_conserve(): return [ConserveStatement(self, AST)]
         if AST.is_expression_statement():
             AST = AST.expression
         else:
@@ -194,7 +193,9 @@ class NmodlMechanism(neuwon.Mechanism):
             else:
                 block._solve(AST.method.get_node_name())
             return block.statements
-        if AST.is_conserve(): return [ConserveStatement(self, AST)]
+        if AST.is_solve_block() and AST.steadystate:
+            # TODO: Determine initial state here?
+            return []
         is_derivative = AST.is_diff_eq_expression()
         if is_derivative: AST = AST.expression
         if AST.is_binary_expression():
@@ -215,7 +216,7 @@ class NmodlMechanism(neuwon.Mechanism):
         elif AST.is_var_name():
             name = AST.name.get_node_name()
             if name in self.parameters:
-                return self.parameters[name][0]
+                return sympy.Float(self.parameters[name][0], 18)
             else:
                 return sympy.symbols(AST.name.get_node_name())
         elif AST.is_binary_expression():
@@ -239,6 +240,9 @@ class NmodlMechanism(neuwon.Mechanism):
             if name == "fabs": name = "abs"
             args = [self._parse_expression(x) for x in AST.arguments]
             return sympy.Function(name)(*args)
+        elif AST.is_double_unit():
+            # TODO: Deal with AST.unit.
+            return self._parse_expression(AST.value)
         elif AST.is_integer(): return sympy.Integer(AST.eval())
         elif AST.is_double():  return sympy.Float(AST.eval(), 18)
         else:
@@ -250,61 +254,75 @@ class NmodlMechanism(neuwon.Mechanism):
             dtype["surface_area_parameters"] = (Real, len(self.surface_area_parameters))
         return dtype
 
-    def _get_initial_state(self, initial_assumptions={"v": -70e-3}):
+    def _run_initial_block(self, initial_assumptions={"v": -70e-3}):
+        """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
+        Sets: initial_state and initial_scope. """
+        initial_globals = {'math': math}
+        self.initial_scope = initial_locals = {}
         for arg in self.initial_block.arguments:
-            if arg in initial_assumptions:
-                initial_value = -65e-3
-            else:
-                raise ValueError("Missing initial value for \"%s\""%arg)
-            self.initial_block.statements.insert(0,
-                    AssignStatement(arg, sympy.Float(initial_value, 18)))
-        self.initial_block.arguments = []
-        init_py = "def INITIAL():\n"
-        init_py += self.initial_block.to_python()
-        init_py += "    return [%s]\n"%', '.join(self.states)
-        # print(init_py)
-        init_py = exec(init_py, globals())
-        self.initial_state = INITIAL()
+            if arg not in initial_assumptions: raise ValueError("Missing initial value for \"%s\"."%arg)
+            initial_globals[arg] = initial_assumptions[arg]
+        initial_state = 1/len(self.states) # TODO: Determine this from the conserve statement!
+        # TODO: If there are not conserve statements to constrain the initial state then assume zero init.
+        for x in self.states: initial_locals[x] = initial_state
+        initial_python = self.initial_block.to_python()
+        try:
+            exec(initial_python, initial_globals, initial_locals)
+        except:
+            print("Error while exec'ing the following python code:")
+            print("globals()", repr(initial_globals))
+            print("locals()", repr(initial_locals))
+            print(initial_python)
+            raise
+        self.initial_state = [initial_locals.pop(x) for x in self.states]
 
-    def new_instance(self, time_step, location, geometry, *args):
+    def new_instance(self, time_step, location, geometry, scale=1):
         data = {"state": self.initial_state}
         if self.surface_area_parameters:
-            sa = geometry.surface_areas[location]
+            sa = geometry.surface_areas[location] * scale
             data["surface_area_parameters"] = [value * sa
                     for name, value, units in self.surface_area_parameters]
         return data
 
+    def set_time_step(self, time_step):
+        self._compile_breakpoint_block(time_step)
+
+    def _compile_breakpoint_block(self, time_step):
+        for arg, initial_value in self.initial_scope.items():
+            if arg in self.breakpoint_block.arguments:
+                self.breakpoint_block.arguments.remove(arg)
+                self.breakpoint_block.statements.insert(0,
+                        AssignStatement(arg, sympy.Float(initial_value, 18)))
+        py = self.breakpoint_block.to_python("    ")
+        preamble =  ""
+        preamble += "def BREAKPOINT(locations, instances, surface_area_parameters, %s, %s):\n"%(
+                ", ".join(self.breakpoint_block.arguments),
+                ", ".join(self.write_conductances))
+        preamble += "    _index = numba.cuda.grid(1)\n"
+        preamble += "    if _index >= instances.shape[0]: return\n"
+        preamble += "    _location = locations[_index]\n"
+        for arg in self.breakpoint_block.arguments:
+            if arg == "v":
+                py = re.sub("\\b"+arg+"\\b", arg+"[_index]*1000", py)
+            else:
+                print(arg); 1/0 # Unimplemented.
+        for idx, state in enumerate(self.states):
+            py = re.sub("\\b"+state+"\\b", "instances[_index][%d]"%idx, py)
+        for idx, (name, _, _) in enumerate(self.surface_area_parameters):
+            py = re.sub("\\b"+name+"\\b", "surface_area_parameters[_index][%d]"%idx, py)
+        for g in self.write_conductances:
+            py = re.sub("\\b"+g+"\\b", g+"[_location]", py)
+        py = re.sub("\\btime_step\\b", str(time_step*1000), py)
+        py = preamble + py
+        for g in self.write_conductances:
+            if g not in self.breakpoint_block.assigned:
+                for idx, (name, value, units) in enumerate(self.surface_area_parameters):
+                    if name == g:
+                        py += "    "+g+"[_location] += surface_area_parameters[_index][%d]\n"%idx
+        exec(py, globals())
+        self._cuda_advance = numba.cuda.jit(BREAKPOINT)
+
     def advance(self, locations, instances, time_step, reaction_inputs, reaction_outputs):
-        if not hasattr(self, "f"):
-            py = self.breakpoint_block.to_python()
-            preamble =  ""
-            preamble += "def BREAKPOINT(locations, instances, surface_area_parameters, %s, %s):\n"%(
-                    ", ".join(self.breakpoint_block.arguments),
-                    ", ".join(self.write_conductances))
-            preamble += "    _index = numba.cuda.grid(1)\n"
-            preamble += "    if _index >= instances.shape[0]: return\n"
-            preamble += "    _location = locations[_index]\n"
-            for arg in self.breakpoint_block.arguments:
-                if arg == "v":
-                    py = re.sub("\\b"+arg+"\\b", arg+"[_index]*1000", py)
-                else:
-                    1/0 # Unimplemented.
-            for idx, state in enumerate(self.states):
-                py = re.sub("\\b"+state+"\\b", "instances[_index][%d]"%idx, py)
-            for idx, (name, _, _) in enumerate(self.surface_area_parameters):
-                py = re.sub("\\b"+name+"\\b", "surface_area_parameters[_index][%d]"%idx, py)
-            for g in self.write_conductances:
-                py = re.sub("\\b"+g+"\\b", g+"[_location]", py)
-            py = re.sub("\\btime_step\\b", str(time_step*1000), py)
-            py = preamble + py
-            for g in self.write_conductances:
-                if g not in self.breakpoint_block.assigned:
-                    for idx, (name, value, units) in enumerate(self.surface_area_parameters):
-                        if name == g:
-                            py += "    "+g+"[_location] += surface_area_parameters[_index][%d]\n"%idx
-            print(py)
-            exec(py, globals())
-            self.f = numba.cuda.jit(BREAKPOINT)
         surface_area_parameters = instances["surface_area_parameters"]
         states = instances["state"]
         threads = 128
@@ -314,11 +332,10 @@ class NmodlMechanism(neuwon.Mechanism):
             if arg == "v":
                 star_args.append(reaction_inputs.v)
             else:
-                1/0 # Unimplemented.
-        for out in self.write_conductances:
-            ion = out.lstrip('g').title()
-            star_args.append(getattr(reaction_outputs.conductances, ion))
-        self.f[blocks,threads](locations, states, surface_area_parameters, *star_args)
+                print(arg); 1/0 # Unimplemented.
+        for out in self.write_species:
+            star_args.append(getattr(reaction_outputs.conductances, out))
+        self._cuda_advance[blocks,threads](locations, states, surface_area_parameters, *star_args)
 
 class CodeBlock:
     def __init__(self, file, AST):
@@ -335,6 +352,10 @@ class CodeBlock:
         AST = getattr(AST, "statement_block", AST)
         for stmt in AST.statements:
             self.statements.extend(file._parse_statement(stmt))
+        # Move assignments to conductances to the end of the block, where they
+        # belong. This is needed because the nmodl library inserts conductance
+        # hints and associated statements at the begining of the block.
+        self.statements.sort(key=lambda stmt: isinstance(stmt, AssignStatement) and stmt.accumulate)
         self._gather_arguments(file)
 
     def _gather_arguments(self, file):
@@ -356,6 +377,8 @@ class CodeBlock:
         self.arguments.discard("time_step")
         for x in file.states: self.arguments.discard(x)
         for x, v, u in file.surface_area_parameters: self.arguments.discard(x)
+        self.arguments = sorted(self.arguments)
+        self.assigned = sorted(self.assigned)
 
     def _solve(self, method):
         """ Replace differential equation statements with their analytic solution. """
@@ -375,7 +398,7 @@ class CodeBlock:
     def to_python(self, indent=""):
         py = ""
         for stmt in self.statements:
-            py += stmt.to_python(indent + " "*4)
+            py += stmt.to_python(indent)
         return py.rstrip() + "\n"
 
 class IfStatement:
@@ -383,6 +406,7 @@ class IfStatement:
         self.condition = file._parse_expression(AST.condition)
         self.main_block = CodeBlock(file, AST.statement_block)
         self.elif_blocks = [CodeBlock(file, block) for block in AST.elseifs]
+        assert(not self.elif_blocks) # TODO: Unimplemented.
         self.else_block = CodeBlock(file, AST.elses)
         self._gather_arguments()
 
@@ -408,10 +432,10 @@ class IfStatement:
 
     def to_python(self, indent):
         py = indent + "if %s:\n"%pycode(self.condition)
-        py += self.main_block.to_python(indent)
+        py += self.main_block.to_python(indent + "    ")
         assert(not self.elif_blocks) # TODO: Unimplemented.
         py += indent + "else:\n"
-        py += self.else_block.to_python(indent)
+        py += self.else_block.to_python(indent + "    ")
         return py
 
 class AssignStatement:
@@ -419,9 +443,9 @@ class AssignStatement:
         self.lhsn = str(lhsn)
         self.rhs = rhs
         self.derivative = bool(derivative)
-        self.accumulate = bool(accumulate)
+        self.accumulate = bool(accumulate) # TODO: Consider making this name more descriptive... maybe "conductance"?
 
-    def to_python(self,  indent):
+    def to_python(self,  indent=""):
         assert(not self.derivative)
         self.rhs = self.rhs.simplify()
         if self.accumulate:
@@ -470,12 +494,26 @@ class AssignStatement:
 
 class ConserveStatement:
     def __init__(self, file, AST):
-        1/0
+        conserved_expr = file._parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
+        self.states = sorted(str(x) for x in conserved_expr.free_symbols)
+        # Assume that the conserve statement was once in the form: sum-of-states = constant-value
+        sum_symbol = sympy.Symbol("_CONSERVED_SUM")
+        assumed_form = sum_symbol
+        for symbol in conserved_expr.free_symbols:
+            assumed_form = assumed_form - symbol
+        sum_solution = sympy.solvers.solve(sympy.Eq(conserved_expr, assumed_form), sum_symbol)
+        assert(len(sum_solution) == 1)
+        self.conserve_sum = sum_solution[0].evalf()
+
+    def to_python(self, indent):
+        py  = indent + "_CORRECTION_FACTOR = %s / (%s)\n"%(str(self.conserve_sum), " + ".join(self.states))
+        for x in self.states:
+            py += indent + x + " *= _CORRECTION_FACTOR\n"
+        return py
 
 if __name__ == "__main__":
     # print(dsl.list_examples())
-    m = NmodlMechanism("neuwon/nmodl_library/hh.mod", method_override="exact")
+    # m = NmodlMechanism("neuwon/nmodl_library/hh.mod", method_override="exact")
+    # m = NmodlMechanism("neuwon/nmodl_library/Balbi2017/Nav11_a.mod")
+    m = NmodlMechanism("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod")
     # print(m.instance_dtype())
-    # py = m.file.breakpoint_block.to_python()
-    # print(py)
-    # exec(py)

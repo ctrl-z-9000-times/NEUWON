@@ -197,8 +197,8 @@ class Model:
         numba.cuda.synchronize()
         # Calculate the transmembrane currents.
         diff_v = self.electrics.driving_voltages - self.electrics.voltages
-        rc = self.electrics.capacitances / self.electrics.conductances
-        alpha = cp.exp(-dt / rc)
+        recip_rc = self.electrics.conductances / self.electrics.capacitances
+        alpha = cp.exp(-dt * recip_rc)
         self.electrics.voltages += diff_v * (1.0 - alpha)
         numba.cuda.synchronize()
         # Calculate the lateral currents throughout the neurons.
