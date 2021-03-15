@@ -41,55 +41,55 @@ ENDCOMMENT
 INDEPENDENT {t FROM 0 TO 1 WITH 1 (ms)}
 
 NEURON {
-	SUFFIX caL
-	USEION ca READ cai, cao WRITE ica
-	RANGE O, C, I
-	RANGE a,b
-	GLOBAL Ra, Rb, q, th, p
-	GLOBAL q10, temp, tadj
+    SUFFIX caL
+    USEION ca READ cai, cao WRITE ica
+    RANGE O, C, I
+    RANGE a,b
+    GLOBAL Ra, Rb, q, th, p
+    GLOBAL q10, temp, tadj
 }
 
 UNITS {
-	F = (faraday) (coulomb)
-	R = (k-mole) (joule/degC)
-	(mA) = (milliamp)
-	(mV) = (millivolt)
-	(pS) = (picosiemens)
-	(um) = (micron)
-	(mM) = (milli/liter)
+    F = (faraday) (coulomb)
+    R = (k-mole) (joule/degC)
+    (mA) = (milliamp)
+    (mV) = (millivolt)
+    (pS) = (picosiemens)
+    (um) = (micron)
+    (mM) = (milli/liter)
 } 
 
 PARAMETER {
-	p    = 0.2e-3  	(cm/s)		: max permeability
-	v 		(mV)
+    p    = 0.2e-3   (cm/s)      : max permeability
+    v       (mV)
 
-	th   = 5	(mV)		: v 1/2 for on/off
-	q   = 13	(mV)		: voltage dependence
+    th   = 5    (mV)        : v 1/2 for on/off
+    q   = 13    (mV)        : voltage dependence
 
-	: max rates
+    : max rates
 
-	Ra   = 1.6	(/ms)		: open (v)
-	Rb   = 0.2	(/ms)		: close (v)
+    Ra   = 1.6  (/ms)       : open (v)
+    Rb   = 0.2  (/ms)       : close (v)
 
-	celsius		(degC)
-	temp = 22	(degC)		: original temp
-	q10  = 3			: temperature sensitivity
+    celsius     (degC)
+    temp = 22   (degC)      : original temp
+    q10  = 3            : temperature sensitivity
 } 
 
 
 ASSIGNED {
-	ica 		(mA/cm2)
-	cao		(mM)
-	cai		(mM)
-	a (/ms)	b (/ms)
-	tadj
+    ica         (mA/cm2)
+    cao     (mM)
+    cai     (mM)
+    a (/ms) b (/ms)
+    tadj
 }
  
 
 STATE { C O }
 
 INITIAL { 
-	C = 1 
+    C = 1 
 }
 
 
@@ -101,19 +101,19 @@ BREAKPOINT {
 
 
 KINETIC kstates {
-	~ C <-> O 	(a,b)	
-	CONSERVE C+O = 1
-}	
-	
+    ~ C <-> O   (a,b)   
+    CONSERVE C+O = 1
+}   
+    
 PROCEDURE rates(v(mV)) {
 	TABLE a, b
 	DEPEND Ra, Rb, th, celsius, temp, q10
 	FROM -100 TO 100 WITH 200
 
-	tadj = q10 ^ ((celsius - temp)/10 (degC))
+    tadj = q10 ^ ((celsius - temp)/10 (degC))
 
-	a = Ra / (1 + exp(-(v-th)/q)) * tadj
-	b = Rb / (1 + exp((v-th)/q)) * tadj
+    a = Ra / (1 + exp(-(v-th)/q)) * tadj
+    b = Rb / (1 + exp((v-th)/q)) * tadj
 }
 
 : Special gear for calculating the Ca2+ reversal potential
@@ -122,18 +122,18 @@ PROCEDURE rates(v(mV)) {
 
 
 FUNCTION ghk(v(mV), ci(mM), co(mM)) (0.001 coul/cm3) {
-	LOCAL z
+    LOCAL z
 
-	z = (0.001)*2*F*v/(R*(celsius+273.15))
-	ghk = (.001)*2*F*(ci*efun(-z) - co*efun(z))
+    z = (0.001)*2*F*v/(R*(celsius+273.15))
+    ghk = (.001)*2*F*(ci*efun(-z) - co*efun(z))
 }
 
 FUNCTION efun(z) {
-	if (fabs(z) < 1e-4) {
-		efun = 1 - z/2
-	}else{
-		efun = z/(exp(z) - 1)
-	}
+    if (fabs(z) < 1e-4) {
+        efun = 1 - z/2
+    }else{
+        efun = z/(exp(z) - 1)
+    }
 }
 
 

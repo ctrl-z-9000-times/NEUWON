@@ -5,8 +5,7 @@ import math
 import scipy.spatial
 import time
 import random
-from neuwon import Real, epsilon, Location
-from neuwon.geometry import ROOT
+from neuwon.common import Real, epsilon, Location, ROOT
 
 __all__ = ["voronoi_cell"]
 

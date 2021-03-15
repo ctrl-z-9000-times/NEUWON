@@ -5,9 +5,8 @@ from neuwon import *
 from neuwon.regions import *
 from neuwon.growth import *
 from neuwon.analysis import Animation
-import neuwon.mechanisms.HH as hh
-min_v = hh.k.reversal_potential
-max_v = hh.na.reversal_potential
+min_v = -90e-3
+max_v = +70e-3
 from graph_algorithms import depth_first_traversal as dft
 
 # Setup a neuron and its axonal arbor.
@@ -36,14 +35,10 @@ axon = Growth(soma, rgn, 0.00025e18,
     extend_before_bifurcate = True,
     maximum_segment_length = 30e-6,)
 for x in soma:
-    x.insert_mechanism(hh.Leak)
-    x.insert_mechanism(hh.VoltageGatedSodiumChannel)
-    x.insert_mechanism(hh.VoltageGatedPotassiumChannel)
+    x.insert_mechanism("hh")
 for x in axon.segments:
     x.diameter = .5e-6
-    x.insert_mechanism(hh.Leak)
-    x.insert_mechanism(hh.VoltageGatedSodiumChannel)
-    x.insert_mechanism(hh.VoltageGatedPotassiumChannel)
+    x.insert_mechanism("hh")
 model = Model(.1e-3, soma, reactions=(), species=())
 print("Number of segments:", len(model))
 r = 4 # Integer factor to control image resolution: lower to run faster.
@@ -62,7 +57,7 @@ for tick in range(int(100e-3 / model.time_step) + 1):
     if tick == stimulus_tick:
         soma[0].inject_current(stimulus_current, 2e-3)
     model.advance()
-    v = ((model.electrics.voltages - min_v) / (max_v - min_v)).get()
+    v = ((model.electrics.voltages - min_v) / (max_v - min_v)).clip(0, 1).get()
     t = (tick - stimulus_tick) * model.time_step * 1e3
     video_camera.add_frame(
             colors = [(x, 0, 1-x) for x in v],
@@ -70,6 +65,6 @@ for tick in range(int(100e-3 / model.time_step) + 1):
             text = "{:6.2f} milliseconds since onset of stimulus.".format(t))
     print("t = %g"%t)
     # Terminate the model after it reaches a post stimulation steady state.
-    if t > 3 and all(v < 0.1):
+    if t > 3 and all(model.electrics.voltages.get() < -50e-3):
         break
 video_camera.save('AP_Propagation.gif')

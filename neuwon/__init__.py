@@ -9,42 +9,24 @@ All units are prefix-less:
 * Liters, Moles, Molar
 """
 # Public API Entry Points:
-__all__ = """Segment Mechanism Reaction Species Model Geometry Neighbor""".split()
+__all__ = """Segment Reaction Pointer Species Model Geometry Neighbor""".split()
 # Numeric/Scientific Library Imports.
 import numpy as np
 import cupy as cp
 import numba.cuda
 # Standard Library Imports.
 from collections.abc import Callable, Iterable, Mapping
-from collections import namedtuple
 
-F = 96485.3321233100184 # Faraday's constant, Coulumbs per Mole of electrons
-R = 8.31446261815324 # Universal gas constant
-celsius = 37 # Human body temperature
-T = celsius + 273.15 # Human body temperature in Kelvins
-
-Real = np.dtype('f8')
-epsilon = np.finfo(Real).eps
-Location = np.dtype('u4')
-
-def docstring_wrapper(property_name, docstring):
-        def get_prop(self):
-            return self.__dict__[property_name]
-        def set_prop(self, value):
-            self.__dict__[property_name] = value
-        return property(get_prop, set_prop, None, docstring)
-
+from neuwon.common import *
 from neuwon.geometry import Neighbor, Geometry
 from neuwon.species import Species, Diffusion, Electrics, _init_species
-from neuwon.mechanisms import Mechanism, _init_mechansisms
-from neuwon.reactions import Reaction
+from neuwon.reactions import Reaction, Pointer, _init_reactions
 from neuwon.segments import Segment, _serialize_segments
 
 class Model:
     def __init__(self, time_step,
             neurons,
             reactions=(),
-            mechanisms=(),
             species=(),
             stagger=True):
         self.time_step = float(time_step)
@@ -52,48 +34,10 @@ class Model:
         coordinates, parents, diameters, insertions = _serialize_segments(self, neurons)
         assert(len(coordinates) > 0)
         self.geometry = Geometry(coordinates, parents, diameters)
-        self.reactions = tuple(reactions)
-        assert(all(issubclass(r, Reaction) for r in self.reactions))
-        self.mechanisms = _init_mechansisms(mechanisms, insertions, self.time_step, self.geometry)
-        self.species = _init_species(species, self.time_step, self.geometry, self.reactions, self.mechanisms)
+        self.reactions = _init_reactions(reactions, insertions, self.time_step, self.geometry)
+        self.species = _init_species(species, self.time_step, self.geometry, self.reactions)
         self.electrics = Electrics(self.time_step, self.geometry)
         self._injected_currents = Model._InjectedCurrents()
-        numba.cuda.synchronize()
-
-        # Setup the reaction input & output data structures.
-        self.ReactionInputs = namedtuple("ReactionInputs", "v intra extra")
-        self.ReactionOutputs = namedtuple("ReactionOutputs", "conductances intra extra")
-        self.IntraSpecies = namedtuple("IntraSpecies",
-                [n for n, s in self.species.items() if s.intra_diffusivity is not None])
-        self.ExtraSpecies = namedtuple("ExtraSpecies",
-                [n for n, s in self.species.items() if s.extra_diffusivity is not None])
-        self.Conductances = namedtuple("Conductances",
-                [n for n, s in self.species.items() if s.transmembrane])
-
-    def _setup_reaction_io(self):
-        r_in = self.ReactionInputs(
-            v = self.electrics.previous_voltages,
-            intra = self.IntraSpecies(**{
-                n: s.intra.previous_concentrations
-                    for n, s in self.species.items() if s.intra is not None}),
-            extra = self.ExtraSpecies(**{
-                n: s.extra.previous_concentrations
-                    for n, s in self.species.items() if s.extra is not None}))
-        r_out = self.ReactionOutputs(
-            conductances = self.Conductances(**{
-                n: s.conductances
-                    for n, s in self.species.items() if s.transmembrane}),
-            intra = self.IntraSpecies(**{
-                n: s.intra.release_rates
-                    for n, s in self.species.items() if s.intra is not None}),
-            extra = self.ExtraSpecies(**{
-                n: s.extra.release_rates
-                    for n, s in self.species.items() if s.extra is not None}))
-        for outter in r_out:
-            for inner in outter:
-                inner.fill(0)
-        numba.cuda.synchronize()
-        return r_in, r_out
 
     def __len__(self):
         return len(self.geometry)
@@ -126,19 +70,13 @@ class Model:
             # Update the reactions for the whole time step using the
             # concentrations & voltages from halfway through the time step.
             self._reactions_advance()
-        # self._check_data()
+        self._check_data()
 
     def _check_data(self):
-        for mech_type, (locations, instances) in self.mechanisms.items():
-            if isinstance(instances, Mapping):
-                for key, array in instances.items():
-                    assert cp.all(cp.isfinite(array)), (mech_type, key)
-            elif instances.dtype.kind in "fc":
-                assert cp.all(cp.isfinite(instances)), mech_type
-            elif instances.dtype.fields is not None:
-                instances = instances.copy_to_host()
-                for name in instances.dtype.fields:
-                    assert np.all(np.isfinite(instances[name])), (mech_type, name)
+        for r in self.reactions.values():
+            for ptr_name, array in r.state.items():
+                if array.dtype.kind in "fc":
+                    assert cp.all(cp.isfinite(array)), (r.name(), ptr_name)
         for s in self.species.values():
             if s.transmembrane:
                 assert cp.all(cp.isfinite(s.conductances)), s.name
@@ -155,19 +93,29 @@ class Model:
         assert(cp.all(cp.isfinite(self.electrics.driving_voltages)))
         assert(cp.all(cp.isfinite(self.electrics.conductances)))
 
-    def _reactions_advance(self):
+    def _reactions_advance(self):        
         dt = self.time_step
-        reaction_inputs, reaction_outputs = self._setup_reaction_io()
-        for reaction in self.reactions:
-            f = reaction.advance_reaction
-            for location in range(len(self)):
-                f(dt, location, reaction_inputs, reaction_outputs)
-            numba.cuda.synchronize()
-        for container in self.mechanisms.values():
-            container.mechanism.advance(
-                    container.locations, container.instances,
-                    dt, reaction_inputs, reaction_outputs)
-            numba.cuda.synchronize()
+        for x in self.species.values():
+            if x.transmembrane: x.conductances.fill(0)
+            if x.extra: x.extra.release_rates.fill(0)
+            if x.intra: x.intra.release_rates.fill(0)
+        for container in self.reactions.values():
+            args = {}
+            for name, ptr in container.pointers.items():
+                if ptr.voltage:
+                    args[name] = self.electrics.previous_voltages
+                    continue
+                elif ptr.dtype:
+                    args[name] = container.state[name]
+                    continue
+                species = self.species[ptr.species]
+                if ptr.conductance: args[name] = species.conductances
+                elif ptr.intra_concentration: args[name] = species.intra.previous_concentrations
+                elif ptr.extra_concentration: args[name] = species.extra.previous_concentrations
+                elif ptr.intra_release_rate: args[name] = species.intra.previous_release_rates
+                elif ptr.extra_release_rate: args[name] = species.extra.previous_release_rates
+                else: raise NotImplementedError
+            container.reaction.advance(dt, container.locations, **args)
 
     def _diffusions_advance(self):
         """ Note: Each call to this method integrates over half a time step. """
@@ -178,7 +126,6 @@ class Model:
             for x in (s.intra, s.extra):
                 if x is not None:
                     x.previous_concentrations = cp.array(x.concentrations, copy=True)
-        numba.cuda.synchronize()
         # Accumulate the net conductances and driving voltages from the chemical data.
         self.electrics.conductances.fill(0)     # Zero accumulator.
         self.electrics.driving_voltages.fill(0) # Zero accumulator.
@@ -190,21 +137,16 @@ class Model:
                 self.electrics.voltages)
             self.electrics.conductances += s.conductances
             self.electrics.driving_voltages += s.conductances * s.reversal_potential
-            numba.cuda.synchronize()
         self.electrics.driving_voltages /= self.electrics.conductances
-        numba.cuda.synchronize()
         self.electrics.driving_voltages = cp.nan_to_num(self.electrics.driving_voltages)
-        numba.cuda.synchronize()
         # Calculate the transmembrane currents.
         diff_v = self.electrics.driving_voltages - self.electrics.voltages
         recip_rc = self.electrics.conductances / self.electrics.capacitances
         alpha = cp.exp(-dt * recip_rc)
         self.electrics.voltages += diff_v * (1.0 - alpha)
-        numba.cuda.synchronize()
         # Calculate the lateral currents throughout the neurons.
         self.electrics.voltages = self.electrics.irm.dot(self.electrics.voltages)
         # Calculate the transmembrane ion flows.
-        numba.cuda.synchronize()
         for s in self.species.values():
             if not s.transmembrane: continue
             if s.intra is None and s.extra is None: continue
@@ -222,7 +164,6 @@ class Model:
                 x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
                 # Calculate the lateral diffusion throughout the space.
                 x.concentrations = x.irm.dot(x.concentrations)
-                numba.cuda.synchronize()
 
     class _InjectedCurrents:
         def __init__(self):

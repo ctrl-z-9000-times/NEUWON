@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from neuwon import docstring_wrapper
+from neuwon.common import docstring_wrapper
 from graph_algorithms import depth_first_traversal as dft
 
 class Segment:

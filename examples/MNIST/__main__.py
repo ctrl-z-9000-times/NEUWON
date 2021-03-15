@@ -9,7 +9,6 @@ from graph_algorithms import depth_first_traversal as dft
 from neuwon import *
 from neuwon.regions import *
 from neuwon.growth import *
-from neuwon.mechanisms import HH, Destexhe1994, Mongillo2008
 
 from load_mnist import load_mnist
 from htm.bindings.algorithms import Classifier
@@ -51,9 +50,7 @@ for r in range(28):
 #         diameter = axon_diameter,)
 for inp in input_terminals.flat:
     for x in dft(inp, lambda x: x.children):
-        x.insert_mechanism(HH.Leak)
-        x.insert_mechanism(HH.VoltageGatedSodiumChannel)
-        x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
+        x.insert_mechanism("hh")
 if False:
     # Make the excitatory cells.
     pc_soma = GrowSomata(rgn, 0.0001 * um3, soma_diameter)
@@ -104,8 +101,8 @@ model = Model(time_step,
         reactions=(),
         species=())
 print(len(model), "Segments")
-for x in tips:
-    model.detect_APs(x)
+# for x in tips:
+#     model.detect_APs(x)
 sdrc = Classifier()
 
 def run(image):
@@ -115,22 +112,22 @@ def run(image):
         input_terminals[x,y].inject_current()
     for t in range(int(10e-3 / model.time_step)):
         model.advance()
-    return model.activity_SDR()
+    # return model.activity_SDR()
 
 colors = [(0,0,0)] * len(model)
-model.draw_image("test.png", (640, 480),
-    (0,layer_height_min,-100e-6),
-    rgn.sample_point(),
-    colors)
+# model.draw_image("test.png", (640, 480),
+#     (0,layer_height_min,-100e-6),
+#     rgn.sample_point(),
+#     colors)
 
 train_data, test_data = load_mnist()
 # Training Loop
 for img, lbl in train_data[:1000]:
     activity = run(img)
-    sdrc.learn(activity, lbl)
+    # sdrc.learn(activity, lbl)
 # Testing Loop
 score = 0
-for img, lbl in test_data[:100]:
+for img, lbl in test_data[:0]:
     activity = run(img)
     if lbl == np.argmax(sdrc.infer(activity)):
         score += 1

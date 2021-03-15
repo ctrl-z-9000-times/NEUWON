@@ -1,7 +1,6 @@
 import numpy as np
 from neuwon import *
 from neuwon.growth import *
-from neuwon.mechanisms import HH, Destexhe1994, Mongillo2008
 
 um3 = (1e6) ** 3
 
@@ -32,23 +31,16 @@ class ExcitatoryNeuron:
         self.segments = self.soma + self.axon.segments + self.dendrite.segments
         # Insert mechansisms.
         for x in self.soma + self.axon.segments:
-            x.insert_mechanism(HH.Leak)
-            x.insert_mechanism(HH.VoltageGatedSodiumChannel)
-            x.insert_mechanism(HH.VoltageGatedPotassiumChannel)
+            x.insert_mechanism("hh")
 
 def excitatory_synapses(axons, dendrites, num_synapses):
     synapses = GrowSynapses(axons, dendrites,
             (0, .6e-6, 3e-6), 1e-6, num_synapses)
-    presyn_config = Mongillo2008.Presynapses(
-        transmitter = "glutamate",
-        minimum_utilization = .2,
-        utilization_decay = 200e-3,
-        resource_recovery =  1e-3)
     for x in synapses.presynaptic_segments:
-        x.insert_mechanism(presyn_config, strength=1e-15)
+        # x.insert_mechanism("rel")
+        pass
     for x in synapses.postsynaptic_segments:
-        x.insert_mechanism(Destexhe1994.AMPA5)
-        # x.insert_mechanism(Destexhe1994.NMDA5)
+        x.insert_mechanism("AMPA5")
     return synapses
 
 class InhibitoryNeuron:

@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.spatial
-from neuwon import Location, Real, epsilon, docstring_wrapper
-ROOT = np.iinfo(Location).max
+from neuwon.common import Location, ROOT, Real, epsilon, docstring_wrapper
 import neuwon.voronoi
 Neighbor = neuwon.voronoi.Neighbor
 

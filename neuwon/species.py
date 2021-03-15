@@ -6,17 +6,17 @@ import cupyx.scipy.sparse
 import math
 import copy
 from collections.abc import Callable, Iterable, Mapping
-from neuwon import Real, epsilon, F, R, T
+from neuwon.common import Real, epsilon, F, R, T
 
 library = {
-    "Na": {
+    "na": {
         "charge": 1,
         "transmembrane": True,
         "reversal_potential": "nerst",
         "intra_concentration":  15e-3,
         "extra_concentration": 145e-3,
     },
-    "K": {
+    "k": {
         "charge": 1,
         "transmembrane": True,
         "reversal_potential": "nerst",
@@ -44,19 +44,16 @@ library = {
     },
 }
 
-def _init_species(species_argument, time_step, geometry, reactions, mechanisms):
-    species = {} # Compile this dictionary containing all species.
+def _init_species(species_argument, time_step, geometry, reactions):
+    """ Returns a dictionary containing all species. """
+    species = {}
     # The given argument species take priority, add them first.
     _add_species(species, species_argument)
-    # Pull in any required species for the reactions & mechanisms.
-    for reaction in reactions:
-        if hasattr(reaction, "required_species"):
-            _add_species(species, reaction.required_species())
-    for container in mechanisms.values():
-        if hasattr(container.mechanism, "required_species"):
-            _add_species(species, container.mechanism.required_species())
-    # Fill in any remaining unspecified species from the standard library
-    # and make sure that all required species are fully specified.
+    # Pull in all species which are required for the reactions.
+    for container in reactions.values():
+        for ptr in container.pointers.values():
+            if ptr.species: _add_species(species, ptr.species)
+    # Fill in unspecified species from the standard library.
     for name, species_instance in species.items():
         if species_instance is None:
             if name in library:

@@ -5,14 +5,10 @@ import itertools
 import matplotlib.pyplot as plt
 import argparse
 
-from graph_algorithms import depth_first_traversal as dft
 from neuwon import *
 from neuwon.analysis import *
 from neuwon.growth import *
 from neuwon.regions import *
-from neuwon.mechanisms import HH, Destexhe1994, Mongillo2008
-min_v = HH.k.reversal_potential
-max_v = HH.na.reversal_potential
 
 from neurons import ExcitatoryNeuron, InhibitoryNeuron, excitatory_synapses
 
@@ -33,9 +29,9 @@ class PetriDish:
         # Assemble the model.
         self.time_step = .1e-3
         self.model = Model(self.time_step, (
-                    list(n.segments[0] for n in self.excit) +
-                    list(n.segments[0] for n in self.inhib)),
-                species=(Destexhe1994.glutamate,))
+                list(n.segments[0] for n in self.excit) +
+                list(n.segments[0] for n in self.inhib)),
+                species=[neuwon.Species("L", transmembrane = True, reversal_potential = -54.3e-3,)],)
 
     def draw_schematic(self, filename="schematic.png"):
         colors = [(.2, .2, .2) for _ in range(len(self.model))]

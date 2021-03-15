@@ -23,7 +23,7 @@ NEURON {
     USEION na READ ena WRITE ina
     USEION k READ ek WRITE ik
     NONSPECIFIC_CURRENT il
-    RANGE gnabar, gkbar, gl, el, gna, gk
+    RANGE gnabar, gkbar, glbar, gl, el, gna, gk
     RANGE minf, hinf, ninf, mtau, htau, ntau
     THREADSAFE
 }
@@ -31,7 +31,7 @@ NEURON {
 PARAMETER {
     gnabar = .12 (S/cm2) <0,1e9>
     gkbar = .036 (S/cm2) <0,1e9>
-    gl = .0003 (S/cm2)  <0,1e9>
+    glbar = .0003 (S/cm2)  <0,1e9>
     el = -54.3 (mV)
 }
 
@@ -46,6 +46,7 @@ ASSIGNED {
     ek (mV)
     gna (S/cm2)
     gk (S/cm2)
+    gl (S/cm2)
     ina (mA/cm2)
     ik (mA/cm2)
     il (mA/cm2)
@@ -60,6 +61,7 @@ BREAKPOINT {
     ina = gna*(v - ena)
     gk = gkbar*n*n*n*n
     ik = gk*(v - ek)
+    gl = glbar
     il = gl*(v - el)
 }
 
@@ -84,9 +86,7 @@ PROCEDURE rates(v(mV)) {  :Computes rate and other constants at current v.
     LOCAL  alpha, beta, sum, q10
 
     UNITSOFF
-    : q10 = 1 3^((celsius - 6.3)/10)
-    q10 = 1
-
+    q10 = 3^((celsius - 6.3)/10)
     :"m" sodium activation system
     alpha = .1 * vtrap(-(v+40),10)
     beta =  4 * exp(-(v+65)/18)
