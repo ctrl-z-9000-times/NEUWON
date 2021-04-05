@@ -5,8 +5,7 @@ The model is a single long axon with Hodgkin-Huxley channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon import Model, Segment, Species
-import neuwon.nmodl
+from neuwon.api import *
 import numpy as np
 import bisect
 import matplotlib.pyplot as plt
@@ -55,7 +54,7 @@ class Experiment:
         self.model = Model(self.time_step, [self.soma[0]],
             reactions=(),
             species=[
-                neuwon.Species("L", transmembrane = True, reversal_potential = -54.3e-3,)
+                Species("L", transmembrane = True, reversal_potential = -54.3e-3,)
             ],
             stagger=self.stagger)
         print("Number of Locations:", len(self.model))
@@ -108,12 +107,13 @@ Bottom Right: Plot of the absolute error of the membrane potential show that the
 reduced, and that the remaining error is not proportional to the time step ∆t. """
     caption = "" # TL;DR.
 
-    # These parameters approximately match Figure 4.10 of the NEURON book.
+    # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
     args = {
         "axon_length": 4e-6,
         "axon_diameter": 4e-6,
         "soma_diameter": 4e-6,
         "stimulus": 0.025e-9,
+        # "length_step": .2e-6,
         "probes": [0],
     }
     def make_label(x):
