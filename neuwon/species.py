@@ -23,21 +23,21 @@ library = {
         "intra_concentration": 150e-3,
         "extra_concentration":   4e-3,
     },
-    "Ca": {
+    "ca": {
         "charge": 2,
         "transmembrane": True,
         "reversal_potential": "goldman_hodgkin_katz",
         "intra_concentration": 70e-9,
         "extra_concentration": 2e-3,
     },
-    "Cl": {
+    "cl": {
         "charge": -1,
         "transmembrane": True,
         "reversal_potential": "nerst",
         "intra_concentration":  10e-3,
         "extra_concentration": 110e-3,
     },
-    "Glu": {
+    "glu": {
         # "extra_concentration": 1/0, # TODO!
         "extra_diffusivity": 1e-6, # TODO!
         # "extra_decay_period": 1/0, # TODO!
@@ -209,7 +209,7 @@ class Diffusion:
         self.irm = cupyx.scipy.sparse.csr_matrix(self.irm)
 
 def nerst_potential(charge, intra_concentration, extra_concentration):
-    """ Returns the reversal voltage of this ionic species. """
+    """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(intra_concentration)
     if charge == 0: return xp.full_like(intra_concentration, xp.nan)
     ratio = xp.divide(extra_concentration, intra_concentration)
@@ -223,7 +223,7 @@ def _efun(z):
         return z / (math.exp(z) - 1)
 
 def goldman_hodgkin_katz(charge, intra_concentration, extra_concentration, voltages):
-    """ Returns the reversal voltage of this ionic species. """
+    """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(intra_concentration)
     if charge == 0: return xp.full_like(intra_concentration, np.nan)
     z = (charge * F / (R * T)) * voltages

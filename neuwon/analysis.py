@@ -3,7 +3,12 @@ import os
 import tempfile
 import subprocess
 from PIL import Image, ImageFont, ImageDraw
-from htm.bindings.sdr import SDR
+
+# Idea for API: "my_model.draw_image(pointer, f(v) -> [r,g,b], *args)"
+# 
+# The idea is to use the new Pointer API for specifying data channels to render.
+# Also add an argument function to convert from value to the colorscale of their choice.
+
 
 def draw_image(model, segment_colors,
         output_filename, resolution,
@@ -104,53 +109,3 @@ class Animation:
                 duration=int(round(dt * 1e3)), # Milliseconds per frame.
                 optimize=True, quality=0,
                 loop=0,) # Loop forever.
-
-
-
-
-
-
-
-# TODO: This code is all broken...
-class _AP_Detector:
-    """ Detect Action Potentials at strategic locations throughout the model.
-    This uses a simple rising edge threshold detector. """
-    threshold = 20e-3
-    def __init__(self):
-        self.locations = np.empty(0, dtype=Location)
-        self.triggered = np.empty(0, dtype=Real)
-        self.detected  = np.empty(0, dtype=Location)
-        self.elapsed   = np.empty(0, dtype=Real)
-
-    def add_location(self, location):
-        self.locations = np.append(self.locations, [location])
-        self.triggered = np.append(self.triggered, [False])
-
-    def advance(self, time_step, voltages):
-        self.elapsed += time_step
-        high_voltage = voltages[self.locations] >= self.threshold
-        events = np.nonzero(np.logical_and(high_voltage, self.triggered))
-        self.triggered = high_voltage
-        self.detected  = np.append(self.detected, events)
-        self.elapsed   = np.append(self.elapsed, np.zeros(len(events), dtype=Real))
-
-    def detect_APs(self, location):
-        """ """
-        if isinstance(location, Segment):
-            location = location.location
-        location = int(location)
-        assert(location < len(self))
-        self._ap_detector.add_location(location)
-
-    def detected_APs(self):
-        """ """
-        retval = (self._ap_detector.detected, self._ap_detector.elapsed)
-        self._ap_detector.detected = np.empty(0, dtype=Location)
-        self._ap_detector.elapsed  = np.empty(0, dtype=Real)
-        return retval
-
-    def activity_SDR(self):
-        locations, elapsed = self.detected_APs()
-        sdr = SDR(dimensions = (len(self._ap_detector.locations),))
-        sdr.sparse = locations
-        return sdr
