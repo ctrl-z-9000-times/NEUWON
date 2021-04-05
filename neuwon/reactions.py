@@ -7,7 +7,7 @@ import copy
 import itertools
 from collections.abc import Callable, Iterable, Mapping
 
-from neuwon.common import Real, Location
+from neuwon.common import Real, Location, Pointer
 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms.
@@ -39,73 +39,6 @@ class Reaction:
     def advance(self, time_step, locations, **pointers):
         """ Advance all instances of this reaction. """
         raise TypeError("Abstract method called: %s.%s()"%(repr(self), "advance"))
-
-class Pointer:
-    """ Pointers are the connection between reactions and NEUWON.
-    Created by NMODL statements: USEION and POINTER. """
-    def __init__(self, species=None,
-            dtype=None,
-            voltage=False,
-            conductance=False,
-            intra_concentration=False,
-            extra_concentration=False,
-            intra_release_rate=False,
-            extra_release_rate=False,):
-        """
-        Argument dtype: Specify an array of the given numpy.dtype which is
-        associated with this mechanism. It can be one of:
-            * numpy.dtype,
-            * Pair of (numpy.dtype, shape) to to make an array.
-            Examples:
-                np.float32
-                (np.float32, 7)
-                (np.float32, [4, 4])
-        """
-        self.species = str(species) if species else None
-        if dtype is not None:
-            if isinstance(dtype, Iterable):
-                dtype, shape = dtype
-                if isinstance(shape, Iterable):
-                    shape = list(shape)
-                else:
-                    shape = [shape]
-            else:
-                shape = []
-            assert(isinstance(dtype, np.dtype))
-            self.dtype = (dtype, shape)
-        else:
-            self.dtype = None
-        self.voltage = bool(voltage)
-        self.conductance = bool(conductance)
-        self.intra_concentration = bool(intra_concentration)
-        self.extra_concentration = bool(extra_concentration)
-        self.intra_release_rate = bool(intra_release_rate)
-        self.extra_release_rate = bool(extra_release_rate)
-        assert(1 == bool(self.dtype) + self.voltage + self.conductance +
-            self.intra_concentration + self.extra_concentration +
-            self.intra_release_rate + self.extra_release_rate)
-        self.read = (bool(self.dtype) or self.voltage or
-                    self.intra_concentration or self.extra_concentration)
-        self.write = (bool(self.dtype) or self.conductance or
-                    self.intra_release_rate or self.extra_release_rate)
-
-    def NEURON_conversion_factor(self):
-        if   self.dtype:        return 1
-        elif self.voltage:      return 1000 # From NEUWONs volts to NEURONs millivolts.
-        elif self.conductance:  return 1
-        else: raise NotImplementedError(self)
-
-    def __repr__(self):
-        name = getattr(self.species, "name", self.species)
-        flags = []
-        if self.dtype: flags.append(str(self.dtype))
-        if self.voltage: flags.append("voltage=True")
-        if self.conductance: flags.append("conductance=True")
-        if self.intra_concentration: flags.append("intra_concentration=True")
-        if self.extra_concentration: flags.append("extra_concentration=True")
-        if self.intra_release_rate: flags.append("intra_release_rate=True")
-        if self.extra_release_rate: flags.append("extra_release_rate=True")
-        return "Pointer(%s, %s)"%(name, ", ".join(flags))
 
 def _init_reactions(reactions_argument, insertions, time_step, geometry):
     reactions = {}
