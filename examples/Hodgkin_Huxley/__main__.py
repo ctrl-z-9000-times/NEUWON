@@ -80,7 +80,7 @@ class Experiment:
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
             self.model.advance()
-            self.time_stamps.append((t + 2) * self.time_step * 1e3)
+            self.time_stamps.append((t + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.get_voltage() * 1e3)
 
