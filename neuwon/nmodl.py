@@ -38,57 +38,48 @@ default_parameters = {
 library = {
     "hh": ("neuwon/nmodl_library/hh.mod",
         dict(pointers={"gl": Pointer("L", conductance=True)},
-             method_override = "exact",
              parameter_overrides = {"celsius": 6.3})),
 
-    "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod",
-        dict(method_override="cnexp")),
+    "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
 
-    "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod",
-        dict(method_override="cnexp")),
+    "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
 
     "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
-        dict(method_override="cnexp",
-             pointers={"C": Pointer("Glu", extra_concentration=True)})),
+        dict(pointers={"C": Pointer("Glu", extra_concentration=True)})),
 
     "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
-        dict(method_override="cnexp",
-             pointers={"g": Pointer("ca", conductance=True)})),
-
-    # I;m not sure I want to use this one without editing the file first.
-    "rel": ("neuwon/nmodl_library/Destexhe1994/release.mod",
-        dict(method_override="cnexp",)),
-
+        dict(pointers={"g": Pointer("ca", conductance=True)})),
 }
 
 class NmodlMechanism(Reaction):
-    def __init__(self, filename, pointers={}, method_override=False, parameter_overrides={}):
+    def __init__(self, filename, pointers={}, parameter_overrides={}):
+        """
+        Although the NMODL USEION statements are automatically dealt with, most
+        other pointer situations are not. Custom {variable: Pointer} mappings
+        can be passed passed into the NmodlMechanism class init for direct control.
+        """
         self.filename = os.path.normpath(str(filename))
         with open(self.filename, 'rt') as f: nmodl_text = f.read()
-        # Parse the NMDOL file into an abstract syntax tree (AST).
+        self._parse_text(nmodl_text)
+        self._check_for_unsupported()
+        self._gather_documentation()
+        self._gather_units()
+        self._gather_parameters(default_parameters, parameter_overrides)
+        self.states = sorted(v.get_name() for v in
+                self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
+        self._gather_IO(pointers)
+        self._gather_functions()
+        self._discard_ast()
+
+    def _parse_text(self, nmodl_text):
+        """ Parse the NMDOL file into an abstract syntax tree (AST).
+        Sets visitor, lookup, and symbols. """
         AST = nmodl.dsl.NmodlDriver().parse_string(nmodl_text)
         nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
         nmodl.symtab.SymtabVisitor().visit_program(AST)
         nmodl.dsl.visitor.InlineVisitor().visit_program(AST)
         nmodl.dsl.visitor.SympyConductanceVisitor().visit_program(AST)
         nmodl.dsl.visitor.KineticBlockVisitor().visit_program(AST)
-        # Helpful debugging printouts:
-        if False: print(nmodl.dsl.to_nmodl(AST))
-        if False: print(AST.get_symbol_table())
-        if False: nmodl.ast.view(AST)
-        self._set_ast(AST)
-        self._check_for_unsupported()
-        self._gather_documentation()
-        self._gather_units()
-        self._gather_parameters(default_parameters, parameter_overrides)
-        self.states = set(v.get_name() for v in
-                self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-        self._gather_IO(pointers)
-        self._gather_functions(method_override)
-        self._discard_ast()
-
-    def _set_ast(self, AST):
-        """ Sets visitor, lookup, and symbols. """
         self.visitor = nmodl.dsl.visitor.AstLookupVisitor()
         self.lookup = lambda n: self.visitor.lookup(AST, n)
         nmodl.symtab.SymtabVisitor().visit_program(AST)
@@ -271,13 +262,18 @@ class NmodlMechanism(Reaction):
     def pointers(self):
         return self._pointers
 
-    def _gather_functions(self, method_override):
-        """ Sets initial_block, breakpoint_block, and derivative_blocks. """
-        self.method_override = str(method_override) if method_override else False
+    def _gather_functions(self):
+        """ Process all blocks of code which contain imperative instructions.
+        Sets:
+            initial_block, breakpoint_block,
+            derivative_blocks, conserve_statements.
+        """
         self.derivative_blocks = {}
-        for x in self.lookup(ANT.DERIVATIVE_BLOCK):
-            name = x.name.get_node_name()
-            self.derivative_blocks[name] = CodeBlock(self, x)
+        self.conserve_statements = {}
+        for AST in self.lookup(ANT.DERIVATIVE_BLOCK):
+            name = AST.name.get_node_name()
+            self.derivative_blocks[name] = block = CodeBlock(self, AST)
+            self.conserve_statements[name] = [x for x in block if isinstance(x, ConserveStatement)]
         assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
         self.initial_block = CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
