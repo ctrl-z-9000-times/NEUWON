@@ -280,6 +280,7 @@ class NmodlMechanism(Reaction):
         assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
         self.initial_block = CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
+        if "v" in self.breakpoint_block.arguments: self._pointers["v"] = Pointer(voltage=True)
 
     def _parse_statement(self, AST):
         """ Returns a list of Statement objects. """
@@ -393,7 +394,6 @@ class NmodlMechanism(Reaction):
             if variable in input_variables:
                 input_variables.remove(variable)
                 initial_scope_carryover.append(variable, initial_value)
-        if "v" in input_variables: self._pointers["v"] = Pointer(voltage=True) # FIXME!
         for arg in input_variables:
             if arg not in self._pointers:
                 raise ValueError("Mishandled argument: \"%s\"."%arg)
@@ -477,6 +477,14 @@ class CodeBlock:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
                 self.assigned.update(stmt.assigned)
+            elif isinstance(stmt, SolveStatement):
+                target_block = file.derivative_blocks[stmt.block]
+                for symbol in target_block.arguments:
+                    if symbol not in self.assigned:
+                        self.arguments.add(symbol)
+                self.assigned.update(target_block.assigned)
+            elif isinstance(stmt, ConserveStatement): pass
+            else: raise NotImplementedError(stmt)
         # Remove the arguments which are implicit / always given.
         self.arguments.discard("time_step")
         for x in file.states: self.arguments.discard(x)

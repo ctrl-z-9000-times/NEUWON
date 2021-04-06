@@ -73,7 +73,7 @@ class Segment:
 
     def get_voltage(self):
         assert(self.model is not None)
-        return self.model.electrics.voltages[self.location]
+        return self.model._electrics.voltages[self.location]
 
     def inject_current(self, current=None, duration=1e-3):
         assert(self.model is not None)

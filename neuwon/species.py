@@ -44,50 +44,6 @@ library = {
     },
 }
 
-def _init_species(species_argument, time_step, geometry, reactions):
-    """ Returns a dictionary containing all species. """
-    species = {}
-    # The given argument species take priority, add them first.
-    _add_species(species, species_argument)
-    # Pull in all species which are required for the reactions.
-    for container in reactions.values():
-        for ptr in container.pointers.values():
-            if ptr.species: _add_species(species, ptr.species)
-    # Fill in unspecified species from the standard library.
-    for name, species_instance in species.items():
-        if species_instance is None:
-            if name in library:
-                _add_species(species, Species(name, **library[name]))
-            else:
-                raise ValueError("Unresolved species: %s."%name)
-    # Initialize the species internal data.
-    for species_instance in species.values():
-        species_instance._initialize(time_step / 2, geometry)
-    return species
-
-def _add_species(species_dict, new_species):
-    """ Add a new species to the dictionary if its name is new/unique.
-
-    Argument new_species must be one of:
-      * An instance of the Species class,
-      * A dictionary of arguments for initializing a new instance of the Species class,
-      * The species name as a placeholder string,
-      * A list of one of the above.
-    """
-    if isinstance(new_species, Species):
-        if new_species.name not in species_dict or species_dict[new_species.name] is None:
-            species_dict[new_species.name] = copy.copy(new_species)
-    elif isinstance(new_species, Mapping):
-        _add_species(species_dict, Species(**new_species))
-    elif isinstance(new_species, str):
-        if new_species not in species_dict:
-            species_dict[new_species] = None
-    elif isinstance(new_species, Iterable):
-        for x in new_species:
-            _add_species(species_dict, x)
-    else:
-        raise TypeError("Invalid species: %s."%repr(new_species))
-
 class Species:
     """ """
     def __init__(self, name,
@@ -134,19 +90,69 @@ class Species:
             self.reversal_potential = float(reversal_potential)
             self._reversal_potential_method = lambda i, o, v: self.reversal_potential
         # These attributes are initialized on a copy of this object:
-        self.intra = None # Diffusion instance
-        self.extra = None # Diffusion instance
+        self.intra = None # _Diffusion instance
+        self.extra = None # _Diffusion instance
         self.conductances = None # Numpy array
 
-    def _initialize(self, time_step, geometry):
-        if self.intra_diffusivity is not None:
-            self.intra = Diffusion(time_step, geometry, self, "intracellular")
-        if self.extra_diffusivity is not None:
-            self.extra = Diffusion(time_step, geometry, self, "extracellular")
-        if self.transmembrane:
-            self.conductances = cp.zeros(len(geometry), dtype=Real)
+class _AllSpecies(dict):
+    """ A dictionary containing all species. """
+    def __init__(self, species_argument, time_step, geometry, all_pointers):
+        # The given argument species take priority, add them first.
+        self._add_species(species_argument)
+        # Pull in all species which are required for the reactions.
+        for ptr in all_pointers:
+            if ptr.species: self._add_species(ptr.species)
+        # Fill in unspecified species from the standard library.
+        for name, species in self.items():
+            if species is None:
+                if name in library:
+                    self._add_species(Species(name, **library[name]))
+                else: raise ValueError("Unresolved species: %s."%name)
+        # Initialize the species internal data.
+        for species in self.values():
+            if species.intra_diffusivity is not None:
+                species.intra = _Diffusion(time_step / 2, geometry, species, "intracellular")
+            if species.extra_diffusivity is not None:
+                species.extra = _Diffusion(time_step / 2, geometry, species, "extracellular")
+            if species.transmembrane:
+                species.conductances = cp.zeros(len(geometry), dtype=Real)
 
-class Diffusion:
+    def _add_species(self, new_species):
+        """ Add a new species to the dictionary if its name is new/unique.
+
+        Argument new_species must be one of:
+          * An instance of the Species class,
+          * A dictionary of arguments for initializing a new instance of the Species class,
+          * The species name as a placeholder string,
+          * A list of one of the above.
+        """
+        if isinstance(new_species, Species):
+            if new_species.name not in self or self[new_species.name] is None:
+                self[new_species.name] = copy.copy(new_species)
+        elif isinstance(new_species, Mapping):
+            self._add_species(Species(**new_species))
+        elif isinstance(new_species, str):
+            if new_species not in self:
+                self[new_species] = None
+        elif isinstance(new_species, Iterable):
+            for x in new_species:
+                self._add_species(x)
+        else: raise TypeError("Invalid species: %s."%repr(new_species))
+
+    def check_data(self):
+        for s in self.values():
+            if s.transmembrane:
+                assert cp.all(cp.isfinite(s.conductances)), s.name
+            if s.intra is not None:
+                assert cp.all(cp.isfinite(s.intra.concentrations)), s.name
+                assert cp.all(cp.isfinite(s.intra.previous_concentrations)), s.name
+                assert cp.all(cp.isfinite(s.intra.release_rates)), s.name
+            if s.extra is not None:
+                assert cp.all(cp.isfinite(s.extra.concentrations)), s.name
+                assert cp.all(cp.isfinite(s.extra.previous_concentrations)), s.name
+                assert cp.all(cp.isfinite(s.extra.release_rates)), s.name
+
+class _Diffusion:
     def __init__(self, time_step, geometry, species, where):
         self.time_step                  = time_step
         self.concentrations             = cp.zeros(len(geometry), dtype=Real)
@@ -201,12 +207,10 @@ class Diffusion:
         coefficients.data *= self.time_step
         self.irm = expm(coefficients)
         # Prune the impulse response matrix at epsilon nanomolar (mol/L).
-        self.irm = csr_matrix(self.irm, dtype=Real)
         self.irm.data[np.abs(self.irm.data) < epsilon * 1e-6] = 0
         self.irm.eliminate_zeros()
-        if True:
-            print(where, species.name, "IRM NNZ per Location", self.irm.nnz / len(geometry))
-        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm)
+        if True: print(where, species.name, "IRM NNZ per Location", self.irm.nnz / len(geometry))
+        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)
 
 def nerst_potential(charge, intra_concentration, extra_concentration):
     """ Returns the reversal voltage for an ionic species. """

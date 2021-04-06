@@ -1,38 +1,90 @@
-# Numeric/Scientific Library Imports.
 import numpy as np
 import cupy as cp
-import numba.cuda
-# Standard Library Imports.
 from collections.abc import Callable, Iterable, Mapping
 
 from neuwon.common import *
-from neuwon.geometry import Geometry
-from neuwon.species import _init_species, _Electrics
-from neuwon.reactions import _init_reactions
 from neuwon.segments import _serialize_segments
+from neuwon.geometry import Geometry
+from neuwon.species import _AllSpecies, _Electrics
+from neuwon.reactions import _AllReactions
+
+# TODO: Consider switching to use NEURON's units? It makes my code a bit more
+# complicated, but it should make the users code simpler and more intuitive.
 
 class Model:
     def __init__(self, time_step,
             neurons,
             reactions=(),
             species=(),
-            stagger=True):
+            stagger=True,
+            intracellular_resistance = 1,
+            membrane_capacitance = 1e-2,
+            initial_voltage = -70e-3,):
         self.time_step = float(time_step)
         self.stagger = bool(stagger)
         coordinates, parents, diameters, insertions = _serialize_segments(self, neurons)
         assert(len(coordinates) > 0)
         self.geometry = Geometry(coordinates, parents, diameters)
-        self.reactions = _init_reactions(reactions, insertions, self.time_step, self.geometry)
-        self.species = _init_species(species, self.time_step, self.geometry, self.reactions)
-        self.electrics = _Electrics(self.time_step, self.geometry)
+        self._reactions = _AllReactions(reactions, insertions)
+        all_pointers = self._reactions.pointers()
+        self._species = _AllSpecies(species, self.time_step, self.geometry, all_pointers)
+        self._electrics = _Electrics(self.time_step, self.geometry,
+            intracellular_resistance, membrane_capacitance, initial_voltage)
+        initial_values = {}
+        for ptr in all_pointers:
+            if ptr.read:
+                if ptr.reaction_instance:
+                    initial_values[ptr] = 0
+                else:
+                    initial_values[ptr] = self.read_pointer(ptr, 0)
+        self._reactions.bake(self.time_step, self.geometry, initial_values)
         self._injected_currents = Model._InjectedCurrents()
 
     def __len__(self):
         return len(self.geometry)
 
+    def read_pointer(self, pointer, location=None):
+        """ Returns the current value of a pointer.
+
+        If location is not given, then this returns an array containing all
+        values in the system, indexed by location. """
+        assert(isinstance(pointer, Pointer) and pointer.read)
+        if pointer.intra_concentration:
+            data = self._species[pointer.species].intra.concentrations
+        elif pointer.extra_concentration:
+            data = self._species[pointer.species].extra.concentrations
+        elif pointer.voltage:
+            data = self._electrics.voltages
+        elif pointer.reaction_reference:
+            reaction_name, pointer_name = pointer.reaction_reference
+            data = self._reactions[reaction_name].state[pointer_name]
+        elif pointer.reaction_instance: raise ValueError(pointer)
+        else: raise NotImplementedError(pointer)
+        if location is None: return np.array(data, copy=True)
+        else: return data[location]
+
+    def write_pointer(self, pointer, location, value):
+        """ Write a new value to a pointer at the given location in the system. """
+        assert(isinstance(pointer, Pointer) and pointer.write)
+        if pointer.species: species = self._species[pointer.species]
+        if pointer.reaction_reference:
+            reaction_name, pointer_name = pointer.reaction_reference
+            array = self._reactions[reaction_name].state[pointer_name]
+            array[location] = value
+        elif pointer.conductance:
+            # TODO: These updates need to be defered until after the reaction IO
+            # has zeroed the writable data buffers.
+            1/0
+            # species.conductances[location] += value
+        elif pointer.intra_release_rate:
+            1/0
+        elif pointer.extra_release_rate:
+            1/0
+        else: raise NotImplementedError(pointer)
+
     def advance(self):
         # Calculate the externally applied currents.
-        self._injected_currents.advance(self.time_step, self.electrics)
+        self._injected_currents.advance(self.time_step, self._electrics)
         if self.stagger:
             """
             All systems (reactions & mechanisms, diffusions & electrics) are
@@ -44,56 +96,43 @@ class Model:
             For more information see: The NEURON Book, 2003.
             Chapter 4, Section: Efficient handling of nonlinearity.
             """
-            self._diffusions_advance()
+            self._species_advance()
             self._reactions_advance()
-            self._diffusions_advance()
+            self._species_advance()
         else:
             """
             Naive integration strategy, for reference only.
             """
             # Update diffusions & electrics for the whole time step using the
             # state of the reactions at the start of the time step.
-            self._diffusions_advance()
-            self._diffusions_advance()
+            self._species_advance()
+            self._species_advance()
             # Update the reactions for the whole time step using the
             # concentrations & voltages from halfway through the time step.
             self._reactions_advance()
         self._check_data()
 
     def _check_data(self):
-        for r in self.reactions.values():
-            for ptr_name, array in r.state.items():
-                if array.dtype.kind in "fc":
-                    assert cp.all(cp.isfinite(array)), (r.name(), ptr_name)
-        for s in self.species.values():
-            if s.transmembrane:
-                assert cp.all(cp.isfinite(s.conductances)), s.name
-            if s.intra is not None:
-                assert cp.all(cp.isfinite(s.intra.concentrations)), s.name
-                assert cp.all(cp.isfinite(s.intra.previous_concentrations)), s.name
-                assert cp.all(cp.isfinite(s.intra.release_rates)), s.name
-            if s.extra is not None:
-                assert cp.all(cp.isfinite(s.extra.concentrations)), s.name
-                assert cp.all(cp.isfinite(s.extra.previous_concentrations)), s.name
-                assert cp.all(cp.isfinite(s.extra.release_rates)), s.name
-        self.electrics.check_data()
+        self._reactions.check_data()
+        self._species.check_data()
+        self._electrics.check_data()
 
     def _reactions_advance(self):        
         dt = self.time_step
-        for x in self.species.values():
+        for x in self._species.values():
             if x.transmembrane: x.conductances.fill(0)
             if x.extra: x.extra.release_rates.fill(0)
             if x.intra: x.intra.release_rates.fill(0)
-        for container in self.reactions.values():
+        for container in self._reactions.values():
             args = {}
             for name, ptr in container.pointers.items():
                 if ptr.voltage:
-                    args[name] = self.electrics.previous_voltages
+                    args[name] = self._electrics.previous_voltages
                     continue
                 elif ptr.dtype:
                     args[name] = container.state[name]
                     continue
-                species = self.species[ptr.species]
+                species = self._species[ptr.species]
                 if ptr.conductance: args[name] = species.conductances
                 elif ptr.intra_concentration: args[name] = species.intra.previous_concentrations
                 elif ptr.extra_concentration: args[name] = species.extra.previous_concentrations
@@ -102,40 +141,40 @@ class Model:
                 else: raise NotImplementedError
             container.reaction.advance(dt, container.locations, **args)
 
-    def _diffusions_advance(self):
+    def _species_advance(self):
         """ Note: Each call to this method integrates over half a time step. """
-        dt = self.electrics.time_step
+        dt = self._electrics.time_step
         # Save prior state.
-        self.electrics.previous_voltages = cp.array(self.electrics.voltages, copy=True)
-        for s in self.species.values():
+        self._electrics.previous_voltages = cp.array(self._electrics.voltages, copy=True)
+        for s in self._species.values():
             for x in (s.intra, s.extra):
                 if x is not None:
                     x.previous_concentrations = cp.array(x.concentrations, copy=True)
         # Accumulate the net conductances and driving voltages from the chemical data.
-        self.electrics.conductances.fill(0)     # Zero accumulator.
-        self.electrics.driving_voltages.fill(0) # Zero accumulator.
-        for s in self.species.values():
+        self._electrics.conductances.fill(0)     # Zero accumulator.
+        self._electrics.driving_voltages.fill(0) # Zero accumulator.
+        for s in self._species.values():
             if not s.transmembrane: continue
             s.reversal_potential = s._reversal_potential_method(
                 s.intra_concentration if s.intra is None else s.intra.concentrations,
                 s.extra_concentration if s.extra is None else s.extra.concentrations,
-                self.electrics.voltages)
-            self.electrics.conductances += s.conductances
-            self.electrics.driving_voltages += s.conductances * s.reversal_potential
-        self.electrics.driving_voltages /= self.electrics.conductances
-        self.electrics.driving_voltages = cp.nan_to_num(self.electrics.driving_voltages)
+                self._electrics.voltages)
+            self._electrics.conductances += s.conductances
+            self._electrics.driving_voltages += s.conductances * s.reversal_potential
+        self._electrics.driving_voltages /= self._electrics.conductances
+        self._electrics.driving_voltages = cp.nan_to_num(self._electrics.driving_voltages)
         # Calculate the transmembrane currents.
-        diff_v = self.electrics.driving_voltages - self.electrics.voltages
-        recip_rc = self.electrics.conductances / self.electrics.capacitances
+        diff_v = self._electrics.driving_voltages - self._electrics.voltages
+        recip_rc = self._electrics.conductances / self._electrics.capacitances
         alpha = cp.exp(-dt * recip_rc)
-        self.electrics.voltages += diff_v * (1.0 - alpha)
+        self._electrics.voltages += diff_v * (1.0 - alpha)
         # Calculate the lateral currents throughout the neurons.
-        self.electrics.voltages = self.electrics.irm.dot(self.electrics.voltages)
+        self._electrics.voltages = self._electrics.irm.dot(self._electrics.voltages)
         # Calculate the transmembrane ion flows.
-        for s in self.species.values():
+        for s in self._species.values():
             if not s.transmembrane: continue
             if s.intra is None and s.extra is None: continue
-            integral_v = dt * (s.reversal_potential - self.electrics.driving_voltages)
+            integral_v = dt * (s.reversal_potential - self._electrics.driving_voltages)
             integral_v += rc * diff_v * alpha
             moles = s.conductances * integral_v / (s.charge * F)
             if s.intra is not None:
@@ -143,7 +182,7 @@ class Model:
             if s.extra is not None:
                 s.extra.concentrations -= moles / self.geometry.extra_volumes
         # Calculate the local release / removal of chemicals.
-        for s in self.species.values():
+        for s in self._species.values():
             for x in (s.intra, s.extra):
                 if x is None: continue
                 x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
@@ -174,7 +213,7 @@ class Model:
         assert(duration >= 0)
         if current is None:
             target_voltage = 200e-3
-            current = target_voltage * self.electrics.capacitances[location] / duration
+            current = target_voltage * self._electrics.capacitances[location] / duration
         else:
             current = float(current)
         self._injected_currents.currents.append(current)
