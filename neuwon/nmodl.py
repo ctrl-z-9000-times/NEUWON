@@ -5,21 +5,30 @@ import nmodl.symtab
 import sympy
 import sympy.printing.pycode
 import numba.cuda
+import numba
 import numpy as np
 import math
 import os.path
 import itertools
 import copy
 import re
-from neuwon.common import celsius, Real
+from neuwon.common import celsius, Real, Pointer
 import neuwon.units
-from neuwon.reactions import Reaction, Pointer
+from neuwon.reactions import Reaction
+from scipy.sparse.linalg import expm
 
 ANT = nmodl.ast.AstNodeType
 
-# TODO: Get release.mod sorted out, make it parse and complete the unit test...
-
 # TODO: Use impulse response integration method in place of sparse solver...
+#       How to dispatch to it?
+#       TODO: Update the kinetic model given all of the stuff that I've done:
+#               Derivative function instead of sparse deriv equations.
+
+# TODO: Write function to check that derivative_functions are Linear &
+# time-invariant. Put this in the KineticModel class.
+
+# TODO: Initial state. Mostly works...  Need code to run a simulation until it
+# reaches a steady state, given only the derivative function.
 
 # TODO: Initial state...
 
@@ -273,12 +282,13 @@ class NmodlMechanism(Reaction):
         self.breakpoint_block = CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
 
     def _parse_statement(self, AST):
+        """ Returns a list of Statement objects. """
         original = AST
-        if AST.is_unit_state(): return []
-        if AST.is_local_list_statement(): return []
-        if AST.is_conductance_hint(): return []
+        if AST.is_unit_state():             return []
+        if AST.is_local_list_statement():   return []
+        if AST.is_conductance_hint():       return []
         if AST.is_if_statement(): return [IfStatement(self, AST)]
-        if AST.is_conserve(): return [ConserveStatement(self, AST)]
+        if AST.is_conserve():     return [ConserveStatement(self, AST)]
         if AST.is_expression_statement():
             AST = AST.expression
         else:
@@ -311,6 +321,7 @@ class NmodlMechanism(Reaction):
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(original))
 
     def _parse_expression(self, AST):
+        """ Returns a SymPy expression. """
         if AST.is_wrapped_expression() or AST.is_paren_expression():
             return self._parse_expression(AST.expression)
         elif AST.is_name():
@@ -439,6 +450,10 @@ class CodeBlock:
         AST = getattr(AST, "statement_block", AST)
         for stmt in AST.statements:
             self.statements.extend(file._parse_statement(stmt))
+        # TODO: Move conserve statements to the end of the block, where they
+        # belong. I think the nmodl library is moving them around...
+        pass
+
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
