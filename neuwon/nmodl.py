@@ -29,7 +29,6 @@ ANT = nmodl.ast.AstNodeType
 # TODO: Initial state. Mostly works...  Need code to run a simulation until it
 # reaches a steady state, given only the derivative function.
 
-# TODO: Initial state...
 
 default_parameters = {
     "celsius": (celsius, "degC")
@@ -70,6 +69,7 @@ class NmodlMechanism(Reaction):
         self._gather_IO(pointers)
         self._gather_functions()
         self._discard_ast()
+        self._solve()
 
     def _parse_text(self, nmodl_text):
         """ Parse the NMDOL file into an abstract syntax tree (AST).
@@ -289,25 +289,10 @@ class NmodlMechanism(Reaction):
         if AST.is_conserve():     return [ConserveStatement(self, AST)]
         if AST.is_expression_statement():
             AST = AST.expression
-        else:
-            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(original))
+        if AST.is_solve_block(): return [SolveStatement(self, AST)]
         if AST.is_statement_block():
             return list(itertools.chain.from_iterable(
                     self._parse_statement(stmt) for stmt in AST.statements))
-        if AST.is_solve_block() and not AST.steadystate:
-            block = copy.deepcopy(self.derivative_blocks[AST.block_name.get_node_name()])
-            AST.ifsolerr # TODO: What does this do?
-            for stmt in block:
-                if isinstance(stmt, AssignStatement) and stmt.derivative:
-                    stmt.solve_exact()
-            # if self.method_override:
-            #     block._solve(self.method_override)
-            # else:
-            #     block._solve(AST.method.get_node_name())
-            return block.statements
-        if AST.is_solve_block() and AST.steadystate:
-            # TODO: Determine initial state here?
-            return []
         is_derivative = AST.is_diff_eq_expression()
         if is_derivative: AST = AST.expression
         if AST.is_binary_expression():
@@ -364,7 +349,7 @@ class NmodlMechanism(Reaction):
 
     def _solve(self):
         """ Processes all derivative_blocks into one of:
-        solved_blocks or derivative_functions.
+            solved_blocks or derivative_functions.
 
         Dictionary solved_blocks contains the direct solutions to advance the
         systems of differential equations.
@@ -372,21 +357,20 @@ class NmodlMechanism(Reaction):
         Dictionary derivative_functions contains functions to evaluate the
         derivative matrix with the given inputs. All systems in this dictionary
         are linear & time invariant. """
-        1/0
         self.solved_blocks = {}
         self.derivative_functions = {}
-        solve_statements = {stmt.block: stmt for stmt in
-                filter(lambda stmt: isinstance(stmt, SolveStatement), self.breakpoint_block)}
+        solve_statements = {stmt.block: stmt
+                for stmt in self.breakpoint_block if isinstance(stmt, SolveStatement)}
         for name, block in self.derivative_blocks.items():
             if name not in solve_statements: continue
             if solve_statements[name].method == "sparse":
                 self.derivative_functions[name] = _compile_derivative_block(block)
                 # self._check_derivative_lti()
-                continue
-            block = copy.deepcopy(block)
-            for stmt in block:
-                if isinstance(stmt, AssignStatement) and stmt.derivative:
-                    stmt.solve()
+            else:
+                block = copy.deepcopy(block)
+                for stmt in block:
+                    if isinstance(stmt, AssignStatement) and stmt.derivative:
+                        stmt.solve_exact()
             self.solved_blocks[name] = block
         # Substitute SolveStatements with their corresponding solved_blocks.
         self.breakpoint_block.map(lambda stmt: (
@@ -395,7 +379,7 @@ class NmodlMechanism(Reaction):
                 else [stmt]))
 
     def bake(self, time_step, initial_values):
-        # self.kinetic_models = {}
+        self.kinetic_models = {}
         # for name, block in self.derivative_functions.items():
         #     self.kinetic_models[name] = KineticModel(1/0)
         self._run_initial_block(initial_values)
@@ -496,13 +480,15 @@ class NmodlMechanism(Reaction):
         preamble.append("    time_step = "+str(time_step))
         for variable, pointer in self._pointers.items():
             if not pointer.read: continue
-            index = "_index_" if pointer.dtype else "_location_"
+            x = location if pointer.omnipresent else index
             factor = str(pointer.NEURON_conversion_factor())
-            preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), index, factor))
+            preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         if True: print(py)
-        breakpoint_globals = {}
+        breakpoint_globals = {
+            mangle(name): km.advance for name, km in self.kinetic_models.items()
+        }
         exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
@@ -515,6 +501,8 @@ class NmodlMechanism(Reaction):
         return data
 
     def advance(self, time_step, locations, **pointers):
+        for name, km in self.kinetic_models.items():
+            1/0
         threads = 64
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
@@ -595,7 +583,9 @@ class CodeBlock:
     def to_python(self, indent=""):
         py = ""
         for stmt in self.statements:
-            py += stmt.to_python(indent)
+            if isinstance(stmt, str):
+                1/0
+            else: py += stmt.to_python(indent)
         return py.rstrip() + "\n"
 
 class IfStatement:
@@ -703,6 +693,32 @@ class AssignStatement:
         C1 = sympy.solve(self.rhs.subs(state, self.lhsn).subs(dt, 0), "C1")[0]
         self.rhs = self.rhs.subs("C1", C1).rhs
         self.derivative = False
+
+class SolveStatement:
+    def __init__(self, file, AST):
+        self.block = AST.block_name.get_node_name()
+        self.steadystate = AST.steadystate
+        if AST.method: self.method = AST.method.get_node_name()
+        else: self.method = "sparse" # FIXME
+        AST.ifsolerr # TODO: What does this do?
+        assert(self.block in file.derivative_blocks)
+        # arguments = file.derivative_blocks[self.block].arguments
+        # if self.steadystate:
+        #     states_var = mangle2("states")
+        #     index_var  = mangle2("index")
+        #     self.py = states_var + " = solve_steadystate('%s', {%s})\n"%(self.block,
+        #             ", ".join("'%s': %s"%(x, x) for x in arguments))
+        #     for x in file.states:
+        #         self.py += "%s[%s] = %s['%s']\n"%(mangle(x), index_var, states_var, x)
+        # else:
+        #     self.py = self.block + "(%s)\n"%(
+        #                 ", ".join(arguments))
+
+    def to_python(self, indent):
+        1/0
+        if self.steadystate: return insert_indent(indent, self._steadystate_callback)
+        else:
+            return indent + 1/0
 
 class ConserveStatement:
     def __init__(self, file, AST):
