@@ -115,28 +115,28 @@ class _AllReactions(dict):
         del self.insertions
         for r in self.values(): r.to_cuda_device()
 
-    # @staticmethod
-    # def advance(model):
-    #     for x in model._species.values():
-    #         if x.transmembrane: x.conductances.fill(0)
-    #         if x.extra: x.extra.release_rates.fill(0)
-    #         if x.intra: x.intra.release_rates.fill(0)
-    #     for container in model._reactions.values():
-    #         args = {}
-    #         for name, ptr in container.pointers.items():
-    #             if ptr.species: species = model._species[ptr.species]
-    #             if ptr.reaction_instance: args[name] = container.state[name]
-    #             elif ptr.reaction_reference:
-    #                 reaction_name, pointer_name = ptr.reaction_reference
-    #                 args[name] = model._reactions[reaction_name].state[pointer_name]
-    #             elif ptr.voltage: args[name] = model._electrics.previous_voltages
-    #             elif ptr.conductance: args[name] = species.conductances
-    #             elif ptr.intra_concentration: args[name] = species.intra.previous_concentrations
-    #             elif ptr.extra_concentration: args[name] = species.extra.previous_concentrations
-    #             elif ptr.intra_release_rate: args[name] = species.intra.release_rates
-    #             elif ptr.extra_release_rate: args[name] = species.extra.release_rates
-    #             else: raise NotImplementedError(ptr)
-    #         container.reaction.advance(model.time_step, container.locations, **args)
+    @staticmethod
+    def advance(model):
+        for x in model._species.values():
+            if x.transmembrane: x.conductances.fill(0)
+            if x.extra: x.extra.release_rates.fill(0)
+            if x.intra: x.intra.release_rates.fill(0)
+        for container in model._reactions.values():
+            args = {}
+            for name, ptr in container.pointers.items():
+                if ptr.species: species = model._species[ptr.species]
+                if ptr.reaction_instance: args[name] = container.state[name]
+                elif ptr.reaction_reference:
+                    reaction_name, pointer_name = ptr.reaction_reference
+                    args[name] = model._reactions[reaction_name].state[pointer_name]
+                elif ptr.voltage: args[name] = model._electrics.previous_voltages
+                elif ptr.conductance: args[name] = species.conductances
+                elif ptr.intra_concentration: args[name] = species.intra.previous_concentrations
+                elif ptr.extra_concentration: args[name] = species.extra.previous_concentrations
+                elif ptr.intra_release_rate: args[name] = species.intra.release_rates
+                elif ptr.extra_release_rate: args[name] = species.extra.release_rates
+                else: raise NotImplementedError(ptr)
+            container.reaction.advance(model.time_step, container.locations, **args)
 
     def check_data(self):
         for r in self.values():

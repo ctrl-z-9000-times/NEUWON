@@ -97,7 +97,7 @@ class Model:
             Chapter 4, Section: Efficient handling of nonlinearity.
             """
             self._species_advance()
-            self._reactions_advance()
+            self._reactions.advance(self)
             self._species_advance()
         else:
             """
@@ -109,37 +109,13 @@ class Model:
             self._species_advance()
             # Update the reactions for the whole time step using the
             # concentrations & voltages from halfway through the time step.
-            self._reactions_advance()
+            self._reactions.advance(self)
         self._check_data()
 
     def _check_data(self):
         self._reactions.check_data()
         self._species.check_data()
         self._electrics.check_data()
-
-    def _reactions_advance(self):        
-        dt = self.time_step
-        for x in self._species.values():
-            if x.transmembrane: x.conductances.fill(0)
-            if x.extra: x.extra.release_rates.fill(0)
-            if x.intra: x.intra.release_rates.fill(0)
-        for container in self._reactions.values():
-            args = {}
-            for name, ptr in container.pointers.items():
-                if ptr.voltage:
-                    args[name] = self._electrics.previous_voltages
-                    continue
-                elif ptr.dtype:
-                    args[name] = container.state[name]
-                    continue
-                species = self._species[ptr.species]
-                if ptr.conductance: args[name] = species.conductances
-                elif ptr.intra_concentration: args[name] = species.intra.previous_concentrations
-                elif ptr.extra_concentration: args[name] = species.extra.previous_concentrations
-                elif ptr.intra_release_rate: args[name] = species.intra.previous_release_rates
-                elif ptr.extra_release_rate: args[name] = species.extra.previous_release_rates
-                else: raise NotImplementedError
-            container.reaction.advance(dt, container.locations, **args)
 
     def _species_advance(self):
         """ Note: Each call to this method integrates over half a time step. """
