@@ -14,7 +14,7 @@ Species
 
 from neuwon.common import Real, Location, celsius, Pointer
 from neuwon.geometry import Geometry, Neighbor
-from neuwon import Model
+from neuwon.model import Model
 from neuwon.reactions import Reaction
 from neuwon.segments import Segment
 from neuwon.species import Species
