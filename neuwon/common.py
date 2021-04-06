@@ -41,9 +41,6 @@ class Pointer:
             (np.float32, [4, 4])"""
         return self._reaction_instance
     @property
-    def dtype(self):
-        return self._reaction_instance
-    @property
     def reaction_reference(self):
         """ Access a Reactions instance data.
         This is always a pair of: ("reaction-name", "pointer-name")
@@ -89,9 +86,11 @@ class Pointer:
         """ """
         return self._omnipresent
     @property
-    def parallel(self): # TODO: Consider renaming this to "instance" or "inserted"
+    def parallel(self):
         """ """
         return self._parallel
+        # TODO: Consider renaming this to "instance" or "inserted"
+        # TODO: Also consider removing this flag since it is always the opposite of omnipresent.
 
     def __init__(self, species=None,
             intra_concentration=False,
@@ -101,7 +100,6 @@ class Pointer:
             voltage=False,
             conductance=False,
             reaction_instance=None,
-            dtype=None,
             reaction_reference=None,):
         self._species = str(species) if species else None
         self._intra_concentration = bool(intra_concentration)
@@ -110,7 +108,6 @@ class Pointer:
         self._extra_release_rate  = bool(extra_release_rate)
         self._voltage     = bool(voltage)
         self._conductance = bool(conductance)
-        if dtype: reaction_instance = dtype
         if reaction_instance is not None: self._reaction_instance = _parse_dtype(reaction_instance)
         else: self._reaction_instance = None
         if reaction_reference:
@@ -129,6 +126,7 @@ class Pointer:
                 self._intra_concentration or self._extra_concentration or
                 self._intra_release_rate or self._extra_release_rate)
         self._parallel = bool(self._reaction_instance) or bool(self._reaction_reference)
+        # TODO: Make a flag for assign or accumulate.
 
     def NEURON_conversion_factor(self):
         """ """ # TODO!

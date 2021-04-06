@@ -370,7 +370,7 @@ class NmodlMechanism(Reaction):
                 block = copy.deepcopy(block)
                 for stmt in block:
                     if isinstance(stmt, AssignStatement) and stmt.derivative:
-                        stmt.solve_exact()
+                        stmt.solve()
             self.solved_blocks[name] = block
         # Substitute SolveStatements with their corresponding solved_blocks.
         self.breakpoint_block.map(lambda stmt: (
@@ -643,9 +643,11 @@ class AssignStatement:
         assert(not self.derivative)
         if not isinstance(self.rhs, str):
             self.rhs = pycode(self.rhs.simplify())
-        if self.pointer:
-            array_access = "[_index_]" if self.pointer.dtype else "[_location_]"
-            eq = " = " if self.pointer.dtype else " += "
+        if self.derivative:
+            1/0 # unimplemented
+        elif self.pointer:
+            array_access = "[_index_]" if not self.pointer.omnipresent else "[_location_]"
+            eq = " = " if self.pointer.reaction_instance else " += "
             lhs = mangle(self.lhsn) + array_access
             py = indent + lhs + eq + self.rhs + "\n"
             if self.pointer.read:
@@ -654,45 +656,40 @@ class AssignStatement:
         else:
             return indent + self.lhsn + " = " + self.rhs + "\n"
 
-
-    def solve_foward_euler(self):
-        self.rhs = sympy.Symbol(self.lhsn) + self.rhs * sympy.Symbol("time_step")
+    def solve(self):
+        """ Solve this differential equation in-place. """
+        assert(self.derivative)
+        # TODO: Sympy can't solve everything. It needs to fall back
+        # to approximate methods in a nice way (currently it will
+        # either crash or hang).
+        self._solve_sympy()
+        # self._solve_crank_nicholson()
+        # self._solve_foward_euler()
         self.derivative = False
 
-    def solve_backward_euler(self):
-        1/0 # TODO: Proof read this method!
-        state, deriv  = self.lhsn, self.rhs
-        current_state = sympy.Symbol(self.lhsn)
-        future_state  = sympy.Symbol("Future" + self.lhsn)
-        implicit_deriv = self.rhs.subs(state, future_state)
-        delta = implicit_deriv * sympy.Symbol("time_step")
-        delta = sympy.cancel(delta)
-        eq = sympy.Eq(future_state, current_state + delta)
-        backwards_euler = sympy.solve(eq, future_state)
-        assert(len(backwards_euler) == 1)
-        self.rhs = backwards_euler.pop()
-        self.derivative = False
+    def _solve_sympy(self):
+        dt    = sympy.Symbol("time_step", real=True, positive=True)
+        state = sympy.Function(self.lhsn)(dt)
+        deriv = self.rhs.subs(sympy.Symbol(self.lhsn), state)
+        eq    = sympy.Eq(state.diff(dt), deriv)
+        self.rhs = sympy.dsolve(eq, state)
+        # TODO: Look up how to give the initial values to sympy to get rid of the constants.
+        C1 = sympy.solve(self.rhs.subs(state, self.lhsn).subs(dt, 0), "C1")[0]
+        self.rhs = self.rhs.subs("C1", C1).rhs
 
-    def solve_crank_nicholson(self):
+    def _solve_crank_nicholson(self):
+        dt              = sympy.Symbol("time_step", real=True, positive=True)
         init_state      = sympy.Symbol(self.lhsn)
         next_state      = sympy.Symbol("Future" + self.lhsn)
-        dt              = sympy.Symbol("time_step")
         implicit_deriv  = self.rhs.subs(init_state, next_state)
         eq = sympy.Eq(next_state, init_state + implicit_deriv * dt / 2)
         backward_euler = sympy.solve(eq, next_state)
         assert(len(backward_euler) == 1)
         self.rhs = backward_euler.pop() * 2 - init_state
-        self.derivative = False
 
-    def solve_exact(self):
-        dt = sympy.Symbol("time_step")
-        state = sympy.Function(self.lhsn)(dt)
-        deriv = self.rhs.subs(sympy.Symbol(self.lhsn), state)
-        eq = sympy.Eq(state.diff(dt), deriv)
-        self.rhs = sympy.dsolve(eq, state)
-        C1 = sympy.solve(self.rhs.subs(state, self.lhsn).subs(dt, 0), "C1")[0]
-        self.rhs = self.rhs.subs("C1", C1).rhs
-        self.derivative = False
+    def _solve_foward_euler(self):
+        dt = sympy.Symbol("time_step", real=True, positive=True)
+        self.rhs = sympy.Symbol(self.lhsn) + self.rhs * dt
 
 class SolveStatement:
     def __init__(self, file, AST):

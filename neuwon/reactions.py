@@ -101,9 +101,6 @@ class _AllReactions(dict):
 
     def bake(self, time_step, geometry, initial_values):
         for r in self.values():
-            if hasattr(r.reaction, "set_time_step"):
-                r.reaction = copy.deepcopy(r.reaction)
-                r.reaction.set_time_step(time_step)
             if hasattr(r.reaction, "bake"):
                 r.reaction = copy.deepcopy(r.reaction)
                 retval = r.reaction.bake(time_step, {name: initial_values[ptr]
