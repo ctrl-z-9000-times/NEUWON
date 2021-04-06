@@ -75,6 +75,8 @@ class Experiment:
     def run_experiment(self):
         self.time_stamps = []
         self.v = [[] for _ in self.probes]
+        self.m = [[] for _ in self.probes]
+        m = Pointer(reaction_reference=("hh", "m"))
         for t, inp in enumerate(self.input_current):
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
@@ -82,6 +84,7 @@ class Experiment:
             self.time_stamps.append((t + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.get_voltage() * 1e3)
+                self.m[idx].append(self.model.read_pointer(m, p.location))
 
 def analyze_time_step():
     caption = """
@@ -125,11 +128,15 @@ reduced, and that the remaining error is not proportional to the time step ∆t.
     gold = Experiment(time_step = 1e-6, **args)
 
     def measure_error(experiment):
-        error = []
-        for t, v in zip(experiment.time_stamps, experiment.v[0]):
+        error_v = []
+        error_m = []
+        for idx, t in enumerate(experiment.time_stamps):
+            v = experiment.v[0][idx]
+            m = experiment.m[0][idx]
             loc = bisect.bisect_left(gold.time_stamps, t, hi=len(gold.time_stamps)-1)
-            error.append(abs(v - gold.v[0][loc]))
-        return error
+            error_v.append(abs(v - gold.v[0][loc]))
+            error_m.append(abs(m - gold.m[0][loc]))
+        return (error_v, error_m)
 
     lockstep = Experiment(time_step = 100e-6, stagger=False, **args)
     plt.figure("Staggered Time Steps")
@@ -148,9 +155,9 @@ reduced, and that the remaining error is not proportional to the time step ∆t.
     plt.subplot(2,2,2)
     lockstep_slow = Experiment(time_step = 20e-6, stagger=False, **args)
     lockstep_fast = Experiment(time_step = 10e-6, stagger=False, **args)
-    plt.plot(lockstep_slow.time_stamps, measure_error(lockstep_slow), 'r',
+    plt.plot(lockstep_slow.time_stamps, measure_error(lockstep_slow)[0], 'r',
             label=make_label(lockstep_slow))
-    plt.plot(lockstep_fast.time_stamps, measure_error(lockstep_fast), 'b',
+    plt.plot(lockstep_fast.time_stamps, measure_error(lockstep_fast)[0], 'b',
             label=make_label(lockstep_fast))
     plt.legend()
     plt.title("Absolute Error")
@@ -171,14 +178,94 @@ reduced, and that the remaining error is not proportional to the time step ∆t.
     plt.subplot(2,2,4)
     staggered_slow = Experiment(time_step = .1e-3, **args)
     staggered_fast = Experiment(time_step = .05e-3, **args)
-    plt.plot(staggered_slow.time_stamps, measure_error(staggered_slow), 'r',
+    plt.plot(staggered_slow.time_stamps, measure_error(staggered_slow)[0], 'r',
             label=make_label(staggered_slow))
-    plt.plot(staggered_fast.time_stamps, measure_error(staggered_fast), 'b',
+    plt.plot(staggered_fast.time_stamps, measure_error(staggered_fast)[0], 'b',
             label=make_label(staggered_fast))
     plt.legend()
     plt.title("Absolute Error")
     plt.xlabel('ms')
     plt.ylabel('mV')
+
+
+def analyze_accuracy():
+    caption = ""
+    # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
+    args = {
+        "axon_length": 4e-6,
+        "axon_diameter": 4e-6,
+        "soma_diameter": 4e-6,
+        "stimulus": 0.025e-9,
+        # "length_step": .2e-6,
+        "probes": [0],
+    }
+    def make_label(x):
+        if x.model.stagger:
+            return "staggered, dt = %g ms"%(x.time_step * 1e3)
+        else:
+            return "unstaggered, dt = %g ms"%(x.time_step * 1e3)
+
+    x_1 = Experiment(time_step = 1e-6, **args)
+
+    def measure_error(experiment):
+        error_v = []
+        error_m = []
+        for idx, t in enumerate(experiment.time_stamps):
+            v = experiment.v[0][idx]
+            m = experiment.m[0][idx]
+            loc = bisect.bisect_left(x_1.time_stamps, t, hi=len(x_1.time_stamps)-1)
+            error_v.append(abs(v - x_1.v[0][loc]))
+            error_m.append(abs(m - x_1.m[0][loc]))
+        return (error_v, error_m)
+
+    def make_figure(stagger, fast, slow):
+        stagger_str = "Staggered" if stagger else "Unstaggered"
+        x_100 = Experiment(time_step = 100e-6, stagger=stagger, **args)
+        plt.figure(stagger_str+" Time Steps")
+
+        plt.subplot(2,2,1)
+        plt.plot(x_1.time_stamps, x_1.v[0], 'k',
+                label=make_label(x_1))
+        plt.plot(x_100.time_stamps, x_100.v[0], 'r',
+                label=make_label(x_100))
+        plt.legend()
+        plt.xlabel('ms')
+        plt.ylabel('mV')
+
+        plt.subplot(2,2,3)
+        plt.plot(x_1.time_stamps, x_1.m[0], 'k',
+                label=make_label(x_1))
+        plt.plot(x_100.time_stamps, x_100.m[0], 'r',
+                label=make_label(x_100))
+        plt.legend()
+        plt.xlabel('ms')
+        plt.ylabel('m')
+
+        x_fast = Experiment(time_step = fast, stagger=stagger, **args)
+        x_slow = Experiment(time_step = slow, stagger=stagger, **args)
+        x_fast_error = measure_error(x_fast)
+        x_slow_error = measure_error(x_slow)
+
+        plt.subplot(2,2,2)
+        plt.plot(x_fast.time_stamps, x_fast_error[0], 'b',
+                label=make_label(x_fast))
+        plt.plot(x_slow.time_stamps, x_slow_error[0], 'r',
+                label=make_label(x_slow))
+        plt.legend()
+        plt.xlabel('ms')
+        plt.ylabel('|v error|')
+
+        plt.subplot(2,2,4)
+        plt.plot(x_fast.time_stamps, x_fast_error[1], 'b',
+                label=make_label(x_fast))
+        plt.plot(x_slow.time_stamps, x_slow_error[1], 'r',
+                label=make_label(x_slow))
+        plt.legend()
+        plt.xlabel('ms')
+        plt.ylabel('|m error|')
+
+    make_figure(False, 10e-6, 20e-6)
+    make_figure(True, 50e-6, 100e-6)
 
 def analyze_length_step():
     x2 = Experiment(length_step=10e-6)
@@ -237,6 +324,7 @@ experiments_index = {
     "length":       analyze_length_step,
     "diameter":     analyze_axon_diameter,
     "propagation":  analyze_propagation,
+    "accuracy":     analyze_accuracy,
 }
 
 args = argparse.ArgumentParser(description='Sanity tests with the Hodgkin-Huxley model')
