@@ -96,17 +96,17 @@ class Model:
             For more information see: The NEURON Book, 2003.
             Chapter 4, Section: Efficient handling of nonlinearity.
             """
-            self._species_advance()
+            self._species.advance(self)
             self._reactions.advance(self)
-            self._species_advance()
+            self._species.advance(self)
         else:
             """
             Naive integration strategy, for reference only.
             """
             # Update diffusions & electrics for the whole time step using the
             # state of the reactions at the start of the time step.
-            self._species_advance()
-            self._species_advance()
+            self._species.advance(self)
+            self._species.advance(self)
             # Update the reactions for the whole time step using the
             # concentrations & voltages from halfway through the time step.
             self._reactions.advance(self)
@@ -116,54 +116,6 @@ class Model:
         self._reactions.check_data()
         self._species.check_data()
         self._electrics.check_data()
-
-    def _species_advance(self):
-        """ Note: Each call to this method integrates over half a time step. """
-        dt = self._electrics.time_step
-        # Save prior state.
-        self._electrics.previous_voltages = cp.array(self._electrics.voltages, copy=True)
-        for s in self._species.values():
-            for x in (s.intra, s.extra):
-                if x is not None:
-                    x.previous_concentrations = cp.array(x.concentrations, copy=True)
-        # Accumulate the net conductances and driving voltages from the chemical data.
-        self._electrics.conductances.fill(0)     # Zero accumulator.
-        self._electrics.driving_voltages.fill(0) # Zero accumulator.
-        for s in self._species.values():
-            if not s.transmembrane: continue
-            s.reversal_potential = s._reversal_potential_method(
-                s.intra_concentration if s.intra is None else s.intra.concentrations,
-                s.extra_concentration if s.extra is None else s.extra.concentrations,
-                self._electrics.voltages)
-            self._electrics.conductances += s.conductances
-            self._electrics.driving_voltages += s.conductances * s.reversal_potential
-        self._electrics.driving_voltages /= self._electrics.conductances
-        self._electrics.driving_voltages = cp.nan_to_num(self._electrics.driving_voltages)
-        # Calculate the transmembrane currents.
-        diff_v = self._electrics.driving_voltages - self._electrics.voltages
-        recip_rc = self._electrics.conductances / self._electrics.capacitances
-        alpha = cp.exp(-dt * recip_rc)
-        self._electrics.voltages += diff_v * (1.0 - alpha)
-        # Calculate the lateral currents throughout the neurons.
-        self._electrics.voltages = self._electrics.irm.dot(self._electrics.voltages)
-        # Calculate the transmembrane ion flows.
-        for s in self._species.values():
-            if not s.transmembrane: continue
-            if s.intra is None and s.extra is None: continue
-            integral_v = dt * (s.reversal_potential - self._electrics.driving_voltages)
-            integral_v += rc * diff_v * alpha
-            moles = s.conductances * integral_v / (s.charge * F)
-            if s.intra is not None:
-                s.intra.concentrations += moles / self.geometry.intra_volumes
-            if s.extra is not None:
-                s.extra.concentrations -= moles / self.geometry.extra_volumes
-        # Calculate the local release / removal of chemicals.
-        for s in self._species.values():
-            for x in (s.intra, s.extra):
-                if x is None: continue
-                x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
-                # Calculate the lateral diffusion throughout the space.
-                x.concentrations = x.irm.dot(x.concentrations)
 
     class _InjectedCurrents:
         def __init__(self):
