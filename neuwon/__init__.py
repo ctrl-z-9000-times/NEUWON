@@ -17,7 +17,7 @@ from collections.abc import Callable, Iterable, Mapping
 
 from neuwon.common import *
 from neuwon.geometry import Geometry
-from neuwon.species import _init_species, Electrics
+from neuwon.species import _init_species, _Electrics
 from neuwon.reactions import _init_reactions
 from neuwon.segments import _serialize_segments
 
@@ -34,7 +34,7 @@ class Model:
         self.geometry = Geometry(coordinates, parents, diameters)
         self.reactions = _init_reactions(reactions, insertions, self.time_step, self.geometry)
         self.species = _init_species(species, self.time_step, self.geometry, self.reactions)
-        self.electrics = Electrics(self.time_step, self.geometry)
+        self.electrics = _Electrics(self.time_step, self.geometry)
         self._injected_currents = Model._InjectedCurrents()
 
     def __len__(self):
@@ -86,10 +86,7 @@ class Model:
                 assert cp.all(cp.isfinite(s.extra.concentrations)), s.name
                 assert cp.all(cp.isfinite(s.extra.previous_concentrations)), s.name
                 assert cp.all(cp.isfinite(s.extra.release_rates)), s.name
-        assert(cp.all(cp.isfinite(self.electrics.voltages)))
-        assert(cp.all(cp.isfinite(self.electrics.previous_voltages)))
-        assert(cp.all(cp.isfinite(self.electrics.driving_voltages)))
-        assert(cp.all(cp.isfinite(self.electrics.conductances)))
+        self.electrics.check_data()
 
     def _reactions_advance(self):        
         dt = self.time_step

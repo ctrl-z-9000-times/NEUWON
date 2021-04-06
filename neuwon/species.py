@@ -229,10 +229,11 @@ def goldman_hodgkin_katz(charge, intra_concentration, extra_concentration, volta
     z = (charge * F / (R * T)) * voltages
     return (charge * F) * (intra_concentration * _efun(-z) - extra_concentration * _efun(z))
 
-class Electrics:
+class _Electrics:
     def __init__(self, time_step, geometry,
             intracellular_resistance = 1,
-            membrane_capacitance = 1e-2,):
+            membrane_capacitance = 1e-2,
+            initial_voltage = -70e-3):
         # Save and check the arguments.
         self.time_step                  = time_step / 2
         self.intracellular_resistance   = float(intracellular_resistance)
@@ -240,8 +241,8 @@ class Electrics:
         assert(self.intracellular_resistance > 0)
         assert(self.membrane_capacitance > 0)
         # Initialize data buffers.
-        self.voltages           = cp.zeros(len(geometry), dtype=Real)
-        self.previous_voltages  = cp.zeros(len(geometry), dtype=Real)
+        self.voltages           = cp.full(len(geometry), initial_voltage, dtype=Real)
+        self.previous_voltages  = cp.full(len(geometry), initial_voltage, dtype=Real)
         self.driving_voltages   = cp.zeros(len(geometry), dtype=Real)
         self.conductances       = cp.zeros(len(geometry), dtype=Real)
         # Compute passive properties.
@@ -276,13 +277,20 @@ class Electrics:
             rows.append(parent)
             data.append(-1 / r / self.capacitances[parent])
         # Note: always use double precision floating point for building the impulse response matrix.
-        coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=float)
+        coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=np.float64)
         coefficients.data *= self.time_step
         self.irm = expm(coefficients)
         # Prune the impulse response matrix at epsilon millivolts.
         self.irm.data[np.abs(self.irm.data) < epsilon * 1e-3] = 0
-        self.irm = csr_matrix(self.irm, dtype=Real)
-        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm)
+        self.irm.eliminate_zeros()
+        if True: print("Electrics IRM NNZ per Location", self.irm.nnz / len(geometry))
         # Move this data to the GPU now that the CPU is done with it.
+        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)
         self.axial_resistances  = cp.array(self.axial_resistances)
         self.capacitances       = cp.array(self.capacitances)
+
+    def check_data(self):
+        assert(cp.all(cp.isfinite(self.voltages)))
+        assert(cp.all(cp.isfinite(self.previous_voltages)))
+        assert(cp.all(cp.isfinite(self.driving_voltages)))
+        assert(cp.all(cp.isfinite(self.conductances)))
