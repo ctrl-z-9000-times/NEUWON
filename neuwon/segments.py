@@ -1,7 +1,8 @@
 import numpy as np
 import math
-from neuwon.common import docstring_wrapper
+from neuwon.common import docstring_wrapper, Pointer
 from graph_algorithms import depth_first_traversal as dft
+_v = Pointer(voltage=True)
 
 class Segment:
     parent      = docstring_wrapper("parent", "Segment or None")
@@ -73,7 +74,7 @@ class Segment:
 
     def get_voltage(self):
         assert(self.model is not None)
-        return self.model._electrics.voltages[self.location]
+        return self.model.read_pointer(_v, self.location)
 
     def inject_current(self, current=None, duration=1e-3):
         assert(self.model is not None)
