@@ -11,7 +11,6 @@ import math
 import os.path
 import itertools
 import copy
-import re
 from neuwon.common import celsius, Real, Pointer
 import neuwon.units
 from neuwon.reactions import Reaction
@@ -99,6 +98,10 @@ class NmodlMechanism(Reaction):
         self.lookup = lambda n: self.visitor.lookup(AST, n)
         nmodl.symtab.SymtabVisitor().visit_program(AST)
         self.symbols = AST.get_symbol_table()
+        # Helpful debugging printouts:
+        if False: print(nmodl.dsl.to_nmodl(AST))
+        if False: print(AST.get_symbol_table())
+        if False: nmodl.ast.view(AST)
 
     def _discard_ast(self):
         """ Cleanup. Delete all references to the nmodl library.
@@ -146,73 +149,6 @@ class NmodlMechanism(Reaction):
     def name(self):
         return self._name
 
-    def _gather_IO(self, pointers):
-        """ Determine what external data the mechanism accesses. """
-        self._pointers = dict(pointers)
-        assert(all(isinstance(ptr, Pointer) for ptr in self._pointers.values()))
-        def add_pointer(name, *args, **kw_args):
-            if name in self._pointers:
-                raise ValueError("Name conflict: \"%s\" used for %s and %s"%(
-                        name, self._pointers[name], Pointer(*args, **kw_args)))
-            self._pointers[name] = Pointer(*args, **kw_args)
-        # Assignments to the variables in output_currents are ignored because
-        # NEUWON converts all mechanisms to use conductances instead of currents.
-        self.output_currents = []
-        self.output_nonspecific_currents = []
-        for x in self.lookup(ANT.USEION):
-            ion = x.name.value.eval()
-            # Automatically generate the variable names for this ion.
-            equilibrium = 'e' + ion
-            current = 'i' + ion
-            intra = ion + 'i'
-            extra = ion + 'o'
-            for y in x.readlist:
-                variable = y.name.value.eval()
-                if variable == equilibrium:
-                    pass # Ignored, mechanisms output conductances instead of currents.
-                elif variable == intra:
-                    add_pointer(variable, ion, intra_concentration=True)
-                elif variable == extra:
-                    add_pointer(variable, ion, extra_concentration=True)
-                else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
-            for y in x.writelist:
-                variable = y.name.value.eval()
-                if variable == current:
-                    self.output_currents.append(variable)
-                elif variable == intra:
-                    add_pointer(variable, ion, intra_release_rate=True)
-                elif variable == extra:
-                    add_pointer(variable, ion, extra_release_rate=True)
-                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
-        for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
-            self.output_nonspecific_currents.append(x.name.get_node_name())
-            print("Warning: NONSPECIFIC_CURRENT detected.")
-        self.output_currents.extend(self.output_nonspecific_currents)
-        for x in self.lookup(ANT.CONDUCTANCE_HINT):
-            variable = x.conductance.get_node_name()
-            ion = x.ion.get_node_name() if x.ion else None
-            if variable in self._pointers:
-                assert(ion is None or self._pointers[variable].species == ion)
-            else:
-                add_pointer(variable, ion, conductance=True)
-        num_conductances = sum(ptr.conductance for ptr in self._pointers.values())
-        assert(len(self.output_currents) == num_conductances) # Check for missing CONDUCTANCE_HINTs.
-        for name in self.states:
-            add_pointer(name, dtype=Real)
-        for name in self.surface_area_parameters:
-            add_pointer(name, dtype=Real)
-                # # Ensure that all output pointers are written to.
-                # surface_area_parameters = sorted(self.surface_area_parameters)
-                # for variable, pointer in self._pointers.items():
-                #     if pointer.conductance and variable not in self.breakpoint_block.assigned:
-                #         if variable in surface_area_parameters:
-                #             idx = surface_area_parameters.index(variable)
-                #             self.breakpoint_block.statements.append(
-                #                     AssignStatement(variable, variable, pointer=pointer))                
-
-    def pointers(self):
-        return self._pointers
-
     def _gather_units(self):
         """
         Sets flag "use_units" which determines how to deal with differences
@@ -224,6 +160,7 @@ class NmodlMechanism(Reaction):
         for AST in self.lookup(ANT.UNIT_DEF):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
         self.use_units = not any(x.eval() == "UNITSOFF" for x in self.lookup(ANT.UNIT_STATE))
+        self.use_units = False
         if not self.use_units: print("Warning: UNITSOFF detected.")
 
     def _gather_parameters(self, default_parameters, parameter_overrides):
@@ -270,6 +207,75 @@ class NmodlMechanism(Reaction):
             print("Parameters:", self.parameters)
             print("Surface Area Parameters:", self.surface_area_parameters)
 
+    def _gather_IO(self, pointers):
+        """ Determine what external data the mechanism accesses. """
+        self._pointers = dict(pointers)
+        assert(all(isinstance(ptr, Pointer) for ptr in self._pointers.values()))
+        # Assignments to the variables in output_currents are ignored because
+        # NEUWON converts all mechanisms to use conductances instead of currents.
+        self.output_currents = []
+        self.output_nonspecific_currents = []
+        for x in self.lookup(ANT.USEION):
+            ion = x.name.value.eval()
+            # Automatically generate the variable names for this ion.
+            equilibrium = 'e' + ion
+            current = 'i' + ion
+            intra = ion + 'i'
+            extra = ion + 'o'
+            for y in x.readlist:
+                variable = y.name.value.eval()
+                if variable == equilibrium:
+                    pass # Ignored, mechanisms output conductances instead of currents.
+                elif variable == intra:
+                    self._add_pointer(variable, ion, intra_concentration=True)
+                elif variable == extra:
+                    self._add_pointer(variable, ion, extra_concentration=True)
+                else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
+            for y in x.writelist:
+                variable = y.name.value.eval()
+                if variable == current:
+                    self.output_currents.append(variable)
+                elif variable == intra:
+                    self._add_pointer(variable, ion, intra_release_rate=True)
+                elif variable == extra:
+                    self._add_pointer(variable, ion, extra_release_rate=True)
+                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
+        for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
+            self.output_nonspecific_currents.append(x.name.get_node_name())
+            print("Warning: NONSPECIFIC_CURRENT detected.")
+        self.output_currents.extend(self.output_nonspecific_currents)
+        for x in self.lookup(ANT.CONDUCTANCE_HINT):
+            variable = x.conductance.get_node_name()
+            ion = x.ion.get_node_name() if x.ion else None
+            if variable in self._pointers:
+                assert(ion is None or self._pointers[variable].species == ion)
+            else:
+                self._add_pointer(variable, ion, conductance=True)
+        num_conductances = sum(ptr.conductance for ptr in self._pointers.values())
+        assert(len(self.output_currents) == num_conductances) # Check for missing CONDUCTANCE_HINTs.
+        for name in self.states:
+            self._add_pointer(name, reaction_instance=Real)
+        for name in self.surface_area_parameters:
+            self._add_pointer(name, reaction_instance=Real)
+            # # Ensure that all output pointers are written to.
+            # surface_area_parameters = sorted(self.surface_area_parameters)
+            # for variable, pointer in self._pointers.items():
+            #     if pointer.conductance and variable not in self.breakpoint_block.assigned:
+            #         if variable in surface_area_parameters:
+            #             idx = surface_area_parameters.index(variable)
+            #             self.breakpoint_block.statements.append(
+            #                     AssignStatement(variable, variable, pointer=pointer))                
+
+    def _add_pointer(self, name, *args, **kw_args):
+        pointer = Pointer(*args, **kw_args)
+        if name in self._pointers:
+            raise ValueError("Name conflict: \"%s\" used for %s and %s"%(
+                    name, self._pointers[name], pointer))
+        self._pointers[name] = pointer
+
+    def pointers(self):
+        return self._pointers
+
     def _gather_functions(self, method_override):
         """ Sets initial_block, breakpoint_block, and derivative_blocks. """
         self.method_override = str(method_override) if method_override else False
@@ -280,7 +286,7 @@ class NmodlMechanism(Reaction):
         assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
         self.initial_block = CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
-        if "v" in self.breakpoint_block.arguments: self._pointers["v"] = Pointer(voltage=True)
+        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", voltage=True)
 
     def _parse_statement(self, AST):
         """ Returns a list of Statement objects. """
@@ -802,9 +808,24 @@ def _conserve_sum(states, target_sum):
 
 
 pycode = lambda x: sympy.printing.pycode(x, user_functions={"abs": "abs"})
+insert_indent = lambda i, s: i + "\n".join(i + l for l in s.split("\n"))
 
 mangle = lambda x: "_" + x
 demangle = lambda x: x[1:]
+mangle2 = lambda x: "_" + x + "_"
+demangle2 = lambda x: x[1:-1]
+
+def _exec_wrapper(python, globals_, locals_):
+    globals_["math"] = math
+    try: exec(python, globals_, locals_)
+    except:
+        for noshow in ("__builtins__", "math"):
+            if noshow in globals_: globals_.pop(noshow)
+        print("Error while exec'ing the following python code:")
+        print(python)
+        print("globals():", repr(globals_))
+        print("locals():", repr(locals_))
+        raise
 
 if __name__ == "__main__":
     for name, (nmodl_file_path, kw_args) in sorted(library.items()):
