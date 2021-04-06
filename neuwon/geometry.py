@@ -4,6 +4,9 @@ from neuwon.common import Location, ROOT, Real, epsilon, docstring_wrapper
 import neuwon.voronoi
 Neighbor = neuwon.voronoi.Neighbor
 
+# TODO: Extend the pointer API to access geometric data, and then make the
+# geometry class private.
+
 class Geometry:
     coordinates = docstring_wrapper("coordinates", "")
     parents = docstring_wrapper("parents", "")

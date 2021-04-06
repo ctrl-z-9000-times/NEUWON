@@ -86,11 +86,6 @@ class NmodlMechanism(Reaction):
         self._gather_IO(pointers)
         self._gather_functions(method_override)
         self._discard_ast()
-        self._run_initial_block()
-
-    def set_time_step(self, time_step):
-        """ Second initialize, called during neuwon.Model.__init__() """
-        self._compile_breakpoint_block(time_step)
 
     def _set_ast(self, AST):
         """ Sets visitor, lookup, and symbols. """
@@ -306,10 +301,13 @@ class NmodlMechanism(Reaction):
         if AST.is_solve_block() and not AST.steadystate:
             block = copy.deepcopy(self.derivative_blocks[AST.block_name.get_node_name()])
             AST.ifsolerr # TODO: What does this do?
-            if self.method_override:
-                block._solve(self.method_override)
-            else:
-                block._solve(AST.method.get_node_name())
+            for stmt in block:
+                if isinstance(stmt, AssignStatement) and stmt.derivative:
+                    stmt.solve_exact()
+            # if self.method_override:
+            #     block._solve(self.method_override)
+            # else:
+            #     block._solve(AST.method.get_node_name())
             return block.statements
         if AST.is_solve_block() and AST.steadystate:
             # TODO: Determine initial state here?
@@ -319,10 +317,9 @@ class NmodlMechanism(Reaction):
         if AST.is_binary_expression():
             assert(AST.op.eval() == "=")
             lhsn = AST.lhs.name.get_node_name()
-            rhs = self._parse_expression(AST.rhs)
             if lhsn in self.output_nonspecific_currents: return []
-            if lhsn in self.output_currents: return []
-            return [AssignStatement(lhsn, rhs,
+            if lhsn in self.output_currents:             return []
+            return [AssignStatement(lhsn, self._parse_expression(AST.rhs),
                     derivative = is_derivative,
                     pointer = self._pointers.get(lhsn, None),)]
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(original))
@@ -367,31 +364,114 @@ class NmodlMechanism(Reaction):
             return self._parse_expression(AST.value) * factor
         elif AST.is_integer(): return sympy.Integer(AST.eval())
         elif AST.is_double():  return sympy.Float(AST.eval(), 18)
-        else:
-            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+        else: raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
 
-    def _run_initial_block(self, initial_assumptions={"v": -70e-3}):
+    def _solve(self):
+        """ Processes all derivative_blocks into one of:
+        solved_blocks or derivative_functions.
+
+        Dictionary solved_blocks contains the direct solutions to advance the
+        systems of differential equations.
+
+        Dictionary derivative_functions contains functions to evaluate the
+        derivative matrix with the given inputs. All systems in this dictionary
+        are linear & time invariant. """
+        1/0
+        self.solved_blocks = {}
+        self.derivative_functions = {}
+        solve_statements = {stmt.block: stmt for stmt in
+                filter(lambda stmt: isinstance(stmt, SolveStatement), self.breakpoint_block)}
+        for name, block in self.derivative_blocks.items():
+            if name not in solve_statements: continue
+            if solve_statements[name].method == "sparse":
+                self.derivative_functions[name] = _compile_derivative_block(block)
+                # self._check_derivative_lti()
+                continue
+            block = copy.deepcopy(block)
+            for stmt in block:
+                if isinstance(stmt, AssignStatement) and stmt.derivative:
+                    stmt.solve()
+            self.solved_blocks[name] = block
+        # Substitute SolveStatements with their corresponding solved_blocks.
+        self.breakpoint_block.map(lambda stmt: (
+                self.solved_blocks[stmt.block].statements
+                if isinstance(stmt, SolveStatement) and stmt.block in self.solved_blocks
+                else [stmt]))
+
+    def bake(self, time_step, initial_values):
+        # self.kinetic_models = {}
+        # for name, block in self.derivative_functions.items():
+        #     self.kinetic_models[name] = KineticModel(1/0)
+        self._run_initial_block(initial_values)
+        self._compile_breakpoint_block(time_step)
+
+    def _compile_derivative_block(self, block):
+        """ Returns function in the form:
+                f(state_vector, **block.arguments) -> derivative_vector """
+        1/0
+        block = copy.deepcopy(block)
+        globals_ = {}
+        locals_ = {}
+        py = "def derivative(%s, %s):\n"%(mangle2("state"), ", ".join(block.arguments))
+        for idx, name in enumerate(self.states):
+            py += "    %s = %s[%d]\n"%(name, mangle2("state"), idx)
+        for name in self.states:
+            py += "    %s = 0\n"%mangle('d' + name)
+        block.map(lambda x: [] if isinstance(x, ConserveStatement) else [x])
+        py += block.to_python(indent="    ")
+        py += "    return [%s]\n"%", ".join(mangle('d' + x) for x in self.states)
+        _exec_wrapper(py, globals_, locals_)
+        return numba.njit(locals_["derivative"])
+
+    def _compute_propagator_matrix(self, block, time_step, kw_args):
+        1/0
+        f = self.derivative_functions[block]
+        n = len(self.states)
+        A = np.zeros((n,n))
+        for i in range(n):
+            state = np.array([0. for x in self.states])
+            state[i] = 1
+            A[:, i] = f(state, **kw_args)
+        return expm(A * time_step)
+
+    def _run_initial_block(self, initial_values):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
-        initial_globals = {'math': math}
-        self.initial_scope = initial_locals = {}
+        globals_ = {
+            "solve_steadystate": self.solve_steadystate,
+            mangle2("index"): 0
+        }
         for arg in self.initial_block.arguments:
-            if arg not in initial_assumptions: raise ValueError("Missing initial value for \"%s\"."%arg)
-            initial_globals[arg] = initial_assumptions[arg]
-        initial_state = 1 / len(self.states) # TODO: Determine this from the conserve statement!
-        # TODO: If there are not conserve statements to constrain the initial state then assume zero init.
-        initial_globals["_index_"] = 0
-        for x in self.states: initial_locals["_" + x] = [initial_state]
+            try: globals_[arg] = initial_values[arg]
+            except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
+        self.initial_scope = {mangle(x): [0] for x in self.states}
         initial_python = self.initial_block.to_python()
-        try:
-            exec(initial_python, initial_globals, initial_locals)
-        except:
-            print("Error while exec'ing the following python code:")
-            print("globals()", repr(initial_globals))
-            print("locals()", repr(initial_locals))
-            print(initial_python)
-            raise
-        self.initial_state = {x: initial_locals.pop(mangle(x)) for x in self.states}
+        _exec_wrapper(initial_python, globals_, self.initial_scope)
+        self.initial_state = {x: self.initial_scope.pop(mangle(x))[0] for x in self.states}
+
+    def solve_steadystate(self, block, args):
+        1/0
+        # First generate a state which satisfies the conserve constraints?
+        states = {x: 0 for x in self.states}
+        num_conserved_states = 0
+        conserved_states = set()
+        for block_name, stmt_list in self.conserve_statements.items():
+            for stmt in stmt_list:
+                initial_value = stmt.conserve_sum / len(stmt.states)
+                for x in stmt.states: states[x] = initial_value
+                conserved_states.update(stmt.states)
+                num_conserved_states += len(stmt.states)
+        if num_conserved_states != len(conserved_states):
+            raise ValueError("Unsupported: states can not be CONSERVED more than once.")
+        if block in self.derivative_functions:
+            dt = 1000 * 60 * 60 * 24 * 7
+            irm = self._compute_propagator_matrix(block, dt, args)
+            states = [states[name] for name in self.states]
+            states = irm.dot(states)
+            states = {name: states[index] for index, name in enumerate(self.states)}
+        else:
+            1/0 # TODO: run the simulation until the state stops changing.
+        return states
 
     def _compile_breakpoint_block(self, time_step):
         input_variables = list(self.breakpoint_block.arguments)
@@ -403,14 +483,17 @@ class NmodlMechanism(Reaction):
         for arg in input_variables:
             if arg not in self._pointers:
                 raise ValueError("Mishandled argument: \"%s\"."%arg)
-        arguments = sorted(map(mangle, self._pointers))
+        arguments = sorted(mangle(name) for name in  self._pointers)
+        locations = mangle2("locations")
+        location  = mangle2("location")
+        index     = mangle2("index")
         preamble = []
         preamble.append("import math")
         preamble.append("import numba.cuda")
-        preamble.append("def BREAKPOINT(_locations_, %s):"%", ".join(arguments))
-        preamble.append("    _index_ = numba.cuda.grid(1)")
-        preamble.append("    if _index_ >= _locations_.shape[0]: return")
-        preamble.append("    _location_ = _locations_[_index_]")
+        preamble.append("def BREAKPOINT("+locations+", %s):"%", ".join(arguments))
+        preamble.append("    "+index+" = numba.cuda.grid(1)")
+        preamble.append("    if "+index+" >= "+locations+".shape[0]: return")
+        preamble.append("    "+location+" = "+locations+"["+index+"]")
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)
         if not self.use_units: time_step *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
@@ -498,23 +581,20 @@ class CodeBlock:
         self.arguments = sorted(self.arguments)
         self.assigned = sorted(self.assigned)
 
-    def _solve(self, method):
-        """ Replace differential equation statements with their analytic solution. """
-        # TODO: Do what the "nmodl" library does: If method is "cnexp" then do
-        # "exact" solver if able, and fall back to Crank-Nicolson if it fails.
+    def __iter__(self):
         for stmt in self.statements:
             if isinstance(stmt, IfStatement):
-                stmt._solve(method)
-            elif isinstance(stmt, AssignStatement) and stmt.derivative:
-                if method == "euler":
-                    stmt.solve_foward_euler()
-                elif method == "derivimplicit":
-                    stmt.solve_backward_euler()
-                elif method == "cnexp":
-                    stmt.solve_crank_nicholson()
-                elif method == "exact":
-                    stmt.solve_exact()
-                else: raise NotImplementedError(method)
+                for x in stmt: yield x
+            else: yield stmt
+
+    def map(self, f):
+        """ Argument f is function f(Statement) -> [Statement,]"""
+        mapped_statements = []
+        for stmt in self.statements:
+            if isinstance(stmt, IfStatement):
+                stmt.map(f)
+            mapped_statements.extend(f(stmt))
+        self.statements = mapped_statements
 
     def to_python(self, indent=""):
         py = ""
@@ -545,11 +625,17 @@ class IfStatement:
         self.arguments.update(self.else_block.arguments)
         self.assigned.update(self.else_block.assigned)
 
-    def _solve(self, method):
-        self.main_block._solve(method)
+    def __iter__(self):
+        for x in self.main_block: yield x
         for block in self.elif_blocks:
-            block._solve(method)
-        self.else_block._solve(method)
+            for x in block: yield x
+        for x in self.else_block: yield x
+
+    def map(self, f):
+        """ Argument f is function f(Statement) -> [Statement,]"""
+        self.main_block.map(f)
+        for block in self.elif_blocks: block.map(f)
+        self.else_block.map(f)
 
     def to_python(self, indent):
         py = indent + "if %s:\n"%pycode(self.condition)
