@@ -65,28 +65,28 @@ ASSIGNED {
 
 
 BREAKPOINT {
-        SOLVE states
+        SOLVE states METHOD cnexp
         ina = gnabar * m*m*m*h * (v - ena)
         ik  = gkbar * n*n*n*n * (v - ek)
 }
 
 
-:DERIVATIVE states {   : exact Hodgkin-Huxley equations
-:       evaluate_fct(v)
-:       m' = (m_inf - m) / tau_m
-:       h' = (h_inf - h) / tau_h
-:       n' = (n_inf - n) / tau_n
-:}
-
-PROCEDURE states() {    : exact when v held constant
-        evaluate_fct(v)
-        m = m + m_exp * (m_inf - m)
-        h = h + h_exp * (h_inf - h)
-        n = n + n_exp * (n_inf - n)
-        VERBATIM
-        return 0;
-        ENDVERBATIM
+DERIVATIVE states {   : exact Hodgkin-Huxley equations
+       evaluate_fct(v)
+       m' = (m_inf - m) / tau_m
+       h' = (h_inf - h) / tau_h
+       n' = (n_inf - n) / tau_n
 }
+
+:PROCEDURE states() {    : exact when v held constant
+:        evaluate_fct(v)
+:        m = m + m_exp * (m_inf - m)
+:        h = h + h_exp * (h_inf - h)
+:        n = n + n_exp * (n_inf - n)
+:        VERBATIM
+:        return 0;
+:        ENDVERBATIM
+:}
 
 UNITSOFF
 INITIAL {

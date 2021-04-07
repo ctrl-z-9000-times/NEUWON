@@ -106,9 +106,9 @@ KINETIC kstates {
 }   
     
 PROCEDURE rates(v(mV)) {
-    TABLE a, b
-    DEPEND Ra, Rb, th, celsius, temp, q10
-    FROM -100 TO 100 WITH 200
+:    TABLE a, b
+:    DEPEND Ra, Rb, th, celsius, temp, q10
+:    FROM -100 TO 100 WITH 200
 
     tadj = q10 ^ ((celsius - temp)/10 (degC))
 
