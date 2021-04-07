@@ -19,15 +19,14 @@ from scipy.sparse.linalg import expm
 ANT = nmodl.ast.AstNodeType
 
 # TODO: Use impulse response integration method in place of sparse solver...
-#       How to dispatch to it?
-#       TODO: Update the kinetic model given all of the stuff that I've done:
-#               Derivative function instead of sparse deriv equations.
+#       TODO: How to dispatch to it?
+#       TODO: Update the kinetic model to use Derivative function instead of sparse deriv equations.
 
 # TODO: Write function to check that derivative_functions are Linear &
 # time-invariant. Put this in the KineticModel class.
 
 # TODO: Initial state. Mostly works...  Need code to run a simulation until it
-# reaches a steady state, given only the derivative function.
+# reaches a steady state, given the solved system.
 
 
 default_parameters = {
@@ -364,7 +363,7 @@ class NmodlMechanism(Reaction):
         for name, block in self.derivative_blocks.items():
             if name not in solve_statements: continue
             if solve_statements[name].method == "sparse":
-                self.derivative_functions[name] = _compile_derivative_block(block)
+                self.derivative_functions[name] = self._compile_derivative_block(block)
                 # self._check_derivative_lti()
             else:
                 block = copy.deepcopy(block)
@@ -388,7 +387,6 @@ class NmodlMechanism(Reaction):
     def _compile_derivative_block(self, block):
         """ Returns function in the form:
                 f(state_vector, **block.arguments) -> derivative_vector """
-        1/0
         block = copy.deepcopy(block)
         globals_ = {}
         locals_ = {}
@@ -430,25 +428,24 @@ class NmodlMechanism(Reaction):
         self.initial_state = {x: self.initial_scope.pop(mangle(x))[0] for x in self.states}
 
     def solve_steadystate(self, block, args):
-        1/0
-        # First generate a state which satisfies the conserve constraints?
+        # First generate a state which satisfies the CONSERVE constraints.
         states = {x: 0 for x in self.states}
-        num_conserved_states = 0
         conserved_states = set()
         for block_name, stmt_list in self.conserve_statements.items():
             for stmt in stmt_list:
                 initial_value = stmt.conserve_sum / len(stmt.states)
+                for x in stmt.states:
+                    if x in conserved_states:
+                        raise ValueError(
+                            "Unsupported: states can not be CONSERVED more than once. State: \"%s\"."%x)
+                    else: conserved_states.add(x)
                 for x in stmt.states: states[x] = initial_value
-                conserved_states.update(stmt.states)
-                num_conserved_states += len(stmt.states)
-        if num_conserved_states != len(conserved_states):
-            raise ValueError("Unsupported: states can not be CONSERVED more than once.")
         if block in self.derivative_functions:
-            dt = 1000 * 60 * 60 * 24 * 7
+            dt = 1000 * 60 * 60 * 24 * 7 # One week in ms.
             irm = self._compute_propagator_matrix(block, dt, args)
-            states = [states[name] for name in self.states]
+            states = [states[name] for name in self.states] # Convert to list.
             states = irm.dot(states)
-            states = {name: states[index] for index, name in enumerate(self.states)}
+            states = {name: states[index] for index, name in enumerate(self.states)} # Convert to dictionary.
         else:
             1/0 # TODO: run the simulation until the state stops changing.
         return states
@@ -640,14 +637,14 @@ class AssignStatement:
         if self.pointer: assert(self.pointer.write)
 
     def to_python(self,  indent=""):
-        assert(not self.derivative)
         if not isinstance(self.rhs, str):
             self.rhs = pycode(self.rhs.simplify())
         if self.derivative:
-            1/0 # unimplemented
+            lhs = mangle('d' + self.lhsn)
+            return indent + lhs + " += " + self.rhs + "\n"
         elif self.pointer:
-            array_access = "[_index_]" if not self.pointer.omnipresent else "[_location_]"
-            eq = " = " if self.pointer.reaction_instance else " += "
+            array_access = "[_location_]" if self.pointer.omnipresent else "[_index_]"
+            eq = " = " if self.pointer.read else " += "
             lhs = mangle(self.lhsn) + array_access
             py = indent + lhs + eq + self.rhs + "\n"
             if self.pointer.read:
