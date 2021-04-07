@@ -57,18 +57,23 @@ class NmodlMechanism(Reaction):
         can be passed passed into the NmodlMechanism class init for direct control.
         """
         self.filename = os.path.normpath(str(filename))
-        with open(self.filename, 'rt') as f: nmodl_text = f.read()
-        self._parse_text(nmodl_text)
-        self._check_for_unsupported()
-        self._gather_documentation()
-        self._gather_units()
-        self._gather_parameters(default_parameters, parameter_overrides)
-        self.states = sorted(v.get_name() for v in
-                self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-        self._gather_IO(pointers)
-        self._gather_functions()
-        self._discard_ast()
-        self._solve()
+        try:
+            with open(self.filename, 'rt') as f: nmodl_text = f.read()
+            self._parse_text(nmodl_text)
+            self._check_for_unsupported()
+            self._gather_documentation()
+            self._gather_units()
+            self._gather_parameters(default_parameters, parameter_overrides)
+            self.states = sorted(v.get_name() for v in
+                    self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
+            self._gather_IO(pointers)
+            self._gather_functions()
+            self._discard_ast()
+            self._solve()
+        except KeyboardInterrupt: raise
+        except Exception as err:
+            print("Exception raised while loading file:", self.filename)
+            raise err
 
     def _parse_text(self, nmodl_text):
         """ Parse the NMDOL file into an abstract syntax tree (AST).
@@ -99,16 +104,19 @@ class NmodlMechanism(Reaction):
         del self.symbols
 
     def _check_for_unsupported(self):
-        if self.lookup(ANT.FUNCTION_TABLE_BLOCK):
-            raise ValueError("\"FUNCTION_TABLE\" is not allowed.")
-        if self.lookup(ANT.VERBATIM):
-            raise ValueError("\"VERBATIM\" is not allowed.")
-        if self.lookup(ANT.LON_DIFUSE):
-            raise ValueError("\"LONGITUDINAL_DIFFUSION\" is not allowed.")
-        # TODO: No support for NONLINEAR!
-        # TODO: No support for INCLUDE!
-        # TODO: No support for COMPARTMENT!
-        # TODO: Deal with arrays?
+        # TODO: support for NONLINEAR?
+        # TODO: support for INCLUDE?
+        # TODO: support for COMPARTMENT?
+        # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
+        disallow = (
+            "FUNCTION_TABLE_BLOCK",
+            "TABLE_STATEMENT",
+            "VERBATIM",
+            "LON_DIFUSE",
+        )
+        for x in disallow:
+            if self.lookup(getattr(ANT, x)):
+                raise ValueError("\"%s\"s are not allowed."%x)
 
     def _gather_documentation(self):
         """ Sets name, title, and description.
@@ -482,7 +490,7 @@ class NmodlMechanism(Reaction):
             preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
-        if True: print(py)
+        if False: print(py)
         breakpoint_globals = {
             mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
