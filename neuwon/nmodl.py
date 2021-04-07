@@ -29,7 +29,7 @@ ANT = nmodl.ast.AstNodeType
 # reaches a steady state, given the solved system.
 
 
-default_parameters = {
+_default_parameters = {
     "celsius": (celsius, "degC")
 }
 
@@ -68,7 +68,7 @@ class NmodlMechanism(Reaction):
             self._check_for_unsupported()
             self._gather_documentation()
             self._gather_units()
-            self._gather_parameters(default_parameters, parameter_overrides)
+            self._gather_parameters(_default_parameters, parameter_overrides)
             self.states = sorted(v.get_name() for v in
                     self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
             self._gather_IO(pointers)
@@ -268,7 +268,7 @@ class NmodlMechanism(Reaction):
             #         if variable in surface_area_parameters:
             #             idx = surface_area_parameters.index(variable)
             #             self.breakpoint_block.statements.append(
-            #                     AssignStatement(variable, variable, pointer=pointer))                
+            #                     _AssignStatement(variable, variable, pointer=pointer))                
 
     def _add_pointer(self, name, *args, **kw_args):
         pointer = Pointer(*args, **kw_args)
@@ -290,11 +290,11 @@ class NmodlMechanism(Reaction):
         self.conserve_statements = {}
         for AST in self.lookup(ANT.DERIVATIVE_BLOCK):
             name = AST.name.get_node_name()
-            self.derivative_blocks[name] = block = CodeBlock(self, AST)
-            self.conserve_statements[name] = [x for x in block if isinstance(x, ConserveStatement)]
+            self.derivative_blocks[name] = block = _CodeBlock(self, AST)
+            self.conserve_statements[name] = [x for x in block if isinstance(x, _ConserveStatement)]
         assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
-        self.initial_block = CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
-        self.breakpoint_block = CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
+        self.initial_block = _CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
+        self.breakpoint_block = _CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
         if "v" in self.breakpoint_block.arguments: self._add_pointer("v", voltage=True)
 
     def _parse_statement(self, AST):
@@ -303,11 +303,11 @@ class NmodlMechanism(Reaction):
         if AST.is_unit_state():             return []
         if AST.is_local_list_statement():   return []
         if AST.is_conductance_hint():       return []
-        if AST.is_if_statement(): return [IfStatement(self, AST)]
-        if AST.is_conserve():     return [ConserveStatement(self, AST)]
+        if AST.is_if_statement(): return [_IfStatement(self, AST)]
+        if AST.is_conserve():     return [_ConserveStatement(self, AST)]
         if AST.is_expression_statement():
             AST = AST.expression
-        if AST.is_solve_block(): return [SolveStatement(self, AST)]
+        if AST.is_solve_block(): return [_SolveStatement(self, AST)]
         if AST.is_statement_block():
             return list(itertools.chain.from_iterable(
                     self._parse_statement(stmt) for stmt in AST.statements))
@@ -318,7 +318,7 @@ class NmodlMechanism(Reaction):
             lhsn = AST.lhs.name.get_node_name()
             if lhsn in self.output_nonspecific_currents: return []
             if lhsn in self.output_currents:             return []
-            return [AssignStatement(lhsn, self._parse_expression(AST.rhs),
+            return [_AssignStatement(lhsn, self._parse_expression(AST.rhs),
                     derivative = is_derivative,
                     pointer = self._pointers.get(lhsn, None),)]
         # TODO: Catch procedure calls and raise an explicit error, instead of
@@ -381,7 +381,7 @@ class NmodlMechanism(Reaction):
         self.solved_blocks = {}
         self.derivative_functions = {}
         solve_statements = {stmt.block: stmt
-                for stmt in self.breakpoint_block if isinstance(stmt, SolveStatement)}
+                for stmt in self.breakpoint_block if isinstance(stmt, _SolveStatement)}
         for name, block in self.derivative_blocks.items():
             if name not in solve_statements: continue
             if solve_statements[name].method == "sparse":
@@ -390,13 +390,13 @@ class NmodlMechanism(Reaction):
             else:
                 block = copy.deepcopy(block)
                 for stmt in block:
-                    if isinstance(stmt, AssignStatement) and stmt.derivative:
+                    if isinstance(stmt, _AssignStatement) and stmt.derivative:
                         stmt.solve()
             self.solved_blocks[name] = block
         # Substitute SolveStatements with their corresponding solved_blocks.
         self.breakpoint_block.map(lambda stmt: (
                 self.solved_blocks[stmt.block].statements
-                if isinstance(stmt, SolveStatement) and stmt.block in self.solved_blocks
+                if isinstance(stmt, _SolveStatement) and stmt.block in self.solved_blocks
                 else [stmt]))
 
     def bake(self, time_step, initial_values):
@@ -417,7 +417,7 @@ class NmodlMechanism(Reaction):
             py += "    %s = %s[%d]\n"%(name, mangle2("state"), idx)
         for name in self.states:
             py += "    %s = 0\n"%mangle('d' + name)
-        block.map(lambda x: [] if isinstance(x, ConserveStatement) else [x])
+        block.map(lambda x: [] if isinstance(x, _ConserveStatement) else [x])
         py += block.to_python(indent="    ")
         py += "    return [%s]\n"%", ".join(mangle('d' + x) for x in self.states)
         _exec_wrapper(py, globals_, locals_)
@@ -527,7 +527,7 @@ class NmodlMechanism(Reaction):
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
 
-class CodeBlock:
+class _CodeBlock:
     def __init__(self, file, AST):
         if hasattr(AST, "name"):
             self.name = AST.name.get_node_name()
@@ -550,7 +550,7 @@ class CodeBlock:
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
         self.statements.sort(key=lambda stmt: bool(
-                isinstance(stmt, AssignStatement)
+                isinstance(stmt, _AssignStatement)
                 and stmt.pointer and stmt.pointer.conductance))
         self._gather_arguments(file)
 
@@ -559,23 +559,23 @@ class CodeBlock:
         self.arguments = set()
         self.assigned = set()
         for stmt in self.statements:
-            if isinstance(stmt, AssignStatement):
+            if isinstance(stmt, _AssignStatement):
                 for symbol in stmt.rhs.free_symbols:
                     if symbol.name not in self.assigned:
                         self.arguments.add(symbol.name)
                 self.assigned.add(stmt.lhsn)
-            elif isinstance(stmt, IfStatement):
+            elif isinstance(stmt, _IfStatement):
                 for symbol in stmt.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
                 self.assigned.update(stmt.assigned)
-            elif isinstance(stmt, SolveStatement):
+            elif isinstance(stmt, _SolveStatement):
                 target_block = file.derivative_blocks[stmt.block]
                 for symbol in target_block.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
                 self.assigned.update(target_block.assigned)
-            elif isinstance(stmt, ConserveStatement): pass
+            elif isinstance(stmt, _ConserveStatement): pass
             else: raise NotImplementedError(stmt)
         # Remove the arguments which are implicit / always given.
         self.arguments.discard("time_step")
@@ -586,7 +586,7 @@ class CodeBlock:
 
     def __iter__(self):
         for stmt in self.statements:
-            if isinstance(stmt, IfStatement):
+            if isinstance(stmt, _IfStatement):
                 for x in stmt: yield x
             else: yield stmt
 
@@ -594,7 +594,7 @@ class CodeBlock:
         """ Argument f is function f(Statement) -> [Statement,]"""
         mapped_statements = []
         for stmt in self.statements:
-            if isinstance(stmt, IfStatement):
+            if isinstance(stmt, _IfStatement):
                 stmt.map(f)
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
@@ -607,13 +607,13 @@ class CodeBlock:
             else: py += stmt.to_python(indent)
         return py.rstrip() + "\n"
 
-class IfStatement:
+class _IfStatement:
     def __init__(self, file, AST):
         self.condition = file._parse_expression(AST.condition)
-        self.main_block = CodeBlock(file, AST.statement_block)
-        self.elif_blocks = [CodeBlock(file, block) for block in AST.elseifs]
+        self.main_block = _CodeBlock(file, AST.statement_block)
+        self.elif_blocks = [_CodeBlock(file, block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
-        self.else_block = CodeBlock(file, AST.elses)
+        self.else_block = _CodeBlock(file, AST.elses)
         self._gather_arguments()
 
     def _gather_arguments(self):
@@ -650,7 +650,7 @@ class IfStatement:
         py += self.else_block.to_python(indent + "    ")
         return py
 
-class AssignStatement:
+class _AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False, pointer=None):
         self.lhsn = str(lhsn) # Left hand side name.
         self.rhs  = rhs       # Right hand side.
@@ -710,7 +710,7 @@ class AssignStatement:
         dt = sympy.Symbol("time_step", real=True, positive=True)
         self.rhs = sympy.Symbol(self.lhsn) + self.rhs * dt
 
-class SolveStatement:
+class _SolveStatement:
     def __init__(self, file, AST):
         self.block = AST.block_name.get_node_name()
         self.steadystate = AST.steadystate
@@ -736,7 +736,7 @@ class SolveStatement:
         else:
             return indent + 1/0
 
-class ConserveStatement:
+class _ConserveStatement:
     def __init__(self, file, AST):
         conserved_expr = file._parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
         self.states = sorted(str(x) for x in conserved_expr.free_symbols)
