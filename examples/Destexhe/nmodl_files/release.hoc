@@ -1,0 +1,153 @@
+/*----------------------------------------------------------------------------
+
+	demo file for kinetic synapse mechanism
+	---------------------------------------
+
+	Kinetic model for the release of transmitter.  A presynaptic action
+	potential is elicited by injection of a 0.1 nA current pulse lasting
+	2 ms in the presynaptic terminal.  The presynaptic action potential 
+	induces an increase in intracellular calcium (cai) due to the presence
+	of a high-threshold calcium current (ica).  Calcium then binds to a 
+	calcium-binding protein ("fusion factor", FA) that binds to the docked
+	vesicles (VA) and triggers the release of transmitter (T).
+
+See details in:
+
+	Destexhe, A., Mainen, Z.F. and Sejnowski, T.J. Synthesis of models for
+	excitable membranes, synaptic transmission and neuromodulation using a 
+	common kinetic formalism, Journal of Computational Neuroscience 1: 
+	195-230, 1994.
+
+See also:
+
+	Destexhe, A., Mainen, Z.F. and Sejnowski, T.J.  Kinetic models of 
+	synaptic transmission.  In: Methods in Neuronal Modeling (2nd edition; 
+ 	edited by Koch, C. and Segev, I.), MIT press, Cambridge, 1998, pp 1-25.
+
+	(electronic copy available at http://cns.iaf.cnrs-gif.fr)
+
+
+Written by Alain Destexhe, 1993; modified 1996
+
+----------------------------------------------------------------------------*/
+
+
+
+//----------------------------------------------------------------------------
+//  load and define general graphical procedures
+//----------------------------------------------------------------------------
+
+// xopen("$(NEURONHOME)/lib/hoc/stdrun.hoc") 
+
+objectvar g[20]			// max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii	// define subroutine to add a new graph
+				// addgraph("variable", minvalue, maxvalue)
+	ngraph = ngraph+1
+	ii = ngraph-1
+	g[ii] = new Graph()
+	g[ii].size(0,tstop,$2,$3)
+//	g[ii].view(0,$2,tstop,$3-$2,0,0,600,100)	// only for printing
+	g[ii].xaxis()
+	g[ii].yaxis()
+	g[ii].addvar($s1,1,0)
+	g[ii].save_name("graphList[0].")
+	graphList[0].append(g[ii])
+}
+
+if(ismenu==0) {
+  nrnmainmenu()			// create main menu
+  nrncontrolmenu()		// crate control menu
+  ismenu=1
+}
+
+
+
+//----------------------------------------------------------------------------
+//  general parameters
+//----------------------------------------------------------------------------
+
+dt=0.025 // ModelDB administrator converges GABAb simple: rather than 0.01
+tstop = 20
+runStopAt = tstop
+steps_per_ms = 1/dt
+celsius = 36
+v_init = -70
+
+
+
+//----------------------------------------------------------------------------
+//  create compartments and insert passive properties
+//----------------------------------------------------------------------------
+
+create PRE
+forall {
+  diam=10
+  L=10
+  insert pas
+  g_pas=1/5000
+  e_pas=v_init
+}
+
+
+
+//----------------------------------------------------------------------------
+//  insert presynaptic mechanisms
+//----------------------------------------------------------------------------
+
+access PRE		// insert Hodgk-Hux. Na+ and K+ currents for spikes
+
+insert hh2
+ek = -90
+gnabar_hh2 = 0.1
+gkbar_hh2 = 0.03
+
+
+objectvar stim		// insert current injection
+PRE stim = new IClamp(.5)
+// note: for older versions of neuron, use PulseStim instead of IClamp
+stim.del = 5
+stim.dur = 2
+stim.amp = 0.1
+
+
+insert caL		// HV Ca++ channel for transmitter release
+p_caL=0.0002
+q_caL=10
+Ra_caL=1.6
+Rb_caL=1.6
+
+
+insert rel		// transmitter release
+Ves_rel = 0.01		// conc of vesicles (mM)
+Fmax_rel = 0.001 	// tot conc of proteins (F and V) (mM)
+b_rel	= 1e16  	// rate cst for Ca++ binding to fusion factor
+u_rel	= 0.1		// rate cst for Ca++ unbinding
+k1_rel	= 1000		// rate cst for activation of vesicle
+k2_rel	= 0.1		// rate cst for deactivation of vesicle
+k3_rel	= 4		// rate cst for exocytosis
+nt_rel	= 10000		// number of transmitter molecule per vesicle
+kh_rel	= 10		// transmitter hydolysis constant
+
+// cad is now incorporated into rel
+// insert rel		// Ca++ ATPase pump
+kd_rel = 1e-5
+kt_rel = 1e-3		// fast Ca++ removal
+depth_rel = 1
+taur_rel = 1e10
+
+
+
+//----------------------------------------------------------------------------
+//  add graphs
+//----------------------------------------------------------------------------
+
+
+addgraph("PRE.v(0.5)",-90,40)
+addgraph("PRE.ica(0.5)",-0.1,0)
+addgraph("PRE.cai(0.5)",-1e-6,0.00015)
+addgraph("PRE.FA_rel(0.5)",0.,0.0003)
+addgraph("PRE.VA_rel(0.5)",0.,Fmax_rel)
+addgraph("PRE.T_rel(0.5)",0,1.5)
+

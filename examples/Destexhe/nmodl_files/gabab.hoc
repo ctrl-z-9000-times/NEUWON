@@ -1,0 +1,139 @@
+/*----------------------------------------------------------------------------
+
+    Simplified kinetic synapse mechanism
+    ------------------------------------
+
+    Demo file to show the behavior of synaptic currents mediated by
+    GABA-B receptors, modeled using a minimal three-state kinetic model.
+
+    Kinetic model from Destexhe, A. and Sejnowski, T.J.  Proc. Natl.
+    Acad. Sci. USA 92: 9515-9519, 1995.
+
+  See details in:
+
+  Destexhe, A., Mainen, Z.F. and Sejnowski, T.J.  Kinetic models of 
+  synaptic transmission.  In: Methods in Neuronal Modeling (2nd edition; 
+  edited by Koch, C. and Segev, I.), MIT press, Cambridge, 1998, pp. 1-25.
+
+  (electronic copy available at http://cns.iaf.cnrs-gif.fr)
+
+
+  Written by Alain Destexhe, Laval University, 1995
+
+----------------------------------------------------------------------------*/
+
+
+
+//----------------------------------------------------------------------------
+//  load and define general graphical procedures
+//----------------------------------------------------------------------------
+
+// xopen("$(NEURONHOME)/lib/hoc/stdrun.hoc")
+
+objectvar g[20]         // max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii  // define subroutine to add a new graph
+                // addgraph("variable", minvalue, maxvalue)
+    ngraph = ngraph+1
+    ii = ngraph-1
+    g[ii] = new Graph()
+    g[ii].size(0,tstop,$2,$3)
+    g[ii].xaxis()
+    g[ii].yaxis()
+    g[ii].addvar($s1,1,0)
+    g[ii].save_name("graphList[0].")
+    graphList[0].append(g[ii])
+}
+
+if(ismenu==0) {
+  nrnmainmenu()         // create main menu
+  nrncontrolmenu()      // crate control menu
+  ismenu=1
+}
+
+
+
+//----------------------------------------------------------------------------
+//  general parameters
+//----------------------------------------------------------------------------
+
+dt=0.1
+tstop = 1000
+runStopAt = tstop
+steps_per_ms = 1/dt
+celsius = 36
+v_init = -70
+
+
+
+//----------------------------------------------------------------------------
+//  create compartments and insert passive properties
+//----------------------------------------------------------------------------
+
+create PRE,POST
+forall {
+  diam=10
+  L=10
+  insert pas
+  g_pas=1/5000
+  e_pas=v_init
+}
+
+
+
+//----------------------------------------------------------------------------
+//  insert presynaptic mechanisms
+//----------------------------------------------------------------------------
+
+access PRE      // insert Hodgk-Hux. Na+ and K+ currents for spikes
+insert hh2
+ek = -90
+gnabar_hh2 = 0.1
+gkbar_hh2 = 0.03
+
+objectvar stim      // insert current injection
+PRE stim = new IClamp(.5)
+// note: for older versions of neuron, use PulseStim instead of IClamp
+stim.del = 5
+stim.dur = 28       // 2 ms for single presyn spike, 28 ms for burst of 10
+stim.amp = 0.1
+
+
+
+
+//----------------------------------------------------------------------------
+//  insert postsynaptic mechansisms
+//----------------------------------------------------------------------------
+
+objectvar c
+c = new GABAb()         // create synapse
+POST c.loc(0.5)         // assign postsynaptic compartment
+setpointer c.pre, PRE.v(0.5)    // assign presynaptic compartment
+
+Cmax_GABAb  = 1 //  (mM)     max transmitter concentration
+Cdur_GABAb  = 1 //  (ms)     transmitter duration (rising phase)
+K1_GABAb    = 0.09  //  (/ms mM) forward binding rate to receptor
+K2_GABAb    = 0.0012 // (/ms)   backward (unbinding) rate of receptor
+K3_GABAb    = 0.18 //   (/ms)   rate of G-protein production
+K4_GABAb    = 0.034 //  (/ms)   rate of G-protein decay
+KD_GABAb    = 100   //      dissociation constant of K+ channel
+n_GABAb     = 4 //      nb of binding sites of G-protein on K+
+Erev_GABAb  = -95   //  (mV)    reversal potential (E_K)
+Prethresh_GABAb = 0     //  (mV)         voltage level nec for release
+Deadtime_GABAb  = 1 //  (ms)     mimimum time between release events
+c.gmax      = 0.0001 // (umho)       maximum conductance
+
+
+
+//----------------------------------------------------------------------------
+//  add graphs
+//----------------------------------------------------------------------------
+
+addgraph("PRE.v(0.5)",-90,40)
+addgraph("c.C",0,1)
+g[1].addvar("c.R",1,0)
+
+addgraph("c.G",0,10)
+addgraph("c.i",-0.0001,0.001)
+addgraph("POST.v(0.5)",v_init-4,v_init+1)

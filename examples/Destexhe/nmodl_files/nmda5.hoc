@@ -1,0 +1,168 @@
+/*----------------------------------------------------------------------------
+
+	Detailed kinetic synapse mechanism
+	----------------------------------
+
+	Demo file to show the behavior of a synaptic currents mediated by
+	glutamate NMDA receptors, using a detailed kinetic model of these
+	receptors and a kinetic model for the release of transmitter.
+
+	Kinetic model from Clements & Westbrook, Neuron 7: 605, 1991.
+
+
+  See details in:
+
+  Destexhe, A., Mainen, Z.F. and Sejnowski, T.J.  Kinetic models of 
+  synaptic transmission.  In: Methods in Neuronal Modeling (2nd edition; 
+  edited by Koch, C. and Segev, I.), MIT press, Cambridge, 1998, pp. 1-25.
+
+  (electronic copy available at http://cns.iaf.cnrs-gif.fr)
+
+
+  Written by Alain Destexhe, Laval University, 1995
+
+----------------------------------------------------------------------------*/
+
+
+
+//----------------------------------------------------------------------------
+//  load and define general graphical procedures
+//----------------------------------------------------------------------------
+
+// xopen("$(NEURONHOME)/lib/hoc/stdrun.hoc")
+
+objectvar g[20]			// max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii	// define subroutine to add a new graph
+				// addgraph("variable", minvalue, maxvalue)
+	ngraph = ngraph+1
+	ii = ngraph-1
+	g[ii] = new Graph()
+	g[ii].size(0,tstop,$2,$3)
+	g[ii].xaxis()
+	g[ii].yaxis()
+	g[ii].addvar($s1,1,0)
+	g[ii].save_name("graphList[0].")
+	graphList[0].append(g[ii])
+}
+
+if(ismenu==0) {
+  nrnmainmenu()			// create main menu
+  nrncontrolmenu()		// crate control menu
+  ismenu=1
+}
+
+
+
+//----------------------------------------------------------------------------
+//  general parameters
+//----------------------------------------------------------------------------
+
+dt=0.025
+tstop = 500
+runStopAt = tstop
+steps_per_ms = 1/dt
+celsius = 36
+v_init = -70
+
+
+
+//----------------------------------------------------------------------------
+//  create compartments and insert passive properties
+//----------------------------------------------------------------------------
+
+create PRE,POST
+forall {
+  diam=10
+  L=10
+  insert pas
+  g_pas=1/5000
+  e_pas=v_init
+}
+
+
+
+//----------------------------------------------------------------------------
+//  insert presynaptic mechanisms
+//----------------------------------------------------------------------------
+
+access PRE		// insert Hodgk-Hux. Na+ and K+ currents for spikes
+
+insert hh2
+ek = -90
+gnabar_hh2 = 0.1
+gkbar_hh2 = 0.03
+
+
+objectvar stim		// insert current injection
+PRE stim = new IClamp(.5)
+// note: for older versions of neuron, use PulseStim instead of IClamp
+stim.del = 10
+stim.dur = 2		// increase stim.dur to get a burst of presynaptic spikes
+stim.amp = 0.1
+
+
+insert caL		// HV Ca++ channel for transmitter release
+p_caL=0.0002
+q_caL=10
+Ra_caL=1.6
+Rb_caL=1.6
+
+
+insert rel		// transmitter release
+Ves_rel = 0.01		// conc of vesicles (mM)
+Fmax_rel = 0.001 	// tot conc of proteins (F and V) (mM)
+b_rel	= 1e16  	// rate cst for Ca++ binding to fusion factor
+u_rel	= 0.1		// rate cst for Ca++ unbinding
+k1_rel	= 1000		// rate cst for activation of vesicle
+k2_rel	= 0.1		// rate cst for deactivation of vesicle
+k3_rel	= 4		// rate cst for exocytosis
+nt_rel	= 10000		// number of transmitter molecule per vesicle
+kh_rel	= 10		// transmitter hydolysis constant
+
+// cad is now part of rel mechanism
+// insert cad		// Ca++ ATPase pump
+
+kd_rel = 1e-5
+kt_rel = 1e-3		// fast Ca++ removal
+depth_rel = 1
+taur_rel = 1e10
+
+
+
+//----------------------------------------------------------------------------
+//  insert postsynaptic mechansisms
+//----------------------------------------------------------------------------
+
+objectvar c
+c = new NMDA5()			// create synapse
+POST c.loc(0.5)				// assign postsynaptic compartment
+setpointer c.C, PRE.T_rel(0.5)		// assign presynaptic compartment
+
+Erev_NMDA5	= 0	//	(mV)	reversal potential (E_K)
+mg_NMDA5	= 0	//	put in zero magnesium for the demo
+
+// parameters from Hessler Shirke & Malinow 1993
+Rb_NMDA5	= 5e-3    //	(/uM /ms)	: binding 		
+Ru_NMDA5	= 12.9e-3  //	(/ms)	: unbinding		
+Rd_NMDA5	= 8.4e-3   //	(/ms)	: desensitization
+Rr_NMDA5	= 6.8e-3   //	(/ms)	: resensitization 
+Ro_NMDA5	= 46.5e-3   //	(/ms)	: opening
+Rc_NMDA5	= 73.8e-3   //	(/ms)	: closing
+c.gmax 		= 50	//	(pS)	maximum conductance
+
+
+
+
+//----------------------------------------------------------------------------
+//  add graphs
+//----------------------------------------------------------------------------
+
+
+addgraph("PRE.v(0.5)",-90,40)
+addgraph("PRE.T_rel(0.5)",0,1.5)
+
+addgraph("c.i",-0.001,0.0001)
+addgraph("POST.v(0.5)",v_init-2,v_init+4)
+
