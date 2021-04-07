@@ -50,7 +50,12 @@ library = {
 }
 
 class NmodlMechanism(Reaction):
-    def __init__(self, filename, pointers={}, parameter_overrides={}):
+    def __init__(self, filename, pointers={}, parameter_overrides={}, cache=False):
+        # TODO: Consider keeping a cache of loaded nmodl mechanisms. The cache
+        # would need to be keyed on all arguments: filename & file-contents,
+        # pointers, parameter_overrides. Pickle the contents of self.__dict__.
+        # Doing this should be easy, doing it *well* will take more time & energy.
+
         """
         Although the NMODL USEION statements are automatically dealt with, most
         other pointer situations are not. Custom {variable: Pointer} mappings
@@ -72,7 +77,7 @@ class NmodlMechanism(Reaction):
             self._solve()
         except KeyboardInterrupt: raise
         except Exception as err:
-            print("Exception raised while loading file:", self.filename)
+            print("Error: exception raised while loading file:", self.filename)
             raise err
 
     def _parse_text(self, nmodl_text):
@@ -245,7 +250,13 @@ class NmodlMechanism(Reaction):
             else:
                 self._add_pointer(variable, ion, conductance=True)
         num_conductances = sum(ptr.conductance for ptr in self._pointers.values())
-        assert(len(self.output_currents) == num_conductances) # Check for missing CONDUCTANCE_HINTs.
+        if len(self.output_currents) != num_conductances:
+            print("Output Currents:", ", ".join(self.output_currents))
+            print("Conductance Pointers:")
+            for name, ptr in self._pointers.items():
+                if ptr.conductance:
+                    print("\t" + name, "=", ptr)
+            raise ValueError("Failed to match output currents to conductance Pointers.")
         for name in self.states:
             self._add_pointer(name, reaction_instance=Real)
         for name in self.surface_area_parameters:
@@ -310,6 +321,9 @@ class NmodlMechanism(Reaction):
             return [AssignStatement(lhsn, self._parse_expression(AST.rhs),
                     derivative = is_derivative,
                     pointer = self._pointers.get(lhsn, None),)]
+        # TODO: Catch procedure calls and raise an explicit error, instead of
+        # just saying "unrecognised syntax". Procedure calls must be inlined by
+        # the nmodl library.
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(original))
 
     def _parse_expression(self, AST):
