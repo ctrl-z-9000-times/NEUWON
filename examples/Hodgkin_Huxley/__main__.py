@@ -11,6 +11,11 @@ import bisect
 import matplotlib.pyplot as plt
 import argparse
 
+# TODO: analyze_accuracy should replace analyze_time_step, but it needs captions
+# first.
+
+# TODO: Consider merging the AP_Propagation example into this example, call it the "3D" option.
+
 class Experiment:
     def __init__(self,
             axon_length   = 1000e-6,

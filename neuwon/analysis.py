@@ -9,6 +9,8 @@ from PIL import Image, ImageFont, ImageDraw
 # The idea is to use the new Pointer API for specifying data channels to render.
 # Also add an argument function to convert from value to the colorscale of their choice.
 
+# TODO: Make these into methods on the model object, instead of global functions
+# operating on the model. Then make these functions private.
 
 def draw_image(model, segment_colors,
         output_filename, resolution,
