@@ -74,6 +74,48 @@ class AccessHandle:
         """ Units: Molar / Second """
         return self._extra_release_rate
     @property
+    def coordinates(self):
+        """ """
+        return self._coordinates
+    @property
+    def diameters(self):
+        """ """
+        return self._diameters
+    @property
+    def parents(self):
+        """ """
+        return self._parents
+    @property
+    def children(self):
+        """ """
+        return self._children
+    @property
+    def surface_areas(self):
+        """ """
+        return self._surface_areas
+    @property
+    def cross_sectional_areas(self):
+        """ """
+        return self._cross_sectional_areas
+    @property
+    def intra_volumes(self):
+        """ """
+        return self._intra_volumes
+    @property
+    def extra_volumes(self):
+        """ """
+        return self._extra_volumes
+    @property
+    def neighbors(self):
+        """Adjacent locations in the partitioning of the extracellular medium.
+        geometry.neighbors[location] = array with data type neuwon.geometry.Neighbor """
+        return self._neighbors
+    @property
+    def geometric(self):
+        """ """
+        return self._geometric
+
+    @property
     def read(self):
         """ """
         return self._read
@@ -132,43 +174,44 @@ class AccessHandle:
         self._intra_volumes = bool(intra_volumes)
         self._extra_volumes = bool(extra_volumes)
         self._neighbors = bool(neighbors)
-        self._geometric = sum((self._coordinates, self._diameters,
-                self._parents, self._children, self._surface_areas,
-                self._cross_sectional_areas, self._intra_volumes,
-                self._extra_volumes, self._neighbors))
-        assert(1 == bool(self._reaction_instance) + bool(self._reaction_reference) +
-                self._voltage + self._conductance +
-                self._intra_concentration + self._extra_concentration +
-                self._intra_release_rate + self._extra_release_rate + self._geometric)
+        self._geometric = sum((self.coordinates, self.diameters,
+                self.parents, self.children, self.surface_areas,
+                self.cross_sectional_areas, self.intra_volumes,
+                self.extra_volumes, self.neighbors))
+        assert(1 == bool(self.reaction_instance) + bool(self.reaction_reference) +
+                self.voltage + self.conductance +
+                self.intra_concentration + self.extra_concentration +
+                self.intra_release_rate + self.extra_release_rate + self.geometric)
         self._geometric = bool(self._geometric)
-        self._read = (bool(self._reaction_instance) or bool(self._reaction_reference) or
-                self.voltage or self.intra_concentration or self._extra_concentration
+        self._read = (bool(self.reaction_instance) or bool(self.reaction_reference) or
+                self.voltage or self.intra_concentration or self.extra_concentration
                 or self.geometric)
-        self._write = (bool(self._reaction_instance) or bool(self._reaction_reference) or
-                self._conductance or self._intra_release_rate or self._extra_release_rate)
-        self._omnipresent = (self._voltage or self._conductance or
-                self._intra_concentration or self._extra_concentration or
-                self._intra_release_rate or self._extra_release_rate)
-        self._parallel = bool(self._reaction_instance) or bool(self._reaction_reference)
+        self._write = (bool(self.reaction_instance) or bool(self.reaction_reference) or
+                self.conductance or self.intra_release_rate or self.extra_release_rate)
+        self._omnipresent = (self.voltage or self.conductance or
+                self.intra_concentration or self.extra_concentration or
+                self.intra_release_rate or self.extra_release_rate or
+                self.geometric)
+        self._parallel = bool(self.reaction_instance) or bool(self.reaction_reference)
         # TODO: Make a flag for assign or accumulate.
 
     def NEURON_conversion_factor(self):
         """ """ # TODO!
-        if   self._reaction_instance: return 1
-        elif self._voltage:           return 1000 # From NEUWONs volts to NEURONs millivolts.
-        elif self._conductance:       return 1
+        if   self.reaction_instance: return 1
+        elif self.voltage:           return 1000 # From NEUWONs volts to NEURONs millivolts.
+        elif self.conductance:       return 1
         else: raise NotImplementedError(self)
 
     def __repr__(self):
-        name = getattr(self._species, "name", self._species)
+        name = getattr(self.species, "name", self.species)
         flags = []
-        if self._reaction_instance: flags.append(str(self._reaction_instance))
-        if self._voltage: flags.append("voltage=True")
-        if self._conductance: flags.append("conductance=True")
-        if self._intra_concentration: flags.append("intra_concentration=True")
-        if self._extra_concentration: flags.append("extra_concentration=True")
-        if self._intra_release_rate: flags.append("intra_release_rate=True")
-        if self._extra_release_rate: flags.append("extra_release_rate=True")
+        if self.reaction_instance: flags.append(str(self.reaction_instance))
+        if self.voltage: flags.append("voltage=True")
+        if self.conductance: flags.append("conductance=True")
+        if self.intra_concentration: flags.append("intra_concentration=True")
+        if self.extra_concentration: flags.append("extra_concentration=True")
+        if self.intra_release_rate: flags.append("intra_release_rate=True")
+        if self.extra_release_rate: flags.append("extra_release_rate=True")
         return "AccessHandle(Species=%s, %s)"%(name, ", ".join(flags))
 
     def __eq__(self, other):

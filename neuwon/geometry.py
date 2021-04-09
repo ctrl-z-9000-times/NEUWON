@@ -4,23 +4,12 @@ from neuwon.common import Location, ROOT, Real, epsilon, docstring_wrapper
 import neuwon.voronoi
 Neighbor = neuwon.voronoi.Neighbor
 
-# TODO: Extend the pointer API to access geometric data, and then make the
-# geometry class private.
+# TODO: Merge the users experience of the geometry module into the main Model class.
+#       DONE: Extend the pointer API to access geometric data
+#       TASK: Forward public methods to Model class: "nearest_neighbors" "is_root"
+#       TASK: Make the geometry class private.
 
 class Geometry:
-    coordinates = docstring_wrapper("coordinates", "")
-    diameters = docstring_wrapper("diameters", "")
-    parents = docstring_wrapper("parents", "")
-    children = docstring_wrapper("children", "")
-    maximum_extracellular_radius = docstring_wrapper("maximum_extracellular_radius", "")
-    cross_sectional_areas = docstring_wrapper("cross_sectional_areas", "")
-    surface_areas = docstring_wrapper("surface_areas", "")
-    intra_volumes = docstring_wrapper("intra_volumes", "")
-    extra_volumes = docstring_wrapper("extra_volumes", "")
-    neighbors = docstring_wrapper("neighbors",
-        """Adjacent locations in the partitioning of the extracellular medium.
-        geometry.neighbors[location] = array with data type neuwon.geometry.Neighbor""")
-
     """ Physical shapes & structures of neurons """
     def __init__(self, coordinates, parents, diameters,
             maximum_extracellular_radius=3e-6,

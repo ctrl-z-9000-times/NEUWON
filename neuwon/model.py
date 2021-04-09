@@ -44,54 +44,53 @@ class Model:
         return len(self.geometry)
 
     # TODO: rename this to just "read"
-    def read_pointer(self, pointer, location=None):
+    def read_pointer(self, handle, location=None):
         """ Returns the current value of a pointer.
 
         If location is not given, then this returns an array containing all
         values in the system, indexed by location. """
-        assert(isinstance(pointer, AccessHandle) and pointer.read)
-        if pointer.reaction_reference:
-            reaction_name, pointer_name = pointer.reaction_reference
-            data = self._reactions[reaction_name].state[pointer_name]
-        elif pointer.reaction_instance:
-            raise ValueError("Use a reaction_reference pointer in this context!")
-        elif pointer.intra_concentration:   data = self._species[pointer.species].intra.concentrations
-        elif pointer.extra_concentration:   data = self._species[pointer.species].extra.concentrations
-        elif pointer.voltage:               data = self._electrics.voltages
-        elif pointer.coordinates:           data = self.geometry.coordinates
-        elif pointer.diameters:             data = self.geometry.diameters
-        elif pointer.parents:               data = self.geometry.parents
-        elif pointer.children:              data = self.geometry.children
-        elif pointer.surface_areas:         data = self.geometry.surface_areas
-        elif pointer.cross_sectional_areas: data = self.geometry.cross_sectional_areas
-        elif pointer.intra_volumes:         data = self.geometry.intra_volumes
-        elif pointer.extra_volumes:         data = self.geometry.extra_volumes
-        elif pointer.neighbors:             data = self.geometry.neighbors
-        else: raise NotImplementedError(pointer)
+        assert(isinstance(handle, AccessHandle) and handle.read)
+        if handle.reaction_reference:
+            reaction_name, handle_name = handle.reaction_reference
+            data = self._reactions[reaction_name].state[handle_name]
+        elif handle.reaction_instance: raise ValueError("Use reaction_reference in this context!")
+        elif handle.intra_concentration:   data = self._species[handle.species].intra.concentrations
+        elif handle.extra_concentration:   data = self._species[handle.species].extra.concentrations
+        elif handle.voltage:               data = self._electrics.voltages
+        elif handle.coordinates:           data = self.geometry.coordinates
+        elif handle.diameters:             data = self.geometry.diameters
+        elif handle.parents:               data = self.geometry.parents
+        elif handle.children:              data = self.geometry.children
+        elif handle.surface_areas:         data = self.geometry.surface_areas
+        elif handle.cross_sectional_areas: data = self.geometry.cross_sectional_areas
+        elif handle.intra_volumes:         data = self.geometry.intra_volumes
+        elif handle.extra_volumes:         data = self.geometry.extra_volumes
+        elif handle.neighbors:             data = self.geometry.neighbors
+        else: raise NotImplementedError(handle)
         if location is None: return np.array(data, copy=True)
         else: return data[location]
 
     # TODO: rename this to just "write"
-    def write_pointer(self, pointer, location, value):
+    def write_pointer(self, handle, location, value):
         """ Write a new value to a pointer at the given location in the system. """
-        assert(isinstance(pointer, AccessHandle) and pointer.write)
-        if pointer.species: species = self._species[pointer.species]
-        if pointer.reaction_reference:
-            reaction_name, pointer_name = pointer.reaction_reference
+        assert(isinstance(handle, AccessHandle) and handle.write)
+        if handle.species: species = self._species[handle.species]
+        if handle.reaction_reference:
+            reaction_name, pointer_name = handle.reaction_reference
             array = self._reactions[reaction_name].state[pointer_name]
             array[location] = value
-        elif pointer.reaction_instance:
-            raise ValueError("Use a reaction_reference pointer in this context!")
-        elif pointer.conductance:
+        elif handle.reaction_instance:
+            raise ValueError("Use reaction_reference in this context!")
+        elif handle.conductance:
             # TODO: These updates need to be defered until after the reaction IO
             # has zeroed the writable data buffers.
             1/0
             # species.conductances[location] += value
-        elif pointer.intra_release_rate:
+        elif handle.intra_release_rate:
             1/0
-        elif pointer.extra_release_rate:
+        elif handle.extra_release_rate:
             1/0
-        else: raise NotImplementedError(pointer)
+        else: raise NotImplementedError(handle)
 
     def advance(self):
         # Calculate the externally applied currents.
