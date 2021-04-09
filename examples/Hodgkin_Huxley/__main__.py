@@ -77,16 +77,28 @@ class Experiment:
             t = step * self.time_step
             self.input_current.append(any(abs(x - t) < self.time_step / 2 for x in ap_times))
 
+    def input_pattern(self, time):
+        ap_times = [10e-3, 25e-3, 40e-3]
+        for ap_start in ap_times:
+            if time >= ap_start and time < ap_start + 1e-3:
+                return self.stimulus
+        return 0
+
     def run_experiment(self):
         self.time_stamps = []
         self.v = [[] for _ in self.probes]
         self.m = [[] for _ in self.probes]
-        m = Pointer(reaction_reference=("hh", "m"))
-        for t, inp in enumerate(self.input_current):
+        m = AccessHandle(reaction_reference=("hh", "m"))
+        gna = AccessHandle("na", conductance=True)
+        # self.time_span = 50e-3
+        # for tick in range(int(np.ceil(self.time_span / self.model.time_step))):
+        #     gna_inp = self.input_pattern(tick * self.model.time_step)
+        #     self.model.write_pointer(gna, self.soma[0].location, gna_inp)
+        for tick, inp in enumerate(self.input_current):
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
             self.model.advance()
-            self.time_stamps.append((t + 1) * self.time_step * 1e3)
+            self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.get_voltage() * 1e3)
                 self.m[idx].append(self.model.read_pointer(m, p.location))

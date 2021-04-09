@@ -50,7 +50,7 @@ class Experiment:
         self.generate_input()
         self.run()
 
-    def generate_input(self):
+    def input_function(self):
         # TODO: make a nice sequence of inputs to show the basic operation of synapse.
         #       I only want about 40-50 ms worth of runtime.
         #       ..^.....^.^.^..
