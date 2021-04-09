@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterable, Mapping
 
 from neuwon.common import *
 from neuwon.segments import _serialize_segments
-from neuwon.geometry import Geometry
+from neuwon.geometry import _Geometry
 from neuwon.species import _AllSpecies, _Electrics
 from neuwon.reactions import _AllReactions
 
@@ -24,7 +24,7 @@ class Model:
         self.stagger = bool(stagger)
         coordinates, parents, diameters, insertions = _serialize_segments(self, neurons)
         assert(len(coordinates) > 0)
-        self.geometry = Geometry(coordinates, parents, diameters)
+        self.geometry = _Geometry(coordinates, parents, diameters)
         self._reactions = _AllReactions(reactions, insertions)
         all_pointers = self._reactions.pointers()
         self._species = _AllSpecies(species, self.time_step, self.geometry, all_pointers)
@@ -42,6 +42,12 @@ class Model:
 
     def __len__(self):
         return len(self.geometry)
+
+    def is_root(self, location):
+        return self.geometry.is_root(location)
+
+    def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
+        return self.geometry.nearest_neighbors(coordinates, k, maximum_distance)
 
     # TODO: rename this to just "read"
     def read_pointer(self, handle, location=None):

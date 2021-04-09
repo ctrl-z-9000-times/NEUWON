@@ -4,12 +4,7 @@ from neuwon.common import Location, ROOT, Real, epsilon, docstring_wrapper
 import neuwon.voronoi
 Neighbor = neuwon.voronoi.Neighbor
 
-# TODO: Merge the users experience of the geometry module into the main Model class.
-#       DONE: Extend the pointer API to access geometric data
-#       TASK: Forward public methods to Model class: "nearest_neighbors" "is_root"
-#       TASK: Make the geometry class private.
-
-class Geometry:
+class _Geometry:
     """ Physical shapes & structures of neurons """
     def __init__(self, coordinates, parents, diameters,
             maximum_extracellular_radius=3e-6,
