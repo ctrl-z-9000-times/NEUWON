@@ -112,7 +112,7 @@ class Model:
             # Update the reactions for the whole time step using the
             # concentrations & voltages from halfway through the time step.
             self._reactions.advance(self)
-        self._check_data()
+        # self._check_data()
 
     def _check_data(self):
         self._reactions.check_data()
