@@ -9,11 +9,10 @@ Neighbor = neuwon.voronoi.Neighbor
 
 class Geometry:
     coordinates = docstring_wrapper("coordinates", "")
-    parents = docstring_wrapper("parents", "")
     diameters = docstring_wrapper("diameters", "")
-    maximum_extracellular_radius = docstring_wrapper("maximum_extracellular_radius", "")
-    children = docstring_wrapper("children", "")
     parents = docstring_wrapper("parents", "")
+    children = docstring_wrapper("children", "")
+    maximum_extracellular_radius = docstring_wrapper("maximum_extracellular_radius", "")
     cross_sectional_areas = docstring_wrapper("cross_sectional_areas", "")
     surface_areas = docstring_wrapper("surface_areas", "")
     intra_volumes = docstring_wrapper("intra_volumes", "")

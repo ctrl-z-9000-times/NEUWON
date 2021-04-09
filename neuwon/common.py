@@ -93,33 +93,57 @@ class AccessHandle:
         # TODO: Also consider removing this flag since it is always the opposite of omnipresent.
 
     def __init__(self, species=None,
+            reaction_instance=None,
+            reaction_reference=None,
             intra_concentration=False,
             extra_concentration=False,
             intra_release_rate=False,
             extra_release_rate=False,
             voltage=False,
             conductance=False,
-            reaction_instance=None,
-            reaction_reference=None,):
+            coordinates=False,
+            diameters=False,
+            parents=False,
+            children=False,
+            surface_areas=False,
+            cross_sectional_areas=False,
+            intra_volumes=False,
+            extra_volumes=False,
+            neighbors=False,):
         self._species = str(species) if species else None
+        if reaction_instance is not None: self._reaction_instance = _parse_dtype(reaction_instance)
+        else: self._reaction_instance = None
+        if reaction_reference:
+            reaction_name, handle_name = reaction_reference
+            self._reaction_reference = (str(reaction_name), str(handle_name))
+        else: self._reaction_reference = None
         self._intra_concentration = bool(intra_concentration)
         self._extra_concentration = bool(extra_concentration)
         self._intra_release_rate  = bool(intra_release_rate)
         self._extra_release_rate  = bool(extra_release_rate)
         self._voltage     = bool(voltage)
         self._conductance = bool(conductance)
-        if reaction_instance is not None: self._reaction_instance = _parse_dtype(reaction_instance)
-        else: self._reaction_instance = None
-        if reaction_reference:
-            reaction, pointer = reaction_reference
-            self._reaction_reference = (str(reaction), str(pointer))
-        else: self._reaction_reference = None
+        self._coordinates = bool(coordinates)
+        self._diameters = bool(diameters)
+        self._parents = bool(parents)
+        self._children = bool(children)
+        self._surface_areas = bool(surface_areas)
+        self._cross_sectional_areas = bool(cross_sectional_areas)
+        self._intra_volumes = bool(intra_volumes)
+        self._extra_volumes = bool(extra_volumes)
+        self._neighbors = bool(neighbors)
+        self._geometric = sum((self._coordinates, self._diameters,
+                self._parents, self._children, self._surface_areas,
+                self._cross_sectional_areas, self._intra_volumes,
+                self._extra_volumes, self._neighbors))
         assert(1 == bool(self._reaction_instance) + bool(self._reaction_reference) +
                 self._voltage + self._conductance +
                 self._intra_concentration + self._extra_concentration +
-                self._intra_release_rate + self._extra_release_rate)
+                self._intra_release_rate + self._extra_release_rate + self._geometric)
+        self._geometric = bool(self._geometric)
         self._read = (bool(self._reaction_instance) or bool(self._reaction_reference) or
-                self.voltage or self.intra_concentration or self._extra_concentration)
+                self.voltage or self.intra_concentration or self._extra_concentration
+                or self.geometric)
         self._write = (bool(self._reaction_instance) or bool(self._reaction_reference) or
                 self._conductance or self._intra_release_rate or self._extra_release_rate)
         self._omnipresent = (self._voltage or self._conductance or

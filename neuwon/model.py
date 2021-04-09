@@ -43,26 +43,35 @@ class Model:
     def __len__(self):
         return len(self.geometry)
 
+    # TODO: rename this to just "read"
     def read_pointer(self, pointer, location=None):
         """ Returns the current value of a pointer.
 
         If location is not given, then this returns an array containing all
         values in the system, indexed by location. """
         assert(isinstance(pointer, AccessHandle) and pointer.read)
-        if pointer.intra_concentration:
-            data = self._species[pointer.species].intra.concentrations
-        elif pointer.extra_concentration:
-            data = self._species[pointer.species].extra.concentrations
-        elif pointer.voltage:
-            data = self._electrics.voltages
-        elif pointer.reaction_reference:
+        if pointer.reaction_reference:
             reaction_name, pointer_name = pointer.reaction_reference
             data = self._reactions[reaction_name].state[pointer_name]
-        elif pointer.reaction_instance: raise ValueError(pointer)
+        elif pointer.reaction_instance:
+            raise ValueError("Use a reaction_reference pointer in this context!")
+        elif pointer.intra_concentration:   data = self._species[pointer.species].intra.concentrations
+        elif pointer.extra_concentration:   data = self._species[pointer.species].extra.concentrations
+        elif pointer.voltage:               data = self._electrics.voltages
+        elif pointer.coordinates:           data = self.geometry.coordinates
+        elif pointer.diameters:             data = self.geometry.diameters
+        elif pointer.parents:               data = self.geometry.parents
+        elif pointer.children:              data = self.geometry.children
+        elif pointer.surface_areas:         data = self.geometry.surface_areas
+        elif pointer.cross_sectional_areas: data = self.geometry.cross_sectional_areas
+        elif pointer.intra_volumes:         data = self.geometry.intra_volumes
+        elif pointer.extra_volumes:         data = self.geometry.extra_volumes
+        elif pointer.neighbors:             data = self.geometry.neighbors
         else: raise NotImplementedError(pointer)
         if location is None: return np.array(data, copy=True)
         else: return data[location]
 
+    # TODO: rename this to just "write"
     def write_pointer(self, pointer, location, value):
         """ Write a new value to a pointer at the given location in the system. """
         assert(isinstance(pointer, AccessHandle) and pointer.write)

@@ -58,6 +58,7 @@ class Experiment:
         # Give presyn a single and then a train of AP's.
         1/0
 
+
     def run(self):
         print("Advancing to steady state...")
         for _ in range(int(30e-3 / self.model.time_step)):
