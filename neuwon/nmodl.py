@@ -11,7 +11,7 @@ import math
 import os.path
 import itertools
 import copy
-from neuwon.common import celsius, Real, Pointer
+from neuwon.common import celsius, Real, AccessHandle
 import neuwon.units
 from neuwon.reactions import Reaction
 from scipy.sparse.linalg import expm
@@ -35,7 +35,7 @@ _default_parameters = {
 
 library = {
     "hh": ("neuwon/nmodl_library/hh.mod",
-        dict(pointers={"gl": Pointer("L", conductance=True)},
+        dict(pointers={"gl": AccessHandle("L", conductance=True)},
              parameter_overrides = {"celsius": 6.3})),
 
     "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
@@ -43,10 +43,10 @@ library = {
     "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
 
     "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
-        dict(pointers={"C": Pointer("Glu", extra_concentration=True)})),
+        dict(pointers={"C": AccessHandle("Glu", extra_concentration=True)})),
 
     "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
-        dict(pointers={"g": Pointer("ca", conductance=True)})),
+        dict(pointers={"g": AccessHandle("ca", conductance=True)})),
 }
 
 class NmodlMechanism(Reaction):
@@ -58,7 +58,7 @@ class NmodlMechanism(Reaction):
 
         """
         Although the NMODL USEION statements are automatically dealt with, most
-        other pointer situations are not. Custom {variable: Pointer} mappings
+        other pointer situations are not. Custom {variable: AccessHandle} mappings
         can be passed passed into the NmodlMechanism class init for direct control.
         """
         self.filename = os.path.normpath(str(filename))
@@ -208,7 +208,7 @@ class NmodlMechanism(Reaction):
     def _gather_IO(self, pointers):
         """ Determine what external data the mechanism accesses. """
         self._pointers = dict(pointers)
-        assert(all(isinstance(ptr, Pointer) for ptr in self._pointers.values()))
+        assert(all(isinstance(ptr, AccessHandle) for ptr in self._pointers.values()))
         # Assignments to the variables in output_currents are ignored because
         # NEUWON converts all mechanisms to use conductances instead of currents.
         self.output_currents = []
@@ -252,11 +252,11 @@ class NmodlMechanism(Reaction):
         num_conductances = sum(ptr.conductance for ptr in self._pointers.values())
         if len(self.output_currents) != num_conductances:
             print("Output Currents:", ", ".join(self.output_currents))
-            print("Conductance Pointers:")
+            print("Conductance AccessHandles:")
             for name, ptr in self._pointers.items():
                 if ptr.conductance:
                     print("\t" + name, "=", ptr)
-            raise ValueError("Failed to match output currents to conductance Pointers.")
+            raise ValueError("Failed to match output currents to conductance AccessHandles.")
         for name in self.states:
             self._add_pointer(name, reaction_instance=Real)
         for name in self.surface_area_parameters:
@@ -271,7 +271,7 @@ class NmodlMechanism(Reaction):
             #                     _AssignStatement(variable, variable, pointer=pointer))                
 
     def _add_pointer(self, name, *args, **kw_args):
-        pointer = Pointer(*args, **kw_args)
+        pointer = AccessHandle(*args, **kw_args)
         if name in self._pointers:
             raise ValueError("Name conflict: \"%s\" used for %s and %s"%(
                     name, self._pointers[name], pointer))

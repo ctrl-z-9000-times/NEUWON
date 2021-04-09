@@ -1,8 +1,8 @@
 import numpy as np
 import math
-from neuwon.common import docstring_wrapper, Pointer
+from neuwon.common import docstring_wrapper, AccessHandle
 from graph_algorithms import depth_first_traversal as dft
-_v = Pointer(voltage=True)
+_v = AccessHandle(voltage=True)
 
 class Segment:
     parent      = docstring_wrapper("parent", "Segment or None")

@@ -18,12 +18,12 @@ def docstring_wrapper(property_name, docstring):
         self.__dict__[property_name] = value
     return property(get_prop, set_prop, None, docstring)
 
-class Pointer:
-    """ The Pointer class is an enumeration of all publicly accessible data in
-    the Model. Pointers are the primary way of getting data into or out of the
-    Model.
+class AccessHandle:
+    """ The AccessHandle class is an enumeration of all publicly accessible data
+    in the Model. AccessHandles are the primary way of getting data into or out
+    of the Model.
 
-    Pointers are often associated with a name. """
+    AccessHandles are often associated with a name. """
 
     @property
     def species(self):
@@ -145,7 +145,7 @@ class Pointer:
         if self._extra_concentration: flags.append("extra_concentration=True")
         if self._intra_release_rate: flags.append("intra_release_rate=True")
         if self._extra_release_rate: flags.append("extra_release_rate=True")
-        return "Pointer(Species=%s, %s)"%(name, ", ".join(flags))
+        return "AccessHandle(Species=%s, %s)"%(name, ", ".join(flags))
 
     def __eq__(self, other):
         return repr(self) == repr(other)

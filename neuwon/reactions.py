@@ -26,7 +26,7 @@ class Reaction:
 
     @classmethod
     def pointers(self):
-        """ Returns a mapping of string names to Pointer objects.
+        """ Returns a mapping of string names to AccessHandle objects.
         All external data access is declared by this method. """
         raise TypeError("Abstract method called by %s."%repr(self))
 

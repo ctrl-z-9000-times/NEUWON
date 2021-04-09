@@ -48,7 +48,7 @@ class Model:
 
         If location is not given, then this returns an array containing all
         values in the system, indexed by location. """
-        assert(isinstance(pointer, Pointer) and pointer.read)
+        assert(isinstance(pointer, AccessHandle) and pointer.read)
         if pointer.intra_concentration:
             data = self._species[pointer.species].intra.concentrations
         elif pointer.extra_concentration:
@@ -65,12 +65,14 @@ class Model:
 
     def write_pointer(self, pointer, location, value):
         """ Write a new value to a pointer at the given location in the system. """
-        assert(isinstance(pointer, Pointer) and pointer.write)
+        assert(isinstance(pointer, AccessHandle) and pointer.write)
         if pointer.species: species = self._species[pointer.species]
         if pointer.reaction_reference:
             reaction_name, pointer_name = pointer.reaction_reference
             array = self._reactions[reaction_name].state[pointer_name]
             array[location] = value
+        elif pointer.reaction_instance:
+            raise ValueError("Use a reaction_reference pointer in this context!")
         elif pointer.conductance:
             # TODO: These updates need to be defered until after the reaction IO
             # has zeroed the writable data buffers.
