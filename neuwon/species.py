@@ -111,9 +111,9 @@ class _AllSpecies(dict):
         # Initialize the species internal data.
         for species in self.values():
             if species.intra_diffusivity is not None:
-                species.intra = _Diffusion(time_step / 2, geometry, species, "intracellular")
+                species.intra = _Diffusion(time_step, geometry, species, "intracellular")
             if species.extra_diffusivity is not None:
-                species.extra = _Diffusion(time_step / 2, geometry, species, "extracellular")
+                species.extra = _Diffusion(time_step, geometry, species, "extracellular")
             if species.transmembrane:
                 species.conductances = cp.zeros(len(geometry), dtype=Real)
 
@@ -288,7 +288,7 @@ class _Electrics:
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3):
         # Save and check the arguments.
-        self.time_step                  = time_step / 2
+        self.time_step                  = time_step
         self.intracellular_resistance   = float(intracellular_resistance)
         self.membrane_capacitance       = float(membrane_capacitance)
         assert(self.intracellular_resistance > 0)
