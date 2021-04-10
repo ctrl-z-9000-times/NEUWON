@@ -18,6 +18,8 @@ def docstring_wrapper(property_name, docstring):
         self.__dict__[property_name] = value
     return property(get_prop, set_prop, None, docstring)
 
+# TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
+
 class AccessHandle:
     """ The AccessHandle class is an enumeration of all publicly accessible data
     in the Model. AccessHandles are the primary way of getting data into or out
