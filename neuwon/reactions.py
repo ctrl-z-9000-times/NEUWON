@@ -29,6 +29,7 @@ class Reaction:
         """ Returns a mapping of string names to AccessHandle objects.
         All external data access is declared by this method. """
         raise TypeError("Abstract method called by %s."%repr(self))
+        # TODO: Rename this API method BC pointers got renamed...
 
     @classmethod
     def bake(self, time_step, initial_values):
@@ -126,7 +127,7 @@ class _AllReactions(dict):
                 elif ptr.reaction_reference:
                     reaction_name, pointer_name = ptr.reaction_reference
                     args[name] = model._reactions[reaction_name].state[pointer_name]
-                elif ptr.voltage: args[name] = model._electrics.previous_voltages
+                elif ptr.voltage: args[name] = model._electrics.voltages
                 elif ptr.conductance: args[name] = species.conductances
                 elif ptr.intra_concentration: args[name] = species.intra.previous_concentrations
                 elif ptr.extra_concentration: args[name] = species.extra.previous_concentrations
