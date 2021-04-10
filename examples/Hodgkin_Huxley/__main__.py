@@ -100,8 +100,15 @@ class Experiment:
             self.model.advance()
             self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
-                self.v[idx].append(p.get_voltage() * 1e3)
-                self.m[idx].append(self.model.read_pointer(m, p.location))
+                if self.model.stagger:
+                    if self.model.stagger_step:
+                        self.m[idx].append(self.model.read_pointer(m, p.location))
+                        self.time_stamps.pop()
+                    else:
+                        self.v[idx].append(p.get_voltage() * 1e3)
+                else:
+                    self.v[idx].append(p.get_voltage() * 1e3)
+                    self.m[idx].append(self.model.read_pointer(m, p.location))
 
 def analyze_time_step():
     caption = """
@@ -237,7 +244,12 @@ def analyze_accuracy():
 
     def make_figure(stagger, fast, slow):
         stagger_str = "Staggered" if stagger else "Unstaggered"
-        x_100 = Experiment(time_step = 100e-6, stagger=stagger, **args)
+        if stagger:
+            fast /= 2
+            slow /= 2
+            x_100 = Experiment(time_step = 100e-6 /2, stagger=stagger, **args)
+        else:
+            x_100 = Experiment(time_step = 100e-6, stagger=stagger, **args)
         plt.figure(stagger_str+" Time Steps")
 
         plt.subplot(2,2,1)
