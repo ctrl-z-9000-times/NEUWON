@@ -11,9 +11,6 @@ import bisect
 import matplotlib.pyplot as plt
 import argparse
 
-# TODO: analyze_accuracy should replace analyze_time_step, but it needs captions
-# first.
-
 # TODO: Consider merging the AP_Propagation example into this example, call it the "3D" option.
 
 class Experiment:
@@ -110,107 +107,25 @@ class Experiment:
                     self.v[idx].append(p.get_voltage() * 1e3)
                     self.m[idx].append(self.model.read_pointer(m, p.location))
 
-def analyze_time_step():
+def analyze_propagation():
     caption = """
-Reproduction of figures 4.9 and 4.10 from "The NEURON Book, 2003". A patch of membrane with
-Hodgkin-Huxley channels is stimulated with 0.025 nA of current for 1 ms. This figure demonstrates
-the effects of different integration strategies on simulation accuracy. The standard for accuracy is
-staggered integration with ∆t = 0.001 ms.
-
-Top Left: The spike was noticeably delayed compared to the standard for accuracy. The unstaggered
-method advances the solution as follows. First the membrane potential is advanced from v(t) to
-v(t + ∆t/2) and then to v(t + ∆t) using the membrane conductances g(t). Second the membrane
-conductances are advanced from g(t) to g(t + ∆t) using the membrane potential v(t + ∆t/2).
-
-Top Right: Plot of the absolute error of the membrane potential reveal that the error is
-proportional to the integration time step ∆t, i.e. the solution has only first order accuracy.
-
-Bottom Left: The spike was almost identical to the standard for accuracy. The staggered method is
-the same as unstaggered method, except that it reports the membrane potential at v(t + ∆t/2) in
-place of v(t + ∆t). The key insight to the staggered method is that both the membrane potential and
-conductances are advanced using input values from halfway through their time step.
-
-Bottom Right: Plot of the absolute error of the membrane potential show that the error is greatly
-reduced, and that the remaining error is not proportional to the time step ∆t. """
-    caption = "" # TL;DR.
-
-    # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
-    args = {
-        "axon_length": 4e-6,
-        "axon_diameter": 4e-6,
-        "soma_diameter": 4e-6,
-        "stimulus": 0.025e-9,
-        # "length_step": .2e-6,
-        "probes": [0],
-    }
-    def make_label(x):
-        if x.model.stagger:
-            return "staggered, dt = %g ms"%(x.time_step * 1e3)
-        else:
-            return "unstaggered, dt = %g ms"%(x.time_step * 1e3)
-
-    gold = Experiment(time_step = 1e-6, **args)
-
-    def measure_error(experiment):
-        error_v = []
-        error_m = []
-        for idx, t in enumerate(experiment.time_stamps):
-            v = experiment.v[0][idx]
-            m = experiment.m[0][idx]
-            loc = bisect.bisect_left(gold.time_stamps, t, hi=len(gold.time_stamps)-1)
-            error_v.append(abs(v - gold.v[0][loc]))
-            error_m.append(abs(m - gold.m[0][loc]))
-        return (error_v, error_m)
-
-    lockstep = Experiment(time_step = 100e-6, stagger=False, **args)
-    plt.figure("Staggered Time Steps")
-    plt.figtext(0.05, 0.01, caption, horizontalalignment='left', fontsize=14)
-    plt.suptitle("Efficient handling of nonlinearity")
-    plt.subplot(2,2,1)
-    plt.plot(gold.time_stamps, gold.v[0], 'k',
-            label=make_label(gold))
-    plt.plot(lockstep.time_stamps, lockstep.v[0], 'r',
-            label=make_label(lockstep))
+Simulated action potential propagating through a single long axon with Hodgkin-
+Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
+the action potential. The axon terminates after 1000 μm which slightly alters
+the dynamics near that point."""
+    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-6,)
+    colors = 'k purple b g y r'.split()
+    plt.figure("AP Propagation")
+    soma_coords = x.soma[-1].coordinates
+    for i, p in enumerate(x.probes):
+        dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
+        plt.plot(x.time_stamps, x.v[i], colors[i],
+            label="Distance from soma: %g μm"%(dist*1e6))
     plt.legend()
-    plt.title("Membrane Potential")
+    plt.title("Action Potential Propagation")
     plt.xlabel('ms')
+    plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
     plt.ylabel('mV')
-
-    plt.subplot(2,2,2)
-    lockstep_slow = Experiment(time_step = 20e-6, stagger=False, **args)
-    lockstep_fast = Experiment(time_step = 10e-6, stagger=False, **args)
-    plt.plot(lockstep_slow.time_stamps, measure_error(lockstep_slow)[0], 'r',
-            label=make_label(lockstep_slow))
-    plt.plot(lockstep_fast.time_stamps, measure_error(lockstep_fast)[0], 'b',
-            label=make_label(lockstep_fast))
-    plt.legend()
-    plt.title("Absolute Error")
-    plt.xlabel('ms')
-    plt.ylabel('mV')
-
-    plt.subplot(2,2,3)
-    staggered = Experiment(time_step = 100e-6, **args)
-    plt.plot(gold.time_stamps, gold.v[0], 'k',
-            label=make_label(gold))
-    plt.plot(staggered.time_stamps, staggered.v[0], 'r',
-            label=make_label(staggered))
-    plt.legend()
-    plt.title("Membrane Potential")
-    plt.xlabel('ms')
-    plt.ylabel('mV')
-
-    plt.subplot(2,2,4)
-    staggered_slow = Experiment(time_step = .1e-3, **args)
-    staggered_fast = Experiment(time_step = .05e-3, **args)
-    plt.plot(staggered_slow.time_stamps, measure_error(staggered_slow)[0], 'r',
-            label=make_label(staggered_slow))
-    plt.plot(staggered_fast.time_stamps, measure_error(staggered_fast)[0], 'b',
-            label=make_label(staggered_fast))
-    plt.legend()
-    plt.title("Absolute Error")
-    plt.xlabel('ms')
-    plt.ylabel('mV')
-
 
 def analyze_accuracy():
     caption = ""
@@ -243,14 +158,12 @@ def analyze_accuracy():
         return (error_v, error_m)
 
     def make_figure(stagger, fast, slow):
-        stagger_str = "Staggered" if stagger else "Unstaggered"
         if stagger:
             fast /= 2
             slow /= 2
             x_100 = Experiment(time_step = 100e-6 /2, stagger=stagger, **args)
         else:
             x_100 = Experiment(time_step = 100e-6, stagger=stagger, **args)
-        plt.figure(stagger_str+" Time Steps")
 
         plt.subplot(2,2,1)
         plt.plot(x_1.time_stamps, x_1.v[0], 'k',
@@ -293,7 +206,9 @@ def analyze_accuracy():
         plt.xlabel('ms')
         plt.ylabel('|m error|')
 
+    plt.figure("Figure 4.9 Unstaggered Time Steps")
     make_figure(False, 10e-6, 20e-6)
+    plt.figure("Figure 4.10 Staggered Time Steps")
     make_figure(True, 50e-6, 100e-6)
 
 def analyze_length_step():
@@ -328,32 +243,11 @@ def analyze_axon_diameter():
     plt.xlabel('ms')
     plt.ylabel('mV')
 
-def analyze_propagation():
-    caption = """
-Simulated action potential propagating through a single long axon with Hodgkin-
-Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
-the action potential. The axon terminates after 1000 μm which slightly alters
-the dynamics near that point."""
-    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-6,)
-    colors = 'k purple b g y r'.split()
-    plt.figure("AP Propagation")
-    soma_coords = x.soma[-1].coordinates
-    for i, p in enumerate(x.probes):
-        dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
-        plt.plot(x.time_stamps, x.v[i], colors[i],
-            label="Distance from soma: %g μm"%(dist*1e6))
-    plt.legend()
-    plt.title("Action Potential Propagation")
-    plt.xlabel('ms')
-    plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
-    plt.ylabel('mV')
-
 experiments_index = {
-    "time":         analyze_time_step,
-    "length":       analyze_length_step,
-    "diameter":     analyze_axon_diameter,
     "propagation":  analyze_propagation,
     "accuracy":     analyze_accuracy,
+    "length":       analyze_length_step,
+    "diameter":     analyze_axon_diameter,
 }
 
 args = argparse.ArgumentParser(description='Sanity tests with the Hodgkin-Huxley model')
