@@ -11,8 +11,6 @@ import bisect
 import matplotlib.pyplot as plt
 import argparse
 
-# TODO: Consider merging the AP_Propagation example into this example, call it the "3D" option.
-
 class Experiment:
     def __init__(self,
             axon_length   = 1000e-6,
@@ -240,11 +238,15 @@ def analyze_axon_diameter():
     plt.xlabel('ms')
     plt.ylabel('mV')
 
+def animation():
+    import animation
+
 experiments_index = {
     "accuracy":     analyze_accuracy,
     "propagation":  analyze_propagation,
     "length":       analyze_length_step,
     "diameter":     analyze_axon_diameter,
+    "animation":    animation,
 }
 
 args = argparse.ArgumentParser(description='Sanity tests with the Hodgkin-Huxley model')

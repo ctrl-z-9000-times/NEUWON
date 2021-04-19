@@ -5,9 +5,8 @@ import itertools
 import random
 from collections.abc import Callable, Iterable
 from graph_algorithms import depth_first_traversal as dft
-from neuwon.regions import Region
-import neuwon
-from neuwon import Segment
+from neuwon.api.regions import Region
+from neuwon.api import Segment
 
 class GrowSomata:
     def __init__(self, region, density, diameter):
@@ -124,7 +123,7 @@ class Growth:
         self.maximum_segment_length = float(maximum_segment_length)
         self.diameter               = diameter
         assert(all(isinstance(s, Segment) for s in self.seeds))
-        assert(isinstance(region, neuwon.regions.Region))
+        assert(isinstance(region, Region))
         assert(0 <= self.carrier_point_density)
         assert(0 <= self.balancing_factor)
         assert(0 <= self.extension_angle <= np.pi)
