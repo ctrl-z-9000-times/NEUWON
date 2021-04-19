@@ -4,6 +4,10 @@ from neuwon.common import docstring_wrapper, AccessHandle
 from graph_algorithms import depth_first_traversal as dft
 _v = AccessHandle(voltage=True)
 
+# TODO: Consider putting the segments API into the model.
+#       model.add_neuron() -> Segment
+#       and then the model will need to bake the segments...
+
 class Segment:
     parent      = docstring_wrapper("parent", "Segment or None")
     children    = docstring_wrapper("children", "List of Segment's")

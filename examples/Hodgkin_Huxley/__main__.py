@@ -95,12 +95,15 @@ class Experiment:
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
             self.model.advance()
-            self.time_stamps.append((tick + 1) * self.time_step * 1e3)
+            if self.model.stagger:
+                if not self.model.stagger_step:
+                    self.time_stamps.append((tick + 1) * self.time_step * 1e3)
+            else:
+                self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
                 if self.model.stagger:
                     if self.model.stagger_step:
                         self.m[idx].append(self.model.read_pointer(m, p.location))
-                        self.time_stamps.pop()
                     else:
                         self.v[idx].append(p.get_voltage() * 1e3)
                 else:
@@ -206,9 +209,9 @@ def analyze_accuracy():
         plt.xlabel('ms')
         plt.ylabel('|m error|')
 
-    plt.figure("Figure 4.9 Unstaggered Time Steps")
+    plt.figure("Figure 4.9")
     make_figure(False, 10e-6, 20e-6)
-    plt.figure("Figure 4.10 Staggered Time Steps")
+    plt.figure("Figure 4.10")
     make_figure(True, 50e-6, 100e-6)
 
 def analyze_length_step():
