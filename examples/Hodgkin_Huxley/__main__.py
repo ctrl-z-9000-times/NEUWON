@@ -87,48 +87,14 @@ class Experiment:
         self.m = [[] for _ in self.probes]
         m = AccessHandle(reaction_reference=("hh", "m"))
         gna = AccessHandle("na", conductance=True)
-        # self.time_span = 50e-3
-        # for tick in range(int(np.ceil(self.time_span / self.model.time_step))):
-        #     gna_inp = self.input_pattern(tick * self.model.time_step)
-        #     self.model.write_pointer(gna, self.soma[0].location, gna_inp)
         for tick, inp in enumerate(self.input_current):
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
             self.model.advance()
-            if self.model.stagger:
-                if not self.model.stagger_step:
-                    self.time_stamps.append((tick + 1) * self.time_step * 1e3)
-            else:
-                self.time_stamps.append((tick + 1) * self.time_step * 1e3)
+            self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
-                if self.model.stagger:
-                    if self.model.stagger_step:
-                        self.m[idx].append(self.model.read_pointer(m, p.location))
-                    else:
-                        self.v[idx].append(p.get_voltage() * 1e3)
-                else:
-                    self.v[idx].append(p.get_voltage() * 1e3)
-                    self.m[idx].append(self.model.read_pointer(m, p.location))
-
-def analyze_propagation():
-    caption = """
-Simulated action potential propagating through a single long axon with Hodgkin-
-Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
-the action potential. The axon terminates after 1000 μm which slightly alters
-the dynamics near that point."""
-    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-6,)
-    colors = 'k purple b g y r'.split()
-    plt.figure("AP Propagation")
-    soma_coords = x.soma[-1].coordinates
-    for i, p in enumerate(x.probes):
-        dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
-        plt.plot(x.time_stamps, x.v[i], colors[i],
-            label="Distance from soma: %g μm"%(dist*1e6))
-    plt.legend()
-    plt.title("Action Potential Propagation")
-    plt.xlabel('ms')
-    plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
-    plt.ylabel('mV')
+                self.v[idx].append(p.get_voltage() * 1e3)
+                self.m[idx].append(self.model.read_pointer(m, p.location))
 
 def analyze_accuracy():
     caption = ""
@@ -138,7 +104,7 @@ def analyze_accuracy():
         "axon_diameter": 4e-6,
         "soma_diameter": 4e-6,
         "stimulus": 0.025e-9,
-        # "length_step": .2e-6,
+        "length_step": .5e-6,
         "probes": [0],
     }
     def make_label(x):
@@ -160,59 +126,87 @@ def analyze_accuracy():
             error_m.append(abs(m - x_1.m[0][loc]))
         return (error_v, error_m)
 
-    def make_figure(stagger, fast, slow):
-        if stagger:
-            fast /= 2
-            slow /= 2
-            x_100 = Experiment(time_step = 100e-6 /2, stagger=stagger, **args)
-        else:
-            x_100 = Experiment(time_step = 100e-6, stagger=stagger, **args)
+    def make_figure(stagger):
+        x_250 = Experiment(time_step = 300e-6, stagger=stagger, **args)
+        x_slow = Experiment(time_step = 150e-6, stagger=stagger, **args)
+        x_fast = Experiment(time_step =  75e-6, stagger=stagger, **args)
+
+        x_250_error = measure_error(x_250)
+        x_fast_error = measure_error(x_fast)
+        x_slow_error = measure_error(x_slow)
 
         plt.subplot(2,2,1)
+        plt.plot(x_250.time_stamps, x_250.v[0], 'r',
+                label=make_label(x_250))
+        plt.plot(x_slow.time_stamps, x_slow.v[0], 'g',
+                label=make_label(x_slow))
+        plt.plot(x_fast.time_stamps, x_fast.v[0], 'b',
+                label=make_label(x_fast))
         plt.plot(x_1.time_stamps, x_1.v[0], 'k',
                 label=make_label(x_1))
-        plt.plot(x_100.time_stamps, x_100.v[0], 'r',
-                label=make_label(x_100))
         plt.legend()
         plt.xlabel('ms')
         plt.ylabel('mV')
 
         plt.subplot(2,2,3)
+        plt.plot(x_250.time_stamps, x_250.m[0], 'r',
+                label=make_label(x_250))
+        plt.plot(x_slow.time_stamps, x_slow.m[0], 'g',
+                label=make_label(x_slow))
+        plt.plot(x_fast.time_stamps, x_fast.m[0], 'b',
+                label=make_label(x_fast))
         plt.plot(x_1.time_stamps, x_1.m[0], 'k',
                 label=make_label(x_1))
-        plt.plot(x_100.time_stamps, x_100.m[0], 'r',
-                label=make_label(x_100))
         plt.legend()
         plt.xlabel('ms')
         plt.ylabel('m')
 
-        x_fast = Experiment(time_step = fast, stagger=stagger, **args)
-        x_slow = Experiment(time_step = slow, stagger=stagger, **args)
-        x_fast_error = measure_error(x_fast)
-        x_slow_error = measure_error(x_slow)
-
         plt.subplot(2,2,2)
+        plt.plot(x_250.time_stamps, x_250_error[0], 'r',
+                label=make_label(x_250))
+        plt.plot(x_slow.time_stamps, x_slow_error[0], 'g',
+                label=make_label(x_slow))
         plt.plot(x_fast.time_stamps, x_fast_error[0], 'b',
                 label=make_label(x_fast))
-        plt.plot(x_slow.time_stamps, x_slow_error[0], 'r',
-                label=make_label(x_slow))
         plt.legend()
         plt.xlabel('ms')
         plt.ylabel('|v error|')
 
         plt.subplot(2,2,4)
+        plt.plot(x_250.time_stamps, x_250_error[1], 'r',
+                label=make_label(x_250))
+        plt.plot(x_slow.time_stamps, x_slow_error[1], 'g',
+                label=make_label(x_slow))
         plt.plot(x_fast.time_stamps, x_fast_error[1], 'b',
                 label=make_label(x_fast))
-        plt.plot(x_slow.time_stamps, x_slow_error[1], 'r',
-                label=make_label(x_slow))
         plt.legend()
         plt.xlabel('ms')
         plt.ylabel('|m error|')
 
-    plt.figure("Figure 4.9")
-    make_figure(False, 10e-6, 20e-6)
-    plt.figure("Figure 4.10")
-    make_figure(True, 50e-6, 100e-6)
+    plt.figure("Unstaggered Time Steps")
+    make_figure(False)
+    plt.figure("Staggered Time Steps")
+    make_figure(True)
+
+def analyze_propagation():
+    caption = """
+Simulated action potential propagating through a single long axon with Hodgkin-
+Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
+the action potential. The axon terminates after 1000 μm which slightly alters
+the dynamics near that point."""
+    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-6,)
+    colors = 'k purple b g y r'.split()
+    plt.figure("AP Propagation")
+    soma_coords = x.soma[-1].coordinates
+    for i, p in enumerate(x.probes):
+        dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
+        plt.plot(x.time_stamps, x.v[i], colors[i],
+            label="Distance from soma: %g μm"%(dist*1e6))
+    plt.legend()
+    plt.title("Action Potential Propagation")
+    plt.xlabel('ms')
+    plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
+    plt.ylabel('mV')
 
 def analyze_length_step():
     x2 = Experiment(length_step=10e-6)
@@ -247,8 +241,8 @@ def analyze_axon_diameter():
     plt.ylabel('mV')
 
 experiments_index = {
-    "propagation":  analyze_propagation,
     "accuracy":     analyze_accuracy,
+    "propagation":  analyze_propagation,
     "length":       analyze_length_step,
     "diameter":     analyze_axon_diameter,
 }

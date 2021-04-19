@@ -27,8 +27,8 @@ class Model:
         self.geometry = _Geometry(coordinates, parents, diameters)
         self._reactions = _AllReactions(reactions, insertions)
         all_pointers = self._reactions.pointers()
-        self._species = _AllSpecies(species, self.time_step, self.geometry, all_pointers)
-        self._electrics = _Electrics(self.time_step, self.geometry,
+        self._species = _AllSpecies(species, self.time_step / 2, self.geometry, all_pointers)
+        self._electrics = _Electrics(self.time_step / 2, self.geometry,
             intracellular_resistance, membrane_capacitance, initial_voltage)
         initial_values = {}
         for ptr in all_pointers:
@@ -39,7 +39,6 @@ class Model:
                     initial_values[ptr] = self.read_pointer(ptr, 0)
         self._reactions.bake(self.time_step, self.geometry, initial_values)
         self._injected_currents = Model._InjectedCurrents()
-        self.stagger_step = False
 
     def __len__(self):
         return len(self.geometry)
@@ -100,8 +99,6 @@ class Model:
         else: raise NotImplementedError(handle)
 
     def advance(self):
-        # Calculate the externally applied currents.
-        # self._injected_currents.advance(self.time_step, self._electrics)
         if self.stagger:
             """
             All systems (reactions & mechanisms, diffusions & electrics) are
@@ -113,26 +110,16 @@ class Model:
             For more information see: The NEURON Book, 2003.
             Chapter 4, Section: Efficient handling of nonlinearity.
             """
-            if not self.stagger_step:
-                self._injected_currents.advance(self.time_step * 2, self._electrics)
-                self._species.advance(self)
-                self._reactions.advance(self)
-            else:
-                self._reactions.advance(self)
-                # self._injected_currents.advance(self.time_step, self._electrics)
-                self._species.advance(self)
-            self.stagger_step = not self.stagger_step
-        else:
-            """
-            Naive integration strategy, for reference only.
-            """
             self._injected_currents.advance(self.time_step, self._electrics)
-            # Update diffusions & electrics for the whole time step using the
-            # state of the reactions at the start of the time step.
             self._species.advance(self)
-            # self._species.advance(self)
-            # Update the reactions for the whole time step using the
-            # concentrations & voltages from halfway through the time step.
+            self._reactions.advance(self)
+            self._species.advance(self)
+        else:
+            """ Naive integration strategy, for reference only. """
+            self._injected_currents.advance(self.time_step / 2, self._electrics)
+            self._species.advance(self)
+            self._injected_currents.advance(self.time_step / 2, self._electrics)
+            self._species.advance(self)
             self._reactions.advance(self)
         # self._check_data()
 

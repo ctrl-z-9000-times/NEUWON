@@ -7,7 +7,6 @@ from neuwon.growth import *
 from neuwon.analysis import Animation
 min_v = -90e-3
 max_v = +70e-3
-from graph_algorithms import depth_first_traversal as dft
 
 # Setup a neuron and its axonal arbor.
 r = 30e-6
