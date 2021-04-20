@@ -205,7 +205,7 @@ class _Diffusion:
     def __init__(self, time_step, geometry, species, where):
         self.time_step                  = time_step
         self.concentrations             = cp.zeros(len(geometry), dtype=Real)
-        self.previous_concentrations    = cp.zeros(len(geometry), dtype=Real)
+        self.previous_concentrations    = cp.zeros(len(geometry), dtype=Real) # TODO: Remove this variable!
         self.release_rates              = cp.zeros(len(geometry), dtype=Real)
         # Compute the coefficients of the derivative function:
         # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
@@ -295,7 +295,7 @@ class _Electrics:
         assert(self.membrane_capacitance > 0)
         # Initialize data buffers.
         self.voltages           = cp.full(len(geometry), initial_voltage, dtype=Real)
-        self.previous_voltages  = cp.full(len(geometry), initial_voltage, dtype=Real)
+        self.previous_voltages  = cp.full(len(geometry), initial_voltage, dtype=Real) # TODO: Remove this variable!
         self.driving_voltages   = cp.zeros(len(geometry), dtype=Real)
         self.conductances       = cp.zeros(len(geometry), dtype=Real)
         # Compute passive properties.

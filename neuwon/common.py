@@ -11,14 +11,58 @@ epsilon = np.finfo(Real).eps
 Location = np.dtype('u4')
 ROOT = np.iinfo(Location).max
 
-def docstring_wrapper(property_name, docstring):
-    def get_prop(self):
-        return self.__dict__[property_name]
-    def set_prop(self, value):
-        self.__dict__[property_name] = value
-    return property(get_prop, set_prop, None, docstring)
-
 # TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
+
+# IDEA: Consider replacing AccessHandles with a string path identifier.
+# instead of >>> model.read(DataAccess('na', conductance=True), location)
+# do >>> model.read("na/conductance", location)
+# Or name aliases like: "na/i" and "na/o" "na/g"
+#       voltage
+#       geometry/property
+#       species_name/intra_concentration
+#       species_name/extra_concentration
+#       species_name/intra_release_rate
+#       species_name/extra_release_rate
+#       species_name/conductance
+#       reaction_name/variable_name
+
+class Array:
+    def __init__(self, dtype=Real, shape=(1,), initial_value=0.0, index="location",
+                user_read=False, user_write=False,):
+        self.dtype = dtype
+        if isinstance(shape, Iterable):
+            self.shape = tuple(int(round(x)) for x in shape)
+        else: self.shape = (int(round(shape)),)
+        self.initial_value = initial_value
+        self.index = str(index)
+        self.user_read = bool(user_read)
+        self.user_write = bool(user_write)
+        self._host_data = None
+        self._device_data = None
+        self._host_data_valid = False
+        self._device_data_valid = False
+
+    def read_host(self):
+        1/0
+
+    def write_host(self):
+        1/0
+
+    def read_device(self):
+        1/0
+
+    def write_device(self):
+        1/0
+
+class AllArrays(dict):
+    def __init__(self):
+        dict.__init__(self)
+
+    def add_array(self, path, **kw_args):
+        x = Array(**kw_args)
+        self[path] = x
+        return x
+
 
 class AccessHandle:
     """ The AccessHandle class is an enumeration of all publicly accessible data

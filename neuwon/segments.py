@@ -6,7 +6,17 @@ _v = AccessHandle(voltage=True)
 
 # TODO: Consider putting the segments API into the model.
 #       model.add_neuron() -> Segment
-#       and then the model will need to bake the segments...
+# I'd really like to do this idea, but I've tried it before and it always ends
+# up being too compilcated to practically implement... Maybe some day?
+
+
+def docstring_wrapper(property_name, docstring):
+    def get_prop(self):
+        return self.__dict__[property_name]
+    def set_prop(self, value):
+        self.__dict__[property_name] = value
+    return property(get_prop, set_prop, None, docstring)
+
 
 class Segment:
     parent      = docstring_wrapper("parent", "Segment or None")

@@ -17,11 +17,13 @@ class Model:
             reactions=(),
             species=(),
             stagger=True,
+            temperature = 37, # Celsius
             intracellular_resistance = 1,
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3,):
         self.time_step = float(time_step)
         self.stagger = bool(stagger)
+        self.temperature = float(temperature)
         coordinates, parents, diameters, insertions = _serialize_segments(self, neurons)
         assert(len(coordinates) > 0)
         self.geometry = _Geometry(coordinates, parents, diameters)
@@ -121,9 +123,8 @@ class Model:
             self._injected_currents.advance(self.time_step / 2, self._electrics)
             self._species.advance(self)
             self._reactions.advance(self)
-        # self._check_data()
 
-    def _check_data(self):
+    def check_data(self):
         self._reactions.check_data()
         self._species.check_data()
         self._electrics.check_data()
