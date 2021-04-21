@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from neuwon.common import docstring_wrapper, AccessHandle
+from neuwon.common import AccessHandle
 from graph_algorithms import depth_first_traversal as dft
 _v = AccessHandle(voltage=True)
 

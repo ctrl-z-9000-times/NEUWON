@@ -1,6 +1,5 @@
 __all__ = """
 AccessHandle
-celsius
 Location
 Model
 Neighbor
@@ -10,7 +9,7 @@ Segment
 Species
 """.split()
 
-from neuwon.common import Real, Location, celsius, AccessHandle
+from neuwon.common import Real, Location, AccessHandle
 from neuwon.model import Model
 from neuwon.reactions import Reaction
 from neuwon.segments import Segment

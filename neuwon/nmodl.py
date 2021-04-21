@@ -11,7 +11,7 @@ import math
 import os.path
 import itertools
 import copy
-from neuwon.common import celsius, Real, AccessHandle
+from neuwon.common import Real, AccessHandle
 import neuwon.units
 from neuwon.reactions import Reaction
 from scipy.sparse.linalg import expm
@@ -30,7 +30,7 @@ ANT = nmodl.ast.AstNodeType
 
 
 _default_parameters = {
-    "celsius": (celsius, "degC")
+    "celsius": (37, "degC")
 }
 
 library = {

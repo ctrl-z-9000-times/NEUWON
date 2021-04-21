@@ -3,8 +3,6 @@ from collections.abc import Callable, Iterable, Mapping
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
-celsius = 37 # Human body temperature
-T = celsius + 273.15 # Human body temperature in Kelvins
 
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps

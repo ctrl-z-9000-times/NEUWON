@@ -6,7 +6,7 @@ import cupyx.scipy.sparse
 import math
 import copy
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.common import Real, epsilon, F, R, T
+from neuwon.common import Real, epsilon, F, R
 
 library = {
     "na": {
@@ -77,18 +77,13 @@ class Species:
         assert(self.extra_decay_period > 0.0)
         if reversal_potential == "nerst":
             self.reversal_potential = str(reversal_potential)
-            # Compute the reversal potential in advance if able.
-            if self.intra_diffusivity is None and self.extra_diffusivity is None:
-                x = nerst_potential(self.charge, self.intra_concentration, self.extra_concentration)
-                self._reversal_potential_method = lambda i, o, v: x
-            else:
-                self._reversal_potential_method = lambda i, o, v: nerst_potential(self.charge, i, o)
+            self._reversal_potential_method = lambda T, i, o, v: nerst_potential(self.charge, T, i, o)
         elif reversal_potential == "goldman_hodgkin_katz":
             self.reversal_potential = str(reversal_potential)
             self._reversal_potential_method = self.goldman_hodgkin_katz
         else:
             self.reversal_potential = float(reversal_potential)
-            self._reversal_potential_method = lambda i, o, v: self.reversal_potential
+            self._reversal_potential_method = lambda T, i, o, v: self.reversal_potential
         # These attributes are initialized on a copy of this object:
         self.intra = None # _Diffusion instance
         self.extra = None # _Diffusion instance
@@ -152,9 +147,11 @@ class _AllSpecies(dict):
         # Accumulate the net conductances and driving voltages from the chemical data.
         model._electrics.conductances.fill(0)     # Zero accumulator.
         model._electrics.driving_voltages.fill(0) # Zero accumulator.
+        T = model.celsius + 273.15
         for s in model._species.values():
             if not s.transmembrane: continue
             s.reversal_potential = s._reversal_potential_method(
+                T,
                 s.intra_concentration if s.intra is None else s.intra.concentrations,
                 s.extra_concentration if s.extra is None else s.extra.concentrations,
                 model._electrics.voltages)
@@ -261,7 +258,7 @@ class _Diffusion:
         if True: print(where, species.name, "IRM NNZ per Location", self.irm.nnz / len(geometry))
         self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)
 
-def nerst_potential(charge, intra_concentration, extra_concentration):
+def nerst_potential(charge, T, intra_concentration, extra_concentration):
     """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(intra_concentration)
     if charge == 0: return xp.full_like(intra_concentration, xp.nan)
@@ -275,7 +272,7 @@ def _efun(z):
     else:
         return z / (math.exp(z) - 1)
 
-def goldman_hodgkin_katz(charge, intra_concentration, extra_concentration, voltages):
+def goldman_hodgkin_katz(charge, T, intra_concentration, extra_concentration, voltages):
     """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(intra_concentration)
     if charge == 0: return xp.full_like(intra_concentration, np.nan)

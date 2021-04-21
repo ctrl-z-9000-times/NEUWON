@@ -17,13 +17,13 @@ class Model:
             reactions=(),
             species=(),
             stagger=True,
-            temperature = 37, # Celsius
+            celsius = 37,
             intracellular_resistance = 1,
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3,):
         self.time_step = float(time_step)
         self.stagger = bool(stagger)
-        self.temperature = float(temperature)
+        self.celsius = float(celsius)
         coordinates, parents, diameters, insertions = _serialize_segments(self, neurons)
         assert(len(coordinates) > 0)
         self.geometry = _Geometry(coordinates, parents, diameters)
