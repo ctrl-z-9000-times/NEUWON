@@ -4,41 +4,69 @@ instead of >>> model.read(DataAccess('na', conductance=True), location)
 do >>> model.read("na/conductance", location)
 Or name aliases like: "na/i" and "na/o" "na/g"
 
-voltage
-geometry/property
-species_name/intra_concentration
-species_name/extra_concentration
-species_name/intra_release_rate
-species_name/extra_release_rate
-species_name/conductance
-reaction_name/variable_name
-
 So pretty much I want to re-create the entire model except as a directory of
-string identifiers.
+string identifiers. Then I can automate a lot of the boiler plate away.
+
 The objects in the data store can be any of:
       Single omnipresent value
       Array of values
       Array of pointers to other locations
-      Sparse matrix
-      Species object?
 
-
-/voltage
-/geometry/property
-/species_name/in/concentration
-/species_name/in/release_rate
-/species_name/out/variable_name
-/reaction_name/
-/reaction_name/insertions - dtype=locations
-/reaction_name/coupled_reaction - dtype=pointer to reaction_instance
-/reaction_name/states/
+voltage
+geometry/property
+species_name/in/concentration
+species_name/in/release_rate
+species_name/out/variable_name
+reaction_name/
+reaction_name/insertions - dtype=locations
+reaction_name/coupled_reaction - dtype=pointer to reaction_instance
+reaction_name/states/
 """
 
-class Value:
-    pass
+import numpy as np
+
+# MEMO: make this code totally agnostic to the contents of the data.
+# Also, the name is arbitrary, users can specify any name they like.
+
+class Database:
+    def __init__(self):
+        self.collections = {}
+        self.data = {}
+
+    def add_collection(self, name):
+        self.collections[name] = Collection()
+
+    def add_constant(self, name, value):
+        1/0
+
+    def add_array(self, name, collection,
+            dtype=Real, shape=(1,),
+            initial_value=np.nan,
+            user_read=False, user_write=False,):
+        1/0
+
+    def add_reference(self, name, collection, target):
+        1/0
+
+    def add_instance(self, name, collection) -> int:
+        1/0
+
+    def host_access(self, name):
+        1/0
+
+    def device_access(self, name):
+        1/0
+
+    def check(self):
+        1/0
+
+class _Collection:
+    def __init__(self, size=0):
+        self.size = int(round(size))
+        self.freelist = []
 
 class Array:
-    def __init__(self, dtype=Real, shape=(1,), initial_value=0.0, index="location",
+    def __init__(self, dtype=Real, shape=(1,), initial_value=np.nan, collection=None,
                 user_read=False, user_write=False,):
         self.dtype = dtype
         if isinstance(shape, Iterable):
@@ -53,14 +81,5 @@ class Array:
         self._host_data_valid = False
         self._device_data_valid = False
 
-    def read_host(self):
-        1/0
-
-    def write_host(self):
-        1/0
-
-    def read_device(self):
-        1/0
-
-    def write_device(self):
-        1/0
+class Reference:
+    pass

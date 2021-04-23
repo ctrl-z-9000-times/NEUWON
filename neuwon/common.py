@@ -168,6 +168,8 @@ class AccessHandle:
         self._intra_volumes = bool(intra_volumes)
         self._extra_volumes = bool(extra_volumes)
         self._neighbors = bool(neighbors)
+        # self._neighbor_distances = bool(neighbor_distances)
+        # self._border_surface_areas = bool(border_surface_areas)
         self._geometric = sum((self.coordinates, self.diameters,
                 self.parents, self.children, self.surface_areas,
                 self.cross_sectional_areas, self.intra_volumes,
