@@ -6,7 +6,10 @@ import cupyx.scipy.sparse
 import math
 import copy
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.common import Real, epsilon, F, R
+from neuwon.common import Real, epsilon
+
+F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
+R = 8.31446261815324 # Universal gas constant
 
 library = {
     "na": {
@@ -91,62 +94,36 @@ class Species:
 
 class _AllSpecies(dict):
     """ A dictionary containing all species. """
-    def __init__(self, species_argument, time_step, geometry, all_pointers):
-        # The given argument species take priority, add them first.
-        self._add_species(species_argument)
-        # Pull in all species which are required for the reactions.
-        for ptr in all_pointers:
-            if ptr.species: self._add_species(ptr.species)
-        # Fill in unspecified species from the standard library.
-        for name, species in self.items():
-            if species is None:
-                if name in library:
-                    self._add_species(Species(name, **library[name]))
-                else: raise ValueError("Unresolved species: %s."%name)
-        # Initialize the species internal data.
-        for species in self.values():
-            if species.intra_diffusivity is not None:
-                species.intra = _Diffusion(time_step, geometry, species, "intracellular")
-            if species.extra_diffusivity is not None:
-                species.extra = _Diffusion(time_step, geometry, species, "extracellular")
-            if species.transmembrane:
-                species.conductances = cp.zeros(len(geometry), dtype=Real)
-
-    def _add_species(self, new_species):
-        """ Add a new species to the dictionary if its name is new/unique.
-
-        Argument new_species must be one of:
-          * An instance of the Species class,
-          * A dictionary of arguments for initializing a new instance of the Species class,
-          * The species name as a placeholder string,
-          * A list of one of the above.
-        """
-        if isinstance(new_species, Species):
-            if new_species.name not in self or self[new_species.name] is None:
-                self[new_species.name] = copy.copy(new_species)
-        elif isinstance(new_species, Mapping):
-            self._add_species(Species(**new_species))
-        elif isinstance(new_species, str):
-            if new_species not in self:
-                self[new_species] = None
-        elif isinstance(new_species, Iterable):
-            for x in new_species:
-                self._add_species(x)
-        else: raise TypeError("Invalid species: %s."%repr(new_species))
+    def __init__(self, species, database):
+        dict.__init__(self)
+        for s in species:
+            if isinstance(s, Mapping):
+                s = Species(**s)
+            elif isinstance(s, str):
+                if s in library: s = Species(s, **library[s])
+                else: raise ValueError("Unresolved species: %s."%s)
+            else:
+                assert(isinstance(s, Species))
+            assert(s.name not in self)
+            self[s.name] = copy.copy(s)
+            if s.intra_diffusivity is not None:
+                database.add_component("Location", s.name + "/i/concentrations")
+                database.add_component("Location", s.name + "/i/release_rates", initial_value=0)
+            if s.extra_diffusivity is not None:
+                database.add_component("Location", s.name + "/o/concentrations")
+                database.add_component("Location", s.name + "/o/release_rates", initial_value=0)
+            if s.transmembrane:
+                database.add_component("Location", s.name + "/conductances", initial_value=0)
 
     @staticmethod
     def advance(model):
         """ Note: Each call to this method integrates over half a time step. """
         dt = model._electrics.time_step
-        # Save prior state.
-        model._electrics.previous_voltages = cp.array(model._electrics.voltages, copy=True)
-        for s in model._species.values():
-            for x in (s.intra, s.extra):
-                if x is not None:
-                    x.previous_concentrations = cp.array(x.concentrations, copy=True)
         # Accumulate the net conductances and driving voltages from the chemical data.
-        model._electrics.conductances.fill(0)     # Zero accumulator.
-        model._electrics.driving_voltages.fill(0) # Zero accumulator.
+        model._electrics.conductances     = cp.zeros(len(geometry), dtype=Real)
+        model._electrics.driving_voltages = cp.zeros(len(geometry), dtype=Real)
+        # model._electrics.conductances.fill(0)     # Zero accumulator.
+        # model._electrics.driving_voltages.fill(0) # Zero accumulator.
         T = model.celsius + 273.15
         for s in model._species.values():
             if not s.transmembrane: continue
@@ -185,25 +162,9 @@ class _AllSpecies(dict):
                 # Calculate the lateral diffusion throughout the space.
                 x.concentrations = x.irm.dot(x.concentrations)
 
-    def check_data(self):
-        for s in self.values():
-            if s.transmembrane:
-                assert cp.all(cp.isfinite(s.conductances)), s.name
-            if s.intra is not None:
-                assert cp.all(cp.isfinite(s.intra.concentrations)), s.name
-                assert cp.all(cp.isfinite(s.intra.previous_concentrations)), s.name
-                assert cp.all(cp.isfinite(s.intra.release_rates)), s.name
-            if s.extra is not None:
-                assert cp.all(cp.isfinite(s.extra.concentrations)), s.name
-                assert cp.all(cp.isfinite(s.extra.previous_concentrations)), s.name
-                assert cp.all(cp.isfinite(s.extra.release_rates)), s.name
-
 class _Diffusion:
     def __init__(self, time_step, geometry, species, where):
-        self.time_step                  = time_step
-        self.concentrations             = cp.zeros(len(geometry), dtype=Real)
-        self.previous_concentrations    = cp.zeros(len(geometry), dtype=Real) # TODO: Remove this variable!
-        self.release_rates              = cp.zeros(len(geometry), dtype=Real)
+        self.time_step = time_step
         # Compute the coefficients of the derivative function:
         # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
         cols = [] # Source
@@ -292,9 +253,6 @@ class _Electrics:
         assert(self.membrane_capacitance > 0)
         # Initialize data buffers.
         self.voltages           = cp.full(len(geometry), initial_voltage, dtype=Real)
-        self.previous_voltages  = cp.full(len(geometry), initial_voltage, dtype=Real) # TODO: Remove this variable!
-        self.driving_voltages   = cp.zeros(len(geometry), dtype=Real)
-        self.conductances       = cp.zeros(len(geometry), dtype=Real)
         # Compute passive properties.
         self.axial_resistances  = np.empty(len(geometry), dtype=Real)
         self.capacitances       = np.empty(len(geometry), dtype=Real)
@@ -336,11 +294,3 @@ class _Electrics:
         if True: print("Electrics IRM NNZ per Location", self.irm.nnz / len(geometry))
         # Move this data to the GPU now that the CPU is done with it.
         self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)
-        self.axial_resistances  = cp.array(self.axial_resistances)
-        self.capacitances       = cp.array(self.capacitances)
-
-    def check_data(self):
-        assert(cp.all(cp.isfinite(self.voltages)))
-        assert(cp.all(cp.isfinite(self.previous_voltages)))
-        assert(cp.all(cp.isfinite(self.driving_voltages)))
-        assert(cp.all(cp.isfinite(self.conductances)))

@@ -5,6 +5,25 @@ import cupy as cp
 from neuwon.common import Location, ROOT, Real
 # TODO: Move the location definition into the database file.
 
+# TODO: Consider allowing documentation to be attacted to components & entities.
+#       Description, Units, Assign vs Accumulate, Notes...
+
+# TODO: How to deal with children and neighbors? I want that data to be
+# accessible via the same API as all of the other data in the database, but I
+# don't know how to manage that data. Should it even be on the GPU? Can it be
+# transformed into a sparse matrix? How will that work with add/remove'ing instances?
+#       Children
+#       extracellular Neighbor location
+#       extracellular Neighbor distance
+#       extracellular Neighbor border_surface_area
+
+# TODO: Consider having an intracellular neighbor & border_surface_area?
+#       This would replace children?
+
+# TODO: Now that I can add/remove entities at runtime, I need a stable handle on
+# an entity which does not get blown away when the data gets reallocated and remapped.
+
+
 class Database:
     """ The Database is a custom Entity Component System.
 
@@ -32,7 +51,7 @@ class Database:
     def add_component(self, entity_type: str, component_name: str,
             dtype=Real, shape=(1,),
             reference=False,
-            initial_value=np.nan,
+            initial_value=None,
             user_read=False, user_write=False, check=True):
         entity_type = str(entity_type)
         assert(entity_type in self.entity_types)
@@ -77,7 +96,9 @@ class Database:
                 if component.reference:
                     1/0 # Check for ROOT
                 else:
-                    assert(cp.all(cp.isfinite(component.data)), name)
+                    kind = component.dtype.kind
+                    if kind == "f" or kind == "c":
+                        assert(cp.all(cp.isfinite(component.data)), name)
 
     def __repr__(self) -> str:
         s = ""
@@ -119,6 +140,11 @@ class _Array:
 
     def _create_instances(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
+        
+        # TODO: IIRC CuPy can not deal with numpy structured arrays...
+        #       Detect this issue and revert to using numba arrays.
+        #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
+
         if self.data is None:
             self.data = cp.empty((int(new_size * 1.25),)+self.shape, dtype=self.dtype)
         elif len(self.data) < new_size:
@@ -127,6 +153,8 @@ class _Array:
             self.data[:len(old_data)] = old_data
         if self.initial_value is not None:
             self.data[old_size: new_size].fill(self.initial_value)
+
+
 
 if __name__ == "__main__":
     db = Database()
