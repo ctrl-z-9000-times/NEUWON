@@ -1,6 +1,6 @@
 # Make a synapse using the Destexhe mechanisms. Show what it takes to go from a
-# neuroscience specification to runnable experiment. And then analyse how well it
-# works.
+# neuroscience specification to runnable experiment. And then analyse how well
+# it works.
 
 # TODO: Most of the mod files will need to be modified. Changing them is OK as
 # long as it's version controlled.

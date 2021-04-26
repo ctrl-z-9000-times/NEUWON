@@ -51,6 +51,19 @@ class Model:
     def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
         return self.geometry.nearest_neighbors(coordinates, k, maximum_distance)
 
+
+    # IDEA: Consider replacing AccessHandles with a string path identifier.
+    # instead of >>> model.read(AccessHandle('na', conductance=True), location)
+    # do >>> model.read("na/conductance", location)
+    # Or name aliases like: "na/i" and "na/o" "na/g"
+    #       voltage
+    #       geometry/property
+    #       species_name/intra/concentration
+    #       species_name/intra/release_rate
+    #       reaction_name/
+    #       reaction_name/insertions - dtype=locations
+    #       reaction_name/state/
+
     # TODO: rename this to just "read"
     def read_pointer(self, handle, location=None):
         """ Returns the current value of a pointer.
