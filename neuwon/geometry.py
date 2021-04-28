@@ -4,6 +4,13 @@ from neuwon.common import Location, ROOT, Real, epsilon
 import neuwon.voronoi
 Neighbor = neuwon.voronoi.Neighbor
 
+# TODO: Consider having an intracellular neighbor & border_surface_area?
+#       This would replace children?
+
+# TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
+
+
+
 class _Geometry:
     """ Physical shapes & structures of neurons """
     def __init__(self, coordinates, parents, diameters,

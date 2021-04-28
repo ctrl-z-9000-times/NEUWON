@@ -6,7 +6,7 @@ epsilon = np.finfo(Real).eps
 Location = np.dtype('u4')
 ROOT = np.iinfo(Location).max
 
-# TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
+# TODO: DELETE THIS FILE!
 
 
 class AccessHandle:

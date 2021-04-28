@@ -2,12 +2,11 @@ import numpy as np
 import cupy as cp
 from collections.abc import Callable, Iterable, Mapping
 
-from neuwon.common import *
+from neuwon.database import *
 from neuwon.segments import _serialize_segments
 from neuwon.geometry import _Geometry
 from neuwon.species import _AllSpecies, _Electrics
 from neuwon.reactions import _AllReactions, Reaction
-from neuwon.database import Database
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
@@ -32,20 +31,26 @@ class Model:
         self.db.add_global_constant("time_step", float(time_step))
         self.db.add_global_constant("celsius", float(celsius))
 
-        self.db.add_entity_type("Location")
-        self.db.add_component("Location", "coordinates", shape=(3,))
-        self.db.add_component("Location", "parents", reference=True, check=False)
-        self.db.add_component("Location", "diameters")
-        self.db.add_component("Location", "lengths", check=False)
-        self.db.add_component("Location", "surface_areas")
-        self.db.add_component("Location", "cross_sectional_areas")
-        self.db.add_component("Location", "intra_volumes")
-        self.db.add_component("Location", "extra_volumes")
-        # TODO: How to deal with sparse matrixes?
-        # self.db.add_component("Location", "children")
-        # self.db.add_component("Location", "neighbors")
-        # self.db.add_component("Location", "neighbor_distances")
-        # self.db.add_component("Location", "border_surface_areas")
+        self.db.add_entity_type("Segment")
+        self.db.add_component("Segment/intra", reference="Intracellular")
+        self.db.add_component("Segment/extra", reference="Extracellular")
+        self.db.add_component("Segment/coordinates", shape=(3,))
+        self.db.add_component("Segment/parents", reference="Segment", check=False)
+        # self.db.add_component("Location", "children") # TODO: How to deal with sparse matrixes?
+        self.db.add_component("Segment/diameters")
+        self.db.add_component("Segment/lengths", check=False)
+        self.db.add_component("Segment/surface_areas")
+        self.db.add_component("Segment/cross_sectional_areas")
+
+        self.db.add_entity_type("Intracellular")
+        self.db.add_component("Intracellular/volumes")
+        self.db.add_component("Intracellular/segment", reference="Segment")
+
+        self.db.add_entity_type("Extracellular")
+        self.db.add_component("Extracellular/volumes")
+        # self.db.add_component("Extracellular/neighbors")
+        # self.db.add_component("Extracellular/neighbor_distances")
+        # self.db.add_component("Extracellular/border_surface_areas")
 
         self.db.add_global_constant("maximum_extracellular_radius", float(maximum_extracellular_radius))
         self.db.add_global_constant("extracellular_volume_fraction", float(extracellular_volume_fraction))
@@ -65,7 +70,7 @@ class Model:
     def __len__(self):
         return len(self.geometry)
 
-    def add_segment(self,):
+    def add_segment(self, coordinates, diameter, shells=0):
         1/0
 
     def insert_reaction(self):
