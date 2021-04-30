@@ -5,75 +5,136 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import *
 from neuwon.segments import _serialize_segments
 from neuwon.geometry import _Geometry
-from neuwon.species import _AllSpecies, _Electrics
-from neuwon.reactions import _AllReactions, Reaction
+from neuwon.species import _Electrics, species_library
+from neuwon.reactions import Reaction, reactions_library
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
 
 class Model:
-    def __init__(self, time_step, species, reactions,
+    def __init__(self, time_step,
             celsius = 37,
             intracellular_resistance = 1,
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3,):
+        self.db = Database()
+        self.db.add_global_constant("time_step", float(time_step),
+            doc="Units: Seconds")
+        self.db.add_global_constant("celsius", float(celsius))
+
+        self.db.add_entity_type("membrane", doc="")
+        self.db.add_component("membrane/parents", reference="membrane", check=False,
+            doc="Cell membranes are connected in a tree.")
+        self.db.add_component("membrane/coordinates", shape=(3,),
+            doc="Units: ")
+        self.db.add_component("membrane/diameters",
+            doc="Units: ")
+        self.db.add_component("membrane/children", dtype="membrane", sparse=True,
+            doc="")
+        self.db.add_component("membrane/inside", dtype="inside")
+        self.db.add_component("membrane/outside", dtype="outside")
+        self.db.add_component("membrane/lengths", check=False,
+            doc="Units: ")
+        self.db.add_component("membrane/surface_areas",
+            doc="Units: ")
+        self.db.add_component("membrane/cross_sectional_areas",
+            doc="Units: ")
+        self.db.add_component("membrane/voltages", initial_value=float(initial_voltage),
+            doc="Units: ")
+        self.db.add_component("membrane/conductances")
+        self.db.add_component("membrane/driving_voltages")
+        self.db.add_component("membrane/axial_resistances", check=False,
+            doc="Units: ")
+        self.db.add_component("membrane/capacitances",
+            doc="Units: Farads")
+        self.db.add_global_constant("membrane/capacitance", float(membrane_capacitance),
+            doc="Units: Farads / Meter^2")
+        self.db.add_component("membrane/diffusion", shape="sparse")
+
+        self.db.add_entity_type("inside")
+        self.db.add_component("inside/volumes")
+        self.db.add_component("inside/membrane", dtype="membrane")
+        self.db.add_global_constant("inside/resistance", float(intracellular_resistance),
+            doc="Units: ")
+
+        self.db.add_entity_type("outside",
+            doc="Extracellular space.")
+        self.db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction),
+            doc="")
+        self.db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity),
+            doc="")
+        self.db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius))
+        self.db.add_component("outside/volumes")
+        self.db.add_component("outside/neighbors", dtype="outside", shape="sparse")
+        self.db.add_component("outside/neighbor_distances", shape="sparse")
+        self.db.add_component("outside/border_surface_areas", shape="sparse")
+
+        self.reactions = {}
+        self.species = {}
+
+        self._injected_currents = Model._InjectedCurrents()
+
+    def add_species(self, species):
         """
         Argument species is a list of:
           * An instance of the Species class,
           * A dictionary of arguments for initializing a new instance of the Species class,
           * The species name, to be filled in from a standard library.
+        """
+        if isinstance(species, Mapping):
+            species = Species(**species)
+        elif isinstance(species, str):
+            if species in species_library: species = Species(species, **species_library[species])
+            else: raise ValueError("Unresolved species: %s."%species)
+        else:
+            assert(isinstance(species, Species))
+        assert(species.name not in self.species)
+        self.species[species.name] = species
+        if species.intra_diffusivity is not None:
+            self.db.add_component("inside/%s/concentrations"%species.name)
+            self.db.add_component("inside/%s/release_rates"%species.name, initial_value=0)
+            self.db.add_component("inside/%s/diffusion"%species.name, shape="sparse")
+        if species.extra_diffusivity is not None:
+            self.db.add_component("outside/%s/concentrations"%species.name)
+            self.db.add_component("outside/%s/release_rates"%species.name, initial_value=0)
+            self.db.add_component("outside/%s/diffusion"%species.name, shape="sparse")
+        if species.transmembrane:
+            self.db.add_component("membrane/%s/conductances"%species.name, initial_value=0)
 
+    def add_reaction(self, reaction):
+        """
         Argument reactions is a list of either:
           * An instance or subclass of the Reaction class, or
           * The name of a reaction from the standard library.
         """
-        self.db = Database()
-        self.db.add_global_constant("time_step", float(time_step))
-        self.db.add_global_constant("celsius", float(celsius))
-
-        self.db.add_entity_type("Segment")
-        self.db.add_component("Segment/intra", reference="Intracellular")
-        self.db.add_component("Segment/extra", reference="Extracellular")
-        self.db.add_component("Segment/coordinates", shape=(3,))
-        self.db.add_component("Segment/parents", reference="Segment", check=False)
-        # self.db.add_component("Location", "children") # TODO: How to deal with sparse matrixes?
-        self.db.add_component("Segment/diameters")
-        self.db.add_component("Segment/lengths", check=False)
-        self.db.add_component("Segment/surface_areas")
-        self.db.add_component("Segment/cross_sectional_areas")
-
-        self.db.add_entity_type("Intracellular")
-        self.db.add_component("Intracellular/volumes")
-        self.db.add_component("Intracellular/segment", reference="Segment")
-
-        self.db.add_entity_type("Extracellular")
-        self.db.add_component("Extracellular/volumes")
-        # self.db.add_component("Extracellular/neighbors")
-        # self.db.add_component("Extracellular/neighbor_distances")
-        # self.db.add_component("Extracellular/border_surface_areas")
-
-        self.db.add_global_constant("maximum_extracellular_radius", float(maximum_extracellular_radius))
-        self.db.add_global_constant("extracellular_volume_fraction", float(extracellular_volume_fraction))
-        self.db.add_global_constant("extracellular_tortuosity", float(extracellular_tortuosity))
-
-        self._reactions = _AllReactions(reactions, self.db)
-        self._species = _AllSpecies(species, self.db)
-
-        self.db.add_component("Location", "voltages", initial_value=float(initial_voltage))
-        self.db.add_component("Location", "axial_resistances", check=False)
-        self.db.add_component("Location", "capacitances")
-        self.db.add_global_constant("intracellular_resistance", float(intracellular_resistance))
-        self.db.add_global_constant("membrane_capacitance", float(membrane_capacitance))
-
-        self._injected_currents = Model._InjectedCurrents()
+        if not isinstance(r, Reaction) and not (isinstance(r, type) and issubclass(r, Reaction)):
+            try: nmodl_file_path, kw_args = reactions_library[str(r)]
+            except IndexError: raise ValueError("Unrecognized Reaction: %s."%str(r))
+            r = NmodlMechanism(nmodl_file_path, **kw_args)
+        if hasattr(r, "initialize"):
+            r = copy.deepcopy(r)
+            retval = r.initialize(self.db)
+            if retval is not None: r = retval
+        name = str(r.name())
+        assert(name not in self.reactions)
+        self.reactions[name] = r
 
     def __len__(self):
         return len(self.geometry)
 
-    def add_segment(self, coordinates, diameter, shells=0):
+    def create_segment(self, parents, coordinates, diameters, shells=0, maximum_segment_length=np.inf):
+        1/0
+        # TODO: Create "touched" lists for both create & destroy which allow
+        # things to be recomputed as needed. Also, how can the user touch
+        # segments? For example after changing the diameter?
+
+    def destroy_segment(self, segments):
         1/0
 
-    def insert_reaction(self):
+    def insert_reaction(self, reaction, *args, **kwargs):
+        1/0
+
+    def remove_reaction(self, reaction, segments):
         1/0
 
     def is_root(self, location):
@@ -84,7 +145,6 @@ class Model:
 
     def read(self, component_name, location=None):
         """
-
         If argument location is not given then this returns an array containing
         all values in the system. """
         data = self.db.access(component_name)

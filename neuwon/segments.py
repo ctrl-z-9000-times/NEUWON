@@ -10,20 +10,20 @@ _v = AccessHandle(voltage=True)
 # up being too compilcated to practically implement... Maybe some day?
 
 
-def docstring_wrapper(property_name, docstring):
-    def get_prop(self):
-        return self.__dict__[property_name]
-    def set_prop(self, value):
-        self.__dict__[property_name] = value
-    return property(get_prop, set_prop, None, docstring)
+# def docstring_wrapper(property_name, docstring):
+#     def get_prop(self):
+#         return self.__dict__[property_name]
+#     def set_prop(self, value):
+#         self.__dict__[property_name] = value
+#     return property(get_prop, set_prop, None, docstring)
 
 
 class Segment:
-    parent      = docstring_wrapper("parent", "Segment or None")
-    children    = docstring_wrapper("children", "List of Segment's")
-    coordinates = docstring_wrapper("coordinates", "Tuple of 3 floats")
-    diameter    = docstring_wrapper("diameter", "Float (positive)")
-    insertions  = docstring_wrapper("insertions", "List of pairs of (mechanisms, mechanisms_arguments_tuple)")
+    # parent      = docstring_wrapper("parent", "Segment or None")
+    # children    = docstring_wrapper("children", "List of Segment's")
+    # coordinates = docstring_wrapper("coordinates", "Tuple of 3 floats")
+    # diameter    = docstring_wrapper("diameter", "Float (positive)")
+    # insertions  = docstring_wrapper("insertions", "List of pairs of (mechanisms, mechanisms_arguments_tuple)")
 
     def __init__(self, coordinates, diameter, parent=None):
         self.model = None

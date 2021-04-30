@@ -37,27 +37,10 @@ class Reaction:
         """
         raise TypeError("Abstract method called by %s."%repr(self))
 
-class _AllReactions(dict):
-    def __init__(self, reactions, database):
-        dict.__init__(self)
-        for r in reactions:
-            if not isinstance(r, Reaction) and not (isinstance(r, type) and issubclass(r, Reaction)):
-                try: nmodl_file_path, kw_args = library[str(r)]
-                except IndexError: raise ValueError("Unrecognized Reaction: %s."%str(r))
-                r = NmodlMechanism(nmodl_file_path, **kw_args)
-            if hasattr(r, "initialize"):
-                r = copy.deepcopy(r)
-                retval = r.initialize(database)
-                if retval is not None: r = retval
-            name = str(r.name())
-            assert(name not in self)
-            self[name] = r
-
-    @staticmethod
-    def advance(model):
-        for s in model._species.values():
-            if s.transmembrane: s.conductances.fill(0)
-            if s.extra: s.extra.release_rates.fill(0)
-            if s.intra: s.intra.release_rates.fill(0)
-        for r in model._reactions.values():
-            r.reaction.advance(model.db.access)
+def reactions_advance(model):
+    for s in model._species.values():
+        if s.transmembrane: s.conductances.fill(0)
+        if s.extra: s.extra.release_rates.fill(0)
+        if s.intra: s.intra.release_rates.fill(0)
+    for r in model._reactions.values():
+        r.reaction.advance(model.db.access)

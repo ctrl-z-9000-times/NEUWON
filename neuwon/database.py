@@ -12,15 +12,18 @@ ROOT = np.iinfo(Location).max
 # accessible via the same API as all of the other data in the database, but I
 # don't know how to manage that data. Should it even be on the GPU? Can it be
 # transformed into a sparse matrix? How will that work with add/remove'ing instances?
-#       Children
-#       extracellular Neighbor location
-#       extracellular Neighbor distance
-#       extracellular Neighbor border_surface_area
+# 
+# Answer: Allow sparse matrixes on GPU, have two methods to update them:
+#       1) Overwrite matrix with given data, for data which gets entirely recomputed: IRM
+#       2) Update rows, for any kind of adjacency matrix: children, neighbors.
+#
+#   Also, after create/destroy'ing any entities the sparse matrixes are dirty
+#   and must be updated. As a precaution keep a dirty/clean flag on all sparse
+#   matrixes and check for at least one write to them before allowing any read
+#   access. Also, user needs to be able to check for dirty flags.
 
-# TODO: Now that I can add/remove entities at runtime, I need a stable handle on
-# an entity which does not get blown away when the data gets reallocated and remapped.
 
-sep = "/"
+sep = "/" # TODO: Either make this private or rename it into a full english word (seperator).
 
 class Database:
     """ The Database class is a custom Entity-Component-System. """
@@ -41,7 +44,7 @@ class Database:
         self.components[name] = _Value(value, doc=doc)
 
     def add_component(self, name: str, doc: str = "",
-            dtype=Real, reference=False, shape=(1,), initial_value=None,
+            dtype=Real, shape=(1,), initial_value=None,
             user_read=False, user_write=False, check=True):
         """ Add a new data array to an Archetype.
 
@@ -53,7 +56,7 @@ class Database:
         archetype, component = name.split(sep, maxsplit=1)
         assert(archetype in self.archetypes)
         self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
-            dtype=dtype, reference=reference, shape=shape, initial_value=initial_value,
+            dtype=dtype, shape=shape, initial_value=initial_value,
             user_read=user_read, user_write=user_write, check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
@@ -120,6 +123,27 @@ class Database:
                     s += "\n"
         return s
 
+class EntityHandle:
+    """ A persistent handle on a newly created entity.
+
+    By default, the identifiers returned by create_entity are only valid until
+    the next call to destroy_entity, which moves where the entities are located.
+    This class tracks where an entity gets moved to, and provides a consistent
+    API for accessing the entity data. """
+    def __init__(self, database, entity, index):
+        self.database = database
+        1/0
+
+    def __del__(self):
+        """ Unregister this from the model. """
+        1/0
+
+    def read(self, component):
+        1/0
+
+    def write(self, component):
+        1/0
+
 class _Archetype:
     def __init__(self, doc=""):
         self.doc = textwrap.dedent(str(doc)).strip()
@@ -136,43 +160,45 @@ class _Value:
         self.check = bool(check)
 
 class _Array:
-    def __init__(self, archetype, doc=doc, dtype=Real, reference=False, shape=(1,), initial_value=np.nan,
+    def __init__(self, archetype, doc=doc, dtype=Real, shape=(1,), initial_value=np.nan,
                 user_read=False, user_write=False, check=True):
-        self.archetype = archetype; archetype.components.append(self)
+        self.archetype = archetype;
+        archetype.components.append(self)
         self.doc = textwrap.dedent(str(doc)).strip()
-        if isinstance(shape, Iterable):
-            self.shape = tuple(int(round(x)) for x in shape)
-        else: self.shape = (int(round(shape)),)
-        if reference:
-            self.dtype = Location
-            self.initial_value = ROOT
-            self.reference = str(reference)
-        else:
+        if isinstance(dtype, np.dtype):
             self.dtype = dtype
             self.initial_value = initial_value
             self.reference = False
+        else:
+            self.dtype = Location
+            self.initial_value = ROOT
+            self.reference = str(dtype)
+        if shape == "sparse":
+            1/0
+        elif isinstance(shape, Iterable):
+            self.shape = tuple(int(round(x)) for x in shape)
+        else:
+            self.shape = (int(round(shape)),)
         self.user_read = bool(user_read)
         self.user_write = bool(user_write)
         self.check = bool(check)
-        self.data = cupy.empty(self._realloc_shape(archetype.size), dtype=self.dtype)
+        self.data = self._alloc(archetype.size)
         self._append_entities(0, archetype.size)
 
     def _append_entities(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
-
-        # TODO: IIRC CuPy can not deal with numpy structured arrays...
-        #       Detect this issue and revert to using numba arrays.
-        #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
-
         if len(self.data) < new_size:
-            old_data = self.data
-            self.data = cupy.empty(self._realloc_shape(new_size), dtype=self.dtype)
-            self.data[:len(old_data)] = old_data
+            new_data = self._alloc(new_size)
+            new_data[:old_size] = self.data[:old_size]
+            self.data = new_data
         if self.initial_value is not None:
             self.data[old_size: new_size].fill(self.initial_value)
 
-    def _realloc_shape(self, target_size):
-        return (int(round(target_size * 1.25)),) + self.shape
+    def _alloc(self, minimum_size):
+        # TODO: IIRC CuPy can not deal with numpy structured arrays...
+        #       Detect this issue and revert to using numba arrays.
+        #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
+        return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
 
 if __name__ == "__main__":
     db = Database()

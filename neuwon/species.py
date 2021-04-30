@@ -87,80 +87,52 @@ class Species:
         else:
             self.reversal_potential = float(reversal_potential)
             self._reversal_potential_method = lambda T, i, o, v: self.reversal_potential
-        # These attributes are initialized on a copy of this object:
-        self.intra = None # _Diffusion instance
-        self.extra = None # _Diffusion instance
-        self.conductances = None # Numpy array
 
-class _AllSpecies(dict):
-    """ A dictionary containing all species. """
-    def __init__(self, species, database):
-        dict.__init__(self)
-        for s in species:
-            if isinstance(s, Mapping):
-                s = Species(**s)
-            elif isinstance(s, str):
-                if s in library: s = Species(s, **library[s])
-                else: raise ValueError("Unresolved species: %s."%s)
-            else:
-                assert(isinstance(s, Species))
-            assert(s.name not in self)
-            self[s.name] = copy.copy(s)
-            if s.intra_diffusivity is not None:
-                database.add_component("Location", s.name + "/i/concentrations")
-                database.add_component("Location", s.name + "/i/release_rates", initial_value=0)
-            if s.extra_diffusivity is not None:
-                database.add_component("Location", s.name + "/o/concentrations")
-                database.add_component("Location", s.name + "/o/release_rates", initial_value=0)
-            if s.transmembrane:
-                database.add_component("Location", s.name + "/conductances", initial_value=0)
-
-    @staticmethod
-    def advance(model):
-        """ Note: Each call to this method integrates over half a time step. """
-        dt = model._electrics.time_step
-        # Accumulate the net conductances and driving voltages from the chemical data.
-        model._electrics.conductances     = cp.zeros(len(geometry), dtype=Real)
-        model._electrics.driving_voltages = cp.zeros(len(geometry), dtype=Real)
-        # model._electrics.conductances.fill(0)     # Zero accumulator.
-        # model._electrics.driving_voltages.fill(0) # Zero accumulator.
-        T = model.celsius + 273.15
-        for s in model._species.values():
-            if not s.transmembrane: continue
-            s.reversal_potential = s._reversal_potential_method(
-                T,
-                s.intra_concentration if s.intra is None else s.intra.concentrations,
-                s.extra_concentration if s.extra is None else s.extra.concentrations,
-                model._electrics.voltages)
-            model._electrics.conductances += s.conductances
-            model._electrics.driving_voltages += s.conductances * s.reversal_potential
-        model._electrics.driving_voltages /= model._electrics.conductances
-        model._electrics.driving_voltages = cp.nan_to_num(model._electrics.driving_voltages)
-        # Calculate the transmembrane currents.
-        diff_v = model._electrics.driving_voltages - model._electrics.voltages
-        recip_rc = model._electrics.conductances / model._electrics.capacitances
-        alpha = cp.exp(-dt * recip_rc)
-        model._electrics.voltages += diff_v * (1.0 - alpha)
-        # Calculate the lateral currents throughout the neurons.
-        model._electrics.voltages = model._electrics.irm.dot(model._electrics.voltages)
-        # Calculate the transmembrane ion flows.
-        for s in model._species.values():
-            if not s.transmembrane: continue
-            if s.intra is None and s.extra is None: continue
-            integral_v = dt * (s.reversal_potential - model._electrics.driving_voltages)
-            integral_v += rc * diff_v * alpha
-            moles = s.conductances * integral_v / (s.charge * F)
-            if s.intra is not None:
-                s.intra.concentrations += moles / model.geometry.intra_volumes
-            if s.extra is not None:
-                s.extra.concentrations -= moles / model.geometry.extra_volumes
-        # Calculate the local release / removal of chemicals.
-        for s in model._species.values():
-            for x in (s.intra, s.extra):
-                if x is None: continue
-                x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
-                # Calculate the lateral diffusion throughout the space.
-                x.concentrations = x.irm.dot(x.concentrations)
+def species_advance(model):
+    """ Note: Each call to this method integrates over half a time step. """
+    dt = model._electrics.time_step
+    # Accumulate the net conductances and driving voltages from the chemical data.
+    # model._electrics.conductances     = cp.zeros(len(geometry), dtype=Real)
+    # model._electrics.driving_voltages = cp.zeros(len(geometry), dtype=Real)
+    model._electrics.conductances.fill(0)     # Zero accumulator.
+    model._electrics.driving_voltages.fill(0) # Zero accumulator.
+    T = model.celsius + 273.15
+    for s in model._species.values():
+        if not s.transmembrane: continue
+        s.reversal_potential = s._reversal_potential_method(
+            T,
+            s.intra_concentration if s.intra is None else s.intra.concentrations,
+            s.extra_concentration if s.extra is None else s.extra.concentrations,
+            model._electrics.voltages)
+        model._electrics.conductances += s.conductances
+        model._electrics.driving_voltages += s.conductances * s.reversal_potential
+    model._electrics.driving_voltages /= model._electrics.conductances
+    model._electrics.driving_voltages = cp.nan_to_num(model._electrics.driving_voltages)
+    # Calculate the transmembrane currents.
+    diff_v = model._electrics.driving_voltages - model._electrics.voltages
+    recip_rc = model._electrics.conductances / model._electrics.capacitances
+    alpha = cp.exp(-dt * recip_rc)
+    model._electrics.voltages += diff_v * (1.0 - alpha)
+    # Calculate the lateral currents throughout the neurons.
+    model._electrics.voltages = model._electrics.irm.dot(model._electrics.voltages)
+    # Calculate the transmembrane ion flows.
+    for s in model._species.values():
+        if not s.transmembrane: continue
+        if s.intra is None and s.extra is None: continue
+        integral_v = dt * (s.reversal_potential - model._electrics.driving_voltages)
+        integral_v += rc * diff_v * alpha
+        moles = s.conductances * integral_v / (s.charge * F)
+        if s.intra is not None:
+            s.intra.concentrations += moles / model.geometry.intra_volumes
+        if s.extra is not None:
+            s.extra.concentrations -= moles / model.geometry.extra_volumes
+    # Calculate the local release / removal of chemicals.
+    for s in model._species.values():
+        for x in (s.intra, s.extra):
+            if x is None: continue
+            x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
+            # Calculate the lateral diffusion throughout the space.
+            x.concentrations = x.irm.dot(x.concentrations)
 
 class _Diffusion:
     def __init__(self, time_step, geometry, species, where):
