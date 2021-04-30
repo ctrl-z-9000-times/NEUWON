@@ -1,14 +1,28 @@
-import numpy as np
-import cupy as cp
 from collections.abc import Callable, Iterable, Mapping
-
+from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse.linalg import expm
+import copy
+import cupy as cp
+import cupyx.scipy.sparse
+import math
+import numpy as np
+from neuwon import *
 from neuwon.database import *
-from neuwon.segments import _serialize_segments
-from neuwon.geometry import _Geometry
-from neuwon.species import _Electrics, species_library
+import neuwon.voronoi
+Neighbor = neuwon.voronoi.Neighbor
+
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
+
+
+# TODO: Consider having an intracellular neighbor & border_surface_area?
+#       This would replace children?
+
+# TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
+
+
+
 
 class Model:
     def __init__(self, time_step,
@@ -74,7 +88,7 @@ class Model:
         self._dirty = False
 
     def __len__(self):
-        return len(self.geometry)
+        return self.db.num_entity("membrane")
 
     def check_data(self):
         self.db.check()
@@ -96,15 +110,20 @@ class Model:
         assert(species.name not in self.species)
         self.species[species.name] = species
         if species.intra_diffusivity is not None:
-            self.db.add_component("inside/%s/concentrations"%species.name, initial_value=species.intra_concentration)
-            self.db.add_component("inside/%s/release_rates"%species.name, initial_value=0)
+            self.db.add_component("inside/%s/concentrations"%species.name, initial_value=species.intra_concentration,
+                doc="Units: Molar")
+            self.db.add_component("inside/%s/release_rates"%species.name, initial_value=0,
+                doc="Units: Molar / Second")
             self.db.add_component("inside/%s/diffusion"%species.name, shape="sparse")
         if species.extra_diffusivity is not None:
-            self.db.add_component("outside/%s/concentrations"%species.name, initial_value=species.extra_concentration)
-            self.db.add_component("outside/%s/release_rates"%species.name, initial_value=0)
+            self.db.add_component("outside/%s/concentrations"%species.name, initial_value=species.extra_concentration,
+                doc="Units: Molar")
+            self.db.add_component("outside/%s/release_rates"%species.name, initial_value=0,
+                doc="Units: Molar / Second")
             self.db.add_component("outside/%s/diffusion"%species.name, shape="sparse")
         if species.transmembrane:
-            self.db.add_component("membrane/%s/conductances"%species.name, initial_value=0)
+            self.db.add_component("membrane/%s/conductances"%species.name, initial_value=0,
+                doc="Units: Siemens")
 
     def add_reaction(self, reaction):
         """
@@ -125,6 +144,7 @@ class Model:
         self.reactions[name] = r
 
     def create_segment(self, parents, coordinates, diameters, shells=0, maximum_segment_length=np.inf):
+        """ Returns a list of Segments. """
         self.dirty = True
 
         # STEPS:
@@ -139,7 +159,35 @@ class Model:
         #   So before returning, full compute: Geometry (in & out), passive
         #   electric properties
 
+        # Note: do NOT return raw/unstable DB Indexes, make a Segment class for
+        # each handle to that the user has a *nice* thing to hold onto. I can
+        # put lots of convenience methods on the Segment handle...
+
         1/0
+
+        # TODO: Rework this code!
+        # coordinates = tuple(float(x) for x in coordinates)
+        # diameter = float(diameter)
+        # maximum_segment_length = float(maximum_segment_length)
+        # assert(maximum_segment_length > 0)
+        # parent = self
+        # parent_diameter = self.diameter
+        # parent_coordinates = self.coordinates
+        # length = np.linalg.norm(np.subtract(parent_coordinates, coordinates))
+        # divisions = max(1, math.ceil(length / maximum_segment_length))
+        # segments = []
+        # for i in range(divisions):
+        #     x = (i + 1) / divisions
+        #     _x = 1 - x
+        #     coords = (  coordinates[0] * x + parent_coordinates[0] * _x,
+        #                 coordinates[1] * x + parent_coordinates[1] * _x,
+        #                 coordinates[2] * x + parent_coordinates[2] * _x)
+        #     diam = diameter * x + parent_diameter * _x
+        #     child = Segment(coords, diam, parent)
+        #     segments.append(child)
+        #     parent = child
+        # return segments
+
 
     def destroy_segment(self, segments):
         self.dirty = True
@@ -153,10 +201,17 @@ class Model:
         1/0
 
     def is_root(self, location):
-        return self.geometry.is_root(location)
+        return self.parents[location] == ROOT
 
     def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
-        return self.geometry.nearest_neighbors(coordinates, k, maximum_distance)
+        coordinates = np.array(coordinates, dtype=Real)
+        assert(coordinates.shape == (3,))
+        assert(all(np.isfinite(x) for x in coordinates))
+        k = int(k)
+        assert(k >= 1)
+        d, i = self._tree.query(coordinates, k, distance_upper_bound=maximum_distance)
+        return i
+
 
     def read(self, component_name, location=None):
         """
@@ -282,3 +337,296 @@ class Model:
         self._injected_currents.currents.append(current)
         self._injected_currents.locations.append(location)
         self._injected_currents.remaining.append(duration)
+
+
+class Segment:
+    """ This class is returned by model.create_segment() """
+    def __init__(self):
+        1/0
+        # self.parent = parent
+        # assert(isinstance(self.parent, Segment) or self.parent is None)
+        # self.children = []
+        # self.coordinates = tuple(float(x) for x in coordinates)
+        # assert(len(self.coordinates) == 3)
+        # self.diameter = float(diameter)
+        # assert(diameter >= 0)
+        # self.insertions = []
+        # if self.parent is None:
+        #     self.path_length = 0
+        # else:
+        #     parent.children.append(self)
+        #     segment_length = np.linalg.norm(np.subtract(parent.coordinates, self.coordinates))
+        #     self.path_length = parent.path_length + segment_length
+
+    def read(self, component):
+        1/0
+
+    def get_voltage(self):
+        1/0
+        assert(self.model is not None)
+        return self.model.read_pointer(_v, self.location)
+
+    def inject_current(self, current=None, duration=1e-3):
+        1/0
+        assert(self.model is not None)
+        self.model.inject_current(self.location, current, duration)
+
+
+
+# TODO: Merge the Geometry class into the main model.
+class _Geometry:
+    """ Physical shapes & structures of neurons """
+    def __init__(self, coordinates, parents, diameters,
+            maximum_extracellular_radius=3e-6,
+            extracellular_volume_fraction=.20,
+            extracellular_tortuosity=1.55,):
+        # Save the arguments.
+        self.coordinates = np.array(coordinates, dtype=Real)
+        self.parents = np.array([ROOT if p is None else p for p in parents], dtype=Location)
+        self.diameters = np.array(diameters, dtype=Real)
+        self.maximum_extracellular_radius = float(maximum_extracellular_radius)
+        self.extracellular_volume_fraction = float(extracellular_volume_fraction)
+        self.extracellular_tortuosity = float(extracellular_tortuosity)
+        # Check the arguments.
+        assert(len(self.coordinates) == len(self))
+        assert(len(self.parents)     == len(self))
+        assert(len(self.diameters)   == len(self))
+        assert(all(all(np.isfinite(c)) for c in self.coordinates))
+        assert(all(p < len(self) or p == ROOT for p in self.parents))
+        assert(all(d >= 0 for d in self.diameters))
+        assert(self.maximum_extracellular_radius > epsilon * 1e-6)
+        assert(1 >= self.extracellular_volume_fraction >= 0)
+        assert(self.extracellular_tortuosity >= 1)
+        # Initialize the geometric properties.
+        self._init_tree_properties()
+        self._init_cellular_properties()
+        self._init_extracellular_properties()
+
+    def _init_tree_properties(self):
+        # Compute the children lists.
+        self.children = np.empty(len(self), dtype=object)
+        for location in range(len(self)):
+            self.children[location] = []
+        for location, parent in enumerate(self.parents):
+            if not self.is_root(location):
+                self.children[parent].append(location)
+        # Root must have at least one child, because cylinder is defined as between two points.
+        assert(all(len(self.children[x]) >= 1 for x in range(len(self)) if self.is_root(x)))
+        # The child with the largest diameter is special and is always kept at
+        # the start of the children list.
+        for siblings in self.children:
+            siblings.sort(reverse=True, key=lambda x: self.diameters[x])
+        # Compute lengths, which are the distances between each node and its
+        # parent node. All root node lengths are NAN.
+        self.lengths = np.empty(len(self), dtype=Real)
+        for location in range(len(self)):
+            if self.is_root(location):
+                self.lengths[location] = np.nan
+            else:
+                self.lengths[location] = np.linalg.norm(
+                    self.coordinates[location] - self.coordinates[self.parents[location]])
+        assert(all(l >= epsilon * (1e-6)**1 or self.is_root(idx) for idx, l in enumerate(self.lengths)))
+
+    def _init_cellular_properties(self):
+        self.cross_sectional_areas = np.array([np.pi * (d / 2) ** 2 for d in self.diameters], dtype=Real)
+        self.surface_areas = np.empty(len(self), dtype=Real)
+        self.intra_volumes = np.empty(len(self), dtype=Real)
+        for location, parent in enumerate(self.parents):
+            radius = self.diameters[location] / 2
+            if self.is_root(location):
+                # Root of new tree. The body of this segment is half of the
+                # cylinder spanning between this node and its first child.
+                eldest = self.children[location][0]
+                length = self.diameters[eldest] / 2
+            elif self.is_root(parent) and self.children[parent][0] == location:
+                length = self.lengths[location] / 2
+            else:
+                length = self.lengths[location]
+            # Primary segments are straightforward extensions of the parent
+            # branch. Non-primary segments are lateral branchs off to the side
+            # of the parent branch. Subtract the parent's radius from the
+            # secondary nodes length, to avoid excessive overlap between
+            # segments.
+            if self.is_root(location):
+                primary = True
+            else:
+                siblings = self.children[parent]
+                if siblings[0] == location or (self.is_root(parent) and siblings[1] == location):
+                    primary = True
+                else:
+                    primary = False
+            if not primary:
+                parent_radius = self.diameters[parent] / 2
+                if length > parent_radius + epsilon * 1e-6:
+                    length -= parent_radius
+                else:
+                    # This segment is entirely enveloped within its parent. In
+                    # this corner case allow the segment to protrude directly
+                    # from the center of the parent instead of the surface.
+                    pass
+            self.surface_areas[location] = 2 * np.pi * radius * length
+            self.intra_volumes[location] = np.pi * radius ** 2 * length * 1e3
+            # Account for the surface area on the tips of terminal/leaf segments.
+            num_children = len(self.children[location])
+            if num_children == 0 or (self.is_root(location) and num_children == 1):
+                self.surface_areas[location] += np.pi * radius ** 2
+        assert(all(x  >= epsilon * (1e-6)**2 for x in self.cross_sectional_areas))
+        assert(all(sa >= epsilon * (1e-6)**2 for sa in self.surface_areas))
+        assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
+
+    def _init_extracellular_properties(self):
+        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
+        self._tree = scipy.spatial.cKDTree(self.coordinates)
+        self.extra_volumes = np.empty(len(self), dtype=Real)
+        self.neighbors = np.zeros(len(self), dtype=object)
+        for location in range(len(self)):
+            coords = self.coordinates[location]
+            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
+            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
+            neighbors.remove(location)
+            neighbors = np.array(neighbors, dtype=Location)
+            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
+                    neighbors, self.coordinates)
+            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
+            self.neighbors[location] = n
+            for n in self.neighbors[location]:
+                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
+        # TODO: Cast neighbors from list of lists to a sparse array.
+
+
+
+F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
+R = 8.31446261815324 # Universal gas constant
+
+class _Diffusion:
+    def __init__(self, time_step, geometry, species, where):
+        self.time_step = time_step
+        # Compute the coefficients of the derivative function:
+        # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
+        cols = [] # Source
+        rows = [] # Destintation
+        data = [] # Weight
+        # derivative(Destintation) += Source * Weight
+        if where == "intracellular":
+            for location in range(len(geometry)):
+                if geometry.is_root(location):
+                    continue
+                parent = geometry.parents[location]
+                l = geometry.lengths[location]
+                flux = species.intra_diffusivity * geometry.cross_sectional_areas[location] / l
+                cols.append(location)
+                rows.append(parent)
+                data.append(+1 * flux / geometry.intra_volumes[parent])
+                cols.append(location)
+                rows.append(location)
+                data.append(-1 * flux / geometry.intra_volumes[location])
+                cols.append(parent)
+                rows.append(location)
+                data.append(+1 * flux / geometry.intra_volumes[location])
+                cols.append(parent)
+                rows.append(parent)
+                data.append(-1 * flux / geometry.intra_volumes[parent])
+            for location in range(len(geometry)):
+                cols.append(location)
+                rows.append(location)
+                data.append(-1 / species.intra_decay_period)
+        elif where == "extracellular":
+            D = species.extra_diffusivity / geometry.extracellular_tortuosity ** 2
+            for location in range(len(geometry)):
+                for neighbor in geometry.neighbors[location]:
+                    flux = D * neighbor["border_surface_area"] / neighbor["distance"]
+                    cols.append(location)
+                    rows.append(neighbor["location"])
+                    data.append(+1 * flux / geometry.extra_volumes[neighbor["location"]])
+                    cols.append(location)
+                    rows.append(location)
+                    data.append(-1 * flux / geometry.extra_volumes[location])
+            for location in range(len(geometry)):
+                cols.append(location)
+                rows.append(location)
+                data.append(-1 / species.extra_decay_period)
+        # Note: always use double precision floating point for building the impulse response matrix.
+        coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=float)
+        coefficients.data *= self.time_step
+        self.irm = expm(coefficients)
+        # Prune the impulse response matrix at epsilon nanomolar (mol/L).
+        self.irm.data[np.abs(self.irm.data) < epsilon * 1e-6] = 0
+        self.irm.eliminate_zeros()
+        if True: print(where, species.name, "IRM NNZ per Location", self.irm.nnz / len(geometry))
+        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)
+
+def nerst_potential(charge, T, intra_concentration, extra_concentration):
+    """ Returns the reversal voltage for an ionic species. """
+    xp = cp.get_array_module(intra_concentration)
+    if charge == 0: return xp.full_like(intra_concentration, xp.nan)
+    ratio = xp.divide(extra_concentration, intra_concentration)
+    return xp.nan_to_num(R * T / F / charge * np.log(ratio))
+
+@cp.fuse()
+def _efun(z):
+    if abs(z) < 1e-4:
+        return 1 - z / 2
+    else:
+        return z / (math.exp(z) - 1)
+
+def goldman_hodgkin_katz(charge, T, intra_concentration, extra_concentration, voltages):
+    """ Returns the reversal voltage for an ionic species. """
+    xp = cp.get_array_module(intra_concentration)
+    if charge == 0: return xp.full_like(intra_concentration, np.nan)
+    z = (charge * F / (R * T)) * voltages
+    return (charge * F) * (intra_concentration * _efun(-z) - extra_concentration * _efun(z))
+
+class _Electrics:
+    def __init__(self, time_step, geometry,
+            intracellular_resistance = 1,
+            membrane_capacitance = 1e-2,
+            initial_voltage = -70e-3):
+        # Save and check the arguments.
+        self.time_step                  = time_step
+        self.intracellular_resistance   = float(intracellular_resistance)
+        self.membrane_capacitance       = float(membrane_capacitance)
+        assert(self.intracellular_resistance > 0)
+        assert(self.membrane_capacitance > 0)
+        # Initialize data buffers.
+        self.voltages           = cp.full(len(geometry), initial_voltage, dtype=Real)
+        # Compute passive properties.
+        self.axial_resistances  = np.empty(len(geometry), dtype=Real)
+        self.capacitances       = np.empty(len(geometry), dtype=Real)
+        for location in range(len(geometry)):
+            l = geometry.lengths[location]
+            sa = geometry.surface_areas[location]
+            xa = geometry.cross_sectional_areas[location]
+            self.axial_resistances[location] = self.intracellular_resistance * l / xa
+            self.capacitances[location] = self.membrane_capacitance * sa
+        # Compute the coefficients of the derivative function:
+        # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
+        cols = [] # Source
+        rows = [] # Destintation
+        data = [] # Weight
+        for location in range(len(geometry)):
+            if geometry.is_root(location):
+                continue
+            parent = geometry.parents[location]
+            r = self.axial_resistances[location]
+            cols.append(location)
+            rows.append(parent)
+            data.append(+1 / r / self.capacitances[parent])
+            cols.append(location)
+            rows.append(location)
+            data.append(-1 / r / self.capacitances[location])
+            cols.append(parent)
+            rows.append(location)
+            data.append(+1 / r / self.capacitances[location])
+            cols.append(parent)
+            rows.append(parent)
+            data.append(-1 / r / self.capacitances[parent])
+        # Note: always use double precision floating point for building the impulse response matrix.
+        coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=np.float64)
+        coefficients.data *= self.time_step
+        self.irm = expm(coefficients)
+        # Prune the impulse response matrix at epsilon millivolts.
+        self.irm.data[np.abs(self.irm.data) < epsilon * 1e-3] = 0
+        self.irm.eliminate_zeros()
+        if True: print("Electrics IRM NNZ per Location", self.irm.nnz / len(geometry))
+        # Move this data to the GPU now that the CPU is done with it.
+        self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)

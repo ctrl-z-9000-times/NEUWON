@@ -8,6 +8,24 @@ from graph_algorithms import depth_first_traversal as dft
 from neuwon.api.regions import Region
 from neuwon.api import Segment
 
+# TODO: This code got ripped out of the Segment module...
+def set_diameter(self, P = (0, .01, 1e-6)):
+    paths = {}
+    def mark_paths(node):
+        if not node.children:
+            paths[node] = [0]
+        else:
+            paths[node] = []
+            for c in node.children:
+                l = np.linalg.norm(np.subtract(node.coordinates, c.coordinates))
+                paths[node].extend(x + l for x in paths[c])
+    for _ in dft(self, lambda n: n.children, postorder=mark_paths): pass
+    for n in dft(self, lambda n: n.children):
+        diameters = []
+        for length in paths[n]:
+            diameters.append(P[0] * length ** 2 + P[1] * length + P[2])
+        n.diameter = np.mean(diameters)
+
 class GrowSomata:
     def __init__(self, region, density, diameter):
         self.region = region

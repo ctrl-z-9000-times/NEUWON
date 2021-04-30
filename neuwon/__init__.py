@@ -74,3 +74,55 @@ class Reaction:
         Argument database_access is function: f(component_name) -> value
         """
         raise TypeError("Abstract method called by %s."%repr(self))
+
+species_library = {
+    "na": {
+        "charge": 1,
+        "transmembrane": True,
+        "reversal_potential": "nerst",
+        "intra_concentration":  15e-3,
+        "extra_concentration": 145e-3,
+    },
+    "k": {
+        "charge": 1,
+        "transmembrane": True,
+        "reversal_potential": "nerst",
+        "intra_concentration": 150e-3,
+        "extra_concentration":   4e-3,
+    },
+    "ca": {
+        "charge": 2,
+        "transmembrane": True,
+        "reversal_potential": "goldman_hodgkin_katz",
+        "intra_concentration": 70e-9,
+        "extra_concentration": 2e-3,
+    },
+    "cl": {
+        "charge": -1,
+        "transmembrane": True,
+        "reversal_potential": "nerst",
+        "intra_concentration":  10e-3,
+        "extra_concentration": 110e-3,
+    },
+    "glu": {
+        # "extra_concentration": 1/0, # TODO!
+        "extra_diffusivity": 1e-6, # TODO!
+        # "extra_decay_period": 1/0, # TODO!
+    },
+}
+
+reactions_library = {
+    # "hh": ("neuwon/nmodl_library/hh.mod",
+    #     dict(pointers={"gl": AccessHandle("L", conductance=True)},
+    #          parameter_overrides = {"celsius": 6.3})),
+
+    # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
+
+    # "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
+
+    # "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
+    #     dict(pointers={"C": AccessHandle("Glu", extra_concentration=True)})),
+
+    # "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
+    #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
+}

@@ -44,6 +44,11 @@ class Database:
 
         Argument name:
         Argument dtype:
+            if dtype is a string then it is a reference to an entity.
+            Note: Reactions are not run in a deterministic order. Dynamics which
+            span between reactions via reaction_references should operate at a
+            significantly slower time scale than the time step.
+
         Argument shape:
         Argument initial_value:
         Argument user_read, user_write:
@@ -76,6 +81,9 @@ class Database:
         assert(archetype in self.archetypes)
         1/0 # TODO Recursively mark all destroyed instances, make a bitmask for aliveness.
         1/0 # TODO Compress the dead entries out of all data arrays.
+
+    def num_entity(self, archetype: str):
+        return self.archetypes[str(archetype)].size
 
     def access(self, name: str):
         """ Returns a components value or GPU data array. """

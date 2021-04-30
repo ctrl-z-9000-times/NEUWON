@@ -33,21 +33,14 @@ _default_parameters = {
     "celsius": (37, "degC")
 }
 
-library = {
-    "hh": ("neuwon/nmodl_library/hh.mod",
-        dict(pointers={"gl": AccessHandle("L", conductance=True)},
-             parameter_overrides = {"celsius": 6.3})),
 
-    "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
+def NEURON_conversion_factor(self):
+    """ """ # TODO!
+    if   self.reaction_instance: return 1
+    elif self.voltage:           return 1000 # From NEUWONs volts to NEURONs millivolts.
+    elif self.conductance:       return 1
+    else: raise NotImplementedError(self)
 
-    "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
-
-    "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
-        dict(pointers={"C": AccessHandle("Glu", extra_concentration=True)})),
-
-    "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
-        dict(pointers={"g": AccessHandle("ca", conductance=True)})),
-}
 
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, cache=False):
