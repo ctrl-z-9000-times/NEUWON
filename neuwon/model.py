@@ -6,7 +6,6 @@ from neuwon.database import *
 from neuwon.segments import _serialize_segments
 from neuwon.geometry import _Geometry
 from neuwon.species import _Electrics, species_library
-from neuwon.reactions import Reaction, reactions_library
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
@@ -71,8 +70,14 @@ class Model:
 
         self.reactions = {}
         self.species = {}
-
         self._injected_currents = Model._InjectedCurrents()
+        self._dirty = False
+
+    def __len__(self):
+        return len(self.geometry)
+
+    def check_data(self):
+        self.db.check()
 
     def add_species(self, species):
         """
@@ -91,11 +96,11 @@ class Model:
         assert(species.name not in self.species)
         self.species[species.name] = species
         if species.intra_diffusivity is not None:
-            self.db.add_component("inside/%s/concentrations"%species.name)
+            self.db.add_component("inside/%s/concentrations"%species.name, initial_value=species.intra_concentration)
             self.db.add_component("inside/%s/release_rates"%species.name, initial_value=0)
             self.db.add_component("inside/%s/diffusion"%species.name, shape="sparse")
         if species.extra_diffusivity is not None:
-            self.db.add_component("outside/%s/concentrations"%species.name)
+            self.db.add_component("outside/%s/concentrations"%species.name, initial_value=species.extra_concentration)
             self.db.add_component("outside/%s/release_rates"%species.name, initial_value=0)
             self.db.add_component("outside/%s/diffusion"%species.name, shape="sparse")
         if species.transmembrane:
@@ -119,16 +124,26 @@ class Model:
         assert(name not in self.reactions)
         self.reactions[name] = r
 
-    def __len__(self):
-        return len(self.geometry)
-
     def create_segment(self, parents, coordinates, diameters, shells=0, maximum_segment_length=np.inf):
+        self.dirty = True
+
+        # STEPS:
+        #   1) Immediately allocate space for the entities in the database.
+
+        #   2) whats wrong with just updating everything? if some areas get
+        #   rebuilt a few extra times durring the init sequence, so what? As
+        #   long as it does not repeatedly do the cubic matrix rebuild it should
+        #   be fine. Expecially since durring *normal* operation, there will be
+        #   a relatively few & batched calls to this.
+
+        #   So before returning, full compute: Geometry (in & out), passive
+        #   electric properties
+
         1/0
-        # TODO: Create "touched" lists for both create & destroy which allow
-        # things to be recomputed as needed. Also, how can the user touch
-        # segments? For example after changing the diameter?
 
     def destroy_segment(self, segments):
+        self.dirty = True
+
         1/0
 
     def insert_reaction(self, reaction, *args, **kwargs):
@@ -167,6 +182,7 @@ class Model:
         For more information see: The NEURON Book, 2003.
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
+        if self.dirty: 1/0 # TODO: Recompute all diffusion matrixes.
         self._injected_currents.advance(self.time_step, self._electrics)
         self._species.advance(self)
         self._reactions.advance(self)
@@ -180,8 +196,61 @@ class Model:
         self._species.advance(self)
         self._reactions.advance(self)
 
-    def check_data(self):
-        self.db.check()
+    def _advance_species(model):
+        1/0 # TODO: Update this to use the database.
+        """ Note: Each call to this method integrates over half a time step. """
+        dt = model._electrics.time_step
+        # Accumulate the net conductances and driving voltages from the chemical data.
+        # model._electrics.conductances     = cp.zeros(len(geometry), dtype=Real)
+        # model._electrics.driving_voltages = cp.zeros(len(geometry), dtype=Real)
+        model._electrics.conductances.fill(0)     # Zero accumulator.
+        model._electrics.driving_voltages.fill(0) # Zero accumulator.
+        T = model.celsius + 273.15
+        for s in model._species.values():
+            if not s.transmembrane: continue
+            s.reversal_potential = s._reversal_potential_method(
+                T,
+                s.intra_concentration if s.intra is None else s.intra.concentrations,
+                s.extra_concentration if s.extra is None else s.extra.concentrations,
+                model._electrics.voltages)
+            model._electrics.conductances += s.conductances
+            model._electrics.driving_voltages += s.conductances * s.reversal_potential
+        model._electrics.driving_voltages /= model._electrics.conductances
+        model._electrics.driving_voltages = cp.nan_to_num(model._electrics.driving_voltages)
+        # Calculate the transmembrane currents.
+        diff_v = model._electrics.driving_voltages - model._electrics.voltages
+        recip_rc = model._electrics.conductances / model._electrics.capacitances
+        alpha = cp.exp(-dt * recip_rc)
+        model._electrics.voltages += diff_v * (1.0 - alpha)
+        # Calculate the lateral currents throughout the neurons.
+        model._electrics.voltages = model._electrics.irm.dot(model._electrics.voltages)
+        # Calculate the transmembrane ion flows.
+        for s in model._species.values():
+            if not s.transmembrane: continue
+            if s.intra is None and s.extra is None: continue
+            integral_v = dt * (s.reversal_potential - model._electrics.driving_voltages)
+            integral_v += rc * diff_v * alpha
+            moles = s.conductances * integral_v / (s.charge * F)
+            if s.intra is not None:
+                s.intra.concentrations += moles / model.geometry.intra_volumes
+            if s.extra is not None:
+                s.extra.concentrations -= moles / model.geometry.extra_volumes
+        # Calculate the local release / removal of chemicals.
+        for s in model._species.values():
+            for x in (s.intra, s.extra):
+                if x is None: continue
+                x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
+                # Calculate the lateral diffusion throughout the space.
+                x.concentrations = x.irm.dot(x.concentrations)
+
+    def _advance_reactions(self):
+        1/0 # TODO: Update this to use the database.
+        for s in self.species.values():
+            if s.transmembrane: s.conductances.fill(0)
+            if s.extra: s.extra.release_rates.fill(0)
+            if s.intra: s.intra.release_rates.fill(0)
+        for r in self.reactions.values():
+            r.advance(self.db.access)
 
     class _InjectedCurrents:
         def __init__(self):

@@ -7,7 +7,7 @@ import time
 import random
 from neuwon.common import Real, epsilon, Location, ROOT
 
-__all__ = ["voronoi_cell"]
+__all__ = ["voronoi_cell"] # Public API entry point.
 
 origin = np.zeros(3, dtype=Real)
 

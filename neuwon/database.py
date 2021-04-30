@@ -1,3 +1,5 @@
+""" A custom Entity-Component-System for NEUWON. """
+
 from collections.abc import Callable, Iterable, Mapping
 import numpy as np
 import cupy
@@ -8,25 +10,14 @@ epsilon = np.finfo(Real).eps
 Location = np.dtype('u4')
 ROOT = np.iinfo(Location).max
 
-# TODO: How to deal with children and neighbors? I want that data to be
-# accessible via the same API as all of the other data in the database, but I
-# don't know how to manage that data. Should it even be on the GPU? Can it be
-# transformed into a sparse matrix? How will that work with add/remove'ing instances?
-# 
-# Answer: Allow sparse matrixes on GPU, have two methods to update them:
-#       1) Overwrite matrix with given data, for data which gets entirely recomputed: IRM
-#       2) Update rows, for any kind of adjacency matrix: children, neighbors.
-#
-#   Also, after create/destroy'ing any entities the sparse matrixes are dirty
-#   and must be updated. As a precaution keep a dirty/clean flag on all sparse
-#   matrixes and check for at least one write to them before allowing any read
-#   access. Also, user needs to be able to check for dirty flags.
-
-
 sep = "/" # TODO: Either make this private or rename it into a full english word (seperator).
 
+# TODO: API REWORK: Allow sparse matrixes on GPU, have two methods to update them:
+# 1) Overwrite matrix with given data, for data which gets entirely recomputed: IRM
+# 2) Update rows, for any kind of adjacency matrix: children, neighbors.
+# How to call such methods? Also, they need a different code path than the regular array append...
+
 class Database:
-    """ The Database class is a custom Entity-Component-System. """
     def __init__(self):
         self.archetypes = {}
         self.components = {}
@@ -50,6 +41,13 @@ class Database:
 
         The archetype must be specified by prefixing the component name wit hthe
         archetype name followed by a slash "/".
+
+        Argument name:
+        Argument dtype:
+        Argument shape:
+        Argument initial_value:
+        Argument user_read, user_write:
+        Argument check:
         """
         name = str(name)
         assert(name not in self.components)
@@ -71,7 +69,7 @@ class Database:
         new_size = old_size + num
         ark.size = new_size
         for arr in ark.components: arr._append_entities(old_size, new_size)
-        return np.arange(old_size, new_size)
+        return range(old_size, new_size)
 
     def destroy_entity(self, archetype: str, instances: list):
         archetype = str(archetype)
@@ -83,7 +81,9 @@ class Database:
         """ Returns a components value or GPU data array. """
         x = self.components[str(name)]
         if isinstance(x, _Value): return x.value
-        elif isinstance(x, _Array): return x.data[:x.archetype.size]
+        elif isinstance(x, _Array):
+            if x.shape == "sparse": return x.data
+            else: return x.data[:x.archetype.size]
 
     def check(self):
         for name, component in self.components.items():
@@ -162,7 +162,7 @@ class _Value:
 class _Array:
     def __init__(self, archetype, doc=doc, dtype=Real, shape=(1,), initial_value=np.nan,
                 user_read=False, user_write=False, check=True):
-        self.archetype = archetype;
+        self.archetype = archetype
         archetype.components.append(self)
         self.doc = textwrap.dedent(str(doc)).strip()
         if isinstance(dtype, np.dtype):
