@@ -1,9 +1,11 @@
 """ A custom Entity-Component-System for NEUWON. """
 
-from collections.abc import Callable, Iterable, Mapping
 import numpy as np
+from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse.linalg import expm
 import cupy
 import textwrap
+from collections.abc import Callable, Iterable, Mapping
 
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
@@ -20,7 +22,7 @@ sep = "/" # TODO: Either make this private or rename it into a full english word
 class Database:
     def __init__(self):
         self.archetypes = {}
-        self.components = {}
+        self.components = {} # TODO: Rename this BC it's shared by every type of entry, not just entity-components...
 
     def add_archetype(self, name: str, doc: str = ""):
         """ Create a new type of entity. """
@@ -42,7 +44,6 @@ class Database:
         The archetype must be specified by prefixing the component name wit hthe
         archetype name followed by a slash "/".
 
-        Argument name:
         Argument dtype:
             if dtype is a string then it is a reference to an entity.
             Note: Reactions are not run in a deterministic order. Dynamics which
@@ -65,6 +66,25 @@ class Database:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
 
+    def add_linear_system(self, name: str, function, epsilon, doc: str = "", check=True):
+        """ Add a system of linear & time-invariant differential equations.
+
+        Argument function(database_access) -> coefficients
+
+        For equations of the form: dX/dt = C * X
+        Where X is a component, of the same archetype as this linear system.
+        Where C is a matrix of coefficients, returned by the argument "function".
+
+        The database computes the propagator matrix but does not apply it.
+        The matrix is updated after any of the entity are created or destroyed.
+        """
+        name = str(name)
+        assert(name not in self.components)
+        archetype, component = name.split(sep, maxsplit=1)
+        assert(archetype in self.archetypes)
+        self.components[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
+        self.archetypes[archetype].linear_systems.append(sys)
+
     def create_entity(self, archetype: str, number_of_instances: int = 1) -> list:
         """ Create instances of an archetype.
         Returns their internal ID's. """
@@ -74,6 +94,7 @@ class Database:
         new_size = old_size + num
         ark.size = new_size
         for arr in ark.components: arr._append_entities(old_size, new_size)
+        for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
 
     def destroy_entity(self, archetype: str, instances: list):
@@ -92,19 +113,25 @@ class Database:
         elif isinstance(x, _Array):
             if x.shape == "sparse": return x.data
             else: return x.data[:x.archetype.size]
+        elif isinstance(x, _LinearSystem):
+            if not x.up_to_date: x.compute(self)
+            return x.data
 
     def check(self):
-        for name, component in self.components.items():
-            if not component.check: continue
-            if isinstance(component, _Value):
-                assert np.isfinite(component), name
-            elif isinstance(component, _Array):
-                if component.reference:
-                    assert not cupy.any(component.data == ROOT), name
+        for name, x in self.components.items():
+            if not x.check: continue
+            if isinstance(x, _Value):
+                assert np.isfinite(x), name
+            elif isinstance(x, _Array):
+                if x.reference:
+                    assert not cupy.any(x.data == ROOT), name
                 else:
-                    kind = component.dtype.kind
+                    kind = x.dtype.kind
                     if kind == "f" or kind == "c":
-                        assert cupy.all(cupy.isfinite(component.data)), name
+                        assert cupy.all(cupy.isfinite(x.data)), name
+            elif isinstance(x, _LinearSystem):
+            if not x.up_to_date: x.compute(self)
+            assert cupy.all(cupy.isfinite(x.data)), name
 
     def __repr__(self) -> str:
         s = ""
@@ -129,6 +156,9 @@ class Database:
                     # TODO: Print all of the other flags too.
                     s += " " + str(comp.shape)
                     s += "\n"
+                # TODO: For sparse matrixes: print the average num-non-zero per row.
+                elif isinstance(comp, _LinearSystem):
+                    1/0
         return s
 
 class EntityHandle:
@@ -153,23 +183,22 @@ class EntityHandle:
         1/0
 
 class _Archetype:
-    def __init__(self, doc=""):
+    def __init__(self, doc):
         self.doc = textwrap.dedent(str(doc)).strip()
         self.size = 0
         self.components = []
         self.referenced_by = []
+        self.linear_systems = []
 
 class _Value:
-    def __init__(self, value, doc="",
-                user_read=True, check=True):
+    def __init__(self, value, doc, user_read, check):
         self.value = float(value)
         self.doc = textwrap.dedent(str(doc)).strip()
         self.user_read = bool(user_read)
         self.check = bool(check)
 
 class _Array:
-    def __init__(self, archetype, doc=doc, dtype=Real, shape=(1,), initial_value=np.nan,
-                user_read=False, user_write=False, check=True):
+    def __init__(self, archetype, doc, dtype, shape, initial_value, user_read, user_write, check):
         self.archetype = archetype
         archetype.components.append(self)
         self.doc = textwrap.dedent(str(doc)).strip()
@@ -207,6 +236,26 @@ class _Array:
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
         return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
+
+class _LinearSystem:
+    def __init__(self, function, doc, check, epsilon):
+        self.function   = function
+        self.epsilon    = float(epsilon)
+        self.doc        = textwrap.dedent(str(doc)).strip()
+        self.check      = bool(check)
+        self.up_to_date = False
+        self.data = None
+
+    def compute(self, database):
+        coef = self.function(database.access)
+        # Note: always use double precision floating point for building the impulse response matrix.
+        # TODO: Detect if the user returns f32 and auto-convert it to f64.
+        matrix = expm(coefficients)
+        # Prune the impulse response matrix.
+        matrix.data[np.abs(matrix.data) < self.epsilon] = 0
+        matrix.eliminate_zeros()
+        self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
+        self.up_to_date = True
 
 if __name__ == "__main__":
     db = Database()
