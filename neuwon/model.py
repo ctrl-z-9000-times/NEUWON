@@ -199,7 +199,7 @@ class Model:
         num_new_segs = len(parents)
         parents_clean = np.empty(num_new_segs, dtype=Location)
         for idx, p in enumerate(parents):
-            parents_clean[idx] = ROOT if p is None else p
+            parents_clean[idx] = NULL if p is None else p
         assert(shape in ("cylinder", "frustum"))
         membrane = self.db.create_entity("membrane", num_new_segs)
         inside   = self.db.create_entity("inside", num_new_segs * (shells + 1))
@@ -293,7 +293,7 @@ class Model:
         1/0
 
     def is_root(self, location):
-        return self.parents[location] == ROOT
+        return self.parents[location] == NULL
 
     def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
         coordinates = np.array(coordinates, dtype=Real)
@@ -533,72 +533,75 @@ def goldman_hodgkin_katz(charge, T, intra_concentration, extra_concentration, vo
     return (charge * F) * (intra_concentration * _efun(-z) - extra_concentration * _efun(z))
 
 def _electric_coefficients(database_access):
-    # Compute the coefficients of the derivative function:
-    # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
+    """
+    Model the electric currents over the membrane surface.
+    Compute the coefficients of the derivative function:
+    dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
+    """
     dt           = database_access("time_step")
     parents      = database_access("membrane/parents").get()
     resistances  = database_access("membrane/axial_resistances").get()
     capacitances = database_access("membrane/capacitances").get()
-    src = []; dst = []; deriv = []
+    src = []; dst = []; coef = []
     for child, parent in enumerate(parents):
-        if parent == ROOT: continue
+        if parent == NULL: continue
         r        = resistances[child]
         c_parent = capacitances[parent]
         c_child  = capacitances[child]
         src.append(child)
         dst.append(parent)
-        deriv.append(+dt / (r * c_parent))
+        coef.append(+dt / (r * c_parent))
         src.append(child)
         dst.append(child)
-        deriv.append(-dt / (r * c_child))
+        coef.append(-dt / (r * c_child))
         src.append(parent)
         dst.append(child)
-        deriv.append(+dt / (r * c_child))
+        coef.append(+dt / (r * c_child))
         src.append(parent)
         dst.append(parent)
-        deriv.append(-dt / (r * c_parent))
-    return (deriv, (dst, src))
+        coef.append(-dt / (r * c_parent))
+    return (coef, (dst, src))
 
 def _inside_diffusion_coefficients(database_access, species):
-    src = []; dst = []; deriv = []
+    src = []; dst = []; coef = []
     for location in range(len(geometry)):
         if geometry.is_root(location):
             continue
         parent = geometry.parents[location]
         l = geometry.lengths[location]
         flux = species.intra_diffusivity * geometry.cross_sectional_areas[location] / l
-        cols.append(location)
-        rows.append(parent)
-        data.append(+dt * flux / geometry.intra_volumes[parent])
-        cols.append(location)
-        rows.append(location)
-        data.append(-dt * flux / geometry.intra_volumes[location])
-        cols.append(parent)
-        rows.append(location)
-        data.append(+dt * flux / geometry.intra_volumes[location])
-        cols.append(parent)
-        rows.append(parent)
-        data.append(-dt * flux / geometry.intra_volumes[parent])
+        src.append(location)
+        dst.append(parent)
+        coef.append(+dt * flux / geometry.intra_volumes[parent])
+        src.append(location)
+        dst.append(location)
+        coef.append(-dt * flux / geometry.intra_volumes[location])
+        src.append(parent)
+        dst.append(location)
+        coef.append(+dt * flux / geometry.intra_volumes[location])
+        src.append(parent)
+        dst.append(parent)
+        coef.append(-dt * flux / geometry.intra_volumes[parent])
     for location in range(len(geometry)):
-        cols.append(location)
-        rows.append(location)
-        data.append(-dt / species.intra_decay_period)
-    return (deriv, (dst, src))
+        src.append(location)
+        dst.append(location)
+        coef.append(-dt / species.intra_decay_period)
+    return (coef, (dst, src))
 
 def _outside_diffusion_coefficients(database_access, species):
-    src = []; dst = []; deriv = []
+    src = []; dst = []; coef = []
     D = species.extra_diffusivity / geometry.extracellular_tortuosity ** 2
     for location in range(len(geometry)):
         for neighbor in geometry.neighbors[location]:
             flux = D * neighbor["border_surface_area"] / neighbor["distance"]
-            cols.append(location)
-            rows.append(neighbor["location"])
-            data.append(+dt * flux / geometry.extra_volumes[neighbor["location"]])
-            cols.append(location)
-            rows.append(location)
-            data.append(-dt * flux / geometry.extra_volumes[location])
+            src.append(location)
+            dst.append(neighbor["location"])
+            coef.append(+dt * flux / geometry.extra_volumes[neighbor["location"]])
+            src.append(location)
+            dst.append(location)
+            coef.append(-dt * flux / geometry.extra_volumes[location])
     for location in range(len(geometry)):
-        cols.append(location)
-        rows.append(location)
-        data.append(-dt / species.extra_decay_period)
-    return (deriv, (dst, src))
+        src.append(location)
+        dst.append(location)
+        coef.append(-dt / species.extra_decay_period)
+    return (coef, (dst, src))

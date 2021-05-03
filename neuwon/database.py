@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterable, Mapping
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
 Location = np.dtype('u4')
-ROOT = np.iinfo(Location).max # TODO: Rename this to NULL
+NULL = np.iinfo(Location).max
 
 separator = "/"
 
@@ -214,7 +214,7 @@ class _Array:
             self.reference = False
         else:
             self.dtype = Location
-            self.initial_value = ROOT
+            self.initial_value = NULL
             self.reference = str(dtype)
         if shape == "sparse":
             1/0
@@ -249,7 +249,7 @@ class _Array:
         if self.check:
             if self.reference:
                 if self.check == "ALLOW_NULL": 1/0
-                assert not cupy.any(self.data == ROOT), name
+                assert not cupy.any(self.data == NULL), name
                 1/0 # TODO: Check that all references are "ref < len(entity)"
             else:
                 if isinstance(self.check, Iterable):
@@ -287,14 +287,3 @@ class _LinearSystem:
         if self.check:
             if not self.up_to_date: self.compute(database)
             assert cupy.all(cupy.isfinite(self.data)), name
-
-if __name__ == "__main__":
-    db = Database()
-    db.add_archetype("Membrane", """
-        Insane in the
-        """)
-    db.add_component("Membrane/voltage", initial_value=0)
-    db.add_global_constant("Membrane/capacitance", 1e-2)
-    x = db.create_entity("Membrane", 10)
-    x = db.create_entity("Membrane", 10)
-    print(db)
