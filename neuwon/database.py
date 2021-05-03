@@ -10,9 +10,9 @@ from collections.abc import Callable, Iterable, Mapping
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
 Location = np.dtype('u4')
-ROOT = np.iinfo(Location).max
+ROOT = np.iinfo(Location).max # TODO: Rename this to NULL
 
-sep = "/" # TODO: Either make this private or rename it into a full english word (seperator).
+separator = "/"
 
 # TODO: API REWORK: Allow sparse matrixes on GPU, have two methods to update them:
 # 1) Overwrite matrix with given data, for data which gets entirely recomputed: IRM
@@ -22,7 +22,7 @@ sep = "/" # TODO: Either make this private or rename it into a full english word
 class Database:
     def __init__(self):
         self.archetypes = {}
-        self.components = {} # TODO: Rename this BC it's shared by every type of entry, not just entity-components...
+        self.contents = {}
 
     def add_archetype(self, name: str, doc: str = ""):
         """ Create a new type of entity. """
@@ -30,11 +30,11 @@ class Database:
         assert(name not in self.archetypes)
         self.archetypes[name] = _Archetype(doc)
 
-    def add_global_constant(self, name: str, value: float, doc: str = ""):
+    def add_global_constant(self, name: str, value: float, doc: str = "", check=True):
         """ Add a singular floating-point value to the Database. """
         name = str(name)
-        assert(name not in self.components)
-        self.components[name] = _Value(value, doc=doc)
+        assert(name not in self.contents)
+        self.contents[name] = _Value(value, doc=doc, check=check)
 
     def add_component(self, name: str, doc: str = "",
             dtype=Real, shape=(1,), initial_value=None,
@@ -56,10 +56,10 @@ class Database:
         Argument check:
         """
         name = str(name)
-        assert(name not in self.components)
-        archetype, component = name.split(sep, maxsplit=1)
+        assert(name not in self.contents)
+        archetype, component = name.split(separator, maxsplit=1)
         assert(archetype in self.archetypes)
-        self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
+        self.contents[name] = arr = _Array(self.archetypes[archetype], doc=doc,
             dtype=dtype, shape=shape, initial_value=initial_value,
             user_read=user_read, user_write=user_write, check=check)
         if arr.reference:
@@ -79,10 +79,10 @@ class Database:
         The matrix is updated after any of the entity are created or destroyed.
         """
         name = str(name)
-        assert(name not in self.components)
-        archetype, component = name.split(sep, maxsplit=1)
+        assert(name not in self.contents)
+        archetype, component = name.split(separator, maxsplit=1)
         assert(archetype in self.archetypes)
-        self.components[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
+        self.contents[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
         self.archetypes[archetype].linear_systems.append(sys)
 
     def create_entity(self, archetype: str, number_of_instances: int = 1) -> list:
@@ -97,18 +97,23 @@ class Database:
         for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
 
+    def invalidate_linear_systems(self, archetype: str):
+        ark = self.archetypes[str(archetype)]
+        for sys in ark.linear_systems: sys.up_to_date = False
+
     def destroy_entity(self, archetype: str, instances: list):
         archetype = str(archetype)
         assert(archetype in self.archetypes)
         1/0 # TODO Recursively mark all destroyed instances, make a bitmask for aliveness.
         1/0 # TODO Compress the dead entries out of all data arrays.
+        1/0 # TODO Update references.
 
     def num_entity(self, archetype: str):
         return self.archetypes[str(archetype)].size
 
     def access(self, name: str):
         """ Returns a components value or GPU data array. """
-        x = self.components[str(name)]
+        x = self.contents[str(name)]
         if isinstance(x, _Value): return x.value
         elif isinstance(x, _Array):
             if x.shape == "sparse": return x.data
@@ -118,20 +123,8 @@ class Database:
             return x.data
 
     def check(self):
-        for name, x in self.components.items():
-            if not x.check: continue
-            if isinstance(x, _Value):
-                assert np.isfinite(x), name
-            elif isinstance(x, _Array):
-                if x.reference:
-                    assert not cupy.any(x.data == ROOT), name
-                else:
-                    kind = x.dtype.kind
-                    if kind == "f" or kind == "c":
-                        assert cupy.all(cupy.isfinite(x.data)), name
-            elif isinstance(x, _LinearSystem):
-            if not x.up_to_date: x.compute(self)
-            assert cupy.all(cupy.isfinite(x.data)), name
+        for name, x in self.contents.items():
+            x.check(name, self)
 
     def __repr__(self) -> str:
         s = ""
@@ -141,8 +134,8 @@ class Database:
             s += "Archetype %s (%d)\n"%(ark_name, ark.size)
             if ark.doc: s += textwrap.indent(ark.doc, "    ") + "\n"
             s += "\n"
-            ark_prefix = ark_name + sep
-            for comp_name, comp in sorted(self.components.items()):
+            ark_prefix = ark_name + separator
+            for comp_name, comp in sorted(self.contents.items()):
                 if not comp_name.startswith(ark_prefix): continue
                 # TODO: Print components doc strings.
                 if isinstance(comp, _Value):
@@ -195,7 +188,20 @@ class _Value:
         self.value = float(value)
         self.doc = textwrap.dedent(str(doc)).strip()
         self.user_read = bool(user_read)
-        self.check = bool(check)
+        self.check = check
+
+    def check(self, name, database):
+        if self.check:
+            if isinstance(self.check, Iterable):
+                op, extreme_value = self.check
+                if   op == ">":  assert self.value >  extreme_value, name
+                elif op == ">=": assert self.value >= extreme_value, name
+                elif op == "<":  assert self.value <  extreme_value, name
+                elif op == "<=": assert self.value <= extreme_value, name
+                elif op == "in": 1/0 # Check in range.
+                else: 1/0 # Unrecognized operation.
+            else:
+                assert np.isfinite(self.value), name
 
 class _Array:
     def __init__(self, archetype, doc, dtype, shape, initial_value, user_read, user_write, check):
@@ -212,13 +218,15 @@ class _Array:
             self.reference = str(dtype)
         if shape == "sparse":
             1/0
+            if self.reference:
+                1/0 # Special case for connectivity matrix?
         elif isinstance(shape, Iterable):
             self.shape = tuple(int(round(x)) for x in shape)
         else:
             self.shape = (int(round(shape)),)
         self.user_read = bool(user_read)
         self.user_write = bool(user_write)
-        self.check = bool(check)
+        self.check = check
         self.data = self._alloc(archetype.size)
         self._append_entities(0, archetype.size)
 
@@ -237,14 +245,32 @@ class _Array:
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
         return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
 
+    def check(self, name, database):
+        if self.check:
+            if self.reference:
+                if self.check == "ALLOW_NULL": 1/0
+                assert not cupy.any(self.data == ROOT), name
+                1/0 # TODO: Check that all references are "ref < len(entity)"
+            else:
+                if isinstance(self.check, Iterable):
+                    op, extreme_value = self.check
+                    if   op == ">": 1/0
+                    elif op == ">=": 1/0
+                    elif op == "in": 1/0 # Check a range of values
+                    else: 1/0
+                else:
+                    kind = self.dtype.kind
+                    if kind == "f" or kind == "c":
+                        assert cupy.all(cupy.isfinite(self.data)), name
+
 class _LinearSystem:
     def __init__(self, function, doc, check, epsilon):
         self.function   = function
         self.epsilon    = float(epsilon)
         self.doc        = textwrap.dedent(str(doc)).strip()
-        self.check      = bool(check)
+        self.check      = check
         self.up_to_date = False
-        self.data = None
+        self.data       = None
 
     def compute(self, database):
         coef = self.function(database.access)
@@ -256,6 +282,11 @@ class _LinearSystem:
         matrix.eliminate_zeros()
         self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
         self.up_to_date = True
+
+    def check(self, name, database):
+        if self.check:
+            if not self.up_to_date: self.compute(database)
+            assert cupy.all(cupy.isfinite(self.data)), name
 
 if __name__ == "__main__":
     db = Database()

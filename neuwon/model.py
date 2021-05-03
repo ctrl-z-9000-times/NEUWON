@@ -22,6 +22,8 @@ R = 8.31446261815324 # Universal gas constant
 
 # TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
 
+# TODO: Rename intra & extra into inside & outside
+
 
 class Model:
     def __init__(self, time_step,
@@ -50,11 +52,19 @@ class Model:
         db.add_component("membrane/children", dtype="membrane", sparse=True, doc="")
         db.add_component("membrane/coordinates", shape=(3,), doc="Units: ")
         db.add_component("membrane/diameters", doc="Units: ")
+        db.add_component("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
+        db.add_component("membrane/primary", dtype=np.bool)
         db.add_entity_type("inside", doc="Intracellular space.")
-        db.add_entity_type("outside", doc="Extracellular space.")
-        db.add_component("membrane/inside", dtype="inside", doc="")
-        db.add_component("membrane/outside", dtype="outside", doc="")
+        db.add_component("membrane/inside", dtype="inside",
+                doc="""A reference to the outermost shell.
+                The shells and the innermost core are allocated in a contiguous block
+                with this referencing the start of range of length "membrane/shells" + 1.
+                """)
+        db.add_component("membrane/shells", dtype=np.uint8)
         db.add_component("inside/membrane", dtype="membrane")
+        db.add_component("inside/shell_radius")
+        db.add_entity_type("outside", doc="Extracellular space.")
+        db.add_component("membrane/outside", dtype="outside", doc="")
         # Geometric properties.
         db.add_component("membrane/lengths", check=False, doc="Units: Meters")
         db.add_component("membrane/surface_areas", doc="Units: Meters ^ 2")
@@ -77,6 +87,13 @@ class Model:
         db.add_global_constant("membrane/capacitance", float(membrane_capacitance), doc="Units: Farads / Meter^2")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
             epsilon=epsilon * 1e-3,) # Epsilon millivolts.
+
+        # TODO: Merge these checks into the database.
+        assert(cp.all(access("membrane/diameters")[membrane] >= 0.0))
+        assert(all(l  >= epsilon * (1e-6)**1 or self.is_root(idx) for idx, l in enumerate(self.lengths)))
+        assert(all(x  >= epsilon * (1e-6)**2 for x in self.cross_sectional_areas))
+        assert(all(sa >= epsilon * (1e-6)**2 for sa in self.surface_areas))
+        assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
 
     def __len__(self):
         return self.db.num_entity("membrane")
@@ -140,37 +157,89 @@ class Model:
         assert(name not in self.reactions)
         self.reactions[name] = r
 
-    def create_segment(self, parents, coordinates, diameters, shells=0):
-        """ Returns a list of Segments. """
+    # TODO: Rework this code!
+    # Special case to break long segments into multiple shorter ones.
+    # 
+    # maximum_segment_length = float(maximum_segment_length)
+    # assert(maximum_segment_length > 0)
+    # if maximum_segment_length != np.inf: ???
+    # coordinates = tuple(float(x) for x in coordinates)
+    # diameter = float(diameter)
+    # parent = self
+    # parent_diameter = self.diameter
+    # parent_coordinates = self.coordinates
+    # length = np.linalg.norm(np.subtract(parent_coordinates, coordinates))
+    # divisions = max(1, math.ceil(length / maximum_segment_length))
+    # segments = []
+    # for i in range(divisions):
+    #     x = (i + 1) / divisions
+    #     _x = 1 - x
+    #     coords = (  coordinates[0] * x + parent_coordinates[0] * _x,
+    #                 coordinates[1] * x + parent_coordinates[1] * _x,
+    #                 coordinates[2] * x + parent_coordinates[2] * _x)
+    #     diam = diameter * x + parent_diameter * _x
+    #     child = Segment(coords, diam, parent)
+    #     segments.append(child)
+    #     parent = child
+
+    def create_segment(self, parents, coordinates, diameters, shape="cylinder", shells=0):
+        """
+        Argument parents:
+        Argument coordinates:
+        Argument diameters:
+        Argument shape: either "cylinder" or "frustum".
+        Argument shells: unimplemented.
+
+        Returns a list of Segments.
+        """
         if not isinstance(parents, Iterable):
             parents     = [parents]
             coordinates = [coordinates]
             diameters   = [diameters]
-        assert(all(p < len(self) or p == ROOT for p in parents))
-        assert(all(d >= 0 for d in diameters))
-        membrane = self.db.create_entity("membrane", len(parents))
-        inside   = self.db.create_entity("inside", len(parents))
-        outside  = self.db.create_entity("outside", len(parents))
-        self.db.access("membrane/inside")[membrane]         = inside
-        self.db.access("membrane/outside")[membrane]        = outside
-        self.db.access("membrane/parents")[membrane]        = parents
-        self.db.access("membrane/coordinates")[membrane]    = coordinates
-        self.db.access("membrane/diameters")[membrane]      = diameters
+        num_new_segs = len(parents)
+        parents_clean = np.empty(num_new_segs, dtype=Location)
+        for idx, p in enumerate(parents):
+            parents_clean[idx] = ROOT if p is None else p
+        assert(shape in ("cylinder", "frustum"))
+        membrane = self.db.create_entity("membrane", num_new_segs)
+        inside   = self.db.create_entity("inside", num_new_segs * (shells + 1))
+        outside  = self.db.create_entity("outside", num_new_segs)
+        access   = self.db.access
+        access("membrane/parents")[membrane]     = parents_clean
+        access("membrane/coordinates")[membrane] = coordinates
+        access("membrane/diameters")[membrane]   = diameters
+        access("membrane/shape")[membrane]       = shape == "frustum"
+        access("membrane/shells")[membrane]      = shells
+        access("membrane/inside")[membrane]      = inside[slice(None,None,shells + 1)]
+        access("inside/membrane")[inside]        = cp.repeat(membrane, shells + 1)
+        shell_radius = [1.0] # TODO
+        access("inside/shell_radius")[inside]    = cp.tile(shell_radius, membrane)
+        access("membrane/outside")[membrane]     = outside
 
-        self.db.access("membrane/cross_sectional_areas")[membrane] = np.array(
-                [np.pi * (d / 2) ** 2 for d in diameters], dtype=Real)
+        1/0 # Update children here!
+        children = access("membrane/children").get()
+        self.db.sparse_matrix_write_rows(
+            rows = parents,
+            cols = [],
+            )
 
-        # STEPS:
-        #   1) Immediately allocate space for the entities in the database.
+        # Compute lengths, which are the distances between each node and its
+        # parent node. All root node lengths are NAN.
+        for location in membrane:
+            if self.is_root(location):
+                self.lengths[location] = np.nan
+            else:
+                self.lengths[location] = np.linalg.norm(
+                    self.coordinates[location] - self.coordinates[self.parents[location]])
 
-        #   2) whats wrong with just updating everything? if some areas get
-        #   rebuilt a few extra times durring the init sequence, so what? As
-        #   long as it does not repeatedly do the cubic matrix rebuild it should
-        #   be fine. Expecially since durring *normal* operation, there will be
-        #   a relatively few & batched calls to this.
+        xa = access("membrane/cross_sectional_areas")
+        if shape:
+            xa[membrane] = 1/0 # Frustum.
+        else:
+            xa[membrane] = np.array([np.pi * (d / 2) ** 2 for d in diameters], dtype=Real)
 
-        #   So before returning, full compute: Geometry (in & out), passive
-        #   electric properties
+
+        access("membrane/primary")[membrane] = 1/0
 
         1/0
 
@@ -185,42 +254,37 @@ class Model:
         rx[membrane] = R * l[membrane] / xa[membrane]
         c[membrane] = C_ * sa[membrane]
 
-
-
-        # TODO: Rework this code!
-        # Special case to break long segments into multiple shorter ones.
-        # 
-        # maximum_segment_length = float(maximum_segment_length)
-        # assert(maximum_segment_length > 0)
-        # if maximum_segment_length != np.inf: ???
-        # coordinates = tuple(float(x) for x in coordinates)
-        # diameter = float(diameter)
-        # parent = self
-        # parent_diameter = self.diameter
-        # parent_coordinates = self.coordinates
-        # length = np.linalg.norm(np.subtract(parent_coordinates, coordinates))
-        # divisions = max(1, math.ceil(length / maximum_segment_length))
-        # segments = []
-        # for i in range(divisions):
-        #     x = (i + 1) / divisions
-        #     _x = 1 - x
-        #     coords = (  coordinates[0] * x + parent_coordinates[0] * _x,
-        #                 coordinates[1] * x + parent_coordinates[1] * _x,
-        #                 coordinates[2] * x + parent_coordinates[2] * _x)
-        #     diam = diameter * x + parent_diameter * _x
-        #     child = Segment(coords, diam, parent)
-        #     segments.append(child)
-        #     parent = child
-
         # Note: do NOT return raw/unstable DB Indexes, make a Segment class for
         # each handle to that the user has a *nice* thing to hold onto. I can
         # put lots of convenience methods on the Segment handle...
         return membrane
 
-
     def destroy_segment(self, segments):
         """ """
         1/0
+
+    def _init_extracellular_properties(self, locations):
+        # TODO: Update this code to use the database. Also consider: how will it
+        # get the coordinates? Does this use "membrane/coordinates"? if so then
+        # it can't really have extra tracking points which are not associated
+        # with the membrane... Or should the extracellular stuff have its own
+        # system, complete with its own coordinates?
+        1/0
+
+        self._tree = scipy.spatial.cKDTree(access("membrane/coordinates").get())
+        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
+        for location in locations:
+            coords = self.coordinates[location]
+            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
+            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
+            neighbors.remove(location)
+            neighbors = np.array(neighbors, dtype=Location)
+            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
+                    neighbors, self.coordinates)
+            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
+            self.neighbors[location] = n
+            for n in self.neighbors[location]:
+                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
 
     def insert_reaction(self, reaction, *args, **kwargs):
         1/0
@@ -240,34 +304,12 @@ class Model:
         d, i = self._tree.query(coordinates, k, distance_upper_bound=maximum_distance)
         return i
 
-
-    def _init_tree_properties(self, locations):
- 
-        # Compute the children lists.
-        self.children = np.empty(len(self), dtype=object)
-        for location in range(len(self)):
-            self.children[location] = []
-        for location, parent in enumerate(self.parents):
-            if not self.is_root(location):
-                self.children[parent].append(location)
-        # Root must have at least one child, because cylinder is defined as between two points.
-        assert(all(len(self.children[x]) >= 1 for x in range(len(self)) if self.is_root(x)))
+    def _init_cellular_properties(self, locations):
         # The child with the largest diameter is special and is always kept at
         # the start of the children list.
         for siblings in self.children:
             siblings.sort(reverse=True, key=lambda x: self.diameters[x])
-        # Compute lengths, which are the distances between each node and its
-        # parent node. All root node lengths are NAN.
-        self.lengths = np.empty(len(self), dtype=Real)
-        for location in range(len(self)):
-            if self.is_root(location):
-                self.lengths[location] = np.nan
-            else:
-                self.lengths[location] = np.linalg.norm(
-                    self.coordinates[location] - self.coordinates[self.parents[location]])
-        assert(all(l >= epsilon * (1e-6)**1 or self.is_root(idx) for idx, l in enumerate(self.lengths)))
 
-    def _init_cellular_properties(self, locations):
         for location, parent in enumerate(self.parents):
             radius = self.diameters[location] / 2
             if self.is_root(location):
@@ -307,25 +349,6 @@ class Model:
             num_children = len(self.children[location])
             if num_children == 0 or (self.is_root(location) and num_children == 1):
                 self.surface_areas[location] += np.pi * radius ** 2
-        assert(all(x  >= epsilon * (1e-6)**2 for x in self.cross_sectional_areas))
-        assert(all(sa >= epsilon * (1e-6)**2 for sa in self.surface_areas))
-        assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
-
-    def _init_extracellular_properties(self, locations):
-        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
-        self._tree = scipy.spatial.cKDTree(self.coordinates)
-        for location in range(len(self)):
-            coords = self.coordinates[location]
-            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
-            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
-            neighbors.remove(location)
-            neighbors = np.array(neighbors, dtype=Location)
-            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
-                    neighbors, self.coordinates)
-            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
-            self.neighbors[location] = n
-            for n in self.neighbors[location]:
-                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
 
 
     def read(self, component_name, location=None):
@@ -368,15 +391,16 @@ class Model:
     def _advance_species(self):
         1/0 # TODO: Update this to use the database.
         """ Note: Each call to this method integrates over half a time step. """
-        dt = self._electrics.time_step
+        access = self.db.access
+        dt = access("time_step") / 2
         # Accumulate the net conductances and driving voltages from the chemical data.
-        # self._electrics.conductances     = cp.zeros(len(geometry), dtype=Real)
-        # self._electrics.driving_voltages = cp.zeros(len(geometry), dtype=Real)
-        self._electrics.conductances.fill(0)     # Zero accumulator.
-        self._electrics.driving_voltages.fill(0) # Zero accumulator.
-        T = self.celsius + 273.15
+        access("membrane/conductances").fill(0.0)     # Zero accumulator.
+        access("membrane/driving_voltages").fill(0.0) # Zero accumulator.
+        T = access("celsius") + 273.15
         for s in self._species.values():
             if not s.transmembrane: continue
+            # TODO: Rework this loop so that it does not need to save a private lambda method.
+            #       Just put an if-switch just here, its not that expensive...
             s.reversal_potential = s._reversal_potential_method(
                 T,
                 s.intra_concentration if s.intra is None else s.intra.concentrations,
@@ -458,7 +482,8 @@ class Model:
 
 class Segment:
     """ This class is returned by model.create_segment() """
-    def __init__(self):
+    def __init__(self, model,):
+        """ Private """
         1/0
         # self.parent = parent
         # assert(isinstance(self.parent, Segment) or self.parent is None)
@@ -480,12 +505,10 @@ class Segment:
 
     def get_voltage(self):
         1/0
-        assert(self.model is not None)
         return self.model.read_pointer(_v, self.location)
 
     def inject_current(self, current=None, duration=1e-3):
         1/0
-        assert(self.model is not None)
         self.model.inject_current(self.location, current, duration)
 
 def nerst_potential(charge, T, intra_concentration, extra_concentration):
@@ -536,58 +559,46 @@ def _electric_coefficients(database_access):
         deriv.append(-dt / (r * c_parent))
     return (deriv, (dst, src))
 
-def _chemical_diffusion_matrix(database, species, where):
-    1/0 # TODO: Make this into function which returns derivatives, refactor into database.
+def _inside_diffusion_coefficients(database_access, species):
+    src = []; dst = []; deriv = []
+    for location in range(len(geometry)):
+        if geometry.is_root(location):
+            continue
+        parent = geometry.parents[location]
+        l = geometry.lengths[location]
+        flux = species.intra_diffusivity * geometry.cross_sectional_areas[location] / l
+        cols.append(location)
+        rows.append(parent)
+        data.append(+dt * flux / geometry.intra_volumes[parent])
+        cols.append(location)
+        rows.append(location)
+        data.append(-dt * flux / geometry.intra_volumes[location])
+        cols.append(parent)
+        rows.append(location)
+        data.append(+dt * flux / geometry.intra_volumes[location])
+        cols.append(parent)
+        rows.append(parent)
+        data.append(-dt * flux / geometry.intra_volumes[parent])
+    for location in range(len(geometry)):
+        cols.append(location)
+        rows.append(location)
+        data.append(-dt / species.intra_decay_period)
+    return (deriv, (dst, src))
 
-    # Compute the coefficients of the derivative function:
-    # dX/dt = C * X, where C is Coefficients matrix and X is state vector.
-    cols = [] # Source
-    rows = [] # Destintation
-    data = [] # Weight
-    # derivative(Destintation) += Source * Weight
-    if where == "intracellular":
-        for location in range(len(geometry)):
-            if geometry.is_root(location):
-                continue
-            parent = geometry.parents[location]
-            l = geometry.lengths[location]
-            flux = species.intra_diffusivity * geometry.cross_sectional_areas[location] / l
+def _outside_diffusion_coefficients(database_access, species):
+    src = []; dst = []; deriv = []
+    D = species.extra_diffusivity / geometry.extracellular_tortuosity ** 2
+    for location in range(len(geometry)):
+        for neighbor in geometry.neighbors[location]:
+            flux = D * neighbor["border_surface_area"] / neighbor["distance"]
             cols.append(location)
-            rows.append(parent)
-            data.append(+1 * flux / geometry.intra_volumes[parent])
+            rows.append(neighbor["location"])
+            data.append(+dt * flux / geometry.extra_volumes[neighbor["location"]])
             cols.append(location)
             rows.append(location)
-            data.append(-1 * flux / geometry.intra_volumes[location])
-            cols.append(parent)
-            rows.append(location)
-            data.append(+1 * flux / geometry.intra_volumes[location])
-            cols.append(parent)
-            rows.append(parent)
-            data.append(-1 * flux / geometry.intra_volumes[parent])
-        for location in range(len(geometry)):
-            cols.append(location)
-            rows.append(location)
-            data.append(-1 / species.intra_decay_period)
-    elif where == "extracellular":
-        D = species.extra_diffusivity / geometry.extracellular_tortuosity ** 2
-        for location in range(len(geometry)):
-            for neighbor in geometry.neighbors[location]:
-                flux = D * neighbor["border_surface_area"] / neighbor["distance"]
-                cols.append(location)
-                rows.append(neighbor["location"])
-                data.append(+1 * flux / geometry.extra_volumes[neighbor["location"]])
-                cols.append(location)
-                rows.append(location)
-                data.append(-1 * flux / geometry.extra_volumes[location])
-        for location in range(len(geometry)):
-            cols.append(location)
-            rows.append(location)
-            data.append(-1 / species.extra_decay_period)
-    # Note: always use double precision floating point for building the impulse response matrix.
-    coefficients = csc_matrix((data, (rows, cols)), shape=(len(geometry), len(geometry)), dtype=float)
-    coefficients.data *= self.time_step
-    self.irm = expm(coefficients)
-    # Prune the impulse response matrix at epsilon nanomolar (mol/L).
-    self.irm.data[np.abs(self.irm.data) < epsilon * 1e-6] = 0
-    self.irm.eliminate_zeros()
-    self.irm = cupyx.scipy.sparse.csr_matrix(self.irm, dtype=Real)
+            data.append(-dt * flux / geometry.extra_volumes[location])
+    for location in range(len(geometry)):
+        cols.append(location)
+        rows.append(location)
+        data.append(-dt / species.extra_decay_period)
+    return (deriv, (dst, src))
