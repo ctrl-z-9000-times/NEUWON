@@ -1,4 +1,10 @@
-""" A custom Entity-Component-System for NEUWON. """
+""" A custom Entity-Component-System for NEUWON.
+
+Most data is stored in the Database class, as a pair of (name & value). The
+names of the data are significant, the archetype to which a component belongs is
+embeded in the name as:
+    "archetype_name/component_name"
+"""
 
 import numpy as np
 from scipy.sparse import csr_matrix, csc_matrix
@@ -9,10 +15,8 @@ from collections.abc import Callable, Iterable, Mapping
 
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
-# TODO: Consider renaming "Location" because it not longer implies a physical
-# location. Maybe "Index" or "Reference"?
-Location = np.dtype('u4')
-NULL = np.iinfo(Location).max
+Index = np.dtype('u4')
+NULL = np.iinfo(Index).max
 
 separator = "/"
 
@@ -28,18 +32,21 @@ class Database:
         self.archetypes[name] = _Archetype(doc)
 
     def add_global_constant(self, name: str, value: float, doc: str = "", check=True):
-        """ Add a singular floating-point value to the Database. """
+        """ Add a singular floating-point value. """
         name = str(name)
         assert(name not in self.contents)
         self.contents[name] = _Value(value, doc=doc, check=check)
+
+    def add_function(self, name, function, doc: str = ""):
+        """ Add a callable function. """
+        name = str(name)
+        assert(name not in self.contents)
+        self.contents[name] = _Function(function, doc)
 
     def add_component(self, name: str, doc: str = "",
             dtype=Real, shape=(1,), initial_value=None,
             user_read=False, user_write=False, check=True):
         """ Add a new data array to an Archetype.
-
-        The archetype must be specified by prefixing the component name with the
-        archetype name followed by a slash "/".
 
         Argument dtype:
             if dtype is a string then it is a reference to an entity.
@@ -109,10 +116,6 @@ class Database:
         for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
 
-    def invalidate_linear_systems(self, archetype: str):
-        ark = self.archetypes[str(archetype)]
-        for sys in ark.linear_systems: sys.up_to_date = False
-
     def destroy_entity(self, archetype: str, instances: list):
         archetype = str(archetype)
         assert(archetype in self.archetypes)
@@ -133,6 +136,7 @@ class Database:
         """ Returns a components value or GPU data array. """
         x = self.contents[str(name)]
         if isinstance(x, _Value): return x.value
+        if isinstance(x, _Function): return x.function
         elif isinstance(x, _Array):
             if x.shape == "sparse": return x.data
             else: return x.data[:x.archetype.size]
@@ -144,7 +148,11 @@ class Database:
         """ Zero and overwrite rows in a sparse matrix. """
         x = self.contents[str(name)]
         assert(isinstance(x, _Array) and x.shape == "sparse")
-        1/0
+        1/0 # TODO !!!
+
+    def invalidate_linear_systems(self, archetype: str):
+        ark = self.archetypes[str(archetype)]
+        for sys in ark.linear_systems: sys.up_to_date = False
 
     def check(self):
         for name, x in self.contents.items():
@@ -152,6 +160,7 @@ class Database:
 
     def __repr__(self) -> str:
         s = ""
+        # TODO: Print function listing & summarys at the top.
         # TODO: Print the global constants which are NOT associated with a component.
         for ark_name, ark in sorted(self.archetypes.items()):
             s += "=" * 80 + "\n"
@@ -227,8 +236,17 @@ class _Value:
             else:
                 assert np.isfinite(self.value), name
 
+class _Function:
+    def __init__(self, function, doc):
+        assert(isinstance(function, Callable))
+        self.function = function
+        self.doc = textwrap.dedent(str(doc if doc else function.__doc__)).strip()
+
+    def clean(self): pass
+
 class _Array:
-    def __init__(self, archetype, doc, dtype, shape, initial_value, user_read, user_write, check):
+    def __init__(self, archetype, doc, dtype, shape, column_archetype, initial_value,
+                user_read, user_write, check):
         self.archetype = archetype
         archetype.components.append(self)
         self.doc = textwrap.dedent(str(doc)).strip()
@@ -237,7 +255,7 @@ class _Array:
             self.initial_value = initial_value
             self.reference = False
         else:
-            self.dtype = Location
+            self.dtype = Index
             self.initial_value = NULL
             self.reference = str(dtype)
         if shape == "sparse":
@@ -250,19 +268,22 @@ class _Array:
         self.user_write = bool(user_write)
         self.check = check
         if self.shape == "sparse":
-            self.data = 1/0
+            self.data = csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
         else:
             self.data = self._alloc(archetype.size)
             self.append_entities(0, archetype.size)
 
     def append_entities(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
-        if len(self.data) < new_size:
-            new_data = self._alloc(new_size)
-            new_data[:old_size] = self.data[:old_size]
-            self.data = new_data
-        if self.initial_value is not None:
-            self.data[old_size: new_size].fill(self.initial_value)
+        if self.shape == "sparse":
+            1/0 # TODO: ?
+        else:
+            if len(self.data) < new_size:
+                new_data = self._alloc(new_size)
+                new_data[:old_size] = self.data[:old_size]
+                self.data = new_data
+            if self.initial_value is not None:
+                self.data[old_size: new_size].fill(self.initial_value)
 
     def _alloc(self, minimum_size):
         # TODO: IIRC CuPy can not deal with numpy structured arrays...
@@ -272,21 +293,23 @@ class _Array:
 
     def check(self, name, database):
         if self.check:
+            data = self.data
+            if self.shape == "sparse": data = data.data
             if self.reference:
                 if self.check == "ALLOW_NULL": 1/0
-                assert not cupy.any(self.data == NULL), name
+                assert not cupy.any(data == NULL), name
                 1/0 # TODO: Check that all references are "ref < len(entity)"
             else:
                 if isinstance(self.check, Iterable):
                     op, extreme_value = self.check
-                    if   op == ">": 1/0
+                    if   op == ">":  1/0
                     elif op == ">=": 1/0
                     elif op == "in": 1/0 # Check a range of values
                     else: 1/0
                 else:
                     kind = self.dtype.kind
                     if kind == "f" or kind == "c":
-                        assert cupy.all(cupy.isfinite(self.data)), name
+                        assert cupy.all(cupy.isfinite(data)), name
 
 class _LinearSystem:
     def __init__(self, function, doc, check, epsilon):

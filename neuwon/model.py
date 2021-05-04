@@ -43,6 +43,10 @@ class Model:
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
         db.add_global_constant("celsius", float(celsius))
+        db.add_function("create_segment", self.create_segment)
+        db.add_function("destroy_segment", self.destroy_segment)
+        db.add_function("insert_reaction", self.insert_reaction)
+        db.add_function("remove_reaction", self.remove_reaction)
         # Basic entities and their relations.
         db.add_entity_type("membrane", doc="")
         db.add_component("membrane/parents", dtype="membrane", check=False,
@@ -196,7 +200,7 @@ class Model:
             coordinates = [coordinates]
             diameters   = [diameters]
         num_new_segs = len(parents)
-        parents_clean = np.empty(num_new_segs, dtype=Location)
+        parents_clean = np.empty(num_new_segs, dtype=Index)
         for idx, p in enumerate(parents):
             parents_clean[idx] = NULL if p is None else p
         assert(shape in ("cylinder", "frustum"))
@@ -326,7 +330,7 @@ class Model:
             max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
             neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
             neighbors.remove(location)
-            neighbors = np.array(neighbors, dtype=Location)
+            neighbors = np.array(neighbors, dtype=Index)
             v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
                     neighbors, self.coordinates)
             self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
@@ -355,6 +359,10 @@ class Model:
         d, i = self._tree.query(coordinates, k, distance_upper_bound=maximum_distance)
         return i
 
+    # TODO: COnsider making a single "access" function instead of read and
+    # write. The access function would not accept location indexes. THe Segment
+    # API still has read & write methods, which correctly deal with the index
+    # (whereas this exposes the unstable indexes to the user).
     def read(self, component_name, location=None):
         """
         If argument location is not given then this returns an array containing
@@ -484,6 +492,8 @@ class Model:
         self._injected_currents.remaining.append(duration)
 
 
+# TODO: The model needs a method to create Segments from unstable indexes
+#       (eg from traversing the membrane tree)
 class Segment:
     """ This class is returned by model.create_segment() """
     def __init__(self, model,):
@@ -505,6 +515,9 @@ class Segment:
         #     self.path_length = parent.path_length + segment_length
 
     def read(self, component):
+        1/0
+
+    def write(self, component, value):
         1/0
 
     def get_voltage(self):
