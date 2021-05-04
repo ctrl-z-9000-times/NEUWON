@@ -9,15 +9,12 @@ from collections.abc import Callable, Iterable, Mapping
 
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
+# TODO: Consider renaming "Location" because it not longer implies a physical
+# location. Maybe "Index" or "Reference"?
 Location = np.dtype('u4')
 NULL = np.iinfo(Location).max
 
 separator = "/"
-
-# TODO: API REWORK: Allow sparse matrixes on GPU, have two methods to update them:
-# 1) Overwrite matrix with given data, for data which gets entirely recomputed: IRM
-# 2) Update rows, for any kind of adjacency matrix: children, neighbors.
-# How to call such methods? Also, they need a different code path than the regular array append...
 
 class Database:
     def __init__(self):
@@ -41,7 +38,7 @@ class Database:
             user_read=False, user_write=False, check=True):
         """ Add a new data array to an Archetype.
 
-        The archetype must be specified by prefixing the component name wit hthe
+        The archetype must be specified by prefixing the component name with the
         archetype name followed by a slash "/".
 
         Argument dtype:
@@ -62,6 +59,21 @@ class Database:
         self.contents[name] = arr = _Array(self.archetypes[archetype], doc=doc,
             dtype=dtype, shape=shape, initial_value=initial_value,
             user_read=user_read, user_write=user_write, check=check)
+        if arr.reference:
+            assert(arr.reference in self.archetypes)
+            self.archetypes[arr.reference].referenced_by.append(arr)
+
+    def add_csr_matrix(self, name, column_archetype, doc="",
+            dtype=Real, user_read=False, check=True):
+        """ Add a compressed sparse row matrix. """
+        name = str(name)
+        assert(name not in self.contents)
+        archetype, component = name.split(separator, maxsplit=1)
+        assert(archetype in self.archetypes)
+        assert(column_archetype in self.archetypes)
+        self.contents[name] = arr = _Array(self.archetypes[archetype], doc=doc,
+            dtype=dtype, initial_value=0, shape="sparse", column_archetype=column_archetype,
+            user_read=user_read, user_write=False, check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
@@ -93,7 +105,7 @@ class Database:
         old_size = ark.size
         new_size = old_size + num
         ark.size = new_size
-        for arr in ark.components: arr._append_entities(old_size, new_size)
+        for arr in ark.components: arr.append_entities(old_size, new_size)
         for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
 
@@ -108,6 +120,12 @@ class Database:
         1/0 # TODO Compress the dead entries out of all data arrays.
         1/0 # TODO Update references.
 
+        # Note: I should give the user control over which references are
+        # optional and can safely be overwritten with NULL, versus the
+        # references which trigger a recursive destruction. 
+        # Sparse matrixes implicitly represent NULL.
+        # Add another flag? Or maybe key it off of the "check".
+
     def num_entity(self, archetype: str):
         return self.archetypes[str(archetype)].size
 
@@ -121,6 +139,12 @@ class Database:
         elif isinstance(x, _LinearSystem):
             if not x.up_to_date: x.compute(self)
             return x.data
+
+    def write_row(self, name, rows, columns, data):
+        """ Zero and overwrite rows in a sparse matrix. """
+        x = self.contents[str(name)]
+        assert(isinstance(x, _Array) and x.shape == "sparse")
+        1/0
 
     def check(self):
         for name, x in self.contents.items():
@@ -217,9 +241,7 @@ class _Array:
             self.initial_value = NULL
             self.reference = str(dtype)
         if shape == "sparse":
-            1/0
-            if self.reference:
-                1/0 # Special case for connectivity matrix?
+            self.shape = "sparse"
         elif isinstance(shape, Iterable):
             self.shape = tuple(int(round(x)) for x in shape)
         else:
@@ -227,10 +249,13 @@ class _Array:
         self.user_read = bool(user_read)
         self.user_write = bool(user_write)
         self.check = check
-        self.data = self._alloc(archetype.size)
-        self._append_entities(0, archetype.size)
+        if self.shape == "sparse":
+            self.data = 1/0
+        else:
+            self.data = self._alloc(archetype.size)
+            self.append_entities(0, archetype.size)
 
-    def _append_entities(self, old_size, new_size):
+    def append_entities(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
         if len(self.data) < new_size:
             new_data = self._alloc(new_size)

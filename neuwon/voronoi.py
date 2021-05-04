@@ -5,7 +5,7 @@ import math
 import scipy.spatial
 import time
 import random
-from neuwon.common import Real, epsilon, Location, NULL
+from neuwon.database import Real, epsilon, Location, NULL
 
 __all__ = ["voronoi_cell"] # Public API entry point.
 

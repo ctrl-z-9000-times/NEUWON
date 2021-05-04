@@ -15,7 +15,9 @@ class Species:
             intra_diffusivity = None,
             extra_diffusivity = None,
             intra_decay_period = float("inf"),
-            extra_decay_period = float("inf")):
+            extra_decay_period = float("inf"),
+            intra_shells = True,
+            extra_grid = None,):
         """
         If diffusivity is not given, then the concentration is constant.
         Argument reversal_potential is one of: number, "nerst", "goldman_hodgkin_katz"
@@ -29,12 +31,15 @@ class Species:
         self.extra_diffusivity = float(extra_diffusivity) if extra_diffusivity is not None else None
         self.intra_decay_period = float(intra_decay_period)
         self.extra_decay_period = float(extra_decay_period)
+        self.intra_shells = bool(intra_shells)
+        self.extra_grid = None if extra_grid is None else tuple(float(x) for x in extra_grid)
         assert(self.intra_concentration >= 0.0)
         assert(self.extra_concentration >= 0.0)
         assert(self.intra_diffusivity is None or self.intra_diffusivity >= 0)
         assert(self.extra_diffusivity is None or self.extra_diffusivity >= 0)
         assert(self.intra_decay_period > 0.0)
         assert(self.extra_decay_period > 0.0)
+        assert(len(self.extra_grid) == 3 and all(x > 0 for x in self.extra_grid))
         if reversal_potential == "nerst":
             self.reversal_potential = str(reversal_potential)
             self._reversal_potential_method = lambda T, i, o, v: nerst_potential(self.charge, T, i, o)

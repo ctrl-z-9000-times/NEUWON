@@ -9,7 +9,6 @@ import numpy as np
 from neuwon import *
 from neuwon.database import *
 import neuwon.voronoi
-Neighbor = neuwon.voronoi.Neighbor
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
@@ -17,13 +16,12 @@ R = 8.31446261815324 # Universal gas constant
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
 
-# TODO: Consider having an intracellular neighbor & border_surface_area?
-#       This would replace children?
-
-# TODO: Split Neighbor into three separate properties. Then remove my custom Neighbor dtype.
-
 # TODO: Rename intra & extra into inside & outside
 
+Neighbor = np.dtype([
+    ("distance", Real),
+    ("border_surface_area", Real),
+])
 
 class Model:
     def __init__(self, time_step,
@@ -49,11 +47,7 @@ class Model:
         db.add_entity_type("membrane", doc="")
         db.add_component("membrane/parents", dtype="membrane", check=False,
             doc="Cell membranes are connected in a tree.")
-        db.add_component("membrane/children", dtype="membrane", sparse=True, doc="")
-        db.add_component("membrane/coordinates", shape=(3,), doc="Units: ")
-        db.add_component("membrane/diameters", doc="Units: ")
-        db.add_component("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
-        db.add_component("membrane/primary", dtype=np.bool)
+        db.add_component("membrane/children", dtype="membrane", shape="sparse", doc="")
         db.add_entity_type("inside", doc="Intracellular space.")
         db.add_component("membrane/inside", dtype="inside",
                 doc="""A reference to the outermost shell.
@@ -63,28 +57,33 @@ class Model:
         db.add_component("membrane/shells", dtype=np.uint8)
         db.add_component("inside/membrane", dtype="membrane")
         db.add_component("inside/shell_radius")
-        db.add_entity_type("outside", doc="Extracellular space.")
-        db.add_component("membrane/outside", dtype="outside", doc="")
         # Geometric properties.
+        db.add_component("membrane/coordinates", shape=(3,), doc="Units: ")
+        db.add_component("membrane/diameters", doc="Units: ")
+        db.add_component("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
+        db.add_component("membrane/primary", dtype=np.bool)
         db.add_component("membrane/lengths", check=False, doc="Units: Meters")
         db.add_component("membrane/surface_areas", doc="Units: Meters ^ 2")
         db.add_component("membrane/cross_sectional_areas", doc="Units: Meters ^ 2")
         db.add_component("inside/volumes", doc="Units: Litres")
+        db.add_component("inside/neighbors", dtype=Neighbor, shape="sparse")
+        # Extracellular space properties.
+        db.add_entity_type("outside", doc="Extracellular space.")
+        db.add_component("membrane/outside", dtype="outside", doc="")
+        db.add_component("outside/coordinates", shape=(3,), doc="Units: ")
         db.add_component("outside/volumes", doc="Units: Litres")
-        db.add_component("outside/neighbors", dtype="outside", shape="sparse")
-        db.add_component("outside/neighbor_distances", shape="sparse", doc="Units: Meters")
-        db.add_component("outside/border_surface_areas", shape="sparse", doc="Units: Meters ^ 2")
+        db.add_component("outside/neighbors", dtype=Neighbor, shape="sparse")
         db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction))
         db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity))
         db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius))
         # Electric properties.
-        db.add_component("membrane/voltages", initial_value=float(initial_voltage))
         db.add_global_constant("inside/resistance", float(intracellular_resistance), doc="Units: ")
-        db.add_component("membrane/conductances")
-        db.add_component("membrane/driving_voltages")
+        db.add_global_constant("membrane/capacitance", float(membrane_capacitance), doc="Units: Farads / Meter^2")
+        db.add_component("membrane/voltages", initial_value=float(initial_voltage))
         db.add_component("membrane/axial_resistances", check=False, doc="Units: ")
         db.add_component("membrane/capacitances", doc="Units: Farads")
-        db.add_global_constant("membrane/capacitance", float(membrane_capacitance), doc="Units: Farads / Meter^2")
+        db.add_component("membrane/conductances")
+        db.add_component("membrane/driving_voltages")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
             epsilon=epsilon * 1e-3,) # Epsilon millivolts.
 
@@ -217,12 +216,27 @@ class Model:
         access("membrane/outside")[membrane]     = outside
 
         1/0 # Update children here!
-        children = access("membrane/children").get()
+        children = access("membrane/children")
         self.db.sparse_matrix_write_rows(
             rows = parents,
             cols = [],
             )
 
+        self._initialize_membrane(membrane)
+        self._initialize_membrane(parents)
+        self._initialize_outside(outside)
+        1/0 # TODO: Also re-initialize all of the neighbors of new outside points.
+
+        # Note: do NOT return raw/unstable DB Indexes, make a Segment class for
+        # each handle to that the user has a *nice* thing to hold onto. I can
+        # put lots of convenience methods on the Segment handle...
+        return membrane
+
+    def destroy_segment(self, segments):
+        """ """
+        1/0
+
+    def _initialize_membrane(self, locations):
         # Compute lengths, which are the distances between each node and its
         # parent node. All root node lengths are NAN.
         for location in membrane:
@@ -241,70 +255,6 @@ class Model:
 
         access("membrane/primary")[membrane] = 1/0
 
-        1/0
-
-        # Passive electric properties.
-        l  = self.db.access("membrane/lengths")
-        sa = self.db.access("membrane/surface_areas")
-        xa = self.db.access("membrane/cross_sectional_areas")
-        R  = self.db.access("inside/resistance")
-        rx = self.db.access("membrane/axial_resistances")
-        C_ = self.db.access("membrane/capacitance")
-        c  = self.db.access("membrane/capacitances")
-        rx[membrane] = R * l[membrane] / xa[membrane]
-        c[membrane] = C_ * sa[membrane]
-
-        # Note: do NOT return raw/unstable DB Indexes, make a Segment class for
-        # each handle to that the user has a *nice* thing to hold onto. I can
-        # put lots of convenience methods on the Segment handle...
-        return membrane
-
-    def destroy_segment(self, segments):
-        """ """
-        1/0
-
-    def _init_extracellular_properties(self, locations):
-        # TODO: Update this code to use the database. Also consider: how will it
-        # get the coordinates? Does this use "membrane/coordinates"? if so then
-        # it can't really have extra tracking points which are not associated
-        # with the membrane... Or should the extracellular stuff have its own
-        # system, complete with its own coordinates?
-        1/0
-
-        self._tree = scipy.spatial.cKDTree(access("membrane/coordinates").get())
-        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
-        for location in locations:
-            coords = self.coordinates[location]
-            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
-            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
-            neighbors.remove(location)
-            neighbors = np.array(neighbors, dtype=Location)
-            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
-                    neighbors, self.coordinates)
-            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
-            self.neighbors[location] = n
-            for n in self.neighbors[location]:
-                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
-
-    def insert_reaction(self, reaction, *args, **kwargs):
-        1/0
-
-    def remove_reaction(self, reaction, segments):
-        1/0
-
-    def is_root(self, location):
-        return self.parents[location] == NULL
-
-    def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
-        coordinates = np.array(coordinates, dtype=Real)
-        assert(coordinates.shape == (3,))
-        assert(all(np.isfinite(x) for x in coordinates))
-        k = int(k)
-        assert(k >= 1)
-        d, i = self._tree.query(coordinates, k, distance_upper_bound=maximum_distance)
-        return i
-
-    def _init_cellular_properties(self, locations):
         # The child with the largest diameter is special and is always kept at
         # the start of the children list.
         for siblings in self.children:
@@ -350,6 +300,60 @@ class Model:
             if num_children == 0 or (self.is_root(location) and num_children == 1):
                 self.surface_areas[location] += np.pi * radius ** 2
 
+        # Passive electric properties.
+        l  = self.db.access("membrane/lengths")
+        sa = self.db.access("membrane/surface_areas")
+        xa = self.db.access("membrane/cross_sectional_areas")
+        R  = self.db.access("inside/resistance")
+        rx = self.db.access("membrane/axial_resistances")
+        C_ = self.db.access("membrane/capacitance")
+        c  = self.db.access("membrane/capacitances")
+        rx[membrane] = R * l[membrane] / xa[membrane]
+        c[membrane] = C_ * sa[membrane]
+
+    def _initialize_outside(self, locations):
+        # TODO: Update this code to use the database. Also consider: how will it
+        # get the coordinates? Does this use "membrane/coordinates"? if so then
+        # it can't really have extra tracking points which are not associated
+        # with the membrane... Or should the extracellular stuff have its own
+        # system, complete with its own coordinates?
+        1/0
+
+        self._tree = scipy.spatial.cKDTree(access("membrane/coordinates").get())
+        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
+        for location in locations:
+            coords = self.coordinates[location]
+            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
+            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
+            neighbors.remove(location)
+            neighbors = np.array(neighbors, dtype=Location)
+            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
+                    neighbors, self.coordinates)
+            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
+            self.neighbors[location] = n
+            for n in self.neighbors[location]:
+                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
+
+    def insert_reaction(self, reaction, segments, *args, **kwargs):
+        segment = 1/0 # TODO: Convert segments from stable DB handles into raw indexes?
+        r = self.reactions[str(reaction)]
+        r.initialize(segment, *args, **kw_args)
+        1/0
+
+    def remove_reaction(self, reaction, segments):
+        1/0
+
+    def is_root(self, locations):
+        return self.db.access("membrane/parents")[locations] == NULL
+
+    def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
+        coordinates = np.array(coordinates, dtype=Real)
+        assert(coordinates.shape == (3,))
+        assert(all(np.isfinite(x) for x in coordinates))
+        k = int(k)
+        assert(k >= 1)
+        d, i = self._tree.query(coordinates, k, distance_upper_bound=maximum_distance)
+        return i
 
     def read(self, component_name, location=None):
         """
