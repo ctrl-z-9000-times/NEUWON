@@ -1,9 +1,21 @@
 """ A custom Entity-Component-System for NEUWON.
 
-Most data is stored in the Database class, as a pair of (name & value). The
-names of the data are significant, the archetype to which a component belongs is
-embeded in the name as:
-    "archetype_name/component_name"
+The Database contains Archetypes, Entitys, and Components.
+
+* An Entity in the Database represents a concrete thing in the users model.
+Entitys can have associated data Components.
+
+* An Archetype is a template for constructing Entitys; and an Entity is an
+instance of the Archetype which constructed it.
+
+* There are multiple types of Components for representing different or
+specialized data types. Components may be associated with any number of
+Archetypes (including none).
+
+* The user gives names to all Archetypes and Components; and the names are
+significant. Component names must start with their associated Archetype name. In
+this way, the Database is organized in a 2-layer hierarchy of Archetypes and
+Components.
 """
 
 import numpy as np

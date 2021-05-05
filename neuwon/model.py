@@ -360,22 +360,8 @@ class Model:
         d, i = self._tree.query(coordinates, k, distance_upper_bound=maximum_distance)
         return i
 
-    # TODO: COnsider making a single "access" function instead of read and
-    # write. The access function would not accept location indexes. THe Segment
-    # API still has read & write methods, which correctly deal with the index
-    # (whereas this exposes the unstable indexes to the user).
-    def read(self, component_name, location=None):
-        """
-        If argument location is not given then this returns an array containing
-        all values in the system. """
-        data = self.db.access(component_name)
-        if location is None:    return data.get()
-        else:                   return data[location]
-
-    def write(self, component_name, location, value):
-        """ Write a new value to a pointer at the given location in the system. """
-        data = self.db.access(component_name)
-        data[location] = value
+    def access(self, component_name):
+        return self.db.access(component_name)
 
     def advance(self):
         """

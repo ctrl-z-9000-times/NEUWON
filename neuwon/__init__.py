@@ -80,6 +80,15 @@ class Reaction:
         """
         raise TypeError("Abstract method called by %s."%repr(self))
 
+# TODO: Consider getting rid of the standard library of species and mechanisms.
+# Instead provide it in code examples which the user can copy paste into their
+# code, or possible import directly from an "examples" sub-module (like with
+# htm.core: `import htm.examples`). The problem with this std-lib is that there
+# is no real consensus on what's standard... Species have a lot of arguments and
+# while there may be one scientifically correct value for each argument, the
+# user might want to omit options for run-speed. Mechanisms come in so many
+# different flavors too, with varying levels of bio-accuracy vs run-speed.
+
 species_library = {
     "na": {
         "charge": 1,
