@@ -49,45 +49,46 @@ class Model:
         db.add_function("remove_reaction", self.remove_reaction)
         # Basic entities and their relations.
         db.add_entity_type("membrane", doc="")
-        db.add_component("membrane/parents", dtype="membrane", check=False,
+        db.add_attribute("membrane/parents", dtype="membrane", check=False,
             doc="Cell membranes are connected in a tree.")
-        db.add_component("membrane/children", dtype="membrane", shape="sparse", doc="")
+        db.add_attribute("membrane/children", dtype="membrane", shape="sparse", doc="")
         db.add_entity_type("inside", doc="Intracellular space.")
-        db.add_component("membrane/inside", dtype="inside",
+        db.add_attribute("membrane/inside", dtype="inside",
                 doc="""A reference to the outermost shell.
                 The shells and the innermost core are allocated in a contiguous block
                 with this referencing the start of range of length "membrane/shells" + 1.
                 """)
-        db.add_component("membrane/shells", dtype=np.uint8)
-        db.add_component("inside/membrane", dtype="membrane")
-        db.add_component("inside/shell_radius")
+        db.add_attribute("membrane/shells", dtype=np.uint8)
+        db.add_attribute("inside/membrane", dtype="membrane")
+        db.add_attribute("inside/shell_radius")
         # Geometric properties.
-        db.add_component("membrane/coordinates", shape=(3,), doc="Units: ")
-        db.add_component("membrane/diameters", doc="Units: ")
-        db.add_component("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
-        db.add_component("membrane/primary", dtype=np.bool)
-        db.add_component("membrane/lengths", check=False, doc="Units: Meters")
-        db.add_component("membrane/surface_areas", doc="Units: Meters ^ 2")
-        db.add_component("membrane/cross_sectional_areas", doc="Units: Meters ^ 2")
-        db.add_component("inside/volumes", doc="Units: Litres")
-        db.add_component("inside/neighbors", dtype=Neighbor, shape="sparse")
+        db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
+        db.add_attribute("membrane/diameters", doc="Units: ")
+        db.add_attribute("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
+        db.add_attribute("membrane/primary", dtype=np.bool)
+        db.add_attribute("membrane/lengths", check=False, doc="Units: Meters")
+        db.add_attribute("membrane/surface_areas", doc="Units: Meters ^ 2")
+        db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2")
+        db.add_attribute("inside/volumes", doc="Units: Litres")
+        db.add_attribute("inside/neighbors", dtype=Neighbor, shape="sparse")
         # Extracellular space properties.
-        db.add_entity_type("outside", doc="Extracellular space.")
-        db.add_component("membrane/outside", dtype="outside", doc="")
-        db.add_component("outside/coordinates", shape=(3,), doc="Units: ")
-        db.add_component("outside/volumes", doc="Units: Litres")
-        db.add_component("outside/neighbors", dtype=Neighbor, shape="sparse")
+        db.add_entity_type("outside", doc="Extracellular space using a voronoi diagram.")
+        db.add_attribute("membrane/outside", dtype="outside", doc="")
+        db.add_attribute("outside/coordinates", shape=(3,), doc="Units: ")
+        db.add_kd_tree(  "outside/tree", "outside/coordinates")
+        db.add_attribute("outside/volumes", doc="Units: Litres")
+        db.add_attribute("outside/neighbors", dtype=Neighbor, shape="sparse")
         db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction))
         db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity))
         db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius))
         # Electric properties.
         db.add_global_constant("inside/resistance", float(intracellular_resistance), doc="Units: ")
         db.add_global_constant("membrane/capacitance", float(membrane_capacitance), doc="Units: Farads / Meter^2")
-        db.add_component("membrane/voltages", initial_value=float(initial_voltage))
-        db.add_component("membrane/axial_resistances", check=False, doc="Units: ")
-        db.add_component("membrane/capacitances", doc="Units: Farads")
-        db.add_component("membrane/conductances")
-        db.add_component("membrane/driving_voltages")
+        db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
+        db.add_attribute("membrane/axial_resistances", check=False, doc="Units: ")
+        db.add_attribute("membrane/capacitances", doc="Units: Farads")
+        db.add_attribute("membrane/conductances")
+        db.add_attribute("membrane/driving_voltages")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
             epsilon=epsilon * 1e-3,) # Epsilon millivolts.
 
@@ -120,25 +121,25 @@ class Model:
             assert(isinstance(species, Species))
         assert(species.name not in self.species)
         self.species[species.name] = species
-        add_component = self.db.add_component
+        add_attribute = self.db.add_attribute
         if species.intra_diffusivity is not None:
-            add_component("inside/%s/concentrations"%species.name,
+            add_attribute("inside/%s/concentrations"%species.name,
                     initial_value=species.intra_concentration,
                     doc="Units: Molar")
-            add_component("inside/%s/release_rates"%species.name,
+            add_attribute("inside/%s/release_rates"%species.name,
                     initial_value=0,
                     doc="Units: Molar / Second")
-            add_component("inside/%s/diffusion"%species.name, shape="sparse")
+            add_attribute("inside/%s/diffusion"%species.name, shape="sparse")
         if species.extra_diffusivity is not None:
-            add_component("outside/%s/concentrations"%species.name,
+            add_attribute("outside/%s/concentrations"%species.name,
                     initial_value=species.extra_concentration,
                     doc="Units: Molar")
-            add_component("outside/%s/release_rates"%species.name,
+            add_attribute("outside/%s/release_rates"%species.name,
                     initial_value=0,
                     doc="Units: Molar / Second")
-            add_component("outside/%s/diffusion"%species.name, shape="sparse")
+            add_attribute("outside/%s/diffusion"%species.name, shape="sparse")
         if species.transmembrane:
-            add_component("membrane/%s/conductances"%species.name,
+            add_attribute("membrane/%s/conductances"%species.name,
                     initial_value=0,
                     doc="Units: Siemens")
 
@@ -323,12 +324,12 @@ class Model:
         # system, complete with its own coordinates?
         1/0
 
-        self._tree = scipy.spatial.cKDTree(access("membrane/coordinates").get())
+        tree = self.db.access("outside/tree")
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
         for location in locations:
             coords = self.coordinates[location]
             max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
-            neighbors = self._tree.query_ball_point(coords, 2 * max_dist)
+            neighbors = tree.query_ball_point(coords, 2 * max_dist)
             neighbors.remove(location)
             neighbors = np.array(neighbors, dtype=Index)
             v, n = neuwon.voronoi.voronoi_cell(location, max_dist,

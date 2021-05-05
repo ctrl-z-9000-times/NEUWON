@@ -23,7 +23,7 @@ separator = "/"
 class Database:
     def __init__(self):
         self.archetypes = {}
-        self.contents = {}
+        self.components = {}
 
     def add_archetype(self, name: str, doc: str = ""):
         """ Create a new type of entity. """
@@ -31,22 +31,26 @@ class Database:
         assert(name not in self.archetypes)
         self.archetypes[name] = _Archetype(doc)
 
+    def _clean_component_name(self, new_component_name)
+        new_component_name = str(new_component_name)
+        assert(new_component_name not in self.components)
+        return new_component_name
+
     def add_global_constant(self, name: str, value: float, doc: str = "", check=True):
         """ Add a singular floating-point value. """
-        name = str(name)
-        assert(name not in self.contents)
-        self.contents[name] = _Value(value, doc=doc, check=check)
+        name = self._clean_component_name(name)
+        self.components[name] = _Value(value, doc=doc, check=check)
 
     def add_function(self, name, function, doc: str = ""):
         """ Add a callable function. """
-        name = str(name)
-        assert(name not in self.contents)
-        self.contents[name] = _Function(function, doc)
+        name = self._clean_component_name(name)
+        self.components[name] = _Function(function, doc)
 
-    def add_component(self, name: str, doc: str = "",
+    def add_attribute(self, name: str, doc: str = "",
             dtype=Real, shape=(1,), initial_value=None,
             user_read=False, user_write=False, check=True):
-        """ Add a new data array to an Archetype.
+        """ Add a piece of data to an Archetype. Every Entity will be allocated
+        one instance of this attribute.
 
         Argument dtype:
             if dtype is a string then it is a reference to an entity.
@@ -59,11 +63,10 @@ class Database:
         Argument user_read, user_write:
         Argument check:
         """
-        name = str(name)
-        assert(name not in self.contents)
+        name = self._clean_component_name(name)
         archetype, component = name.split(separator, maxsplit=1)
         assert(archetype in self.archetypes)
-        self.contents[name] = arr = _Array(self.archetypes[archetype], doc=doc,
+        self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
             dtype=dtype, shape=shape, initial_value=initial_value,
             user_read=user_read, user_write=user_write, check=check)
         if arr.reference:
@@ -73,17 +76,22 @@ class Database:
     def add_csr_matrix(self, name, column_archetype, doc="",
             dtype=Real, user_read=False, check=True):
         """ Add a compressed sparse row matrix. """
-        name = str(name)
-        assert(name not in self.contents)
+        name = self._clean_component_name(name)
         archetype, component = name.split(separator, maxsplit=1)
         assert(archetype in self.archetypes)
         assert(column_archetype in self.archetypes)
-        self.contents[name] = arr = _Array(self.archetypes[archetype], doc=doc,
+        self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
             dtype=dtype, initial_value=0, shape="sparse", column_archetype=column_archetype,
             user_read=user_read, user_write=False, check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
+
+    def add_kd_tree(self, name, component, doc=""):
+        name = self._clean_component_name(name)
+        archetype, component = name.split(separator, maxsplit=1)
+        self.components[name] = x = _KD_Tree(1/0)
+        self.archetypes[archetype].kd_trees.append(x)
 
     def add_linear_system(self, name: str, function, epsilon, doc: str = "", check=True):
         """ Add a system of linear & time-invariant differential equations.
@@ -97,13 +105,13 @@ class Database:
         The database computes the propagator matrix but does not apply it.
         The matrix is updated after any of the entity are created or destroyed.
         """
-        name = str(name)
-        assert(name not in self.contents)
+        name = self._clean_component_name(name)
         archetype, component = name.split(separator, maxsplit=1)
         assert(archetype in self.archetypes)
-        self.contents[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
+        self.components[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
         self.archetypes[archetype].linear_systems.append(sys)
 
+    # TODO: Make a flag on this method to optionally return a list of Entity handles, as a convenience.
     def create_entity(self, archetype: str, number_of_instances: int = 1) -> list:
         """ Create instances of an archetype.
         Returns their internal ID's. """
@@ -112,8 +120,10 @@ class Database:
         old_size = ark.size
         new_size = old_size + num
         ark.size = new_size
-        for arr in ark.components: arr.append_entities(old_size, new_size)
+        for arr in ark.attributes: arr.append_entities(old_size, new_size)
+        for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
+        # TODO: Also invalidate any KD-Trees.
         return range(old_size, new_size)
 
     def destroy_entity(self, archetype: str, instances: list):
@@ -134,28 +144,32 @@ class Database:
 
     def access(self, name: str):
         """ Returns a components value or GPU data array. """
-        x = self.contents[str(name)]
+        x = self.components[str(name)]
         if isinstance(x, _Value): return x.value
         if isinstance(x, _Function): return x.function
-        elif isinstance(x, _Array):
+        if isinstance(x, _Array):
             if x.shape == "sparse": return x.data
             else: return x.data[:x.archetype.size]
-        elif isinstance(x, _LinearSystem):
+        if isinstance(x, _LinearSystem):
             if not x.up_to_date: x.compute(self)
             return x.data
+        if isinstance(x, _KD_Tree):
+            if not x.up_to_date: x.compute(self)
+            return x.tree
 
     def write_row(self, name, rows, columns, data):
         """ Zero and overwrite rows in a sparse matrix. """
-        x = self.contents[str(name)]
+        x = self.components[str(name)]
         assert(isinstance(x, _Array) and x.shape == "sparse")
         1/0 # TODO !!!
 
-    def invalidate_linear_systems(self, archetype: str):
+    def invalidate(self, archetype: str):
         ark = self.archetypes[str(archetype)]
         for sys in ark.linear_systems: sys.up_to_date = False
+        # TODO: also invalidate any KD-Trees.
 
     def check(self):
-        for name, x in self.contents.items():
+        for name, x in self.components.items():
             x.check(name, self)
 
     def __repr__(self) -> str:
@@ -168,7 +182,7 @@ class Database:
             if ark.doc: s += textwrap.indent(ark.doc, "    ") + "\n"
             s += "\n"
             ark_prefix = ark_name + separator
-            for comp_name, comp in sorted(self.contents.items()):
+            for comp_name, comp in sorted(self.components.items()):
                 if not comp_name.startswith(ark_prefix): continue
                 # TODO: Print components doc strings.
                 if isinstance(comp, _Value):
@@ -187,8 +201,8 @@ class Database:
                     1/0
         return s
 
-class EntityHandle:
-    """ A persistent handle on a newly created entity.
+class Entity:
+    """ A persistent handle on an entity.
 
     By default, the identifiers returned by create_entity are only valid until
     the next call to destroy_entity, which moves where the entities are located.
@@ -212,9 +226,10 @@ class _Archetype:
     def __init__(self, doc):
         self.doc = textwrap.dedent(str(doc)).strip()
         self.size = 0
-        self.components = []
+        self.attributes = []
         self.referenced_by = []
         self.linear_systems = []
+        self.kd_trees = []
 
 class _Value:
     def __init__(self, value, doc, user_read, check):
@@ -248,7 +263,7 @@ class _Array:
     def __init__(self, archetype, doc, dtype, shape, column_archetype, initial_value,
                 user_read, user_write, check):
         self.archetype = archetype
-        archetype.components.append(self)
+        archetype.attributes.append(self)
         self.doc = textwrap.dedent(str(doc)).strip()
         if isinstance(dtype, np.dtype):
             self.dtype = dtype
@@ -310,6 +325,18 @@ class _Array:
                     kind = self.dtype.kind
                     if kind == "f" or kind == "c":
                         assert cupy.all(cupy.isfinite(data)), name
+
+class _KD_Tree:
+    def __init__(self, args, more_args, doc):
+        self.doc = textwrap.dedent(str(doc)).strip()
+        self.tree = None
+        self.up_to_date = False
+
+    def compute(self, database):
+        self.tree = scipy.spatial.cKDTree(access("membrane/coordinates").get())
+        self.up_to_date = True
+
+    def check(self): pass
 
 class _LinearSystem:
     def __init__(self, function, doc, check, epsilon):
