@@ -8,14 +8,11 @@ Entitys can have associated data Components.
 * An Archetype is a template for constructing Entitys; and an Entity is an
 instance of the Archetype which constructed it.
 
-* There are multiple types of Components for representing different or
-specialized data types. Components may be associated with any number of
-Archetypes (including none).
+* The user gives names to all Archetypes and Components; and they are referred
+to by their names in all API calls.
 
-* The user gives names to all Archetypes and Components; and the names are
-significant. Component names must start with their associated Archetype name. In
-this way, the Database is organized in a 2-layer hierarchy of Archetypes and
-Components.
+* There are multiple types of Archetypes and Components for representing
+different and specialized things.
 """
 
 # OUTSTANDING TASKS:
@@ -23,20 +20,7 @@ Components.
 #       Database.__repr__
 #       Check methods
 #       Destroy Entity and then Stable Entity Handles
-
-# TODO: Should this track user_read & user_write? Didn't I get rid of tracking
-# user access controls?
-
-
-# IDEA: Add a grid archetype.
-# - User specifies spacing in each dimension (offset is arbitrary).
-# - User "creates" coordinates, and the DB returns the indexes of grid boxes, just
-# like with method "db.create_entity", except that the grid boxes might have already
-# existed and multiple coordinates may map to the same entity.
-# - Regular and orthogonal, fast conversion from coordinates to indexes.
-# - Add coordinates can cause it to resize the grid, which entails remapping where everything
-# is inserted at, and updating all references to the grid.
-
+#       Grid Archetypes
 
 import numpy as np
 from scipy.sparse import csr_matrix, csc_matrix
@@ -60,64 +44,71 @@ class Database:
         self.archetypes = {}
         self.components = {}
 
-    def add_archetype(self, name: str, doc: str = ""):
-        """ Create a new type of entity. """
+    def add_archetype(self, name, grid = None, doc = ""):
+        """ Create a new type of entity.
+
+        Argument grid (optional) is spacing in each dimension.
+        """
         name = str(name)
         assert(name not in self.archetypes)
-        self.archetypes[name] = _Archetype(doc)
+        self.archetypes[name] = _Archetype(grid, doc)
+
+    def _split_archetype(self, component_name):
+        for ark_name, ark in self.archetypes.items():
+            if component_name.startswith(ark_name):
+                return ark_name, component_name[len(ark_name):]
+        raise ValueError("Component name must be prefixed by an archetype name.")
 
     def _clean_component_name(self, new_component_name)
         new_component_name = str(new_component_name)
         assert(new_component_name not in self.components)
         return new_component_name
 
-    def add_global_constant(self, name: str, value: float, doc: str = "", check=True):
+    def add_global_constant(self, name, value: float, doc = "", check=True):
         """ Add a singular floating-point value. """
         name = self._clean_component_name(name)
         self.components[name] = _Value(value, doc=doc, check=check)
 
-    def add_function(self, name, function, doc: str = ""):
+    def add_function(self, name, function, doc = ""):
         """ Add a callable function. """
         name = self._clean_component_name(name)
         self.components[name] = _Function(function, doc)
 
-    def add_attribute(self, name: str, doc: str = "",
-            dtype=Real, shape=(1,), initial_value=None,
-            user_read=False, user_write=False, check=True):
+    def add_attribute(self, name, doc = "",
+            dtype=Real, shape=(1,), initial_value=None, check=True):
         """ Add a piece of data to an Archetype. Every Entity will be allocated
         one instance of this attribute.
+
+        Argument name: must start with the name of the associated Archetype.
 
         Argument dtype:
             if dtype is a string then it is a reference to an entity.
             Note: Reactions are not run in a deterministic order. Dynamics which
-            span between reactions via reaction_references should operate at a
+            span between reactions via references should operate at a
             significantly slower time scale than the time step.
 
         Argument shape:
         Argument initial_value:
-        Argument user_read, user_write:
         Argument check:
         """
         name = self._clean_component_name(name)
-        archetype, component = name.split(separator, maxsplit=1)
+        archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
         self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
-            dtype=dtype, shape=shape, initial_value=initial_value,
-            user_read=user_read, user_write=user_write, check=check)
+            dtype=dtype, shape=shape, initial_value=initial_value, check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
 
-    def add_csr_matrix(self, name, column_archetype, doc="",
-            dtype=Real, user_read=False, check=True):
+    def add_csr_matrix(self, name, column_archetype, doc="", check=True):
         """ Add a compressed sparse row matrix. """
         name = self._clean_component_name(name)
-        archetype, component = name.split(separator, maxsplit=1)
+        archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
         assert(column_archetype in self.archetypes)
         self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
             dtype=dtype, initial_value=0, shape="sparse", column_archetype=column_archetype,
-            user_read=user_read, user_write=False, check=check)
+            check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
@@ -125,14 +116,15 @@ class Database:
     def add_kd_tree(self, name, component, doc=""):
         """ """
         name = self._clean_component_name(name)
-        archetype, _ = name.split(separator, maxsplit=1)
+        archetype, _ = self._split_archetype(name)
+
         component = str(component)
         assert(component in self.components)
         assert(isinstance(component, _Array) and component.shape != "sparse")
         self.components[name] = x = _KD_Tree(component, doc)
         self.archetypes[archetype].kd_trees.append(x)
 
-    def add_linear_system(self, name: str, function, epsilon, doc: str = "", check=True):
+    def add_linear_system(self, name, function, epsilon, doc = "", check=True):
         """ Add a system of linear & time-invariant differential equations.
 
         Argument function(database_access) -> coefficients
@@ -145,16 +137,17 @@ class Database:
         The matrix is updated after any of the entity are created or destroyed.
         """
         name = self._clean_component_name(name)
-        archetype, component = name.split(separator, maxsplit=1)
+        archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
         self.components[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
         self.archetypes[archetype].linear_systems.append(sys)
 
     # TODO: Make a flag on this method to optionally return a list of Entity handles, as a convenience.
-    def create_entity(self, archetype: str, number_of_instances: int = 1) -> list:
+    def create_entity(self, archetype, number_of_instances: int = 1) -> list:
         """ Create instances of an archetype.
         Returns their internal ID's. """
         ark = self.archetypes[str(archetype)]
+        assert(ark.grid is None)
         num = int(number_of_instances); assert(num >= 0)
         old_size = ark.size
         new_size = old_size + num
@@ -164,7 +157,18 @@ class Database:
         for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
 
-    def destroy_entity(self, archetype: str, instances: list):
+    def create_grid_entity(self, archetype, coordinates):
+        """ Expand the grid to cover these coordinates.
+
+        Returns the indexes of the given coordinates' grid boxes. """
+        # TODO: Consider folding this into create_entity ... just overload the arguments
+        # and document the dual usage. If the user fucks it up then they'll just get an error message.
+        return 1/0 # TODO
+
+    def coordinates_to_grid(self, archetype, coordinates):
+        return 1/0 # TODO
+
+    def destroy_entity(self, archetype, instances: list):
         archetype = str(archetype)
         assert(archetype in self.archetypes)
         1/0 # TODO Recursively mark all destroyed instances, make a bitmask for aliveness.
@@ -177,10 +181,10 @@ class Database:
         # Sparse matrixes implicitly represent NULL.
         # Add another flag? Or maybe key it off of the "check".
 
-    def num_entity(self, archetype: str):
+    def num_entity(self, archetype):
         return self.archetypes[str(archetype)].size
 
-    def access(self, name: str):
+    def access(self, name):
         """ Returns a components value. """
         x = self.components[str(name)]
         if isinstance(x, _Value): return x.value
@@ -201,7 +205,7 @@ class Database:
         assert(isinstance(x, _Array) and x.shape == "sparse")
         x.write_row(rows, columns, data)
 
-    def invalidate(self, archetype: str):
+    def invalidate(self, archetype):
         ark = self.archetypes[str(archetype)]
         for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
@@ -219,9 +223,8 @@ class Database:
             s += "Archetype %s (%d)\n"%(ark_name, ark.size)
             if ark.doc: s += textwrap.indent(ark.doc, "    ") + "\n"
             s += "\n"
-            ark_prefix = ark_name + separator
             for comp_name, comp in sorted(self.components.items()):
-                if not comp_name.startswith(ark_prefix): continue
+                if not comp_name.startswith(ark_name): continue
                 # TODO: Print components doc strings.
                 if isinstance(comp, _Value):
                     s += "Component: " + comp_name + " = " + str(comp.value) + "\n"
@@ -261,7 +264,8 @@ class Entity:
         1/0
 
 class _Archetype:
-    def __init__(self, doc):
+    def __init__(self, grid, doc):
+        self.grid = None if not grid else tuple(float(x) for x in grid)
         self.doc = textwrap.dedent(str(doc)).strip()
         self.size = 0
         self.attributes = []
@@ -270,10 +274,9 @@ class _Archetype:
         self.kd_trees = []
 
 class _Value:
-    def __init__(self, value, doc, user_read, check):
+    def __init__(self, value, doc, check):
         self.value = float(value)
         self.doc = textwrap.dedent(str(doc)).strip()
-        self.user_read = bool(user_read)
         self.check = check
 
     def check(self, name, database):
@@ -298,8 +301,7 @@ class _Function:
     def clean(self): pass
 
 class _Array:
-    def __init__(self, archetype, doc, dtype, shape, column_archetype, initial_value,
-                user_read, user_write, check):
+    def __init__(self, archetype, doc, dtype, shape, column_archetype, initial_value, check):
         self.archetype = archetype
         archetype.attributes.append(self)
         self.doc = textwrap.dedent(str(doc)).strip()
@@ -317,8 +319,6 @@ class _Array:
             self.shape = tuple(int(round(x)) for x in shape)
         else:
             self.shape = (int(round(shape)),)
-        self.user_read = bool(user_read)
-        self.user_write = bool(user_write)
         self.check = check
         if self.shape == "sparse":
             self.data = csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
