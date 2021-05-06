@@ -18,9 +18,30 @@ this way, the Database is organized in a 2-layer hierarchy of Archetypes and
 Components.
 """
 
+# OUTSTANDING TASKS:
+#       Sparse Matrix Write Rows
+#       Database.__repr__
+#       Check methods
+#       Destroy Entity and then Stable Entity Handles
+
+# TODO: Should this track user_read & user_write? Didn't I get rid of tracking
+# user access controls?
+
+
+# IDEA: Add a grid archetype.
+# - User specifies spacing in each dimension (offset is arbitrary).
+# - User "creates" coordinates, and the DB returns the indexes of grid boxes, just
+# like with method "db.create_entity", except that the grid boxes might have already
+# existed and multiple coordinates may map to the same entity.
+# - Regular and orthogonal, fast conversion from coordinates to indexes.
+# - Add coordinates can cause it to resize the grid, which entails remapping where everything
+# is inserted at, and updating all references to the grid.
+
+
 import numpy as np
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
+import scipy.spatial
 import cupy
 import textwrap
 from collections.abc import Callable, Iterable, Mapping
@@ -31,6 +52,8 @@ Index = np.dtype('u4')
 NULL = np.iinfo(Index).max
 
 separator = "/"
+# TODO: Consider getting rid of the explicit separator, and instead say the
+# archetype "prefixes" the component name. Move the separator into the users code.
 
 class Database:
     def __init__(self):
@@ -100,9 +123,13 @@ class Database:
             self.archetypes[arr.reference].referenced_by.append(arr)
 
     def add_kd_tree(self, name, component, doc=""):
+        """ """
         name = self._clean_component_name(name)
-        archetype, component = name.split(separator, maxsplit=1)
-        self.components[name] = x = _KD_Tree(1/0)
+        archetype, _ = name.split(separator, maxsplit=1)
+        component = str(component)
+        assert(component in self.components)
+        assert(isinstance(component, _Array) and component.shape != "sparse")
+        self.components[name] = x = _KD_Tree(component, doc)
         self.archetypes[archetype].kd_trees.append(x)
 
     def add_linear_system(self, name: str, function, epsilon, doc: str = "", check=True):
@@ -135,7 +162,6 @@ class Database:
         for arr in ark.attributes: arr.append_entities(old_size, new_size)
         for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
-        # TODO: Also invalidate any KD-Trees.
         return range(old_size, new_size)
 
     def destroy_entity(self, archetype: str, instances: list):
@@ -155,7 +181,7 @@ class Database:
         return self.archetypes[str(archetype)].size
 
     def access(self, name: str):
-        """ Returns a components value or GPU data array. """
+        """ Returns a components value. """
         x = self.components[str(name)]
         if isinstance(x, _Value): return x.value
         if isinstance(x, _Function): return x.function
@@ -173,12 +199,12 @@ class Database:
         """ Zero and overwrite rows in a sparse matrix. """
         x = self.components[str(name)]
         assert(isinstance(x, _Array) and x.shape == "sparse")
-        1/0 # TODO !!!
+        x.write_row(rows, columns, data)
 
     def invalidate(self, archetype: str):
         ark = self.archetypes[str(archetype)]
+        for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
-        # TODO: also invalidate any KD-Trees.
 
     def check(self):
         for name, x in self.components.items():
@@ -220,7 +246,7 @@ class Entity:
     the next call to destroy_entity, which moves where the entities are located.
     This class tracks where an entity gets moved to, and provides a consistent
     API for accessing the entity data. """
-    def __init__(self, database, entity, index):
+    def __init__(self, database, archetype, index):
         self.database = database
         1/0
 
@@ -302,21 +328,21 @@ class _Array:
 
     def append_entities(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
-        if self.shape == "sparse":
-            1/0 # TODO: ?
-        else:
-            if len(self.data) < new_size:
-                new_data = self._alloc(new_size)
-                new_data[:old_size] = self.data[:old_size]
-                self.data = new_data
-            if self.initial_value is not None:
-                self.data[old_size: new_size].fill(self.initial_value)
+        if len(self.data) < new_size:
+            new_data = self._alloc(new_size)
+            new_data[:old_size] = self.data[:old_size]
+            self.data = new_data
+        if self.initial_value is not None:
+            self.data[old_size: new_size].fill(self.initial_value)
 
     def _alloc(self, minimum_size):
         # TODO: IIRC CuPy can not deal with numpy structured arrays...
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
         return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
+
+    def write_row(self, rows, columns, data):
+        1/0 # TODO!!! UPDATE THE SPARSE MATRIX!
 
     def check(self, name, database):
         if self.check:
@@ -339,13 +365,15 @@ class _Array:
                         assert cupy.all(cupy.isfinite(data)), name
 
 class _KD_Tree:
-    def __init__(self, args, more_args, doc):
+    def __init__(self, component, doc):
         self.doc = textwrap.dedent(str(doc)).strip()
+        self.component = component
         self.tree = None
         self.up_to_date = False
 
     def compute(self, database):
-        self.tree = scipy.spatial.cKDTree(access("membrane/coordinates").get())
+        data = database.access(self.component).get()
+        self.tree = scipy.spatial.cKDTree(data)
         self.up_to_date = True
 
     def check(self): pass
