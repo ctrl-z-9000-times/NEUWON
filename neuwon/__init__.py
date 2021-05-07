@@ -68,7 +68,7 @@ class Reaction:
         pass
 
     @classmethod
-    def new_instances(self, database_access, locations, *args, **kw_args):
+    def new_instances(self, database_access, *args, **kw_args):
         """ """
         pass
 

@@ -12,6 +12,8 @@ from PIL import Image, ImageFont, ImageDraw
 # TODO: Make these into methods on the model object, instead of global functions
 # operating on the model. Then make these functions private.
 
+# TODO: Consider renaming this file to "povray.py" or "povray_render.py"?
+
 def draw_image(model, segment_colors,
         output_filename, resolution,
         camera_coordinates,

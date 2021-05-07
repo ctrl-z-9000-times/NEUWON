@@ -339,11 +339,9 @@ class Model:
             for n in self.neighbors[location]:
                 n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
 
-    def insert_reaction(self, reaction, segments, *args, **kwargs):
-        segment = 1/0 # TODO: Convert segments from stable DB handles into raw indexes?
+    def insert_reaction(self, reaction, *args, **kwargs):
         r = self.reactions[str(reaction)]
         r.initialize(segment, *args, **kw_args)
-        1/0
 
     def remove_reaction(self, reaction, segments):
         1/0
@@ -464,56 +462,53 @@ class Model:
             self.locations = [x for k, x in zip(keep, self.locations) if k]
             self.remaining = [x for k, x in zip(keep, self.remaining) if k]
 
-    def inject_current(self, location, current = None, duration = 1.4e-3):
+    def inject_current(self, location, current, duration = 1.4e-3):
         location = int(location)
         assert(location < len(self))
         duration = float(duration)
         assert(duration >= 0)
-        if current is None:
-            target_voltage = 200e-3
-            current = target_voltage * self._electrics.capacitances[location] / duration
-        else:
-            current = float(current)
+        current = float(current)
         self._injected_currents.currents.append(current)
         self._injected_currents.locations.append(location)
         self._injected_currents.remaining.append(duration)
 
-
-# TODO: The model needs a method to create Segments from unstable indexes
-#       (eg from traversing the membrane tree)
 class Segment:
     """ This class is returned by model.create_segment() """
-    def __init__(self, model,):
-        """ Private """
-        1/0
-        # self.parent = parent
-        # assert(isinstance(self.parent, Segment) or self.parent is None)
-        # self.children = []
-        # self.coordinates = tuple(float(x) for x in coordinates)
-        # assert(len(self.coordinates) == 3)
-        # self.diameter = float(diameter)
-        # assert(diameter >= 0)
-        # self.insertions = []
-        # if self.parent is None:
-        #     self.path_length = 0
-        # else:
-        #     parent.children.append(self)
-        #     segment_length = np.linalg.norm(np.subtract(parent.coordinates, self.coordinates))
-        #     self.path_length = parent.path_length + segment_length
+    def __init__(self, model, membrane_index):
+        self.model = model
+        self.entity = Entity(model.db, "membrane", membrane_index)
+
+    @property
+    def parent(self):
+        parent = self.entity.read("membrane/parents")
+        if parent != NULL:  return Segment(self.model, parent)
+        else:               return None
+
+    @property
+    def children(self):
+        children = self.entity.read("membrane/children")
+        return [Segment(self.model, c) for c in children]
+
+    @property
+    def coordinates(self):
+        return self.entity.read("membrane/coordinates")
+
+    @property
+    def diameter(self):
+        return self.entity.read("membrane/diameters")
 
     def read(self, component):
-        1/0
+        return self.entity.read(component)
 
     def write(self, component, value):
-        1/0
+        return self.entity.write(component, value)
 
-    def get_voltage(self):
-        1/0
-        return self.model.read_pointer(_v, self.location)
+    @property
+    def voltage(self):
+        return self.entity.read("membrane/voltages")
 
-    def inject_current(self, current=None, duration=1e-3):
-        1/0
-        self.model.inject_current(self.location, current, duration)
+    def inject_current(self, current, duration=1e-3):
+        self.model.inject_current(self.entity.index, current, duration)
 
 def nerst_potential(charge, T, intra_concentration, extra_concentration):
     """ Returns the reversal voltage for an ionic species. """

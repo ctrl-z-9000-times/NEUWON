@@ -2,6 +2,8 @@ import sympy
 import os.path
 import re
 
+# TODO: Consider merging this into the main NMODL module?
+
 one = sympy.S.One
 
 class Units:

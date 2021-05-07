@@ -19,30 +19,28 @@ different and specialized things.
 #       Sparse Matrix Write Rows
 #       Database.__repr__
 #       Check methods
-#       Destroy Entity and then Stable Entity Handles
+#       Destroy & Relocate Entitys
 #       Grid Archetypes
 
+import cupy
 import numpy as np
+import scipy.spatial
+import textwrap
+import weakref
+from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
-import scipy.spatial
-import cupy
-import textwrap
-from collections.abc import Callable, Iterable, Mapping
 
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
 Index = np.dtype('u4')
 NULL = np.iinfo(Index).max
 
-separator = "/"
-# TODO: Consider getting rid of the explicit separator, and instead say the
-# archetype "prefixes" the component name. Move the separator into the users code.
-
 class Database:
     def __init__(self):
         self.archetypes = {}
         self.components = {}
+        self.entitys = []
 
     def add_archetype(self, name, grid = None, doc = ""):
         """ Create a new type of entity.
@@ -152,7 +150,7 @@ class Database:
         old_size = ark.size
         new_size = old_size + num
         ark.size = new_size
-        for arr in ark.attributes: arr.append_entities(old_size, new_size)
+        for arr in ark.attributes: arr.append_entitys(old_size, new_size)
         for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
@@ -184,8 +182,12 @@ class Database:
     def num_entity(self, archetype):
         return self.archetypes[str(archetype)].size
 
-    def access(self, name):
+    def access(self, name, sparse_matrix_write=None):
         """ Returns a components value. """
+        if sparse_matrix_write:
+            1/0 # Divert flow control here!
+            self.write_row(args)
+            return
         x = self.components[str(name)]
         if isinstance(x, _Value): return x.value
         if isinstance(x, _Function): return x.function
@@ -199,6 +201,10 @@ class Database:
             if not x.up_to_date: x.compute(self)
             return x.tree
 
+    # TODO: Consider how to make this available to the user via the access
+    # method. This is a plain and simple "write" operation and so the user
+    # should be able to do it via the same API as all of the other write ops.
+    # The Reactions API does not even pass the full database, just the access method....
     def write_row(self, name, rows, columns, data):
         """ Zero and overwrite rows in a sparse matrix. """
         x = self.components[str(name)]
@@ -206,6 +212,8 @@ class Database:
         x.write_row(rows, columns, data)
 
     def invalidate(self, archetype):
+        # TODO: This method is crude. It only works on whole archetypes. What if
+        # the user wanted to invalidate only certain pieces of data?
         ark = self.archetypes[str(archetype)]
         for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
@@ -251,17 +259,15 @@ class Entity:
     API for accessing the entity data. """
     def __init__(self, database, archetype, index):
         self.database = database
-        1/0
-
-    def __del__(self):
-        """ Unregister this from the model. """
-        1/0
+        self.archetype = archetype
+        self.index = index
+        self.database.entitys.append(weakref.ref(self))
 
     def read(self, component):
-        1/0
+        self.database.access(component, self.index)
 
-    def write(self, component):
-        1/0
+    def write(self, component, value):
+        self.database.access(component, self.index)
 
 class _Archetype:
     def __init__(self, grid, doc):
@@ -324,9 +330,9 @@ class _Array:
             self.data = csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
         else:
             self.data = self._alloc(archetype.size)
-            self.append_entities(0, archetype.size)
+            self.append_entitys(0, archetype.size)
 
-    def append_entities(self, old_size, new_size):
+    def append_entitys(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
         if len(self.data) < new_size:
             new_data = self._alloc(new_size)
