@@ -13,11 +13,6 @@ import neuwon.voronoi
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 
-# TODO: Consider switching to use NEURON's units? It makes my code a bit more
-# complicated, but it should make the users code simpler and more intuitive.
-
-# TODO: Rename intra & extra into inside & outside
-
 Neighbor = np.dtype([
     ("distance", Real),
     ("border_surface_area", Real),
@@ -66,7 +61,10 @@ class Model:
         db.add_attribute("membrane/diameters", doc="Units: ")
         db.add_attribute("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
         db.add_attribute("membrane/primary", dtype=np.bool)
-        db.add_attribute("membrane/lengths", check=False, doc="Units: Meters")
+        db.add_attribute("membrane/lengths", check=False,
+            doc="""The distance between each node and its parent node.
+            Root node lengths are NAN.\n
+            Units: Meters""")
         db.add_attribute("membrane/surface_areas", doc="Units: Meters ^ 2")
         db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2")
         db.add_attribute("inside/volumes", doc="Units: Litres")
@@ -93,11 +91,11 @@ class Model:
             epsilon=epsilon * 1e-3,) # Epsilon millivolts.
 
         # TODO: Merge these checks into the database.
-        assert(cp.all(access("membrane/diameters")[membrane] >= 0.0))
-        assert(all(l  >= epsilon * (1e-6)**1 or self.is_root(idx) for idx, l in enumerate(self.lengths)))
-        assert(all(x  >= epsilon * (1e-6)**2 for x in self.cross_sectional_areas))
-        assert(all(sa >= epsilon * (1e-6)**2 for sa in self.surface_areas))
-        assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
+        # assert(cp.all(access("membrane/diameters")[membrane] >= 0.0))
+        # assert(all(l  >= epsilon * (1e-6)**1 or self.is_root(idx) for idx, l in enumerate(self.lengths)))
+        # assert(all(x  >= epsilon * (1e-6)**2 for x in self.cross_sectional_areas))
+        # assert(all(sa >= epsilon * (1e-6)**2 for sa in self.surface_areas))
+        # assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
 
     def __len__(self):
         return self.db.num_entity("membrane")
@@ -164,6 +162,7 @@ class Model:
     def create_segment(self, parents, coordinates, diameters,
                 shape="cylinder", shells=0, maximum_segment_length=np.inf):
         """
+
         Argument parents:
         Argument coordinates:
         Argument diameters:

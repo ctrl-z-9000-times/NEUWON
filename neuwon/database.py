@@ -16,11 +16,12 @@ different and specialized things.
 """
 
 # OUTSTANDING TASKS:
-#       Sparse Matrix Write Rows
 #       Database.__repr__
 #       Check methods
 #       Destroy & Relocate Entities
 #       Grid Archetypes
+
+# TODO: Consider splitting sparse matrixes into their own private component class.
 
 import cupy
 import numpy as np
@@ -195,7 +196,8 @@ class Database:
         x = self.components[str(name)]
         if sparse_matrix_write is not None:
             assert(isinstance(x, _Array) and x.shape == "sparse")
-            x.write_row(rows, columns, data)
+            rows, columns, data = sparse_matrix_write
+            x.write_row(sparse_matrix_write)
             return
         if isinstance(x, _Value): return x.value
         if isinstance(x, _Function): return x.function
@@ -226,9 +228,7 @@ class Database:
         # TODO: Print the global constants which are NOT associated with a component.
         for ark_name, ark in sorted(self.archetypes.items()):
             s += "=" * 80 + "\n"
-            s += "Archetype %s (%d)\n"%(ark_name, ark.size)
-            if ark.doc: s += textwrap.indent(ark.doc, "    ") + "\n"
-            s += "\n"
+            s += repr(ark) + "\n"
             for comp_name, comp in sorted(self.components.items()):
                 if not comp_name.startswith(ark_name): continue
                 # TODO: Print components doc strings.
@@ -267,20 +267,35 @@ class Entity:
     def write(self, component, value):
         self.database.access(component, self.index)
 
-class _Archetype:
-    def __init__(self, grid, doc):
-        self.grid = None if not grid else tuple(float(x) for x in grid)
+class _DocString:
+    def __init__(self, name, doc):
+        self.name = name
         self.doc = textwrap.dedent(str(doc)).strip()
+
+    def __str__(self):
+        s = repr(self)
+        if self.doc: s += textwrap.indent(self.doc, "    ") + "\n"
+        return s
+
+class _Archetype(_DocString):
+    def __init__(self, name, doc, grid):
+        _DocString.__init__(self, name, doc)
+        self.grid = None if not grid else tuple(float(x) for x in grid)
         self.size = 0
         self.attributes = []
         self.referenced_by = []
         self.linear_systems = []
         self.kd_trees = []
 
-class _Value:
-    def __init__(self, value, doc, check):
+    def __repr__(self):
+        s = "Archetype %s\n"%ark_name
+        if ark.size: s += "%d instances.\n"%ark.size
+        return s
+
+class _Value(_DocString):
+    def __init__(self, name, doc, value, check):
+        _DocString.__init__(self, name, doc)
         self.value = float(value)
-        self.doc = textwrap.dedent(str(doc)).strip()
         self.check = check
 
     def check(self, name, database):
@@ -296,19 +311,28 @@ class _Value:
             else:
                 assert np.isfinite(self.value), name
 
-class _Function:
-    def __init__(self, function, doc):
+    def __repr__(self):
+        s = "Component %s = %s\n"%(self.name, self.value)
+        if self.check: s += "assert %s\n"
+
+
+class _Function(_DocString):
+    def __init__(self, name, doc, function):
+        _DocString.__init__(self, name, doc if doc else function.__doc__)
         assert(isinstance(function, Callable))
         self.function = function
-        self.doc = textwrap.dedent(str(doc if doc else function.__doc__)).strip()
 
     def clean(self): pass
 
-class _Array:
-    def __init__(self, archetype, doc, dtype, shape, column_archetype, initial_value, check):
+    def __repr__(self):
+        s = "Component %s = %s\n"%(self.name, self.value)
+        if self.check: s += "assert %s\n"
+
+class _Array(_DocString):
+    def __init__(self, name, doc, archetype, dtype, shape, column_archetype, initial_value, check):
+        _DocString.__init__(self, name, doc)
         self.archetype = archetype
         archetype.attributes.append(self)
-        self.doc = textwrap.dedent(str(doc)).strip()
         if isinstance(dtype, np.dtype):
             self.dtype = dtype
             self.initial_value = initial_value
@@ -346,7 +370,11 @@ class _Array:
         return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
 
     def write_row(self, rows, columns, data):
-        1/0 # TODO!!! UPDATE THE SPARSE MATRIX!
+        lil = scipy.sparse.lil_matrix(self.data)
+        for r, c, d in zip(rows, columns, data):
+            lil.rows[row] = c
+            lil.data[row] = d
+        self.data = scipy.sparse.csr_matrix(lil)
 
     def check(self, name, database):
         if self.check:
@@ -368,9 +396,9 @@ class _Array:
                     if kind == "f" or kind == "c":
                         assert cupy.all(cupy.isfinite(data)), name
 
-class _KD_Tree:
-    def __init__(self, component, doc):
-        self.doc = textwrap.dedent(str(doc)).strip()
+class _KD_Tree(_DocString):
+    def __init__(self, name, doc, component):
+        _DocString.__init__(self, name, doc)
         self.component = component
         self.tree = None
         self.up_to_date = False
@@ -382,11 +410,11 @@ class _KD_Tree:
 
     def check(self): pass
 
-class _LinearSystem:
-    def __init__(self, function, doc, check, epsilon):
+class _LinearSystem(_DocString):
+    def __init__(self, name, doc, function, epsilon, check):
+        _DocString.__init__(self, name, doc)
         self.function   = function
         self.epsilon    = float(epsilon)
-        self.doc        = textwrap.dedent(str(doc)).strip()
         self.check      = check
         self.up_to_date = False
         self.data       = None

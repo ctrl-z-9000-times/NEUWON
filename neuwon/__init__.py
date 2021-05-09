@@ -4,6 +4,13 @@ specializing in conductance based models. This software is a modern remake of
 the NEURON simulator. It is accurate, efficient, and easy to use.
 """
 
+# TODO: Consider moving these definitions into the main model.py file?
+
+# TODO: Consider switching to use NEURON's units? It makes my code a bit more
+# complicated, but it should make the users code simpler and more intuitive.
+
+# TODO: Rename intra & extra into inside & outside
+
 class Species:
     """ """
     def __init__(self, name,
