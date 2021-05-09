@@ -16,7 +16,6 @@ different and specialized things.
 """
 
 # OUTSTANDING TASKS:
-#       Database.__repr__
 #       Check methods
 #       Destroy & Relocate Entities
 #       Grid Archetypes
@@ -50,7 +49,7 @@ class Database:
         """
         name = str(name)
         assert(name not in self.archetypes)
-        self.archetypes[name] = _Archetype(grid, doc)
+        self.archetypes[name] = _Archetype(name, doc, grid)
 
     def _split_archetype(self, component_name):
         for ark_name, ark in self.archetypes.items():
@@ -58,7 +57,7 @@ class Database:
                 return ark_name, component_name[len(ark_name):]
         raise ValueError("Component name must be prefixed by an archetype name.")
 
-    def _clean_component_name(self, new_component_name)
+    def _clean_component_name(self, new_component_name):
         new_component_name = str(new_component_name)
         assert(new_component_name not in self.components)
         return new_component_name
@@ -66,12 +65,12 @@ class Database:
     def add_global_constant(self, name, value: float, doc = "", check=True):
         """ Add a singular floating-point value. """
         name = self._clean_component_name(name)
-        self.components[name] = _Value(value, doc=doc, check=check)
+        self.components[name] = _Global_Constant(name, doc, value, check=check)
 
     def add_function(self, name, function, doc = ""):
         """ Add a callable function. """
         name = self._clean_component_name(name)
-        self.components[name] = _Function(function, doc)
+        self.components[name] = _Function(name, doc, function)
 
     def add_attribute(self, name, doc = "",
             dtype=Real, shape=(1,), initial_value=None, check=True):
@@ -93,13 +92,13 @@ class Database:
         name = self._clean_component_name(name)
         archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
-        self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
+        self.components[name] = arr = _Array(name, doc, self.archetypes[archetype],
             dtype=dtype, shape=shape, initial_value=initial_value, check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
 
-    def add_sparse_matrix(self, name, column_archetype, doc="", check=True):
+    def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="", check=True):
         """ Add a compressed sparse row matrix which is indexed by Entities.
 
         Argument name: determines the archetype for the row.
@@ -108,8 +107,8 @@ class Database:
         archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
         assert(column_archetype in self.archetypes)
-        self.components[name] = arr = _Array(self.archetypes[archetype], doc=doc,
-            dtype=dtype, initial_value=0, shape="sparse", column_archetype=column_archetype,
+        self.components[name] = arr = _Array(name, doc, self.archetypes[archetype],
+            dtype=dtype, initial_value=0, shape="sparse", column_archetype=self.archetypes[column_archetype],
             check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
@@ -119,11 +118,9 @@ class Database:
         """ """
         name = self._clean_component_name(name)
         archetype, _ = self._split_archetype(name)
-
-        component = str(component)
-        assert(component in self.components)
+        component = self.components[str(component)]
         assert(isinstance(component, _Array) and component.shape != "sparse")
-        self.components[name] = x = _KD_Tree(component, doc)
+        self.components[name] = x = _KD_Tree(name, doc, component)
         self.archetypes[archetype].kd_trees.append(x)
 
     def add_linear_system(self, name, function, epsilon, doc = "", check=True):
@@ -141,7 +138,7 @@ class Database:
         name = self._clean_component_name(name)
         archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
-        self.components[name] = sys = _LinearSystem(function, doc=doc, epsilon=epsilon, check=check)
+        self.components[name] = sys = _LinearSystem(name, doc, function, epsilon=epsilon, check=check)
         self.archetypes[archetype].linear_systems.append(sys)
 
     # TODO: Make a flag on this method to optionally return a list of Entity handles, as a convenience.
@@ -199,7 +196,7 @@ class Database:
             rows, columns, data = sparse_matrix_write
             x.write_row(sparse_matrix_write)
             return
-        if isinstance(x, _Value): return x.value
+        if isinstance(x, _Global_Constant): return x.value
         if isinstance(x, _Function): return x.function
         if isinstance(x, _Array):
             if x.shape == "sparse": return x.data
@@ -222,31 +219,23 @@ class Database:
         for name, x in self.components.items():
             x.check(name, self)
 
-    def __repr__(self) -> str:
+    def __repr__(self, is_str=False):
+        f = str if is_str else repr
         s = ""
-        # TODO: Print function listing & summarys at the top.
-        # TODO: Print the global constants which are NOT associated with a component.
+        for comp_name, comp in sorted(self.components.items()):
+            try: self._split_archetype(comp_name)
+            except ValueError:
+                s += f(comp) + "\n"
         for ark_name, ark in sorted(self.archetypes.items()):
             s += "=" * 80 + "\n"
-            s += repr(ark) + "\n"
+            s += f(ark) + "\n"
             for comp_name, comp in sorted(self.components.items()):
                 if not comp_name.startswith(ark_name): continue
-                # TODO: Print components doc strings.
-                if isinstance(comp, _Value):
-                    s += "Component: " + comp_name + " = " + str(comp.value) + "\n"
-                elif isinstance(comp, _Array):
-                    s += "Component: " + comp_name
-                    if comp.reference:
-                        s += ", reference"
-                    else:
-                        s += ", " + str(comp.dtype)
-                    # TODO: Print all of the other flags too.
-                    s += " " + str(comp.shape)
-                    s += "\n"
-                # TODO: For sparse matrixes: print the average num-non-zero per row.
-                elif isinstance(comp, _LinearSystem):
-                    1/0
+                s += f(comp) + "\n"
         return s
+
+    def __str__(self):
+        return self.__repr__(is_str=True)
 
 class Entity:
     """ A persistent handle on an entity.
@@ -271,10 +260,21 @@ class _DocString:
     def __init__(self, name, doc):
         self.name = name
         self.doc = textwrap.dedent(str(doc)).strip()
+        self._check = False
+
+    def class_name(self):
+        return type(self).__name__.replace("_", " ").strip()
 
     def __str__(self):
-        s = repr(self)
-        if self.doc: s += textwrap.indent(self.doc, "    ") + "\n"
+        indent = "    "
+        s = "%s %s\n"%(self.class_name(), repr(self))
+        if self.doc: s += textwrap.indent(self.doc, indent) + "\n"
+        if self._check:
+            if isinstance(self._check, Iterable):
+                op, extreme_value = self._check
+                s += indent + "Value %s %s\n"%(op, extreme_value)
+            else:
+                s += indent + "Value is finite.\n"
         return s
 
 class _Archetype(_DocString):
@@ -288,20 +288,20 @@ class _Archetype(_DocString):
         self.kd_trees = []
 
     def __repr__(self):
-        s = "Archetype %s\n"%ark_name
-        if ark.size: s += "%d instances.\n"%ark.size
+        s = self.name
+        if self.size: s += "\n%d instances."%self.size
         return s
 
-class _Value(_DocString):
+class _Global_Constant(_DocString):
     def __init__(self, name, doc, value, check):
         _DocString.__init__(self, name, doc)
         self.value = float(value)
-        self.check = check
+        self._check = check
 
     def check(self, name, database):
-        if self.check:
-            if isinstance(self.check, Iterable):
-                op, extreme_value = self.check
+        if self._check:
+            if isinstance(self._check, Iterable):
+                op, extreme_value = self._check
                 if   op == ">":  assert self.value >  extreme_value, name
                 elif op == ">=": assert self.value >= extreme_value, name
                 elif op == "<":  assert self.value <  extreme_value, name
@@ -312,42 +312,40 @@ class _Value(_DocString):
                 assert np.isfinite(self.value), name
 
     def __repr__(self):
-        s = "Component %s = %s\n"%(self.name, self.value)
-        if self.check: s += "assert %s\n"
-
+        return "%s = %s"%(self.name, str(self.value))
 
 class _Function(_DocString):
     def __init__(self, name, doc, function):
-        _DocString.__init__(self, name, doc if doc else function.__doc__)
+        if not doc and function.__doc__: doc = function.__doc__
+        _DocString.__init__(self, name, doc)
         assert(isinstance(function, Callable))
         self.function = function
 
     def clean(self): pass
 
     def __repr__(self):
-        s = "Component %s = %s\n"%(self.name, self.value)
-        if self.check: s += "assert %s\n"
+        return "%s()"%(self.name)
 
 class _Array(_DocString):
-    def __init__(self, name, doc, archetype, dtype, shape, column_archetype, initial_value, check):
+    def __init__(self, name, doc, archetype, dtype, shape, initial_value, check, column_archetype=None):
         _DocString.__init__(self, name, doc)
         self.archetype = archetype
         archetype.attributes.append(self)
-        if isinstance(dtype, np.dtype):
-            self.dtype = dtype
-            self.initial_value = initial_value
-            self.reference = False
-        else:
+        if isinstance(dtype, str):
             self.dtype = Index
             self.initial_value = NULL
             self.reference = str(dtype)
+        else:
+            self.dtype = dtype
+            self.initial_value = initial_value
+            self.reference = False
         if shape == "sparse":
             self.shape = "sparse"
         elif isinstance(shape, Iterable):
             self.shape = tuple(int(round(x)) for x in shape)
         else:
             self.shape = (int(round(shape)),)
-        self.check = check
+        self._check = check
         if self.shape == "sparse":
             self.data = scipy.sparse.csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
         else:
@@ -377,16 +375,16 @@ class _Array(_DocString):
         self.data = scipy.sparse.csr_matrix(lil)
 
     def check(self, name, database):
-        if self.check:
+        if self._check:
             data = self.data
             if self.shape == "sparse": data = data.data
             if self.reference:
-                if self.check == "ALLOW_NULL": 1/0
+                if self._check == "ALLOW_NULL": 1/0
                 assert not cupy.any(data == NULL), name
                 1/0 # TODO: Check that all references are "ref < len(entity)"
             else:
-                if isinstance(self.check, Iterable):
-                    op, extreme_value = self.check
+                if isinstance(self._check, Iterable):
+                    op, extreme_value = self._check
                     if   op == ">":  1/0
                     elif op == ">=": 1/0
                     elif op == "in": 1/0 # Check a range of values
@@ -395,6 +393,18 @@ class _Array(_DocString):
                     kind = self.dtype.kind
                     if kind == "f" or kind == "c":
                         assert cupy.all(cupy.isfinite(data)), name
+
+    def __repr__(self):
+        if self.shape == "sparse":
+            s = "%s is a sparse matrix"%self.name
+        else:
+            s = "%s is an array"%self.name
+            # TODO: There are a lot of flags to print here:
+            #       shape
+            #       dtype
+            #       initial_value
+            #       reference
+        return s
 
 class _KD_Tree(_DocString):
     def __init__(self, name, doc, component):
@@ -410,12 +420,15 @@ class _KD_Tree(_DocString):
 
     def check(self): pass
 
+    def __repr__(self):
+        return "%s is a KD Tree."%self.name
+
 class _LinearSystem(_DocString):
     def __init__(self, name, doc, function, epsilon, check):
         _DocString.__init__(self, name, doc)
         self.function   = function
         self.epsilon    = float(epsilon)
-        self.check      = check
+        self._check      = check
         self.up_to_date = False
         self.data       = None
 
@@ -431,6 +444,11 @@ class _LinearSystem(_DocString):
         self.up_to_date = True
 
     def check(self, name, database):
-        if self.check:
+        if self._check:
             if not self.up_to_date: self.compute(database)
             assert cupy.all(cupy.isfinite(self.data)), name
+
+    def __repr__(self):
+        # TODO: For sparse matrixes: print the average num-non-zero per row.
+        s = "%s is a linear system of equations."%self.name
+        return s

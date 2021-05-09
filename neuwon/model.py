@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
 import copy
+import numba.cuda
 import cupy as cp
 import cupyx.scipy.sparse
 import math
@@ -43,13 +44,14 @@ class Model:
         db.add_function("insert_reaction", self.insert_reaction)
         db.add_function("remove_reaction", self.remove_reaction)
         # Basic entities and their relations.
-        db.add_entity_type("membrane", doc="")
+        db.add_archetype("membrane", doc=""" """)
+        db.add_archetype("inside", doc="Intracellular space.")
+        db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/parents", dtype="membrane", check=False,
             doc="Cell membranes are connected in a tree.")
-        db.add_attribute("membrane/children", dtype="membrane", shape="sparse", doc="")
-        db.add_entity_type("inside", doc="Intracellular space.")
-        db.add_attribute("membrane/inside", dtype="inside",
-                doc="""A reference to the outermost shell.
+        db.add_sparse_matrix("membrane/children", "membrane", dtype="membrane", doc="")
+        db.add_attribute("membrane/inside", dtype="inside", doc="""
+                A reference to the outermost shell.
                 The shells and the innermost core are allocated in a contiguous block
                 with this referencing the start of range of length "membrane/shells" + 1.
                 """)
@@ -59,23 +61,24 @@ class Model:
         # Geometric properties.
         db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
         db.add_attribute("membrane/diameters", doc="Units: ")
-        db.add_attribute("membrane/shape", dtype=np.bool, doc="True for Frustum, False for Cylinder.")
+        db.add_attribute("membrane/shape", dtype=np.bool, doc="""
+            True for Frustum, False for Cylinder.
+        """)
         db.add_attribute("membrane/primary", dtype=np.bool)
-        db.add_attribute("membrane/lengths", check=False,
-            doc="""The distance between each node and its parent node.
+        db.add_attribute("membrane/lengths", check=False, doc="""
+            The distance between each node and its parent node.
             Root node lengths are NAN.\n
             Units: Meters""")
         db.add_attribute("membrane/surface_areas", doc="Units: Meters ^ 2")
         db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2")
         db.add_attribute("inside/volumes", doc="Units: Litres")
-        db.add_attribute("inside/neighbors", dtype=Neighbor, shape="sparse")
+        db.add_sparse_matrix("inside/neighbors", "inside", dtype=Neighbor)
         # Extracellular space properties.
-        db.add_entity_type("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/outside", dtype="outside", doc="")
         db.add_attribute("outside/coordinates", shape=(3,), doc="Units: ")
         db.add_kd_tree(  "outside/tree", "outside/coordinates")
         db.add_attribute("outside/volumes", doc="Units: Litres")
-        db.add_attribute("outside/neighbors", dtype=Neighbor, shape="sparse")
+        db.add_sparse_matrix("outside/neighbors", "outside", dtype=Neighbor)
         db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction))
         db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity))
         db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius))
@@ -172,6 +175,12 @@ class Model:
 
         Returns a list of Segments.
         """
+        if not isinstance(parents, Iterable):
+            parents     = [parents]
+            coordinates = [coordinates]
+            diameters   = [diameters]
+        num_new_segs = len(parents)
+        assert(shape in ("cylinder", "frustum"))
         # This method only deals with the "maximum_segment_length" argument and
         # delegates the remaining work to the method: "_create_segment_inner".
         maximum_segment_length = float(maximum_segment_length)
@@ -201,50 +210,43 @@ class Model:
         #     parent = child
 
     def _create_segment_inner(self, parents, coordinates, diameters, shape, shells):
-        if not isinstance(parents, Iterable):
-            parents     = [parents]
-            coordinates = [coordinates]
-            diameters   = [diameters]
-        num_new_segs = len(parents)
+        # 
+        membrane_idx = self.db.create_entity("membrane", num_new_segs)
+        inside_idx   = self.db.create_entity("inside", num_new_segs * (shells + 1))
+        outside_idx  = self.db.create_entity("outside", num_new_segs)
+        access       = self.db.access
+        # 
         parents_clean = np.empty(num_new_segs, dtype=Index)
         for idx, p in enumerate(parents):
             parents_clean[idx] = NULL if p is None else p
-        assert(shape in ("cylinder", "frustum"))
-        membrane = self.db.create_entity("membrane", num_new_segs)
-        inside   = self.db.create_entity("inside", num_new_segs * (shells + 1))
-        outside  = self.db.create_entity("outside", num_new_segs)
-        access   = self.db.access
-        access("membrane/parents")[membrane]     = parents_clean
-        access("membrane/coordinates")[membrane] = coordinates
-        access("membrane/diameters")[membrane]   = diameters
-        access("membrane/shape")[membrane]       = shape == "frustum"
-        access("membrane/shells")[membrane]      = shells
-        access("membrane/inside")[membrane]      = inside[slice(None,None,shells + 1)]
-        access("inside/membrane")[inside]        = cp.repeat(membrane, shells + 1)
-        shell_radius = [1.0] # TODO
-        access("inside/shell_radius")[inside]    = cp.tile(shell_radius, membrane)
-        access("membrane/outside")[membrane]     = outside
-
-        1/0 # Update children here!
+        parents_gpu = access("membrane/parents")
+        parents_gpu[membrane_idx] = parents_clean
+        # 
         children = access("membrane/children")
-        self.db.sparse_matrix_write_rows(
-            rows = parents,
-            cols = [],
-            )
-
-        self._initialize_membrane(membrane)
-        self._initialize_membrane(parents)
-        self._initialize_outside(outside)
-        1/0 # TODO: Also re-initialize all of the neighbors of new outside points.
-
-        # Note: do NOT return raw/unstable DB Indexes, make a Segment class for
-        # each handle to that the user has a *nice* thing to hold onto. I can
-        # put lots of convenience methods on the Segment handle...
-        return membrane
-
-    def destroy_segment(self, segments):
-        """ """
-        1/0
+        siblings = [list(x) for x in children[parents]]
+        for idx, m in enumerate(membrane_idx): siblings[idx].append(m)
+        data = [np.ones(len(x), dtype=np.bool) for x in siblings]
+        access("membrane/children", sparse_matrix_write=(parents, siblings, data))
+        # 
+        access("membrane/coordinates")[membrane_idx] = coordinates
+        access("membrane/diameters")[membrane_idx]   = diameters
+        access("membrane/shape")[membrane_idx]       = shape == "frustum"
+        access("membrane/shells")[membrane_idx]      = shells
+        threads = 32
+        blocks = (len(membrane_idx) + (threads - 1)) // threads
+        _length_kernel[blocks,threads](lengths, parents, coordinates, locations)
+        # self._initialize_membrane(parents)
+        self._initialize_membrane(membrane_idx)
+        # 
+        access("membrane/inside")[membrane_idx]      = inside[slice(None,None,shells + 1)]
+        access("inside/membrane")[inside]        = cp.repeat(membrane_idx, shells + 1)
+        shell_radius = [1.0] # TODO
+        access("inside/shell_radius")[inside]    = cp.tile(shell_radius, membrane_idx)
+        # 
+        access("membrane/outside")[membrane_idx]     = outside
+        # self._initialize_outside(outside)
+        # 1/0 # TODO: Also re-initialize all of the neighbors of new outside points.
+        return [Segment(self, m) for m in membrane_idx]
 
     def _initialize_membrane(self, locations):
         # Compute lengths, which are the distances between each node and its
@@ -257,10 +259,11 @@ class Model:
                     self.coordinates[location] - self.coordinates[self.parents[location]])
 
         xa = access("membrane/cross_sectional_areas")
+        d = access("membrane/diameters")
         if shape:
             xa[membrane] = 1/0 # Frustum.
         else:
-            xa[membrane] = np.array([np.pi * (d / 2) ** 2 for d in diameters], dtype=Real)
+            xa[membrane] = _area_circle(d[locations])
 
 
         access("membrane/primary")[membrane] = 1/0
@@ -344,15 +347,16 @@ class Model:
             for n in self.neighbors[location]:
                 n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
 
+    def destroy_segment(self, segments):
+        """ """
+        1/0
+
     def insert_reaction(self, reaction, *args, **kwargs):
         r = self.reactions[str(reaction)]
         r.initialize(segment, *args, **kw_args)
 
     def remove_reaction(self, reaction, segments):
         1/0
-
-    def is_root(self, locations):
-        return self.db.access("membrane/parents")[locations] == NULL
 
     def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
         coordinates = np.array(coordinates, dtype=Real)
