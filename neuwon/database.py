@@ -1,11 +1,11 @@
 """ A custom Entity-Component-System for NEUWON.
 
-The Database contains Archetypes, Entitys, and Components.
+The Database contains Archetypes, Entities, and Components.
 
 * An Entity in the Database represents a concrete thing in the users model.
-Entitys can have associated data Components.
+Entities can have associated data Components.
 
-* An Archetype is a template for constructing Entitys; and an Entity is an
+* An Archetype is a template for constructing Entities; and an Entity is an
 instance of the Archetype which constructed it.
 
 * The user gives names to all Archetypes and Components; and they are referred
@@ -19,17 +19,17 @@ different and specialized things.
 #       Sparse Matrix Write Rows
 #       Database.__repr__
 #       Check methods
-#       Destroy & Relocate Entitys
+#       Destroy & Relocate Entities
 #       Grid Archetypes
 
 import cupy
 import numpy as np
+import scipy.sparse
+import scipy.sparse.linalg
 import scipy.spatial
 import textwrap
 import weakref
 from collections.abc import Callable, Iterable, Mapping
-from scipy.sparse import csr_matrix, csc_matrix
-from scipy.sparse.linalg import expm
 
 Real = np.dtype('f4')
 epsilon = np.finfo(Real).eps
@@ -40,7 +40,7 @@ class Database:
     def __init__(self):
         self.archetypes = {}
         self.components = {}
-        self.entitys = []
+        self.entities = []
 
     def add_archetype(self, name, grid = None, doc = ""):
         """ Create a new type of entity.
@@ -77,7 +77,7 @@ class Database:
         """ Add a piece of data to an Archetype. Every Entity will be allocated
         one instance of this attribute.
 
-        Argument name: must start with the name of the associated Archetype.
+        Argument name: must start with the name of the associated archetype.
 
         Argument dtype:
             if dtype is a string then it is a reference to an entity.
@@ -98,8 +98,11 @@ class Database:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
 
-    def add_csr_matrix(self, name, column_archetype, doc="", check=True):
-        """ Add a compressed sparse row matrix. """
+    def add_sparse_matrix(self, name, column_archetype, doc="", check=True):
+        """ Add a compressed sparse row matrix which is indexed by Entities.
+
+        Argument name: determines the archetype for the row.
+        """
         name = self._clean_component_name(name)
         archetype, component = self._split_archetype(name)
         assert(archetype in self.archetypes)
@@ -150,7 +153,7 @@ class Database:
         old_size = ark.size
         new_size = old_size + num
         ark.size = new_size
-        for arr in ark.attributes: arr.append_entitys(old_size, new_size)
+        for arr in ark.attributes: arr.append_entities(old_size, new_size)
         for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
         return range(old_size, new_size)
@@ -183,12 +186,17 @@ class Database:
         return self.archetypes[str(archetype)].size
 
     def access(self, name, sparse_matrix_write=None):
-        """ Returns a components value. """
-        if sparse_matrix_write:
-            1/0 # Divert flow control here!
-            self.write_row(args)
-            return
+        """
+
+        Argument sparse_matrix_write (optional) will zero and overwrite rows in
+                a sparse matrix
+
+        Returns a components value. """
         x = self.components[str(name)]
+        if sparse_matrix_write is not None:
+            assert(isinstance(x, _Array) and x.shape == "sparse")
+            x.write_row(rows, columns, data)
+            return
         if isinstance(x, _Value): return x.value
         if isinstance(x, _Function): return x.function
         if isinstance(x, _Array):
@@ -200,16 +208,6 @@ class Database:
         if isinstance(x, _KD_Tree):
             if not x.up_to_date: x.compute(self)
             return x.tree
-
-    # TODO: Consider how to make this available to the user via the access
-    # method. This is a plain and simple "write" operation and so the user
-    # should be able to do it via the same API as all of the other write ops.
-    # The Reactions API does not even pass the full database, just the access method....
-    def write_row(self, name, rows, columns, data):
-        """ Zero and overwrite rows in a sparse matrix. """
-        x = self.components[str(name)]
-        assert(isinstance(x, _Array) and x.shape == "sparse")
-        x.write_row(rows, columns, data)
 
     def invalidate(self, archetype):
         # TODO: This method is crude. It only works on whole archetypes. What if
@@ -261,7 +259,7 @@ class Entity:
         self.database = database
         self.archetype = archetype
         self.index = index
-        self.database.entitys.append(weakref.ref(self))
+        self.database.entities.append(weakref.ref(self))
 
     def read(self, component):
         self.database.access(component, self.index)
@@ -327,12 +325,12 @@ class _Array:
             self.shape = (int(round(shape)),)
         self.check = check
         if self.shape == "sparse":
-            self.data = csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
+            self.data = scipy.sparse.csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
         else:
             self.data = self._alloc(archetype.size)
-            self.append_entitys(0, archetype.size)
+            self.append_entities(0, archetype.size)
 
-    def append_entitys(self, old_size, new_size):
+    def append_entities(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
         if len(self.data) < new_size:
             new_data = self._alloc(new_size)
@@ -397,7 +395,7 @@ class _LinearSystem:
         coef = self.function(database.access)
         # Note: always use double precision floating point for building the impulse response matrix.
         # TODO: Detect if the user returns f32 and auto-convert it to f64.
-        matrix = expm(coefficients)
+        matrix = scipy.sparse.linalg.expm(coefficients)
         # Prune the impulse response matrix.
         matrix.data[np.abs(matrix.data) < self.epsilon] = 0
         matrix.eliminate_zeros()

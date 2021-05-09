@@ -161,41 +161,47 @@ class Model:
         assert(name not in self.reactions)
         self.reactions[name] = r
 
-    # TODO: Rework this code!
-    # Special case to break long segments into multiple shorter ones.
-    # 
-    # maximum_segment_length = float(maximum_segment_length)
-    # assert(maximum_segment_length > 0)
-    # if maximum_segment_length != np.inf: ???
-    # coordinates = tuple(float(x) for x in coordinates)
-    # diameter = float(diameter)
-    # parent = self
-    # parent_diameter = self.diameter
-    # parent_coordinates = self.coordinates
-    # length = np.linalg.norm(np.subtract(parent_coordinates, coordinates))
-    # divisions = max(1, math.ceil(length / maximum_segment_length))
-    # segments = []
-    # for i in range(divisions):
-    #     x = (i + 1) / divisions
-    #     _x = 1 - x
-    #     coords = (  coordinates[0] * x + parent_coordinates[0] * _x,
-    #                 coordinates[1] * x + parent_coordinates[1] * _x,
-    #                 coordinates[2] * x + parent_coordinates[2] * _x)
-    #     diam = diameter * x + parent_diameter * _x
-    #     child = Segment(coords, diam, parent)
-    #     segments.append(child)
-    #     parent = child
-
-    def create_segment(self, parents, coordinates, diameters, shape="cylinder", shells=0):
+    def create_segment(self, parents, coordinates, diameters,
+                shape="cylinder", shells=0, maximum_segment_length=np.inf):
         """
         Argument parents:
         Argument coordinates:
         Argument diameters:
         Argument shape: either "cylinder" or "frustum".
         Argument shells: unimplemented.
+        Argument shells: maximum_segment_length.
 
         Returns a list of Segments.
         """
+        # This method only deals with the "maximum_segment_length" argument and
+        # delegates the remaining work to the method: "_create_segment_inner".
+        maximum_segment_length = float(maximum_segment_length)
+        assert(maximum_segment_length > 0)
+        if maximum_segment_length == np.inf:
+            return self._create_segment_inner(parents, coordinates, diameters,
+                    shape=shape, shells=shells,)
+
+        1/0 # TODO
+        # coordinates = tuple(float(x) for x in coordinates)
+        # diameter = float(diameter)
+        # parent = self
+        # parent_diameter = self.diameter
+        # parent_coordinates = self.coordinates
+        # length = np.linalg.norm(np.subtract(parent_coordinates, coordinates))
+        # divisions = max(1, math.ceil(length / maximum_segment_length))
+        # segments = []
+        # for i in range(divisions):
+        #     x = (i + 1) / divisions
+        #     _x = 1 - x
+        #     coords = (  coordinates[0] * x + parent_coordinates[0] * _x,
+        #                 coordinates[1] * x + parent_coordinates[1] * _x,
+        #                 coordinates[2] * x + parent_coordinates[2] * _x)
+        #     diam = diameter * x + parent_diameter * _x
+        #     child = Segment(coords, diam, parent)
+        #     segments.append(child)
+        #     parent = child
+
+    def _create_segment_inner(self, parents, coordinates, diameters, shape, shells):
         if not isinstance(parents, Iterable):
             parents     = [parents]
             coordinates = [coordinates]
