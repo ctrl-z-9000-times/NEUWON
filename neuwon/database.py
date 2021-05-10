@@ -191,23 +191,6 @@ class Database:
         else:
             return self.components[str(name)].access(self)
 
-        # if sparse_matrix_write is not None:
-        #     assert(isinstance(x, _Attribute) and x.shape == "sparse")
-        #     rows, columns, data = sparse_matrix_write
-        #     x.write_row(sparse_matrix_write)
-        #     return
-        # if isinstance(x, _Global_Constant): return x.value
-        # if isinstance(x, _Function): return x.function
-        # if isinstance(x, _Attribute):
-        #     if x.shape == "sparse": return x.data
-        #     else: return x.data[:x.archetype.size]
-        # if isinstance(x, _LinearSystem):
-        #     if not x.up_to_date: x.compute(self)
-        #     return x.data
-        # if isinstance(x, _KD_Tree):
-        #     if not x.up_to_date: x.compute(self)
-        #     return x.tree
-
     def invalidate(self, archetype):
         # TODO: This method is crude. It only works on whole archetypes. What if
         # the user wanted to invalidate only certain pieces of data?
@@ -424,8 +407,14 @@ class _Sparse_Matrix(_Component):
             lil.data[row] = d
         self.data = scipy.sparse.csr_matrix(lil)
 
+    def access(self, database, sparse_matrix_write=None):
+        if sparse_matrix_write:
+            rows, columns, data = sparse_matrix_write
+            self.write_row(rows, columns, data)
+        return self.data
+
     def check(self, database):
-        _Component.check(self, database, self.data, reference=self.reference)
+        _Component.check_data(self, database, self.data, reference=self.reference)
 
     def __repr__(self):
         s = "%s is a sparse matrix"%self.name
@@ -459,21 +448,22 @@ class _LinearSystem(_Component):
         self.up_to_date = False
         self.data       = None
 
-    def compute(self, database):
-        coef = self.function(database.access)
-        # Note: always use double precision floating point for building the impulse response matrix.
-        # TODO: Detect if the user returns f32 and auto-convert it to f64.
-        matrix = scipy.sparse.linalg.expm(coefficients)
-        # Prune the impulse response matrix.
-        matrix.data[np.abs(matrix.data) < self.epsilon] = 0
-        matrix.eliminate_zeros()
-        self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
-        self.up_to_date = True
+    def access(self, database):
+        if not self.up_to_date:
+            coef = self.function(database.access)
+            # Note: always use double precision floating point for building the impulse response matrix.
+            # TODO: Detect if the user returns f32 and auto-convert it to f64.
+            matrix = scipy.sparse.linalg.expm(coefficients)
+            # Prune the impulse response matrix.
+            matrix.data[np.abs(matrix.data) < self.epsilon] = 0
+            matrix.eliminate_zeros()
+            self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
+            self.up_to_date = True
+        return self.data
 
     def check(self, database):
         if self._check:
-            if not self.up_to_date: self.compute(database)
-            _Component.check(self, database, self.data)
+            _Component.check_data(self, database, self.access(database))
 
     def __repr__(self):
         # TODO: For sparse matrixes: print the average num-non-zero per row.
