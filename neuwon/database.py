@@ -16,7 +16,6 @@ different and specialized things.
 """
 
 # OUTSTANDING TASKS:
-#       Check methods
 #       Destroy & Relocate Entities
 #       Grid Archetypes
 
@@ -217,7 +216,7 @@ class Database:
         for sys in ark.linear_systems: sys.up_to_date = False
 
     def check(self):
-        for name, x in self.components.items(): x.check(name, self)
+        for x in self.components.values(): x.check(self)
 
     def __repr__(self, is_str=False):
         f = str if is_str else repr
@@ -284,7 +283,7 @@ class _Component(_DocString):
     def access(self, database):
         1/0 # Abstract method.
 
-    def check(self, name, database):
+    def check(self, database):
         1/0 # Abstract method.
 
     def check_data(self, database, data, reference=False):
@@ -294,23 +293,23 @@ class _Component(_DocString):
             if self._check == "ALLOW_NULL":
                 1/0
             else:
-                assert cupy.all(data < num_entities), name
+                assert cupy.all(data < num_entities), self.name
         elif isinstance(self._check, Iterable) and len(self._check) == 2:
             op, threshold = self._check
-            if   op == "<":  assert data <  threshold, name
-            elif op == "<=": assert data <= threshold, name
-            elif op == ">":  assert data >  threshold, name
-            elif op == ">=": assert data >= threshold, name
+            if   op == "<":  assert data <  threshold, self.name
+            elif op == "<=": assert data <= threshold, self.name
+            elif op == ">":  assert data >  threshold, self.name
+            elif op == ">=": assert data >= threshold, self.name
             elif op == "in":
                 low  = min(threshold)
                 high = max(threshold)
-                assert data >= low, name
-                assert data <= high, name
+                assert data >= low, self.name
+                assert data <= high, self.name
             else: raise ValueError("Invalid argument 'check'.")
         else:
             kind = data.dtype.kind
             if kind == "f" or kind == "c":
-                assert cupy.all(cupy.isfinite(data)), name
+                assert cupy.all(cupy.isfinite(data)), self.name
 
 class _Archetype(_DocString):
     def __init__(self, name, doc, grid):
@@ -335,7 +334,7 @@ class _Global_Constant(_Component):
     def access(self, database):
         return self.value
 
-    def check(self, name, database):
+    def check(self, database):
         _Component.check_data(self, database, cupy.array([self.value]))
 
     def __repr__(self):
@@ -350,7 +349,7 @@ class _Function(_Component):
 
     def access(self, database): return self.function
 
-    def check(self, name, database): pass
+    def check(self, database): pass
 
     def __repr__(self):
         return "%s()"%(self.name)
@@ -392,8 +391,8 @@ class _Attribute(_Component):
 
     def access(self, database): return self.data
 
-    def check(self, name, database):
-        _Component.check_data(self, name, database, reference=self.reference)
+    def check(self, database):
+        _Component.check_data(self, database, reference=self.reference)
 
     def __repr__(self):
         s = "%s is an array"%self.name
@@ -425,8 +424,8 @@ class _Sparse_Matrix(_Component):
             lil.data[row] = d
         self.data = scipy.sparse.csr_matrix(lil)
 
-    def check(self, name, database):
-        _Component.check(self, name, database, reference=self.reference)
+    def check(self, database):
+        _Component.check(self, database, self.data, reference=self.reference)
 
     def __repr__(self):
         s = "%s is a sparse matrix"%self.name
@@ -446,6 +445,8 @@ class _KD_Tree(_Component):
             self.tree = scipy.spatial.cKDTree(data)
             self.up_to_date = True
         return self.tree
+
+    def check(self, database): pass
 
     def __repr__(self):
         return "%s"%self.name
@@ -469,7 +470,7 @@ class _LinearSystem(_Component):
         self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
         self.up_to_date = True
 
-    def check(self, name, database):
+    def check(self, database):
         if self._check:
             if not self.up_to_date: self.compute(database)
             _Component.check(self, database, self.data)

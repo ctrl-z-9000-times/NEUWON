@@ -28,11 +28,6 @@ class Model:
             intracellular_resistance = 1,
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3,):
-        assert(maximum_extracellular_radius > epsilon * 1e-6)
-        assert(1 >= extracellular_volume_fraction >= 0)
-        assert(extracellular_tortuosity >= 1)
-        assert(intracellular_resistance > 0)
-        assert(membrane_capacitance > 0)
         self.species = {}
         self.reactions = {}
         self._injected_currents = Model._InjectedCurrents()
@@ -60,18 +55,26 @@ class Model:
         db.add_attribute("inside/shell_radius")
         # Geometric properties.
         db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
-        db.add_attribute("membrane/diameters", doc="Units: ")
-        db.add_attribute("membrane/shape", dtype=np.bool, doc="""
-            True for Frustum, False for Cylinder.
+        db.add_attribute("membrane/diameters", check=(">=", 0.0), doc="""
+            Units: """)
+        db.add_attribute("membrane/shape", dtype=np.uint8, doc="""
+            0 - Cylinder
+            1 - Frustum
+            2 - Sphere
         """)
-        db.add_attribute("membrane/primary", dtype=np.bool)
+        db.add_attribute("membrane/primary", dtype=np.bool, doc="""
+
+            """)
         db.add_attribute("membrane/lengths", check=False, doc="""
             The distance between each node and its parent node.
             Root node lengths are NAN.\n
             Units: Meters""")
-        db.add_attribute("membrane/surface_areas", doc="Units: Meters ^ 2")
-        db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2")
-        db.add_attribute("inside/volumes", doc="Units: Litres")
+        db.add_attribute("membrane/surface_areas", check=(">=", epsilon * (1e-6)**2), doc="""
+            Units: Meters ^ 2""")
+        db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2",
+            check = (">=", epsilon * (1e-6)**2))
+        db.add_attribute("inside/volumes", checl=(">=", epsilon * (1e-6)**3), doc="""
+            Units: Litres""")
         db.add_sparse_matrix("inside/neighbors", "inside", dtype=Neighbor)
         # Extracellular space properties.
         db.add_attribute("membrane/outside", dtype="outside", doc="")
@@ -79,12 +82,16 @@ class Model:
         db.add_kd_tree(  "outside/tree", "outside/coordinates")
         db.add_attribute("outside/volumes", doc="Units: Litres")
         db.add_sparse_matrix("outside/neighbors", "outside", dtype=Neighbor)
-        db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction))
-        db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity))
-        db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius))
+        db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction),
+            check=("in", (0.0, 1.0)), doc="")
+        db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity), check=(">=", 1.0))
+        db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius),
+            check=(">=", epsilon * 1e-6))
         # Electric properties.
-        db.add_global_constant("inside/resistance", float(intracellular_resistance), doc="Units: ")
-        db.add_global_constant("membrane/capacitance", float(membrane_capacitance), doc="Units: Farads / Meter^2")
+        db.add_global_constant("inside/resistance", float(intracellular_resistance), check=(">", 0.0), doc="""
+            Units: """)
+        db.add_global_constant("membrane/capacitance", float(membrane_capacitance), check=(">", 0.0), doc="""
+            Units: Farads / Meter^2""")
         db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
         db.add_attribute("membrane/axial_resistances", check=False, doc="Units: ")
         db.add_attribute("membrane/capacitances", doc="Units: Farads")
@@ -92,13 +99,6 @@ class Model:
         db.add_attribute("membrane/driving_voltages")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
             epsilon=epsilon * 1e-3,) # Epsilon millivolts.
-
-        # TODO: Merge these checks into the database.
-        # assert(cp.all(access("membrane/diameters")[membrane] >= 0.0))
-        # assert(all(l  >= epsilon * (1e-6)**1 or self.is_root(idx) for idx, l in enumerate(self.lengths)))
-        # assert(all(x  >= epsilon * (1e-6)**2 for x in self.cross_sectional_areas))
-        # assert(all(sa >= epsilon * (1e-6)**2 for sa in self.surface_areas))
-        # assert(all(v  >= epsilon * (1e-6)**3 for v in self.intra_volumes))
 
     def __len__(self):
         return self.db.num_entity("membrane")
