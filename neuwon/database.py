@@ -138,11 +138,22 @@ class Database:
         self.archetypes[archetype].linear_systems.append(sys)
 
     # TODO: Make a flag on this method to optionally return a list of Entity handles, as a convenience.
-    def create_entity(self, archetype, number_of_instances: int = 1) -> list:
+    def create_entity(self, archetype, number_of_instances = 1, return_entity=True) -> list:
         """ Create instances of an archetype.
-        Returns their internal ID's. """
+
+        If the archetype is a grid, then this accepts the coordinates of the new
+        points on the grid. Otherwise this accepts the number of new entities to
+        add.
+
+        Return value:
+            By default this returns a list of the new Entities.
+            If optional keyword argument return_entity is set to False,
+            then this returns a list of their unstable indexes.
+        """
         ark = self.archetypes[str(archetype)]
-        assert(ark.grid is None)
+        if ark.grid is not None:
+            coordinates = number_of_instances
+            raise NotImplementedError
         num = int(number_of_instances); assert(num >= 0)
         old_size = ark.size
         new_size = old_size + num
@@ -150,15 +161,10 @@ class Database:
         for arr in ark.attributes: arr.append_entities(old_size, new_size)
         for tree in ark.kd_trees: tree.up_to_date = False
         for sys in ark.linear_systems: sys.up_to_date = False
-        return range(old_size, new_size)
-
-    def create_grid_entity(self, archetype, coordinates):
-        """ Expand the grid to cover these coordinates.
-
-        Returns the indexes of the given coordinates' grid boxes. """
-        # TODO: Consider folding this into create_entity ... just overload the arguments
-        # and document the dual usage. If the user fucks it up then they'll just get an error message.
-        return 1/0 # TODO
+        if return_entity:
+            return [Entity(self, ark, idx) for idx in range(old_size, new_size)]
+        else:
+            return range(old_size, new_size)
 
     def coordinates_to_grid(self, archetype, coordinates):
         return 1/0 # TODO
@@ -229,6 +235,7 @@ class Entity:
     def __init__(self, database, archetype, index):
         self.database = database
         self.archetype = archetype
+        assert(isinstance(self.archetype, _Archetype))
         self.index = index
         self.database.entities.append(weakref.ref(self))
 

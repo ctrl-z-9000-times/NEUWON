@@ -11,27 +11,25 @@ import math
 import os.path
 import itertools
 import copy
-from neuwon.common import Real, AccessHandle
+from neuwon.database import Real, Index
 import neuwon.units
-from neuwon.reactions import Reaction
-from scipy.sparse.linalg import expm
+from neuwon import Reaction
+from scipy.linalg import expm
 
 ANT = nmodl.ast.AstNodeType
 
-# TODO: Use impulse response integration method in place of sparse solver...
-#       TODO: How to dispatch to it?
-#       TODO: Update the kinetic model to use Derivative function instead of sparse deriv equations.
+# TODO: Move the entire init function into the reactions initialize callback.
 
-# TODO: Write function to check that derivative_functions are Linear &
-# time-invariant. Put this in the KineticModel class.
+#   This will simplify things, and also allow me to cache the final product
+#   instead of an intermediate artifact. No error checking until model start up
+#   though.
+
+
+################################################################################
+
 
 # TODO: Initial state. Mostly works...  Need code to run a simulation until it
 # reaches a steady state, given the solved system.
-
-
-_default_parameters = {
-    "celsius": (37, "degC")
-}
 
 
 def NEURON_conversion_factor(self):
@@ -44,31 +42,39 @@ def NEURON_conversion_factor(self):
 
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, cache=False):
-        # TODO: Consider keeping a cache of loaded nmodl mechanisms. The cache
-        # would need to be keyed on all arguments: filename & file-contents,
-        # pointers, parameter_overrides. Pickle the contents of self.__dict__.
-        # Doing this should be easy, doing it *well* will take more time & energy.
-
         """
         Although the NMODL USEION statements are automatically dealt with, most
         other pointer situations are not. Custom {variable: AccessHandle} mappings
         can be passed passed into the NmodlMechanism class init for direct control.
         """
         self.filename = os.path.normpath(str(filename))
+        self.parameter_overrides = dict(parameter_overrides)
+        self.pointers = dict(pointers)
+        self.cache = cache
+
+    def initialize(self, database):
+        # TODO: Consider keeping a cache of loaded nmodl mechanisms. The cache
+        # would need to be keyed on all arguments: filename & file-contents,
+        # pointers, parameter_overrides. Pickle the contents of self.__dict__.
+        # Doing this should be easy, doing it *well* will take more time & energy.
         try:
             with open(self.filename, 'rt') as f: nmodl_text = f.read()
             self._parse_text(nmodl_text)
             self._check_for_unsupported()
             self._gather_documentation()
             self._gather_units()
-            self._gather_parameters(_default_parameters, parameter_overrides)
+            self._gather_parameters(database)
             self.states = sorted(v.get_name() for v in
                     self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-            self._gather_IO(pointers)
+            self._gather_IO(self.pointers, database)
             self._gather_functions()
             self._discard_ast()
             self._solve()
-        except KeyboardInterrupt: raise
+            self.kinetic_models = {}
+            # for name, block in self.derivative_functions.items():
+            #     self.kinetic_models[name] = KineticModel(1/0)
+            self._run_initial_block(initial_values)
+            self._compile_breakpoint_block(time_step)
         except Exception as err:
             print("Error: exception raised while loading file:", self.filename)
             raise err
@@ -154,7 +160,7 @@ class NmodlMechanism(Reaction):
         self.use_units = False
         if not self.use_units: print("Warning: UNITSOFF detected.")
 
-    def _gather_parameters(self, default_parameters, parameter_overrides):
+    def _gather_parameters(self, default_parameters):
         """ Sets parameters & surface_area_parameters.
 
         The surface area parameters are special because each segment of neuron
@@ -176,7 +182,7 @@ class NmodlMechanism(Reaction):
             self.original_parameters[name] = (value, units)
             self.parameters[name]          = (value, units)
         # Deal with all parameter_overrides.
-        parameter_overrides = dict(parameter_overrides)
+        parameter_overrides = dict(self.parameter_overrides)
         for name in list(parameter_overrides):
             if name in self.parameters:
                 old_value, units = self.parameters.pop(name)
@@ -198,7 +204,7 @@ class NmodlMechanism(Reaction):
             print("Parameters:", self.parameters)
             print("Surface Area Parameters:", self.surface_area_parameters)
 
-    def _gather_IO(self, pointers):
+    def _gather_IO(self, pointers, database):
         """ Determine what external data the mechanism accesses. """
         self._pointers = dict(pointers)
         assert(all(isinstance(ptr, AccessHandle) for ptr in self._pointers.values()))
@@ -392,13 +398,6 @@ class NmodlMechanism(Reaction):
                 if isinstance(stmt, _SolveStatement) and stmt.block in self.solved_blocks
                 else [stmt]))
 
-    def bake(self, time_step, initial_values):
-        self.kinetic_models = {}
-        # for name, block in self.derivative_functions.items():
-        #     self.kinetic_models[name] = KineticModel(1/0)
-        self._run_initial_block(initial_values)
-        self._compile_breakpoint_block(time_step)
-
     def _compile_derivative_block(self, block):
         """ Returns function in the form:
                 f(state_vector, **block.arguments) -> derivative_vector """
@@ -504,7 +503,7 @@ class NmodlMechanism(Reaction):
         exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
-    def new_instance(self, time_step, location, geometry, scale=1):
+    def new_instances(self, database_access, scale=1):
         data = dict(self.initial_state)
         for name, (value, units) in self.surface_area_parameters.items():
             sa = geometry.surface_areas[location] * scale
@@ -512,9 +511,9 @@ class NmodlMechanism(Reaction):
             data[name] = value * sa
         return data
 
-    def advance(self, time_step, locations, **pointers):
-        for name, km in self.kinetic_models.items():
-            1/0
+    def advance(self, database_access):
+        # for name, km in self.kinetic_models.items():
+        #     1/0
         threads = 64
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
@@ -754,6 +753,13 @@ class _ConserveStatement:
 # TODO: Make this accept a list of pointers instead of "input_ranges"
 
 # TODO: Convert kinetics into a function.
+
+# TODO: Use impulse response integration method in place of sparse solver...
+#       TODO: How to dispatch to it?
+#       TODO: Update the kinetic model to use Derivative function instead of sparse deriv equations.
+
+# TODO: Write function to check that derivative_functions are Linear &
+# time-invariant. Put this in the KineticModel class.
 
 class KineticModel:
     def __init__(self, time_step, input_pointers, num_states, kinetics,

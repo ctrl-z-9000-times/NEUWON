@@ -31,6 +31,7 @@ class Model:
         self.species = {}
         self.reactions = {}
         self._injected_currents = Model._InjectedCurrents()
+        # TODO: Either make the db private or rename it to the full name "database"
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
         db.add_global_constant("celsius", float(celsius))
@@ -293,7 +294,7 @@ class Model:
         access("inside/shell_radius")[inside]    = cp.tile(shell_radius, membrane_idx)
         # 
         access("membrane/outside")[membrane_idx] = outside
-        self._initialize_outside(outside)
+        # self._initialize_outside(outside)
         # 1/0 # TODO: Also re-initialize all of the neighbors of new outside points.
         return membrane_idx
 
@@ -372,10 +373,17 @@ class Model:
                     volumes[idx] = 1/0
         # Compute axial membrane resistance.
         # TODO: This formula only works for cylinders.
-        # TODO: Non-primary branches which have some weird connection to the center of their parent segment.
         r[membrane] = Ra * lengths[membrane] / x_areas[membrane]
         # Compute membrane capacitance.
         c[membrane] = Cm * s_areas[membrane]
+
+        # TODO: Currently, diffusion from non-primary branches omits the section
+        # of diffusive material between the parents surface and center.
+        # Model the parents side of intracellular volume as a frustum to diffuse through.
+        # Implementation:
+        # -> Directly include this frustum into the resistance calculations.
+        # -> For chemical diffusion: make a new attribute for the geometry terms
+        #    in the diffusion equation, and include the new frustum in the new attribute.
 
     def _initialize_outside(self, locations):
         # TODO: Update this code to use the database. Also consider: how will it
@@ -448,39 +456,48 @@ class Model:
         self._reactions.advance(self)
 
     def _advance_species(self):
-        1/0 # TODO: Update this to use the database.
         """ Note: Each call to this method integrates over half a time step. """
         access = self.db.access
-        dt = access("time_step") / 2
+        dt     = access("time_step") / 2
+        conductances        = access("membrane/conductances")
+        driving_voltages    = access("membrane/driving_voltages")
+        voltages            = access("membrane/voltages")
+        capacitances        = access("membrane/capacitances")
         # Accumulate the net conductances and driving voltages from the chemical data.
-        access("membrane/conductances").fill(0.0)     # Zero accumulator.
-        access("membrane/driving_voltages").fill(0.0) # Zero accumulator.
+        conductances.fill(0.0) # Zero accumulator.
+        driving_voltages.fill(0.0) # Zero accumulator.
         T = access("celsius") + 273.15
         for s in self._species.values():
             if not s.transmembrane: continue
-            # TODO: Rework this loop so that it does not need to save a private lambda method.
-            #       Just put an if-switch just here, its not that expensive...
-            s.reversal_potential = s._reversal_potential_method(
-                T,
-                s.intra_concentration if s.intra is None else s.intra.concentrations,
-                s.extra_concentration if s.extra is None else s.extra.concentrations,
-                self._electrics.voltages)
-            self._electrics.conductances += s.conductances
-            self._electrics.driving_voltages += s.conductances * s.reversal_potential
-        self._electrics.driving_voltages /= self._electrics.conductances
-        self._electrics.driving_voltages = cp.nan_to_num(self._electrics.driving_voltages)
+            if isinstance(s.reversal_potential, float):
+                reversal_potential = s.reversal_potential
+            else:
+                inside = access("membrane/%s/concentrations")
+                outside = access("membrane/%s/concentrations")
+                if s.reversal_potential == "nerst":
+                    reversal_potential = nerst_potential(s.charge, T, inside, outside)
+                elif s.reversal_potential == "goldman_hodgkin_katz":
+                    reversal_potential = goldman_hodgkin_katz(s.charge, T, inside, outside, voltages)
+                else: 1/0 # Internal error.
+            conductances += s.conductances
+            driving_voltages += s.conductances * reversal_potential
+        driving_voltages /= conductances
+        driving_voltages[:] = cp.nan_to_num(driving_voltages)
         # Calculate the transmembrane currents.
-        diff_v = self._electrics.driving_voltages - self._electrics.voltages
-        recip_rc = self._electrics.conductances / self._electrics.capacitances
-        alpha = cp.exp(-dt * recip_rc)
-        self._electrics.voltages += diff_v * (1.0 - alpha)
+        diff_v   = driving_voltages - voltages
+        recip_rc = conductances / capacitances
+        alpha    = cp.exp(-dt * recip_rc)
+        voltages += diff_v * (1.0 - alpha)
         # Calculate the lateral currents throughout the neurons.
-        self._electrics.voltages = self._electrics.irm.dot(self._electrics.voltages)
+        voltages[:] = access("membrane/diffusion").dot(voltages)
+
+        return
+
         # Calculate the transmembrane ion flows.
-        for s in self._species.values():
+        for s in self.species.values():
             if not s.transmembrane: continue
             if s.intra is None and s.extra is None: continue
-            integral_v = dt * (s.reversal_potential - self._electrics.driving_voltages)
+            integral_v = dt * (s.reversal_potential - driving_voltages)
             integral_v += rc * diff_v * alpha
             moles = s.conductances * integral_v / (s.charge * F)
             if s.intra is not None:
@@ -488,7 +505,7 @@ class Model:
             if s.extra is not None:
                 s.extra.concentrations -= moles / self.geometry.extra_volumes
         # Calculate the local release / removal of chemicals.
-        for s in self._species.values():
+        for s in self.species.values():
             for x in (s.intra, s.extra):
                 if x is None: continue
                 x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
@@ -583,6 +600,14 @@ def _volume_sphere(diameter):
 @cp.fuse()
 def _surface_area_sphere(diameter):
     return 1/0
+
+def surface_area_frustum(radius_1, radius_2, length):
+    """ Lateral surface area, does not include the ends. """
+    s = sqrt((radius_1 - radius_2) ** 2 + length ** 2)
+    return np.pi * (radius_1 + radius_2) * s
+
+def volume_of_frustum(radius_1, radius_2, length):
+    return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
 
 def nerst_potential(charge, T, intra_concentration, extra_concentration):
     """ Returns the reversal voltage for an ionic species. """

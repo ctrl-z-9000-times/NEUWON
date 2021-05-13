@@ -47,15 +47,10 @@ class Species:
         assert(self.intra_decay_period > 0.0)
         assert(self.extra_decay_period > 0.0)
         assert(len(self.extra_grid) == 3 and all(x > 0 for x in self.extra_grid))
-        if reversal_potential == "nerst":
-            self.reversal_potential = str(reversal_potential)
-            self._reversal_potential_method = lambda T, i, o, v: nerst_potential(self.charge, T, i, o)
-        elif reversal_potential == "goldman_hodgkin_katz":
-            self.reversal_potential = str(reversal_potential)
-            self._reversal_potential_method = self.goldman_hodgkin_katz
-        else:
+        try:
             self.reversal_potential = float(reversal_potential)
-            self._reversal_potential_method = lambda T, i, o, v: self.reversal_potential
+        except ValueError:
+            self.reversal_potential = str(reversal_potential)
 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
