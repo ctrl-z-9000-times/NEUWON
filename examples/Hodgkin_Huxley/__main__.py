@@ -5,7 +5,6 @@ The model is a single long axon with Hodgkin-Huxley channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon import *
 from neuwon.model import *
 import numpy as np
 import bisect
