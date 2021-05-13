@@ -59,6 +59,8 @@ class NmodlMechanism(Reaction):
         # Doing this should be easy, doing it *well* will take more time & energy.
         try:
             with open(self.filename, 'rt') as f: nmodl_text = f.read()
+            import time
+            start = time.clock()
             self._parse_text(nmodl_text)
             self._check_for_unsupported()
             self._gather_documentation()
@@ -66,7 +68,7 @@ class NmodlMechanism(Reaction):
             self._gather_parameters(database)
             self.states = sorted(v.get_name() for v in
                     self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-            self._gather_IO(self.pointers, database)
+            self._gather_IO(database)
             self._gather_functions()
             self._discard_ast()
             self._solve()
@@ -160,7 +162,7 @@ class NmodlMechanism(Reaction):
         self.use_units = False
         if not self.use_units: print("Warning: UNITSOFF detected.")
 
-    def _gather_parameters(self, default_parameters):
+    def _gather_parameters(self, database):
         """ Sets parameters & surface_area_parameters.
 
         The surface area parameters are special because each segment of neuron
@@ -168,9 +170,11 @@ class NmodlMechanism(Reaction):
         each instance of the mechanism. They are not in-lined directly into the
         source code, instead they are stored alongside the state variables and
         accessed at run time. """
+        self.parameters = {}
+        self.surface_area_parameters = {}
+        # Set built-in parameters to their default values.
+        self.parameters["celsius"] = (database.access("celsius"), "degC")
         # Parse the parameters from the NMODL file.
-        self.original_parameters = {}
-        self.parameters = dict(default_parameters)
         for assign in self.lookup(ANT.PARAM_ASSIGN):
             name = str(self.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
             value = self.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
@@ -179,7 +183,6 @@ class NmodlMechanism(Reaction):
             else: continue
             assert(not bool(units) or len(units) == 1)
             units = units[0].get_node_name() if units else None
-            self.original_parameters[name] = (value, units)
             self.parameters[name]          = (value, units)
         # Deal with all parameter_overrides.
         parameter_overrides = dict(self.parameter_overrides)
@@ -196,18 +199,16 @@ class NmodlMechanism(Reaction):
                 factor, dimensions = self.units.standardize(units)
                 self.parameters[name] = (factor * value, dimensions)
         # Split out surface_area_parameters.
-        self.surface_area_parameters = {}
-        for name, (value, units) in self.original_parameters.items():
+        for name, (value, units) in list(self.parameters.items()):
             if units and "/cm2" in units:
                 self.surface_area_parameters[name] = self.parameters.pop(name)
         if False:
             print("Parameters:", self.parameters)
             print("Surface Area Parameters:", self.surface_area_parameters)
 
-    def _gather_IO(self, pointers, database):
+    def _gather_IO(self, database):
         """ Determine what external data the mechanism accesses. """
-        self._pointers = dict(pointers)
-        assert(all(isinstance(ptr, AccessHandle) for ptr in self._pointers.values()))
+        for ptr in self.pointers.values(): database.access(ptr)
         # Assignments to the variables in output_currents are ignored because
         # NEUWON converts all mechanisms to use conductances instead of currents.
         self.output_currents = []
@@ -217,24 +218,25 @@ class NmodlMechanism(Reaction):
             # Automatically generate the variable names for this ion.
             equilibrium = 'e' + ion
             current = 'i' + ion
-            intra = ion + 'i'
-            extra = ion + 'o'
+            inside = ion + 'i'
+            outside = ion + 'o'
             for y in x.readlist:
                 variable = y.name.value.eval()
                 if variable == equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
-                elif variable == intra:
+                elif variable == inside:
+                    self.pointers[variable] = "membrane/inside/%s/concentrations"
                     self._add_pointer(variable, ion, intra_concentration=True)
-                elif variable == extra:
+                elif variable == outside:
                     self._add_pointer(variable, ion, extra_concentration=True)
                 else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
             for y in x.writelist:
                 variable = y.name.value.eval()
                 if variable == current:
                     self.output_currents.append(variable)
-                elif variable == intra:
+                elif variable == inside:
                     self._add_pointer(variable, ion, intra_release_rate=True)
-                elif variable == extra:
+                elif variable == outside:
                     self._add_pointer(variable, ion, extra_release_rate=True)
                 else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
         for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
@@ -275,9 +277,6 @@ class NmodlMechanism(Reaction):
             raise ValueError("Name conflict: \"%s\" used for %s and %s"%(
                     name, self._pointers[name], pointer))
         self._pointers[name] = pointer
-
-    def pointers(self):
-        return self._pointers
 
     def _gather_functions(self):
         """ Process all blocks of code which contain imperative instructions.

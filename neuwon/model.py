@@ -77,7 +77,7 @@ class Model:
             Units: Meters ^ 2""")
         db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2",
             check = (">=", epsilon * (1e-6)**2))
-        db.add_attribute("membrane/volumes", checl=(">=", epsilon * (1e-6)**3), doc="""
+        db.add_attribute("membrane/volumes", check=(">=", epsilon * (1e-6)**3), doc="""
             Units: Liters""")
         db.add_sparse_matrix("inside/neighbors", "inside", dtype=Neighbor)
         # Extracellular space properties.
@@ -129,14 +129,20 @@ class Model:
         assert(species.name not in self.species)
         self.species[species.name] = species
         add_attribute = self.db.add_attribute
+        inside_entity = "" if species.intra_shells else "membrane/"
         if species.intra_diffusivity is not None:
-            add_attribute("inside/%s/concentrations"%species.name,
+            add_attribute("%sinside/%s/concentrations"%(inside_entity, species.name),
                     initial_value=species.intra_concentration,
                     doc="Units: Molar")
-            add_attribute("inside/%s/release_rates"%species.name,
+            add_attribute("%sinside/%s/release_rates"%(inside_entity, species.name),
                     initial_value=0,
                     doc="Units: Molar / Second")
-            add_attribute("inside/%s/diffusion"%species.name, shape="sparse")
+            self.db.add_linear_system("%sinside/%s/diffusion"%(inside_entity, species.name),
+                function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,) # Epsilon millivolts.
+        else:
+            self.db.add_global_constant("%sinside/%s/concentrations"%(inside_entity, species.name),
+                    species.intra_concentration,
+                    doc="Units: Molar")
         if species.extra_diffusivity is not None:
             add_attribute("outside/%s/concentrations"%species.name,
                     initial_value=species.extra_concentration,
@@ -144,7 +150,11 @@ class Model:
             add_attribute("outside/%s/release_rates"%species.name,
                     initial_value=0,
                     doc="Units: Molar / Second")
-            add_attribute("outside/%s/diffusion"%species.name, shape="sparse")
+            # add_attribute("outside/%s/diffusion"%species.name, shape="sparse") # TODO
+        else:
+            self.db.add_global_constant("outside/%s/concentrations"%species.name,
+                    species.extra_concentration,
+                    doc="Units: Molar")
         if species.transmembrane:
             add_attribute("membrane/%s/conductances"%species.name,
                     initial_value=0,
@@ -156,9 +166,11 @@ class Model:
           * An instance or subclass of the Reaction class, or
           * The name of a reaction from the standard library.
         """
+        r = reaction
         if not isinstance(r, Reaction) and not (isinstance(r, type) and issubclass(r, Reaction)):
             try: nmodl_file_path, kw_args = reactions_library[str(r)]
-            except IndexError: raise ValueError("Unrecognized Reaction: %s."%str(r))
+            except KeyError: raise ValueError("Unrecognized Reaction: %s."%str(r))
+            from neuwon.nmodl import NmodlMechanism
             r = NmodlMechanism(nmodl_file_path, **kw_args)
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
@@ -703,3 +715,10 @@ def _outside_diffusion_coefficients(database_access, species):
         dst.append(location)
         coef.append(-dt / species.extra_decay_period)
     return (coef, (dst, src))
+
+if __name__ == "__main__":
+    print("#"*30, "REPR")
+    print(repr(Model(1e-4).db))
+    print("#"*30, "STR")
+    print(str(Model(1e-4).db))
+    Model(1e-4).db.check()

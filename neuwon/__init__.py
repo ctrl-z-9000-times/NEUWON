@@ -23,7 +23,7 @@ class Species:
             extra_diffusivity = None,
             intra_decay_period = float("inf"),
             extra_decay_period = float("inf"),
-            intra_shells = True,
+            intra_shells = False,
             extra_grid = None,):
         """
         If diffusivity is not given, then the concentration is constant.
@@ -46,7 +46,7 @@ class Species:
         assert(self.extra_diffusivity is None or self.extra_diffusivity >= 0)
         assert(self.intra_decay_period > 0.0)
         assert(self.extra_decay_period > 0.0)
-        assert(len(self.extra_grid) == 3 and all(x > 0 for x in self.extra_grid))
+        if self.extra_grid: assert(len(self.extra_grid) == 3 and all(x > 0 for x in self.extra_grid))
         try:
             self.reversal_potential = float(reversal_potential)
         except ValueError:
@@ -128,9 +128,9 @@ species_library = {
 }
 
 reactions_library = {
-    # "hh": ("neuwon/nmodl_library/hh.mod",
-    #     dict(pointers={"gl": AccessHandle("L", conductance=True)},
-    #          parameter_overrides = {"celsius": 6.3})),
+    "hh": ("nmodl_library/hh.mod",
+        dict(pointers={"gl": "membrane/L/conductances"},
+             parameter_overrides = {"celsius": 6.3})),
 
     # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
 

@@ -5,7 +5,8 @@ The model is a single long axon with Hodgkin-Huxley channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon.api import *
+from neuwon import *
+from neuwon.model import *
 import numpy as np
 import bisect
 import matplotlib.pyplot as plt
@@ -36,6 +37,11 @@ class Experiment:
 
     def make_model(self):
         """ Construct a soma with a single long axon. """
+        self.model = Model(self.time_step)
+        self.model.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
+        # self.model.add_reaction("hh")
+        self.soma = self.model.add_segment()
+
         self.soma = [Segment([0,0,0], self.soma_diameter)]
         self.soma.extend(self.soma[0].add_segment([0,0,self.soma_diameter], self.axon_diameter))
         if self.length > 0:
@@ -51,12 +57,6 @@ class Experiment:
             x.insert_mechanism("hh")
             # x.insert_mechanism("na11a", scale=3)
             # x.insert_mechanism("Kv11_13States_temperature2", scale=3)
-        self.model = Model(self.time_step, [self.soma[0]],
-            reactions=(),
-            species=[
-                Species("L", transmembrane = True, reversal_potential = -54.3e-3,)
-            ],
-            stagger=self.stagger)
         print("Number of Locations:", len(self.model))
         # sa  = sum(self.model.geometry.surface_areas[x.index] for x in self.soma)
         # sa += sum(self.model.geometry.surface_areas[x.index] for x in self.axon)

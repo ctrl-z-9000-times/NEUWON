@@ -137,7 +137,6 @@ class Database:
         self.components[name] = sys = _LinearSystem(name, doc, function, epsilon=epsilon, check=check)
         self.archetypes[archetype].linear_systems.append(sys)
 
-    # TODO: Make a flag on this method to optionally return a list of Entity handles, as a convenience.
     def create_entity(self, archetype, number_of_instances = 1, return_entity=True) -> list:
         """ Create instances of an archetype.
 
