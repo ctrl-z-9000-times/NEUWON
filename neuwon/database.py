@@ -16,17 +16,29 @@ different and specialized things.
 """
 
 # OUTSTANDING TASKS:
-#       Git commit
-#       Code Review & Neatening
-#       Unit test
+#       repr & str formatting
 #       Destroy & Relocate Entities
 #       Grid Archetypes
 
 # TODO: I should give the user control over which references are
 # optional and can safely be overwritten with NULL, versus the
 # references which trigger a recursive destruction. 
-# Sparse matrixes implicitly represent NULL.
+# Sparse matrices implicitly represent NULL.
 # Add another flag? Or maybe key it off of the "check".
+
+# TODO: Make the API for grid archetypes.
+#   Consider making two new components, which would be auto-magically updated:
+#   -> Attribute coordinates of entity.
+#   -> Function Nearest neighbor to convert coordinates to entity index.
+
+# TODO: The current check API is adequate, but not ideal. It's too much like a
+# custom language with too many special cases & features crammed into a single
+# keyword argument. I could break it into multiple arguments? Or make a custom
+# class to encapsulate it? Remove some of the special cases? What would make it
+# easiest for the user?
+#   -> Make a separate "allow_invalid" flag: for NAN & NULL checking.
+#   -> Simplify the check argument. make it a pair of (low, high) bounds which are
+#       always inclusive, and can be None to indicate +/- infinity
 
 import cupy
 import numpy as np
@@ -37,10 +49,10 @@ import textwrap
 import weakref
 from collections.abc import Callable, Iterable, Mapping
 
-Real = np.dtype('f4')
+Real    = np.dtype('f4')
 epsilon = np.finfo(Real).eps
-Index = np.dtype('u4')
-NULL = np.iinfo(Index).max
+Index   = np.dtype('u4')
+NULL    = np.iinfo(Index).max
 
 class Database:
     def __init__(self):
@@ -48,11 +60,11 @@ class Database:
         self.components = {}
         self.entities = []
 
-    def add_archetype(self, name, grid = None, doc = ""):
+    def add_archetype(self, name, doc="", grid=None):
         """ Create a new type of entity.
 
-        Argument grid (optional) is spacing in each dimension.
-            Grid archetypes make Entities in uniform rectangular grids.
+        Argument grid (optional) will make Entities in a uniform rectangular grid.
+            The argument is a tuple of the grid spacing in each dimension.
         """
         name = str(name)
         assert(name not in self.archetypes)
@@ -65,23 +77,15 @@ class Database:
                 return ark, component_name[len(ark_name):]
         raise ValueError("Component name must be prefixed by an archetype name.")
 
-    def _clean_component_name(self, new_component_name):
-        new_component_name = str(new_component_name)
-        assert(new_component_name not in self.components)
-        return new_component_name
-
-    def add_global_constant(self, name, value: float, doc = "", check=True):
+    def add_global_constant(self, name, value: float, doc="", check=True):
         """ Add a singular floating-point value. """
-        name = self._clean_component_name(name)
-        self.components[name] = _Global_Constant(name, doc, value, check=check)
+        _Global_Constant(self, name, doc, value, check=check)
 
-    def add_function(self, name, function, doc = ""):
+    def add_function(self, name, function: Callable, doc=""):
         """ Add a callable function. """
-        name = self._clean_component_name(name)
-        self.components[name] = _Function(name, doc, function)
+        _Function(self, name, doc, function)
 
-    def add_attribute(self, name, doc = "",
-            dtype=Real, shape=(1,), initial_value=None, check=True):
+    def add_attribute(self, name, doc="", dtype=Real, shape=(1,), initial_value=None, check=True):
         """ Add a piece of data to an Archetype. Every Entity will be allocated
         one instance of this attribute.
 
@@ -102,12 +106,8 @@ class Database:
             references. Otherwise the entity containing the reference is destroyed.
             Destroying entities can cause a recursive destruction of multiple other
             entities.
-
         """
-        name = self._clean_component_name(name)
-        archetype, component = self._split_archetype(name)
-        self.components[name] = arr = _Attribute(self, name, doc, archetype,
-            dtype=dtype, shape=shape, initial_value=initial_value, check=check)
+        _Attribute(self, name, doc, dtype=dtype, shape=shape, initial_value=initial_value, check=check)
 
     def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="", check=True):
         """ Add a sparse matrix which is indexed by Entities.
@@ -119,25 +119,13 @@ class Database:
 
         Argument name: determines the archetype for the row.
         """
-        name = self._clean_component_name(name)
-        archetype, component = self._split_archetype(name)
-        assert(column_archetype in self.archetypes)
-        self.components[name] = arr = _Sparse_Matrix(name, doc, archetype,
-            dtype=dtype, initial_value=0, column_archetype=self.archetypes[column_archetype],
-            check=check)
-        if arr.reference:
-            assert(arr.reference in self.archetypes)
-            self.archetypes[arr.reference].referenced_by.append(arr)
+        _Sparse_Matrix(self, name, doc, dtype=dtype, initial_value=0, check=check,
+            column_archetype=column_archetype)
 
     def add_kd_tree(self, name, coordinates_attribute, doc=""):
-        """ Argument component is an attribute containing coordinates to build the KD-Tree from. """
-        name = self._clean_component_name(name)
-        archetype, component = self._split_archetype(coordinates_attribute)
-        component = self.components[component]
-        self.components[name] = x = _KD_Tree(name, doc, component)
-        archetype.kd_trees.append(x)
+        _KD_Tree(self, name, doc, coordinates_attribute)
 
-    def add_linear_system(self, name, function, epsilon, doc = "", check=True):
+    def add_linear_system(self, name, function, epsilon, doc="", check=True):
         """ Add a system of linear & time-invariant differential equations.
 
         Argument function(database_access) -> coefficients
@@ -149,13 +137,9 @@ class Database:
         The database computes the propagator matrix but does not apply it.
         The matrix is updated after any of the entity are created or destroyed.
         """
-        name = self._clean_component_name(name)
-        archetype, component = self._split_archetype(name)
-        assert(archetype in self.archetypes)
-        self.components[name] = sys = _LinearSystem(name, doc, function, epsilon=epsilon, check=check)
-        self.archetypes[archetype].linear_systems.append(sys)
+        _LinearSystem(self, name, doc, function, epsilon=epsilon, check=check)
 
-    def create_entity(self, archetype, number_of_instances = 1, return_entity=True) -> list:
+    def create_entity(self, archetype_name, number_of_instances = 1, return_entity=True) -> list:
         """ Create instances of an archetype.
 
         If the archetype is a grid, then this accepts the coordinates of the new
@@ -167,28 +151,25 @@ class Database:
             If optional keyword argument return_entity is set to False,
             then this returns a list of their unstable indexes.
         """
-        ark = self.archetypes[str(archetype)]
+        ark = self.archetypes[str(archetype_name)]
         if ark.grid is not None:
             coordinates = number_of_instances
             raise NotImplementedError
         num = int(number_of_instances); assert(num >= 0)
+        if num == 0: return []
+        ark.invalidate()
         old_size = ark.size
         new_size = old_size + num
         ark.size = new_size
         for arr in ark.attributes: arr.append_entities(old_size, new_size)
-        for tree in ark.kd_trees: tree.up_to_date = False
-        for sys in ark.linear_systems: sys.up_to_date = False
         if return_entity:
             return [Entity(self, ark, idx) for idx in range(old_size, new_size)]
         else:
             return range(old_size, new_size)
 
-    def coordinates_to_grid(self, archetype, coordinates):
-        return 1/0 # TODO
-
-    def destroy_entity(self, archetype, instances: list):
+    def destroy_entity(self, archetype_name, instances: list):
         if not instances: return
-        ark = self.archetypes[str(archetype)]
+        ark = self.archetypes[str(archetype_name)]
         ark.invalidate()
         alive = {ark: np.ones(ark.size, dtype=np.bool)}
         alive[ark][instances] = False
@@ -220,30 +201,34 @@ class Database:
                 x.data = new_indexes[ark][x.data]
             elif isinstance(ref, _Sparse_Matrix):
                 1/0
+        updated_entities = []
+        for x in self.entities:
+            entity = x.get()
+            if entity is not None:
+                entity.index = entity.ark
+                updated_entities.append(entity)
+        self.entities = updated_entities
 
-    def num_entity(self, archetype):
-        return self.archetypes[str(archetype)].size
+    def num_entity(self, archetype_name):
+        return self.archetypes[str(archetype_name)].size
 
-    def access(self, name, sparse_matrix_write=None):
-        """
+    def access(self, component_name, sparse_matrix_write=None):
+        """ This is the primary way of getting information into and out of the database.
 
         Argument sparse_matrix_write (optional) will zero and overwrite rows in
-                a sparse matrix
+                a sparse matrix. It is only valid for when accessing sparse matrices.
 
-        Returns a components value. """
+        Returns the components value, the type of which depends on the type of component.
+        """
         if sparse_matrix_write is not None:
-            return self.components[str(name)].access(self, sparse_matrix_write)
+            return self.components[str(component_name)].access(self, sparse_matrix_write)
         else:
-            return self.components[str(name)].access(self)
+            return self.components[str(component_name)].access(self)
 
-    def invalidate(self, archetype_or_component):
-        # TODO: This method is crude. It only works on whole archetypes. What if
-        # the user wanted to invalidate only certain pieces of data?
-        x = str(archetype_or_component)
-        try:
-            x = self.archetypes[x]
-        except KeyError:
-            x = self.components[x]
+    def invalidate(self, archetype_or_component_name):
+        x = str(archetype_or_component_name)
+        try:             x = self.archetypes[x]
+        except KeyError: x = self.components[x]
         x.invalidate()
 
     def check(self):
@@ -271,25 +256,38 @@ class Entity:
     """ A persistent handle on an entity.
 
     By default, the identifiers returned by create_entity are only valid until
-    the next call to destroy_entity, which moves where the entities are located.
+    the next call to destroy_entity, which moves where entities are located.
     This class tracks where an entity gets moved to, and provides a consistent
     API for accessing the entity data. """
     def __init__(self, database, archetype, index):
         self.database = database
-        self.archetype = archetype
-        assert(isinstance(self.archetype, _Archetype))
+        assert(isinstance(self.database, Database))
+        if isinstance(archetype, _Archetype):
+            self.archetype = archetype
+        else:
+            self.archetype = database.archetypes[str(archetype)]
         self.index = index
+        assert(self.index < self.archetype.size)
         self.database.entities.append(weakref.ref(self))
 
-    def read(self, component):
-        self.database.access(component, self.index)
+    def read(self, component_name):
+        """ """
+        archetype, _ = self.database._split_archetype(component_name)
+        assert(archetype == self.archetype)
+        data = self.database.access(component_name)
+        if isinstance(data, Iterable): return data[self.index]
+        else: return data
 
     def write(self, component, value):
-        self.database.access(component, self.index)
+        """ """
+        archetype, _ = self.database._split_archetype(component_name)
+        assert(archetype == self.archetype)
+        data = self.database.access(component)
+        data[self.index] = value
 
 class _DocString:
     def __init__(self, name, doc):
-        self.name = name
+        self.name = str(name)
         self.doc = textwrap.dedent(str(doc)).strip()
 
     def _class_name(self):
@@ -308,24 +306,26 @@ class _DocString:
         return s
 
 class _Component(_DocString):
-    def __init__(self, name, doc, check):
+    def __init__(self, database, name, doc, check):
         _DocString.__init__(self, name, doc)
+        assert(self.name not in database.components)
+        database.components[self.name] = self
         self._check = check
 
     def access(self, database):
-        1/0 # Abstract method.
+        1/0 # Abstract method, required.
 
     def check(self, database):
-        1/0 # Abstract method.
+        """ Abstract method, optional """
 
     def check_data(self, database, data, reference=False):
+        """ Helper method to interpret the check flags and dtypes. """
         if not self._check: return
         if reference:
-            num_entities = database.num_entities(reference)
             if self._check == "ALLOW_NULL":
                 1/0
             else:
-                assert cupy.all(data < num_entities), self.name
+                assert cupy.all(data < reference.size), self.name
         elif isinstance(self._check, Iterable) and len(self._check) == 2:
             op, threshold = self._check
             if   op == "<":  assert data <  threshold, self.name
@@ -337,7 +337,14 @@ class _Component(_DocString):
                 high = max(threshold)
                 assert data >= low, self.name
                 assert data <= high, self.name
-            else: raise ValueError("Invalid argument 'check'.")
+            else:
+                try:
+                    low = float(op)
+                    high = float(threshold)
+                except ValueError:
+                    raise ValueError("Invalid 'check' argument %s."%str(self._check))
+                assert data >= low, self.name
+                assert data <= high, self.name
         else:
             kind = data.dtype.kind
             if kind == "f" or kind == "c":
@@ -364,38 +371,36 @@ class _Archetype(_DocString):
         for sys in self.linear_systems: sys.invalidate()
 
 class _Global_Constant(_Component):
-    def __init__(self, name, doc, value, check):
-        _Component.__init__(self, name, doc, check)
+    def __init__(self, database, name, doc, value, check):
+        _Component.__init__(self, database, name, doc, check)
         self.value = float(value)
+        if self.check:
+            _Component.check_data(self, database, cupy.array([self.value]))
 
     def access(self, database):
         return self.value
-
-    def check(self, database):
-        _Component.check_data(self, database, cupy.array([self.value]))
 
     def __repr__(self):
         return "%s = %s"%(self.name, str(self.value))
 
 class _Function(_Component):
-    def __init__(self, name, doc, function):
+    def __init__(self, database, name, doc, function):
         if not doc and function.__doc__: doc = function.__doc__
-        _Component.__init__(self, name, doc, False)
-        assert(isinstance(function, Callable))
+        _Component.__init__(self, database, name, doc, False)
         self.function = function
+        assert isinstance(self.function, Callable), self.name
 
-    def access(self, database): return self.function
-
-    def check(self, database): pass
+    def access(self, database):
+        return self.function
 
     def __repr__(self):
         return "%s()"%(self.name)
 
 class _Attribute(_Component):
-    def __init__(self, database, name, doc, archetype, dtype, shape, initial_value, check):
-        _Component.__init__(self, name, doc, check)
-        self.archetype = archetype
-        archetype.attributes.append(self)
+    def __init__(self, database, name, doc, dtype, shape, initial_value, check):
+        _Component.__init__(self, database, name, doc, check)
+        self.archetype = ark = database._split_archetype(self.name)[0]
+        ark.attributes.append(self)
         if isinstance(dtype, str):
             self.dtype = Index
             self.initial_value = NULL
@@ -409,8 +414,8 @@ class _Attribute(_Component):
             self.shape = tuple(int(round(x)) for x in shape)
         else:
             self.shape = (int(round(shape)),)
-        self.data = self._alloc(archetype.size)
-        self.append_entities(0, archetype.size)
+        self.data = self._alloc(ark.size)
+        self.append_entities(0, ark.size)
 
     def append_entities(self, old_size, new_size):
         """ Append and initialize some new instances to the data array. """
@@ -427,10 +432,11 @@ class _Attribute(_Component):
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
         return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
 
-    def access(self, database): return self.data
+    def access(self, database):
+        return self.data
 
     def check(self, database):
-        _Component.check_data(self, database, reference=self.reference)
+        _Component.check_data(self, database, self.data, reference=self.reference)
 
     def __repr__(self):
         s = "%s is an array"%self.name
@@ -442,31 +448,31 @@ class _Attribute(_Component):
         return s
 
 class _Sparse_Matrix(_Component):
-    def __init__(self, name, doc, archetype, dtype, initial_value, check, column_archetype=None):
-        _Component.__init__(self, name, doc, check)
-        self.archetype = archetype
-        archetype.sparse_matrixes.append(self)
+    def __init__(self, database, name, doc, dtype, initial_value, check, column_archetype):
+        _Component.__init__(self, database, name, doc, check)
+        self.archetype = ark = database._split_archetype(self.name)[0]
+        ark.sparse_matrixes.append(self)
+        self.column_archetype = database.archetypes[str(column_archetype)]
+        self.column_archetype.sparse_matrixes.append(self)
         if isinstance(dtype, str):
             self.dtype = Index
             self.initial_value = NULL
-            self.reference = str(dtype)
+            self.reference = database.archetypes[str(dtype)]
+            self.reference.referenced_by.append(self)
         else:
             self.dtype = dtype
             self.initial_value = initial_value
             self.reference = False
-        self.data = scipy.sparse.csr_matrix((archetype.size, column_archetype.size), dtype=self.dtype)
-
-    def write_row(self, rows, columns, data):
-        lil = scipy.sparse.lil_matrix(self.data)
-        for r, c, d in zip(rows, columns, data):
-            lil.rows[row] = c
-            lil.data[row] = d
-        self.data = scipy.sparse.csr_matrix(lil)
+        self.data = scipy.sparse.csr_matrix((ark.size, self.column_archetype.size), dtype=self.dtype)
 
     def access(self, database, sparse_matrix_write=None):
         if sparse_matrix_write:
             rows, columns, data = sparse_matrix_write
-            self.write_row(rows, columns, data)
+            lil = scipy.sparse.lil_matrix(self.data)
+            for r, c, d in zip(rows, columns, data):
+                lil.rows[row] = c
+                lil.data[row] = d
+            self.data = scipy.sparse.csr_matrix(lil)
         return self.data
 
     def check(self, database):
@@ -477,10 +483,14 @@ class _Sparse_Matrix(_Component):
         return s
 
 class _KD_Tree(_Component):
-    def __init__(self, name, doc, component):
-        _Component.__init__(self, name, doc, False)
-        assert(isinstance(component, _Attribute))
-        self.component = component
+    def __init__(self, database, name, doc, component):
+        _Component.__init__(self, database, name, doc, False)
+        self.component = database.components[str(component)]
+        assert(isinstance(self.component, _Attribute))
+        assert(not self.component.reference)
+        archetype = database._split_archetype(self.name)[0]
+        archetype.kd_trees.append(self)
+        assert archetype == self.component.archetype, "KD-Tree and its coordinates must have the same archetype."
         self.tree = None
         self.invalidate()
 
@@ -489,19 +499,19 @@ class _KD_Tree(_Component):
 
     def access(self, database):
         if not self.up_to_date:
-            data = database.access(self.component).get()
+            data = self.component.access(database).get()
             self.tree = scipy.spatial.cKDTree(data)
             self.up_to_date = True
         return self.tree
-
-    def check(self, database): pass
 
     def __repr__(self):
         return "%s"%self.name
 
 class _LinearSystem(_Component):
-    def __init__(self, name, doc, function, epsilon, check):
-        _Component.__init__(self, name, doc, check)
+    def __init__(self, database, name, doc, function, epsilon, check):
+        _Component.__init__(self, database, name, doc, check)
+        archetype = database._split_archetype(self.name)[0]
+        archetype.linear_systems.append(self)
         self.function   = function
         self.epsilon    = float(epsilon)
         self.data       = None
