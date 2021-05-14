@@ -16,8 +16,17 @@ different and specialized things.
 """
 
 # OUTSTANDING TASKS:
+#       Git commit
+#       Code Review & Neatening
+#       Unit test
 #       Destroy & Relocate Entities
 #       Grid Archetypes
+
+# TODO: I should give the user control over which references are
+# optional and can safely be overwritten with NULL, versus the
+# references which trigger a recursive destruction. 
+# Sparse matrixes implicitly represent NULL.
+# Add another flag? Or maybe key it off of the "check".
 
 import cupy
 import numpy as np
@@ -43,15 +52,17 @@ class Database:
         """ Create a new type of entity.
 
         Argument grid (optional) is spacing in each dimension.
+            Grid archetypes make Entities in uniform rectangular grids.
         """
         name = str(name)
         assert(name not in self.archetypes)
         self.archetypes[name] = _Archetype(name, doc, grid)
 
     def _split_archetype(self, component_name):
+        component_name = str(component_name)
         for ark_name, ark in self.archetypes.items():
             if component_name.startswith(ark_name):
-                return ark_name, component_name[len(ark_name):]
+                return ark, component_name[len(ark_name):]
         raise ValueError("Component name must be prefixed by an archetype name.")
 
     def _clean_component_name(self, new_component_name):
@@ -75,49 +86,56 @@ class Database:
         one instance of this attribute.
 
         Argument name: must start with the name of the associated archetype.
-
         Argument dtype:
-            if dtype is a string then it is a reference to an entity.
-            Note: Reactions are not run in a deterministic order. Dynamics which
-            span between reactions via references should operate at a
-            significantly slower time scale than the time step.
-
         Argument shape:
         Argument initial_value:
         Argument check:
+
+        Reference Types:
+            If dtype is a string then it is a reference to an entity.
+            Note: Reactions are not run in a deterministic order. Dynamics which
+            span between reactions via references should operate at a
+            significantly slower time scale than the time step.
+            
+        TODO: Explain destroy behavior...
+            If the dangling references are optional then they are replaced with NULL
+            references. Otherwise the entity containing the reference is destroyed.
+            Destroying entities can cause a recursive destruction of multiple other
+            entities.
+
         """
         name = self._clean_component_name(name)
         archetype, component = self._split_archetype(name)
-        assert(archetype in self.archetypes)
-        self.components[name] = arr = _Attribute(name, doc, self.archetypes[archetype],
+        self.components[name] = arr = _Attribute(self, name, doc, archetype,
             dtype=dtype, shape=shape, initial_value=initial_value, check=check)
-        if arr.reference:
-            assert(arr.reference in self.archetypes)
-            self.archetypes[arr.reference].referenced_by.append(arr)
 
     def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="", check=True):
-        """ Add a compressed sparse row matrix which is indexed by Entities.
+        """ Add a sparse matrix which is indexed by Entities.
+        This is useful for implementing any-to-any connections between entities.
+
+        Sparse matrices may contain references but they will not trigger a
+        recursive destruction of entities. Instead, references to destroyed
+        entities are simply removed from the sparse matrix.
 
         Argument name: determines the archetype for the row.
         """
         name = self._clean_component_name(name)
         archetype, component = self._split_archetype(name)
-        assert(archetype in self.archetypes)
         assert(column_archetype in self.archetypes)
-        self.components[name] = arr = _Sparse_Matrix(name, doc, self.archetypes[archetype],
+        self.components[name] = arr = _Sparse_Matrix(name, doc, archetype,
             dtype=dtype, initial_value=0, column_archetype=self.archetypes[column_archetype],
             check=check)
         if arr.reference:
             assert(arr.reference in self.archetypes)
             self.archetypes[arr.reference].referenced_by.append(arr)
 
-    def add_kd_tree(self, name, component, doc=""):
-        """ """
+    def add_kd_tree(self, name, coordinates_attribute, doc=""):
+        """ Argument component is an attribute containing coordinates to build the KD-Tree from. """
         name = self._clean_component_name(name)
-        archetype, _ = self._split_archetype(name)
-        component = self.components[str(component)]
+        archetype, component = self._split_archetype(coordinates_attribute)
+        component = self.components[component]
         self.components[name] = x = _KD_Tree(name, doc, component)
-        self.archetypes[archetype].kd_trees.append(x)
+        archetype.kd_trees.append(x)
 
     def add_linear_system(self, name, function, epsilon, doc = "", check=True):
         """ Add a system of linear & time-invariant differential equations.
@@ -169,17 +187,39 @@ class Database:
         return 1/0 # TODO
 
     def destroy_entity(self, archetype, instances: list):
-        archetype = str(archetype)
-        assert(archetype in self.archetypes)
-        1/0 # TODO Recursively mark all destroyed instances, make a bitmask for aliveness.
-        1/0 # TODO Compress the dead entries out of all data arrays.
-        1/0 # TODO Update references.
-
-        # Note: I should give the user control over which references are
-        # optional and can safely be overwritten with NULL, versus the
-        # references which trigger a recursive destruction. 
-        # Sparse matrixes implicitly represent NULL.
-        # Add another flag? Or maybe key it off of the "check".
+        if not instances: return
+        ark = self.archetypes[str(archetype)]
+        ark.invalidate()
+        alive = {ark: np.ones(ark.size, dtype=np.bool)}
+        alive[ark][instances] = False
+        # Find all dangling references to dead instance of this archetype.
+        stack = list(ark.referenced_by)
+        while stack:
+            ref = stack.pop()
+            ark = ref.archetype
+            target = ref.reference
+            target_alive = alive[target]
+            if isinstance(ref, _Attribute):
+                if ark not in alive: alive[ark] = np.ones(ark.size, dtype=np.bool)
+                alive[ark][np.logical_not(target_alive[ref.data])] = False
+                stack.extend(ark.referenced_by)
+            elif isinstance(ref, _Sparse_Matrix):
+                # Sparse matrices never incur recursive destruction.
+                # TODO: Compress dead values out of the sparse matrix.
+                1/0
+        # Compress destroyed instances out of the data arrays.
+        for ark, alive_mask in alive.items():
+            for x in ark.attributes:
+                x.data = x.data[alive_mask]
+            for x in ark.sparse_matrixes:
+                1/0
+        # Update references.
+        new_indexes = {ark: np.cumsum(alive_mask) - 1 for ark, alive_mask in alive.items()}
+        for x in ark.referenced_by:
+            if isinstance(ref, _Attribute):
+                x.data = new_indexes[ark][x.data]
+            elif isinstance(ref, _Sparse_Matrix):
+                1/0
 
     def num_entity(self, archetype):
         return self.archetypes[str(archetype)].size
@@ -196,12 +236,15 @@ class Database:
         else:
             return self.components[str(name)].access(self)
 
-    def invalidate(self, archetype):
+    def invalidate(self, archetype_or_component):
         # TODO: This method is crude. It only works on whole archetypes. What if
         # the user wanted to invalidate only certain pieces of data?
-        ark = self.archetypes[str(archetype)]
-        for tree in ark.kd_trees: tree.up_to_date = False
-        for sys in ark.linear_systems: sys.up_to_date = False
+        x = str(archetype_or_component)
+        try:
+            x = self.archetypes[x]
+        except KeyError:
+            x = self.components[x]
+        x.invalidate()
 
     def check(self):
         for x in self.components.values(): x.check(self)
@@ -306,6 +349,7 @@ class _Archetype(_DocString):
         self.grid = None if not grid else tuple(float(x) for x in grid)
         self.size = 0
         self.attributes = []
+        self.sparse_matrixes = []
         self.referenced_by = []
         self.linear_systems = []
         self.kd_trees = []
@@ -314,6 +358,10 @@ class _Archetype(_DocString):
         s = self.name
         if self.size: s += "\n%d instances."%self.size
         return s
+
+    def invalidate(self):
+        for tree in self.kd_trees: tree.invalidate()
+        for sys in self.linear_systems: sys.invalidate()
 
 class _Global_Constant(_Component):
     def __init__(self, name, doc, value, check):
@@ -344,14 +392,15 @@ class _Function(_Component):
         return "%s()"%(self.name)
 
 class _Attribute(_Component):
-    def __init__(self, name, doc, archetype, dtype, shape, initial_value, check):
+    def __init__(self, database, name, doc, archetype, dtype, shape, initial_value, check):
         _Component.__init__(self, name, doc, check)
         self.archetype = archetype
         archetype.attributes.append(self)
         if isinstance(dtype, str):
             self.dtype = Index
             self.initial_value = NULL
-            self.reference = str(dtype)
+            self.reference = database.archetypes[str(dtype)]
+            self.reference.referenced_by.append(self)
         else:
             self.dtype = dtype
             self.initial_value = initial_value
@@ -396,6 +445,7 @@ class _Sparse_Matrix(_Component):
     def __init__(self, name, doc, archetype, dtype, initial_value, check, column_archetype=None):
         _Component.__init__(self, name, doc, check)
         self.archetype = archetype
+        archetype.sparse_matrixes.append(self)
         if isinstance(dtype, str):
             self.dtype = Index
             self.initial_value = NULL
@@ -432,6 +482,9 @@ class _KD_Tree(_Component):
         assert(isinstance(component, _Attribute))
         self.component = component
         self.tree = None
+        self.invalidate()
+
+    def invalidate(self):
         self.up_to_date = False
 
     def access(self, database):
@@ -451,8 +504,11 @@ class _LinearSystem(_Component):
         _Component.__init__(self, name, doc, check)
         self.function   = function
         self.epsilon    = float(epsilon)
-        self.up_to_date = False
         self.data       = None
+        self.invalidate()
+
+    def invalidate(self):
+        self.up_to_date = False
 
     def access(self, database):
         if not self.up_to_date:
