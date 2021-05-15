@@ -10,13 +10,8 @@ import numpy as np
 from neuwon.database import *
 import neuwon.voronoi
 
-
-
-
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
-
-# TODO: Rename intra & extra into inside & outside
 
 class Species:
     """ """
@@ -24,14 +19,14 @@ class Species:
             charge = 0,
             transmembrane = False,
             reversal_potential = "nerst",
-            intra_concentration = 0.0,
-            extra_concentration = 0.0,
-            intra_diffusivity = None,
-            extra_diffusivity = None,
-            intra_decay_period = float("inf"),
-            extra_decay_period = float("inf"),
-            intra_shells = False,
-            extra_grid = None,):
+            inside_concentration = 0.0,
+            outside_concentration = 0.0,
+            inside_diffusivity = None,
+            outside_diffusivity = None,
+            inside_decay_period = float("inf"),
+            outside_decay_period = float("inf"),
+            inside_shells = False,
+            outside_grid = None,):
         """
         If diffusivity is not given, then the concentration is constant.
         Argument reversal_potential is one of: number, "nerst", "goldman_hodgkin_katz"
@@ -39,32 +34,30 @@ class Species:
         self.name = str(name)
         self.charge = int(charge)
         self.transmembrane = bool(transmembrane)
-        self.intra_concentration = float(intra_concentration)
-        self.extra_concentration = float(extra_concentration)
-        self.intra_diffusivity = float(intra_diffusivity) if intra_diffusivity is not None else None
-        self.extra_diffusivity = float(extra_diffusivity) if extra_diffusivity is not None else None
-        self.intra_decay_period = float(intra_decay_period)
-        self.extra_decay_period = float(extra_decay_period)
-        self.intra_shells = bool(intra_shells)
-        self.extra_grid = None if extra_grid is None else tuple(float(x) for x in extra_grid)
-        assert(self.intra_concentration >= 0.0)
-        assert(self.extra_concentration >= 0.0)
-        assert(self.intra_diffusivity is None or self.intra_diffusivity >= 0)
-        assert(self.extra_diffusivity is None or self.extra_diffusivity >= 0)
-        assert(self.intra_decay_period > 0.0)
-        assert(self.extra_decay_period > 0.0)
-        if self.extra_grid: assert(len(self.extra_grid) == 3 and all(x > 0 for x in self.extra_grid))
-        try:
-            self.reversal_potential = float(reversal_potential)
-        except ValueError:
-            self.reversal_potential = str(reversal_potential)
+        try:                self.reversal_potential = float(reversal_potential)
+        except ValueError:  self.reversal_potential = str(reversal_potential)
+        self.inside_concentration  = float(inside_concentration)
+        self.outside_concentration = float(outside_concentration)
+        self.inside_diffusivity  = float(inside_diffusivity)  if inside_diffusivity is not None else None
+        self.outside_diffusivity = float(outside_diffusivity) if outside_diffusivity is not None else None
+        self.inside_decay_period  = float(inside_decay_period)
+        self.outside_decay_period = float(outside_decay_period)
+        self.inside_shells = bool(inside_shells)
+        self.outside_grid  = None if outside_grid is None else tuple(float(x) for x in outside_grid)
+        assert(self.inside_concentration  >= 0.0)
+        assert(self.outside_concentration >= 0.0)
+        assert(self.inside_diffusivity  is None or self.inside_diffusivity >= 0)
+        assert(self.outside_diffusivity is None or self.outside_diffusivity >= 0)
+        assert(self.inside_decay_period  > 0.0)
+        assert(self.outside_decay_period > 0.0)
+        if self.outside_grid: assert(len(self.outside_grid) == 3 and all(x > 0 for x in self.outside_grid))
 
     def _initialize(self, database):
         add_attribute = database.add_attribute
-        inside_entity = "" if species.intra_shells else "membrane/"
-        if species.intra_diffusivity is not None:
+        inside_entity = "" if species.inside_shells else "membrane/"
+        if species.inside_diffusivity is not None:
             add_attribute("%sinside/%s/concentrations"%(inside_entity, species.name),
-                    initial_value=species.intra_concentration,
+                    initial_value=species.inside_concentration,
                     doc="Units: Molar")
             add_attribute("%sinside/%s/release_rates"%(inside_entity, species.name),
                     initial_value=0,
@@ -73,11 +66,11 @@ class Species:
                 function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,) # Epsilon millivolts.
         else:
             database.add_global_constant("%sinside/%s/concentrations"%(inside_entity, species.name),
-                    species.intra_concentration,
+                    species.inside_concentration,
                     doc="Units: Molar")
-        if species.extra_diffusivity is not None:
+        if species.outside_diffusivity is not None:
             add_attribute("outside/%s/concentrations"%species.name,
-                    initial_value=species.extra_concentration,
+                    initial_value=species.outside_concentration,
                     doc="Units: Molar")
             add_attribute("outside/%s/release_rates"%species.name,
                     initial_value=0,
@@ -85,7 +78,7 @@ class Species:
             # add_attribute("outside/%s/diffusion"%species.name, shape="sparse") # TODO
         else:
             database.add_global_constant("outside/%s/concentrations"%species.name,
-                    species.extra_concentration,
+                    species.outside_concentration,
                     doc="Units: Molar")
         if species.transmembrane:
             add_attribute("membrane/%s/conductances"%species.name,
@@ -136,34 +129,34 @@ species_library = {
         "charge": 1,
         "transmembrane": True,
         "reversal_potential": "nerst",
-        "intra_concentration":  15e-3,
-        "extra_concentration": 145e-3,
+        "inside_concentration":  15e-3,
+        "outside_concentration": 145e-3,
     },
     "k": {
         "charge": 1,
         "transmembrane": True,
         "reversal_potential": "nerst",
-        "intra_concentration": 150e-3,
-        "extra_concentration":   4e-3,
+        "inside_concentration": 150e-3,
+        "outside_concentration":   4e-3,
     },
     "ca": {
         "charge": 2,
         "transmembrane": True,
         "reversal_potential": "goldman_hodgkin_katz",
-        "intra_concentration": 70e-9,
-        "extra_concentration": 2e-3,
+        "inside_concentration": 70e-9,
+        "outside_concentration": 2e-3,
     },
     "cl": {
         "charge": -1,
         "transmembrane": True,
         "reversal_potential": "nerst",
-        "intra_concentration":  10e-3,
-        "extra_concentration": 110e-3,
+        "inside_concentration":  10e-3,
+        "outside_concentration": 110e-3,
     },
     "glu": {
-        # "extra_concentration": 1/0, # TODO!
-        "extra_diffusivity": 1e-6, # TODO!
-        # "extra_decay_period": 1/0, # TODO!
+        # "outside_concentration": 1/0, # TODO!
+        "outside_diffusivity": 1e-6, # TODO!
+        # "outside_decay_period": 1/0, # TODO!
     },
 }
 
@@ -177,7 +170,7 @@ reactions_library = {
     # "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
 
     # "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
-    #     dict(pointers={"C": AccessHandle("Glu", extra_concentration=True)})),
+    #     dict(pointers={"C": AccessHandle("Glu", outside_concentration=True)})),
 
     # "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
     #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
@@ -558,7 +551,7 @@ class Model:
             neighbors = np.array(neighbors, dtype=Index)
             v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
                     neighbors, self.coordinates)
-            self.extra_volumes[location] = v * self.extracellular_volume_fraction * 1e3
+            self.outside_volumes[location] = v * self.extracellular_volume_fraction * 1e3
             self.neighbors[location] = n
             for n in self.neighbors[location]:
                 n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
@@ -656,9 +649,9 @@ class Model:
             integral_v += rc * diff_v * alpha
             moles = s.conductances * integral_v / (s.charge * F)
             if s.intra is not None:
-                s.intra.concentrations += moles / self.geometry.intra_volumes
+                s.intra.concentrations += moles / self.geometry.inside_volumes
             if s.extra is not None:
-                s.extra.concentrations -= moles / self.geometry.extra_volumes
+                s.extra.concentrations -= moles / self.geometry.outside_volumes
         # Calculate the local release / removal of chemicals.
         for s in self.species.values():
             for x in (s.intra, s.extra):
@@ -672,9 +665,9 @@ class Model:
         for name, species in self.species.items():
             if species.transmembrane:
                 access("membrane/%s/conductances"%species).fill(0.0)
-            if species.intra_diffusivity is not None:
+            if species.inside_diffusivity is not None:
                 access("inside/%s/release_rates"%species).fill(0.0)
-            if species.extra_diffusivity is not None:
+            if species.outside_diffusivity is not None:
                 access("outside/%s/release_rates"%species).fill(0.0)
         for r in self.reactions.values():
             r.advance(access)
@@ -764,11 +757,11 @@ def surface_area_frustum(radius_1, radius_2, length):
 def volume_of_frustum(radius_1, radius_2, length):
     return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
 
-def nerst_potential(charge, T, intra_concentration, extra_concentration):
+def nerst_potential(charge, T, inside_concentration, outside_concentration):
     """ Returns the reversal voltage for an ionic species. """
-    xp = cp.get_array_module(intra_concentration)
-    if charge == 0: return xp.full_like(intra_concentration, xp.nan)
-    ratio = xp.divide(extra_concentration, intra_concentration)
+    xp = cp.get_array_module(inside_concentration)
+    if charge == 0: return xp.full_like(inside_concentration, xp.nan)
+    ratio = xp.divide(outside_concentration, inside_concentration)
     return xp.nan_to_num(R * T / F / charge * np.log(ratio))
 
 @cp.fuse()
@@ -778,12 +771,12 @@ def _efun(z):
     else:
         return z / (math.exp(z) - 1)
 
-def goldman_hodgkin_katz(charge, T, intra_concentration, extra_concentration, voltages):
+def goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
     """ Returns the reversal voltage for an ionic species. """
-    xp = cp.get_array_module(intra_concentration)
-    if charge == 0: return xp.full_like(intra_concentration, np.nan)
+    xp = cp.get_array_module(inside_concentration)
+    if charge == 0: return xp.full_like(inside_concentration, np.nan)
     z = (charge * F / (R * T)) * voltages
-    return (charge * F) * (intra_concentration * _efun(-z) - extra_concentration * _efun(z))
+    return (charge * F) * (inside_concentration * _efun(-z) - outside_concentration * _efun(z))
 
 def _electric_coefficients(access):
     """
@@ -822,41 +815,41 @@ def _inside_diffusion_coefficients(database_access, species):
             continue
         parent = geometry.parents[location]
         l = geometry.lengths[location]
-        flux = species.intra_diffusivity * geometry.cross_sectional_areas[location] / l
+        flux = species.inside_diffusivity * geometry.cross_sectional_areas[location] / l
         src.append(location)
         dst.append(parent)
-        coef.append(+dt * flux / geometry.intra_volumes[parent])
+        coef.append(+dt * flux / geometry.inside_volumes[parent])
         src.append(location)
         dst.append(location)
-        coef.append(-dt * flux / geometry.intra_volumes[location])
+        coef.append(-dt * flux / geometry.inside_volumes[location])
         src.append(parent)
         dst.append(location)
-        coef.append(+dt * flux / geometry.intra_volumes[location])
+        coef.append(+dt * flux / geometry.inside_volumes[location])
         src.append(parent)
         dst.append(parent)
-        coef.append(-dt * flux / geometry.intra_volumes[parent])
+        coef.append(-dt * flux / geometry.inside_volumes[parent])
     for location in range(len(geometry)):
         src.append(location)
         dst.append(location)
-        coef.append(-dt / species.intra_decay_period)
+        coef.append(-dt / species.inside_decay_period)
     return (coef, (dst, src))
 
 def _outside_diffusion_coefficients(database_access, species):
     src = []; dst = []; coef = []
-    D = species.extra_diffusivity / geometry.extracellular_tortuosity ** 2
+    D = species.outside_diffusivity / geometry.extracellular_tortuosity ** 2
     for location in range(len(geometry)):
         for neighbor in geometry.neighbors[location]:
             flux = D * neighbor["border_surface_area"] / neighbor["distance"]
             src.append(location)
             dst.append(neighbor["location"])
-            coef.append(+dt * flux / geometry.extra_volumes[neighbor["location"]])
+            coef.append(+dt * flux / geometry.outside_volumes[neighbor["location"]])
             src.append(location)
             dst.append(location)
-            coef.append(-dt * flux / geometry.extra_volumes[location])
+            coef.append(-dt * flux / geometry.outside_volumes[location])
     for location in range(len(geometry)):
         src.append(location)
         dst.append(location)
-        coef.append(-dt / species.extra_decay_period)
+        coef.append(-dt / species.outside_decay_period)
     return (coef, (dst, src))
 
 if __name__ == "__main__":
