@@ -39,10 +39,7 @@ class Experiment:
         self.model = Model(self.time_step)
         self.model.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
         # self.model.add_reaction("hh")
-        self.soma = self.model.add_segment()
-
-        self.soma = [Segment([0,0,0], self.soma_diameter)]
-        self.soma.extend(self.soma[0].add_segment([0,0,self.soma_diameter], self.axon_diameter))
+        self.soma = self.model.add_segment(None, [0,0,0], self.soma_diameter)
         if self.length > 0:
             self.axon = self.soma[-1].add_segment(
                     [0,0,self.length + self.soma_diameter],

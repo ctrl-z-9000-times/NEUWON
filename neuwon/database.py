@@ -20,25 +20,19 @@ different and specialized things.
 #       Destroy & Relocate Entities
 #       Grid Archetypes
 
-# TODO: I should give the user control over which references are
-# optional and can safely be overwritten with NULL, versus the
-# references which trigger a recursive destruction. 
-# Sparse matrices implicitly represent NULL.
-# Add another flag? Or maybe key it off of the "check".
+# TODO: Rework the API for the check argument:
+#   -> Split off a separate "allow_invalid" flag: for NAN & NULL checking.
+#           This flag also controls whether destroying referenced entities causes
+#           recursive destruction of more entities.
+#   -> Simplify the check argument. make it a pair of (low, high) bounds which are
+#       always inclusive, and can be None to indicate +/- infinity
+#       Default (None, None)
+#   -> Documentation.
 
 # TODO: Make the API for grid archetypes.
 #   Consider making two new components, which would be auto-magically updated:
 #   -> Attribute coordinates of entity.
 #   -> Function Nearest neighbor to convert coordinates to entity index.
-
-# TODO: The current check API is adequate, but not ideal. It's too much like a
-# custom language with too many special cases & features crammed into a single
-# keyword argument. I could break it into multiple arguments? Or make a custom
-# class to encapsulate it? Remove some of the special cases? What would make it
-# easiest for the user?
-#   -> Make a separate "allow_invalid" flag: for NAN & NULL checking.
-#   -> Simplify the check argument. make it a pair of (low, high) bounds which are
-#       always inclusive, and can be None to indicate +/- infinity
 
 import cupy
 import numpy as np
@@ -181,26 +175,28 @@ class Database:
             target = ref.reference
             target_alive = alive[target]
             if isinstance(ref, _Attribute):
-                if ark not in alive: alive[ark] = np.ones(ark.size, dtype=np.bool)
+                if ark not in alive:
+                    alive[ark] = np.ones(ark.size, dtype=np.bool)
+                    ark.invalidate()
                 alive[ark][np.logical_not(target_alive[ref.data])] = False
                 stack.extend(ark.referenced_by)
             elif isinstance(ref, _Sparse_Matrix):
-                # Sparse matrices never incur recursive destruction.
-                # TODO: Compress dead values out of the sparse matrix.
-                1/0
+                pass # References in sparse matrices never cause recursive destruction.
         # Compress destroyed instances out of the data arrays.
         for ark, alive_mask in alive.items():
             for x in ark.attributes:
                 x.data = x.data[alive_mask]
             for x in ark.sparse_matrixes:
+                # Compress out dead rows, columns, and if its a reference matrix
+                # then remove entries which point to dead entities.
                 1/0
         # Update references.
         new_indexes = {ark: np.cumsum(alive_mask) - 1 for ark, alive_mask in alive.items()}
-        for x in ark.referenced_by:
+        for x in alive:
             if isinstance(ref, _Attribute):
                 x.data = new_indexes[ark][x.data]
             elif isinstance(ref, _Sparse_Matrix):
-                1/0
+                x.data.data = new_indexes[ark][x.data.data]
         updated_entities = []
         for x in self.entities:
             entity = x.get()
