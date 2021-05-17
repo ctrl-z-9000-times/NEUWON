@@ -101,22 +101,22 @@ class Species:
                 and self.outside_diffusivity is None):
             pass # TODO...
             # self.reversal_potential = 1/0
-            # nerst_potential(charge, T, inside_concentration, outside_concentration)
+            # _nerst_potential(charge, T, inside_concentration, outside_concentration)
 
-        def _reversal_potential(self, database_access):
-            if isinstance(self.reversal_potential, float):
-                return self.reversal_potential
-            else:
-                T = database_access("T")
-                inside = database_access("membrane/inside/%s/concentrations"%self.name)
-                outside = database_access("membrane/outside/%s/concentrations"%self.name)
-                if self.reversal_potential == "nerst":
-                    return nerst_potential(self.charge, T, inside, outside)
-                elif self.reversal_potential == "goldman_hodgkin_katz":
-                    voltages = database_access("membrane/voltages")
-                    return goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
+    def _reversal_potential(self, database_access):
+        if isinstance(self.reversal_potential, float):
+            return self.reversal_potential
+        else:
+            T = database_access("T")
+            inside = database_access("membrane/inside/%s/concentrations"%self.name)
+            outside = database_access("membrane/outside/%s/concentrations"%self.name)
+            if self.reversal_potential == "nerst":
+                return _nerst_potential(self.charge, T, inside, outside)
+            elif self.reversal_potential == "goldman_hodgkin_katz":
+                voltages = database_access("membrane/voltages")
+                return _goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
 
-def nerst_potential(charge, T, inside_concentration, outside_concentration):
+def _nerst_potential(charge, T, inside_concentration, outside_concentration):
     """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(inside_concentration)
     if charge == 0: return xp.full_like(inside_concentration, xp.nan)
@@ -130,7 +130,7 @@ def _efun(z):
     else:
         return z / (math.exp(z) - 1)
 
-def goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
+def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
     """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(inside_concentration)
     if charge == 0: return xp.full_like(inside_concentration, np.nan)
@@ -244,7 +244,7 @@ class Model:
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
         db.add_global_constant("celsius", float(celsius))
-        db.add_global_constant("T", access("celsius") + 273.15, doc="Temperature in Kelvins.")
+        db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature in Kelvins.")
         db.add_function("create_segment", self.create_segment)
         db.add_function("destroy_segment", self.destroy_segment)
         db.add_function("insert_reaction", self.insert_reaction)
