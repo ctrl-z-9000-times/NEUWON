@@ -86,7 +86,7 @@ class Experiment:
             self.model.advance()
             self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
-                self.v[idx].append(p.get_voltage() * 1e3)
+                self.v[idx].append(p.voltage() * 1e3)
                 # self.m[idx].append(p.read("hh/m"))
                 self.m[idx].append(np.nan)
 

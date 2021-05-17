@@ -4,7 +4,6 @@ from scipy.sparse.linalg import expm
 import copy
 import numba.cuda
 import cupy as cp
-import cupyx.scipy.sparse
 import math
 import numpy as np
 from neuwon.database import *
@@ -23,6 +22,51 @@ Neighbor = np.dtype([
 
 class Species:
     """ """
+
+    # TODO: Consider getting rid of the standard library of species and mechanisms.
+    # Instead provide it in code examples which the user can copy paste into their
+    # code, or possible import directly from an "examples" sub-module (like with
+    # htm.core: `import htm.examples`). The problem with this std-lib is that there
+    # is no real consensus on what's standard... Species have a lot of arguments and
+    # while there may be one scientifically correct value for each argument, the
+    # user might want to omit options for run-speed. Mechanisms come in so many
+    # different flavors too, with varying levels of bio-accuracy vs run-speed.
+    _library = {
+        "na": {
+            "charge": 1,
+            "transmembrane": True,
+            "reversal_potential": "nerst",
+            "inside_concentration":  15e-3,
+            "outside_concentration": 145e-3,
+        },
+        "k": {
+            "charge": 1,
+            "transmembrane": True,
+            "reversal_potential": "nerst",
+            "inside_concentration": 150e-3,
+            "outside_concentration":   4e-3,
+        },
+        "ca": {
+            "charge": 2,
+            "transmembrane": True,
+            "reversal_potential": "goldman_hodgkin_katz",
+            "inside_concentration": 70e-9,
+            "outside_concentration": 2e-3,
+        },
+        "cl": {
+            "charge": -1,
+            "transmembrane": True,
+            "reversal_potential": "nerst",
+            "inside_concentration":  10e-3,
+            "outside_concentration": 110e-3,
+        },
+        "glu": {
+            # "outside_concentration": 1/0, # TODO!
+            "outside_diffusivity": 1e-6, # TODO!
+            # "outside_decay_period": 1/0, # TODO!
+        },
+    }
+
     def __init__(self, name,
             charge = 0,
             transmembrane = False,
@@ -167,50 +211,8 @@ class Reaction:
         """
         raise TypeError("Abstract method called by %s."%repr(self))
 
-# TODO: Consider getting rid of the standard library of species and mechanisms.
-# Instead provide it in code examples which the user can copy paste into their
-# code, or possible import directly from an "examples" sub-module (like with
-# htm.core: `import htm.examples`). The problem with this std-lib is that there
-# is no real consensus on what's standard... Species have a lot of arguments and
-# while there may be one scientifically correct value for each argument, the
-# user might want to omit options for run-speed. Mechanisms come in so many
-# different flavors too, with varying levels of bio-accuracy vs run-speed.
-
-species_library = {
-    "na": {
-        "charge": 1,
-        "transmembrane": True,
-        "reversal_potential": "nerst",
-        "inside_concentration":  15e-3,
-        "outside_concentration": 145e-3,
-    },
-    "k": {
-        "charge": 1,
-        "transmembrane": True,
-        "reversal_potential": "nerst",
-        "inside_concentration": 150e-3,
-        "outside_concentration":   4e-3,
-    },
-    "ca": {
-        "charge": 2,
-        "transmembrane": True,
-        "reversal_potential": "goldman_hodgkin_katz",
-        "inside_concentration": 70e-9,
-        "outside_concentration": 2e-3,
-    },
-    "cl": {
-        "charge": -1,
-        "transmembrane": True,
-        "reversal_potential": "nerst",
-        "inside_concentration":  10e-3,
-        "outside_concentration": 110e-3,
-    },
-    "glu": {
-        # "outside_concentration": 1/0, # TODO!
-        "outside_diffusivity": 1e-6, # TODO!
-        # "outside_decay_period": 1/0, # TODO!
-    },
-}
+# TODO: Move the reactions library into the Reactions class as a private class
+# attribute, for code folding purposes.
 
 reactions_library = {
     "hh": ("nmodl_library/hh.mod",
@@ -333,7 +335,7 @@ class Model:
         if isinstance(species, Mapping):
             species = Species(**species)
         elif isinstance(species, str):
-            if species in species_library: species = Species(species, **species_library[species])
+            if species in Species._library: species = Species(species, **Species._library[species])
             else: raise ValueError("Unrecognized species: %s."%species)
         else:
             species = copy.copy(species)
@@ -437,8 +439,10 @@ class Model:
         access("membrane/shells")[membrane_idx]      = shells
         #
         shapes = access("membrane/shapes")
-        shapes[membrane_idx] = shape
-        shapes[membrane_idx][parents == NULL] = 0 # All roots are spheres.
+        for p, m in zip(parents, membrane_idx):
+            # Shape of root is always sphere.
+            if p == NULL:   shapes[m] = 0
+            else:           shapes[m] = shape
         # Cross-link the membrane parent to child to form a doubly linked tree.
         children = access("membrane/children")
         write_rows = []
@@ -467,8 +471,8 @@ class Model:
                 # and all subsequent children as secondary branches.
                 primary[m] = (children.getrow(p).getnnz() == 1)
         # 
-        self._initialize_membrane([p for p in parents[membrane_idx] if p != NULL])
         self._initialize_membrane(membrane_idx)
+        self._initialize_membrane([p for p in parents[membrane_idx] if p != NULL])
         # 
         access("membrane/inside")[membrane_idx] = inside_idx[slice(None,None,shells + 1)]
         access("inside/membrane")[inside_idx]   = cp.repeat(membrane_idx, shells + 1)
@@ -495,8 +499,8 @@ class Model:
         # Compute lengths.
         for idx in membrane_idx:
             p = parents[idx]
-            if p == NULL: # Root, shape is sphere.
-                lengths[idx] = np.nan # Spheres have no defined length.
+            if shapes[idx] == 0: # Root sphere.
+                lengths[idx] = 0.5 * diams[idx] # Spheres have no defined length, so use the radius.
             else:
                 distance = np.linalg.norm(coords[idx] - coords[p])
                 # Subtract the parent's radius from the secondary nodes length,
@@ -690,11 +694,11 @@ class Model:
         access = self.db.access
         for name, species in self.species.items():
             if species.transmembrane:
-                access("membrane/%s/conductances"%species).fill(0.0)
+                access("membrane/%s/conductances"%name).fill(0.0)
             if species.inside_diffusivity is not None:
-                access("inside/%s/release_rates"%species).fill(0.0)
+                access("inside/%s/release_rates"%name).fill(0.0)
             if species.outside_diffusivity is not None:
-                access("outside/%s/release_rates"%species).fill(0.0)
+                access("outside/%s/release_rates"%name).fill(0.0)
         for r in self.reactions.values():
             r.advance(access)
 
@@ -757,7 +761,6 @@ class Segment:
     def write(self, component, value):
         return self.entity.write(component, value)
 
-    @property
     def voltage(self):
         return self.entity.read("membrane/voltages")
 

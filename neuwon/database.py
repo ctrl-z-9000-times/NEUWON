@@ -35,6 +35,7 @@ different and specialized things.
 #   -> Function Nearest neighbor to convert coordinates to entity index.
 
 import cupy
+import cupyx.scipy.sparse
 import numpy as np
 import scipy.sparse
 import scipy.sparse.linalg
@@ -232,8 +233,11 @@ class Database:
         except KeyError: x = self.components[x]
         x.invalidate()
 
-    def check(self):
-        for x in self.components.values(): x.check(self)
+    def check(self, component_name=None):
+        if component_name is not None:
+            self.components[str(component_name)].check(self)
+        else:
+            for x in self.components.values(): x.check(self)
 
     def __repr__(self, is_str=False):
         f = str if is_str else repr
@@ -438,10 +442,10 @@ class _Attribute(_Component):
         return cupy.empty(alloc, dtype=self.dtype)
 
     def access(self, database):
-        return self.data
+        return self.data[:self.archetype.size]
 
     def check(self, database):
-        _Component.check_data(self, database, self.data, reference=self.reference)
+        _Component.check_data(self, database, self.access(database), reference=self.reference)
 
     def __repr__(self):
         s = "%s is an array"%self.name
@@ -521,8 +525,8 @@ class _KD_Tree(_Component):
 class _LinearSystem(_Component):
     def __init__(self, database, name, doc, function, epsilon, check):
         _Component.__init__(self, database, name, doc, check)
-        archetype = database._split_archetype(self.name)[0]
-        archetype.linear_systems.append(self)
+        self.archetype = database._split_archetype(self.name)[0]
+        self.archetype.linear_systems.append(self)
         self.function   = function
         self.epsilon    = float(epsilon)
         self.data       = None
@@ -534,9 +538,10 @@ class _LinearSystem(_Component):
     def access(self, database):
         if not self.up_to_date:
             coef = self.function(database.access)
+            coef = scipy.sparse.csc_matrix(coef, shape=(self.archetype.size, self.archetype.size))
             # Note: always use double precision floating point for building the impulse response matrix.
             # TODO: Detect if the user returns f32 and auto-convert it to f64.
-            matrix = scipy.sparse.linalg.expm(coefficients)
+            matrix = scipy.sparse.linalg.expm(coef)
             # Prune the impulse response matrix.
             matrix.data[np.abs(matrix.data) < self.epsilon] = 0
             matrix.eliminate_zeros()
