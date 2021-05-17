@@ -241,7 +241,7 @@ class Model:
             initial_voltage = -70e-3,):
         self.species = {}
         self.reactions = {}
-        self._injected_currents = Model._InjectedCurrents()
+        self._injected_currents = _InjectedCurrents()
         # TODO: Either make the db private or rename it to the full name "database"
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
@@ -702,33 +702,35 @@ class Model:
         for r in self.reactions.values():
             r.advance(access)
 
-    class _InjectedCurrents:
-        def __init__(self):
-            self.currents = []
-            self.locations = []
-            self.remaining = []
+class _InjectedCurrents:
+    def __init__(self):
+        self.currents = []
+        self.locations = []
+        self.remaining = []
 
-        def advance(self, database):
-            time_step = database.access("time_step")
-            for idx, (amps, location, t) in enumerate(
-                    zip(self.currents, self.locations, self.remaining)):
-                dv = amps * min(time_step, t) / electrics.capacitances[location]
-                electrics.voltages[location] += dv
-                self.remaining[idx] -= time_step
-            keep = [t > 0 for t in self.remaining]
-            self.currents  = [x for k, x in zip(keep, self.currents) if k]
-            self.locations = [x for k, x in zip(keep, self.locations) if k]
-            self.remaining = [x for k, x in zip(keep, self.remaining) if k]
+    def advance(self, database):
+        time_step = database.access("time_step")
+        capacitances = database.access("membrane/capacitances")
+        voltages = database.access("membrane/voltages")
+        for idx, (amps, location, t) in enumerate(
+                zip(self.currents, self.locations, self.remaining)):
+            dv = amps * min(time_step, t) / capacitances[location]
+            voltages[location] += dv
+            self.remaining[idx] -= time_step
+        keep = [t > 0 for t in self.remaining]
+        self.currents  = [x for k, x in zip(keep, self.currents) if k]
+        self.locations = [x for k, x in zip(keep, self.locations) if k]
+        self.remaining = [x for k, x in zip(keep, self.remaining) if k]
 
     def inject_current(self, location, current, duration = 1.4e-3):
         location = int(location)
-        assert(location < len(self))
+        # assert(location < len(self))
         duration = float(duration)
         assert(duration >= 0)
         current = float(current)
-        self._injected_currents.currents.append(current)
-        self._injected_currents.locations.append(location)
-        self._injected_currents.remaining.append(duration)
+        self.currents.append(current)
+        self.locations.append(location)
+        self.remaining.append(duration)
 
 class Segment:
     """ This class is returned by model.create_segment() """
@@ -765,7 +767,7 @@ class Segment:
         return self.entity.read("membrane/voltages")
 
     def inject_current(self, current, duration=1e-3):
-        self.model.inject_current(self.entity.index, current, duration)
+        self.model._injected_currents.inject_current(self.entity.index, current, duration)
 
 @cp.fuse()
 def _area_circle(diameter):
