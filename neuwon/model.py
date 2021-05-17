@@ -269,13 +269,11 @@ class Model:
         db.add_attribute("membrane/diameters", check=(">=", 0.0), doc="""
             Units: """)
         db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
-            0 - Cylinder
-            1 - Frustum
+            0 - Sphere
+            1 - Cylinder
+            2 - Frustum
 
-            Note: the root segments are always shaped as spheres. """)
-        # TODO: I should really make an explicit sphere shape, even if I don't
-        # allow the user to directly make it. It would really simplify the
-        # geometry code to have a single variable look up to determine the real shape...
+            Note: all & only root segments are spheres. """)
         db.add_attribute("membrane/primary", dtype=np.bool, doc="""
 
             Primary segments are straightforward extensions of the parent
@@ -390,8 +388,8 @@ class Model:
         parents = parents_clean
         if not isinstance(diameters, Iterable):
             diameters = np.full(len(parents), diameters, dtype=Real)
-        if   shape == "cylinder":   shape = 0
-        elif shape == "frustum":    shape = 1
+        if   shape == "cylinder":   shape = 1
+        elif shape == "frustum":    shape = 2
         else: raise ValueError("Invalid argument 'shape'")
         # This method only deals with the "maximum_segment_length" argument and
         # delegates the remaining work to the method: "_create_segment_batch".
@@ -436,8 +434,11 @@ class Model:
         access("membrane/parents")[membrane_idx]     = parents
         access("membrane/coordinates")[membrane_idx] = coordinates
         access("membrane/diameters")[membrane_idx]   = diameters
-        access("membrane/shapes")[membrane_idx]      = shape
         access("membrane/shells")[membrane_idx]      = shells
+        #
+        shapes = access("membrane/shapes")
+        shapes[membrane_idx] = shape
+        shapes[membrane_idx][parents == NULL] = 0 # All roots are spheres.
         # Cross-link the membrane parent to child to form a doubly linked tree.
         children = access("membrane/children")
         write_rows = []
@@ -514,14 +515,14 @@ class Model:
         for idx in membrane_idx:
             p = parents[idx]
             d = diams[idx]
-            if p == NULL: # Root, shape is sphere.
+            shape = shapes[idx]
+            if shape == 0: # Sphere.
                 s_areas[idx] = np.pi * (d ** 2)
             else:
-                shape = shapes[idx]
                 l = lengths[idx]
-                if shape == 0: # Cylinder.
+                if shape == 1: # Cylinder.
                     s_areas[idx] = np.pi * d * l
-                elif shape == 1: # Frustum.
+                elif shape == 2: # Frustum.
                     s_areas[idx] = 1/0
                 # Account for the surface area on the tips of terminal/leaf segments.
                 if children.getrow(idx).getnnz() == 0:
@@ -530,24 +531,24 @@ class Model:
         for idx in membrane_idx:
             p = parents[idx]
             d = diams[idx]
-            if p == NULL: # Root, shape is sphere.
+            shape = shapes[idx]
+            if shape == 0: # Sphere.
                 x_areas[idx] = _area_circle(d)
             else:
-                shape = shapes[idx]
-                if shape == 0: # Cylinder.
+                if shape == 1: # Cylinder.
                     x_areas[idx] = _area_circle(d)
-                elif shape == 1: # Frustum.
+                elif shape == 2: # Frustum.
                     x_areas[idx] = 1/0
         # Compute intracellular volumes.
         for idx in membrane_idx:
             p = parents[idx]
-            if p == NULL: # Root, shape is sphere.
+            shape = shapes[idx]
+            if shape == 0: # Sphere.
                 volumes[idx] = (4/3) * np.pi * (d/2) ** 3
             else:
-                shape = shapes[idx]
-                if shape == 0: # Cylinder.
+                if shape == 1: # Cylinder.
                     volumes[idx] = np.pi * (d/2) ** 2 * lengths[idx]
-                elif shape == 1: # Frustum.
+                elif shape == 2: # Frustum.
                     volumes[idx] = 1/0
         # Compute passive electric properties
         Ra       = access("inside/resistance")
