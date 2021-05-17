@@ -156,6 +156,7 @@ class Database:
         new_size = old_size + num
         ark.size = new_size
         for arr in ark.attributes: arr.append_entities(old_size, new_size)
+        for spm in ark.sparse_matrixes: spm.append_entities(old_size, new_size)
         if return_entity:
             return [Entity(self, ark, idx) for idx in range(old_size, new_size)]
         else:
@@ -426,7 +427,11 @@ class _Attribute(_Component):
         # TODO: IIRC CuPy can not deal with numpy structured arrays...
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
-        return cupy.empty((int(round(minimum_size * 1.25)),) + self.shape, dtype=self.dtype)
+        heuristic = minimum_size * 1.25
+        alloc = (int(round(heuristic)),)
+        # Special case to squeeze off the trailing dimension.
+        if self.shape != (1,): alloc = alloc + self.shape
+        return cupy.empty(alloc, dtype=self.dtype)
 
     def access(self, database):
         return self.data
@@ -461,14 +466,20 @@ class _Sparse_Matrix(_Component):
             self.reference = False
         self.data = scipy.sparse.csr_matrix((ark.size, self.column_archetype.size), dtype=self.dtype)
 
+    def append_entities(self, old_size, new_size):
+        self.data.resize((new_size, self.column_archetype.size))
+
     def access(self, database, sparse_matrix_write=None):
         if sparse_matrix_write:
             rows, columns, data = sparse_matrix_write
             lil = scipy.sparse.lil_matrix(self.data)
             for r, c, d in zip(rows, columns, data):
-                lil.rows[row] = c
-                lil.data[row] = d
-            self.data = scipy.sparse.csr_matrix(lil)
+                lil.rows[r] = [int(x) for x in c]
+                lil.data[r] = list(d)
+                order = np.argsort(lil.rows[r])
+                lil.rows[r] = list(np.take(lil.rows[r], order))
+                lil.data[r] = list(np.take(lil.data[r], order))
+            self.data = scipy.sparse.csr_matrix(lil, shape=self.data.shape)
         return self.data
 
     def check(self, database):

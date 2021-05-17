@@ -13,6 +13,14 @@ import neuwon.voronoi
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
 
+F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
+R = 8.31446261815324 # Universal gas constant
+
+Neighbor = np.dtype([
+    ("distance", Real),
+    ("border_surface_area", Real),
+])
+
 class Species:
     """ """
     def __init__(self, name,
@@ -54,34 +62,34 @@ class Species:
 
     def _initialize(self, database):
         add_attribute = database.add_attribute
-        inside_entity = "" if species.inside_shells else "membrane/"
-        if species.inside_diffusivity is not None:
-            add_attribute("%sinside/%s/concentrations"%(inside_entity, species.name),
-                    initial_value=species.inside_concentration,
+        inside_entity = "inside" if self.inside_shells else "membrane/inside"
+        if self.inside_diffusivity is not None:
+            add_attribute("%s/%s/concentrations"%(inside_entity, self.name),
+                    initial_value=self.inside_concentration,
                     doc="Units: Molar")
-            add_attribute("%sinside/%s/release_rates"%(inside_entity, species.name),
+            add_attribute("%s/%s/release_rates"%(inside_entity, self.name),
                     initial_value=0,
                     doc="Units: Molar / Second")
-            database.add_linear_system("%sinside/%s/diffusion"%(inside_entity, species.name),
-                function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,) # Epsilon millivolts.
+            database.add_linear_system("%s/%s/diffusion"%(inside_entity, self.name),
+                function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         else:
-            database.add_global_constant("%sinside/%s/concentrations"%(inside_entity, species.name),
-                    species.inside_concentration,
+            database.add_global_constant("%s/%s/concentrations"%(inside_entity, self.name),
+                    self.inside_concentration,
                     doc="Units: Molar")
-        if species.outside_diffusivity is not None:
-            add_attribute("outside/%s/concentrations"%species.name,
-                    initial_value=species.outside_concentration,
+        if self.outside_diffusivity is not None:
+            add_attribute("outside/%s/concentrations"%self.name,
+                    initial_value=self.outside_concentration,
                     doc="Units: Molar")
-            add_attribute("outside/%s/release_rates"%species.name,
+            add_attribute("outside/%s/release_rates"%self.name,
                     initial_value=0,
                     doc="Units: Molar / Second")
-            # add_attribute("outside/%s/diffusion"%species.name, shape="sparse") # TODO
+            # add_attribute("outside/%s/diffusion"%self.name, shape="sparse") # TODO
         else:
-            database.add_global_constant("outside/%s/concentrations"%species.name,
-                    species.outside_concentration,
+            database.add_global_constant("outside/%s/concentrations"%self.name,
+                    self.outside_concentration,
                     doc="Units: Molar")
-        if species.transmembrane:
-            add_attribute("membrane/%s/conductances"%species.name,
+        if self.transmembrane:
+            add_attribute("membrane/%s/conductances"%self.name,
                     initial_value=0,
                     doc="Units: Siemens")
 
@@ -176,15 +184,6 @@ reactions_library = {
     #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
 }
 
-
-F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
-R = 8.31446261815324 # Universal gas constant
-
-Neighbor = np.dtype([
-    ("distance", Real),
-    ("border_surface_area", Real),
-])
-
 class Model:
     def __init__(self, time_step,
             celsius = 37,
@@ -224,11 +223,14 @@ class Model:
         db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
         db.add_attribute("membrane/diameters", check=(">=", 0.0), doc="""
             Units: """)
-        db.add_attribute("membrane/shape", dtype=np.uint8, doc="""
+        db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
             0 - Cylinder
             1 - Frustum
 
             Note: the root segments are always shaped as spheres. """)
+        # TODO: I should really make an explicit sphere shape, even if I don't
+        # allow the user to directly make it. It would really simplify the
+        # geometry code to have a single variable look up to determine the real shape...
         db.add_attribute("membrane/primary", dtype=np.bool, doc="""
 
             Primary segments are straightforward extensions of the parent
@@ -289,7 +291,7 @@ class Model:
             species = Species(**species)
         elif isinstance(species, str):
             if species in species_library: species = Species(species, **species_library[species])
-            else: raise ValueError("Unresolved species: %s."%species)
+            else: raise ValueError("Unrecognized species: %s."%species)
         else:
             assert(isinstance(species, Species))
         assert(species.name not in self.species)
@@ -322,7 +324,7 @@ class Model:
         Argument parents:
         Argument coordinates:
         Argument diameters:
-        Argument shape: either "cylinder", "frustum", or "sphere".
+        Argument shape: either "cylinder", "frustum".
         Argument shells: unimplemented.
         Argument maximum_segment_length
 
@@ -333,7 +335,12 @@ class Model:
             coordinates = [coordinates]
         parents_clean = np.empty(len(parents), dtype=Index)
         for idx, p in enumerate(parents):
-            parents_clean[idx] = NULL if p is None else p
+            if p is None:
+                parents_clean[idx] = NULL
+            elif isinstance(p, Segment):
+                parents_clean[idx] = p.entity.index
+            else:
+                parents_clean[idx] = p
         parents = parents_clean
         if not isinstance(diameters, Iterable):
             diameters = np.full(len(parents), diameters, dtype=Real)
@@ -348,63 +355,42 @@ class Model:
             tips = self._create_segment_batch(parents, coordinates, diameters,
                     shape=shape, shells=shells,)
             return [Segment(self, x) for x in tips]
-        # tips = np.empty(len(parents), dtype=Index)
-        # x = self.db.access("membrane/coordinates")
-        # length = np.linalg.norm(np.subtract(x[parents], coordinates[idx]))
-        # divisions = np.maximum(1, np.ceil(length / maximum_segment_length))
-        # num_batches = np.max(divisions)
-        # divisions_histogram = np.zeros(num_batches, dtype=np.int)
-        # for x in divisions: divisions_histogram[x] += 1
-        # batches = [np.empty(x, dtype=object) for x in divisions_histogram]
-        # active = np.arange(len(parents))
-        # cursor = np.array(parents, copy=True)
-        # for i in range(num_batches):
-
-        #     batches[i][:] = 
-
-        #     active = active[divisions[active] > iteration]
-        #     next_cursor = self._create_segment_batch(cursor, coordinates, diameters,
-        #             shape=shape, shells=shells,)
-        #     tips[active] = next_cursor
-        #     if iteration == 0: active = active[cursor != NULL]
-
-        # for p, c, d in zip(parents, coordinates, diameters):
-        #     if p == NULL:
-        #         batches[0].append((p, c, d))
-        #         continue
-        #     length = np.linalg.norm(np.subtract(x[p], c))
-        #     divisions = max(1, math.ceil(length / maximum_segment_length))
-        #     coordinates = tuple(float(x) for x in coordinates)
-        #     diameter = float(diameter)
-        #     parent = self
-        #     parent_diameter = self.diameter
-        #     parent_coordinates = self.coordinates
-        #     segments = []
-        #     for i in range(divisions):
-        #         x = (i + 1) / divisions
-        #         _x = 1 - x
-        #         coords = (  coordinates[0] * x + parent_coordinates[0] * _x,
-        #                     coordinates[1] * x + parent_coordinates[1] * _x,
-        #                     coordinates[2] * x + parent_coordinates[2] * _x)
-        #         diam = diameter * x + parent_diameter * _x
-        #         child = Segment(coords, diam, parent)
-        #         segments.append(child)
-        #         parent = child
-        1/0 # Run the batches
+        # Accept defeat... Batching operations is too complicated.
+        tips = []
+        old_coords = self.db.access("membrane/coordinates").get()
+        old_diams = self.db.access("membrane/diameters").get()
+        for p, c, d in zip(parents, coordinates, diameters):
+            if p == NULL:
+                tips.append(self._create_segment_batch([p], [c], [d], shape=shape, shells=shells,))
+                continue
+            length = np.linalg.norm(np.subtract(old_coords[p], c))
+            divisions = np.maximum(1, int(np.ceil(length / maximum_segment_length)))
+            x = np.linspace(0.0, 1.0, num=divisions + 1)[1:].reshape(-1, 1)
+            _x = np.subtract(1.0, x)
+            seg_coords = c * x + old_coords[p] * _x
+            seg_diams  = d * x + old_diams[p] * _x
+            cursor = p
+            for i in range(divisions):
+                cursor = self._create_segment_batch([cursor],
+                    seg_coords[i], seg_diams[i], shape=shape, shells=shells,)[0]
+            tips.append(cursor)
         return [Segment(self, x) for x in tips]
 
     def _create_segment_batch(self, parents, coordinates, diameters, shape, shells):
         access = self.db.access
         # Allocate memory.
         num_new_segs = len(parents)
-        membrane_idx = self.db.create_entity("membrane", num_new_segs)
-        inside_idx   = self.db.create_entity("inside", num_new_segs * (shells + 1))
-        outside_idx  = self.db.create_entity("outside", num_new_segs)
+        membrane_idx = self.db.create_entity("membrane", num_new_segs, return_entity=False)
+        inside_idx   = self.db.create_entity("inside", num_new_segs * (shells + 1), return_entity=False)
+        outside_idx  = self.db.create_entity("outside", num_new_segs, return_entity=False)
+        membrane_idx = np.array(membrane_idx, dtype=int)
+        inside_idx   = np.array(inside_idx, dtype=int)
+        outside_idx  = np.array(outside_idx, dtype=int)
         # Save segment arguments.
         access("membrane/parents")[membrane_idx]     = parents
         access("membrane/coordinates")[membrane_idx] = coordinates
         access("membrane/diameters")[membrane_idx]   = diameters
-        access("membrane/shape")[membrane_idx]       = shape
+        access("membrane/shapes")[membrane_idx]      = shape
         access("membrane/shells")[membrane_idx]      = shells
         # Cross-link the membrane parent to child to form a doubly linked tree.
         children = access("membrane/children")
@@ -412,17 +398,18 @@ class Model:
         write_cols = []
         for p, m in zip(parents, membrane_idx):
             if p != NULL:
-                siblings = list(children[p])
+                siblings = list(children[p].indices)
                 siblings.append(m)
                 write_rows.append(p)
                 write_cols.append(siblings)
         data = [np.ones(len(x), dtype=np.bool) for x in write_cols]
         access("membrane/children", sparse_matrix_write=(write_rows, write_cols, data))
         # Set some branches as primary.
-        primary = access("membrane/primary")
-        for idx in range(membrane_idx):
-            m = membrane_idx[idx]
-            p = parents[idx]
+        primary  = access("membrane/primary")
+        parents  = access("membrane/parents")
+        children = access("membrane/children")
+        for m in membrane_idx:
+            p = parents[m]
             # Shape of root is always sphere.
             if p == NULL: # Root.
                 primary[m] = True # Value does not matter.
@@ -431,36 +418,33 @@ class Model:
             else:
                 # Set the first child added to a segment as the primary extension,
                 # and all subsequent children as secondary branches.
-                primary[m] = (len(children[p]) == 1)
+                primary[m] = (children.getrow(p).getnnz() == 1)
         # 
-        self._initialize_membrane(parents[parents != NULL])
+        self._initialize_membrane([p for p in parents[membrane_idx] if p != NULL])
         self._initialize_membrane(membrane_idx)
         # 
-        access("membrane/inside")[membrane_idx]  = inside[slice(None,None,shells + 1)]
-        access("inside/membrane")[inside]        = cp.repeat(membrane_idx, shells + 1)
-        shell_radius = [1.0] # TODO
-        access("inside/shell_radius")[inside]    = cp.tile(shell_radius, membrane_idx)
+        access("membrane/inside")[membrane_idx] = inside_idx[slice(None,None,shells + 1)]
+        access("inside/membrane")[inside_idx]   = cp.repeat(membrane_idx, shells + 1)
+        # shell_radius = [1.0] # TODO
+        # access("inside/shell_radius")[inside_idx] = cp.tile(shell_radius, membrane_idx)
         # 
-        access("membrane/outside")[membrane_idx] = outside
+        access("membrane/outside")[membrane_idx] = outside_idx
         # self._initialize_outside(outside)
         # 1/0 # TODO: Also re-initialize all of the neighbors of new outside points.
         return membrane_idx
 
     def _initialize_membrane(self, membrane_idx):
-        access  = self.db.access
-        parents = access("membrane/parents")
-        coords  = access("membrane/coordinates")
-        diams   = access("membrane/diameters")
-        shapes  = access("membrane/shapes")
-        primary = access("membrane/primary")
-        lengths = access("membrane/lengths")
-        s_areas = access("membrane/surface_areas")
-        x_areas = access("membrane/cross_sectional_areas")
-        volumes = access("membrane/volumes")
-        Ra      = access("inside/resistance")
-        r       = access("membrane/axial_resistances")
-        Cm      = access("membrane/capacitance")
-        c       = access("membrane/capacitances")
+        access   = self.db.access
+        parents  = access("membrane/parents")
+        children = access("membrane/children")
+        coords   = access("membrane/coordinates")
+        diams    = access("membrane/diameters")
+        shapes   = access("membrane/shapes")
+        primary  = access("membrane/primary")
+        lengths  = access("membrane/lengths")
+        s_areas  = access("membrane/surface_areas")
+        x_areas  = access("membrane/cross_sectional_areas")
+        volumes  = access("membrane/volumes")
         # Compute lengths.
         for idx in membrane_idx:
             p = parents[idx]
@@ -494,7 +478,7 @@ class Model:
                 elif shape == 1: # Frustum.
                     s_areas[idx] = 1/0
                 # Account for the surface area on the tips of terminal/leaf segments.
-                if len(children[idx]) == 0:
+                if children.getrow(idx).getnnz() == 0:
                     s_areas[idx] += _area_circle(d)
         # Compute cross-sectional areas.
         for idx in membrane_idx:
@@ -509,7 +493,7 @@ class Model:
                 elif shape == 1: # Frustum.
                     x_areas[idx] = 1/0
         # Compute intracellular volumes.
-        for location, parent in enumerate(self.parents):
+        for idx in membrane_idx:
             p = parents[idx]
             if p == NULL: # Root, shape is sphere.
                 volumes[idx] = (4/3) * np.pi * (d/2) ** 3
@@ -519,11 +503,16 @@ class Model:
                     volumes[idx] = np.pi * (d/2) ** 2 * lengths[idx]
                 elif shape == 1: # Frustum.
                     volumes[idx] = 1/0
+        # Compute passive electric properties
+        Ra       = access("inside/resistance")
+        r        = access("membrane/axial_resistances")
+        Cm       = access("membrane/capacitance")
+        c        = access("membrane/capacitances")
         # Compute axial membrane resistance.
         # TODO: This formula only works for cylinders.
-        r[membrane] = Ra * lengths[membrane] / x_areas[membrane]
+        r[membrane_idx] = Ra * lengths[membrane_idx] / x_areas[membrane_idx]
         # Compute membrane capacitance.
-        c[membrane] = Cm * s_areas[membrane]
+        c[membrane_idx] = Cm * s_areas[membrane_idx]
 
         # TODO: Currently, diffusion from non-primary branches omits the section
         # of diffusive material between the parents surface and center.
