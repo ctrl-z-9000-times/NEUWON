@@ -163,6 +163,10 @@ class Database:
             return range(old_size, new_size)
 
     def destroy_entity(self, archetype_name, instances: list):
+        # TODO: Consider how to rework this to instead of keeping lists of links
+        # to archetypes which need updating, to just scan through all of the
+        # archetypes (in a fixed number of passes). It would allow me to
+        # simplify the spiders web of lists of references.
         if not instances: return
         ark = self.archetypes[str(archetype_name)]
         ark.invalidate()

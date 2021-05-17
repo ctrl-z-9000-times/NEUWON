@@ -42,8 +42,10 @@ class Species:
         self.name = str(name)
         self.charge = int(charge)
         self.transmembrane = bool(transmembrane)
-        try:                self.reversal_potential = float(reversal_potential)
-        except ValueError:  self.reversal_potential = str(reversal_potential)
+        try: self.reversal_potential = float(reversal_potential)
+        except ValueError:
+            self.reversal_potential = str(reversal_potential)
+            assert(self.reversal_potential in ("nerst", "goldman_hodgkin_katz"))
         self.inside_concentration  = float(inside_concentration)
         self.outside_concentration = float(outside_concentration)
         self.inside_diffusivity  = float(inside_diffusivity)  if inside_diffusivity is not None else None
@@ -61,6 +63,7 @@ class Species:
         if self.outside_grid: assert(len(self.outside_grid) == 3 and all(x > 0 for x in self.outside_grid))
 
     def _initialize(self, database):
+        """ Called on a shallow copy of this Species. """
         add_attribute = database.add_attribute
         inside_entity = "inside" if self.inside_shells else "membrane/inside"
         if self.inside_diffusivity is not None:
@@ -92,6 +95,47 @@ class Species:
             add_attribute("membrane/%s/conductances"%self.name,
                     initial_value=0,
                     doc="Units: Siemens")
+        # Detect if the reversal potential is a global constant and pre-compute it.
+        if (self.reversal_potential == "nerst"
+                and self.inside_diffusivity is None
+                and self.outside_diffusivity is None):
+            pass # TODO...
+            # self.reversal_potential = 1/0
+            # nerst_potential(charge, T, inside_concentration, outside_concentration)
+
+        def _reversal_potential(self, database_access):
+            if isinstance(self.reversal_potential, float):
+                return self.reversal_potential
+            else:
+                T = database_access("T")
+                inside = database_access("membrane/inside/%s/concentrations"%self.name)
+                outside = database_access("membrane/outside/%s/concentrations"%self.name)
+                if self.reversal_potential == "nerst":
+                    return nerst_potential(self.charge, T, inside, outside)
+                elif self.reversal_potential == "goldman_hodgkin_katz":
+                    voltages = database_access("membrane/voltages")
+                    return goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
+
+def nerst_potential(charge, T, inside_concentration, outside_concentration):
+    """ Returns the reversal voltage for an ionic species. """
+    xp = cp.get_array_module(inside_concentration)
+    if charge == 0: return xp.full_like(inside_concentration, xp.nan)
+    ratio = xp.divide(outside_concentration, inside_concentration)
+    return xp.nan_to_num(R * T / F / charge * xp.log(ratio))
+
+@cp.fuse()
+def _efun(z):
+    if abs(z) < 1e-4:
+        return 1 - z / 2
+    else:
+        return z / (math.exp(z) - 1)
+
+def goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
+    """ Returns the reversal voltage for an ionic species. """
+    xp = cp.get_array_module(inside_concentration)
+    if charge == 0: return xp.full_like(inside_concentration, np.nan)
+    z = (charge * F / (R * T)) * voltages
+    return (charge * F) * (inside_concentration * _efun(-z) - outside_concentration * _efun(z))
 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
@@ -200,6 +244,7 @@ class Model:
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
         db.add_global_constant("celsius", float(celsius))
+        db.add_global_constant("T", access("celsius") + 273.15, doc="Temperature in Kelvins.")
         db.add_function("create_segment", self.create_segment)
         db.add_function("destroy_segment", self.destroy_segment)
         db.add_function("insert_reaction", self.insert_reaction)
@@ -293,6 +338,7 @@ class Model:
             if species in species_library: species = Species(species, **species_library[species])
             else: raise ValueError("Unrecognized species: %s."%species)
         else:
+            species = copy.copy(species)
             assert(isinstance(species, Species))
         assert(species.name not in self.species)
         self.species[species.name] = species
@@ -579,18 +625,17 @@ class Model:
         For more information see: The NEURON Book, 2003.
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
-        self._injected_currents.advance(self.time_step, self._electrics)
-        self._species.advance(self)
-        self._reactions.advance(self)
-        self._species.advance(self)
+        self._injected_currents.advance(self.db)
+        self._advance_species()
+        self._advance_reactions()
+        self._advance_species()
 
     def _advance_lockstep(self):
         """ Naive integration strategy, for reference only. """
-        self._injected_currents.advance(self.time_step / 2, self._electrics)
-        self._species.advance(self)
-        self._injected_currents.advance(self.time_step / 2, self._electrics)
-        self._species.advance(self)
-        self._reactions.advance(self)
+        self._injected_currents.advance(self.db)
+        self._advance_species()
+        self._advance_species()
+        self._advance_reactions()
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
@@ -603,21 +648,12 @@ class Model:
         # Accumulate the net conductances and driving voltages from the chemical data.
         conductances.fill(0.0) # Zero accumulator.
         driving_voltages.fill(0.0) # Zero accumulator.
-        T = access("celsius") + 273.15
-        for s in self._species.values():
+        for s in self.species.values():
             if not s.transmembrane: continue
-            if isinstance(s.reversal_potential, float):
-                reversal_potential = s.reversal_potential
-            else:
-                inside = access("membrane/%s/concentrations")
-                outside = access("membrane/%s/concentrations")
-                if s.reversal_potential == "nerst":
-                    reversal_potential = nerst_potential(s.charge, T, inside, outside)
-                elif s.reversal_potential == "goldman_hodgkin_katz":
-                    reversal_potential = goldman_hodgkin_katz(s.charge, T, inside, outside, voltages)
-                else: 1/0 # Internal error.
-            conductances += s.conductances
-            driving_voltages += s.conductances * reversal_potential
+            reversal_potential = s._reversal_potential(access)
+            g = access("membrane/%s/conductances"%s.name)
+            conductances += g
+            driving_voltages += g * reversal_potential
         driving_voltages /= conductances
         driving_voltages[:] = cp.nan_to_num(driving_voltages)
         # Calculate the transmembrane currents.
@@ -667,7 +703,8 @@ class Model:
             self.locations = []
             self.remaining = []
 
-        def advance(self, time_step, electrics):
+        def advance(self, database):
+            time_step = database.access("time_step")
             for idx, (amps, location, t) in enumerate(
                     zip(self.currents, self.locations, self.remaining)):
                 dv = amps * min(time_step, t) / electrics.capacitances[location]
@@ -745,27 +782,6 @@ def surface_area_frustum(radius_1, radius_2, length):
 
 def volume_of_frustum(radius_1, radius_2, length):
     return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
-
-def nerst_potential(charge, T, inside_concentration, outside_concentration):
-    """ Returns the reversal voltage for an ionic species. """
-    xp = cp.get_array_module(inside_concentration)
-    if charge == 0: return xp.full_like(inside_concentration, xp.nan)
-    ratio = xp.divide(outside_concentration, inside_concentration)
-    return xp.nan_to_num(R * T / F / charge * np.log(ratio))
-
-@cp.fuse()
-def _efun(z):
-    if abs(z) < 1e-4:
-        return 1 - z / 2
-    else:
-        return z / (math.exp(z) - 1)
-
-def goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
-    """ Returns the reversal voltage for an ionic species. """
-    xp = cp.get_array_module(inside_concentration)
-    if charge == 0: return xp.full_like(inside_concentration, np.nan)
-    z = (charge * F / (R * T)) * voltages
-    return (charge * F) * (inside_concentration * _efun(-z) - outside_concentration * _efun(z))
 
 def _electric_coefficients(access):
     """
