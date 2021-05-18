@@ -2,8 +2,6 @@ import sympy
 import os.path
 import re
 
-# TODO: Consider merging this into the main NMODL module?
-
 one = sympy.S.One
 
 class Units:
@@ -137,6 +135,8 @@ class Units:
         else: raise ValueError("Unrecognized unit \"%s\"."%word)
         return (value ** power, dimensions ** power)
 
+builtin_units = Units()
+
 if __name__ == "__main__":
-    print("Loading built-in units library ... ")
-    print(Units())
+    print("Built in units library")
+    print(builtin_units)

@@ -50,6 +50,14 @@ ANT = nmodl.ast.AstNodeType
 #                     _AssignStatement(variable, variable, pointer=pointer))                
 
 
+# # Convert all unit on the parameters into NEUWONs unit system.
+# if self.use_units:
+#     for name, (value, units) in self.parameters.items():
+#         factor, dimensions = self.units.standardize(units)
+#         self.parameters[name] = (factor * value, dimensions)
+#     1/0 # Get surface area parameters too?
+
+
 def NEURON_conversion_factor(self):
     """ """ # TODO!
     if   self.reaction_instance: return 1
@@ -172,7 +180,7 @@ class NmodlMechanism(Reaction):
           * True: modify the mechanism to use NEUWONs unit system.
           * False: convert the I/O into NEURON unit system.
         """
-        self.units = neuwon.units.Units()
+        self.units = copy.deepcopy(neuwon.units.builtin_units)
         for AST in self.lookup(ANT.UNIT_DEF):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
         self.use_units = not any(x.eval() == "UNITSOFF" for x in self.lookup(ANT.UNIT_STATE))
@@ -211,6 +219,25 @@ class NmodlMechanism(Reaction):
         for name, (value, units) in list(self.parameters.items()):
             if units and "/cm2" in units:
                 self.surface_area_parameters[name] = self.parameters.pop(name)
+
+    def _gather_builtin_parameters(self, database):
+        for name in _builtin_parameters:
+            value, units = self.parameters[name]
+            if value is None:
+                self.parameters[name] = (database.access(name), units)
+
+    def _substitute_parameters(self, database):
+        substitutions = []
+        for name, (value, units) in self.parameters.items():
+            if value is None: continue
+            substitutions.append((name, value))
+        for block in itertools.chain(
+                    (self.initial_block, self.breakpoint_block,),
+                    self.derivative_blocks.values(),
+                    self.solved_blocks.values(),):
+            for stmt in block:
+                if isinstance(stmt, _AssignStatement):
+                    stmt.rhs = stmt.rhs.subs(substitutions)
 
     def _gather_IO(self):
         """ Determine what external data the mechanism accesses. """
@@ -352,7 +379,7 @@ class NmodlMechanism(Reaction):
     def initialize(self, database):
         try:
             self._gather_builtin_parameters(database)
-            self._resolve_parameters(database)
+            self._substitute_parameters(database)
             database.add_archetype(self.name())
             for name in list(self.states) + list(self.surface_area_parameters):
                 component_name = self.name() + "/data/" + name
@@ -368,23 +395,6 @@ class NmodlMechanism(Reaction):
         except Exception:
             print("ERROR while loading file", self.filename)
             raise
-
-    def _gather_builtin_parameters(self, database):
-        for name in _builtin_parameters:
-            value, units = self.parameters[name]
-            if value is None:
-                self.parameters[name] = (database.access(name), units)
-
-    def _resolve_parameters(self, database):
-        """ Determine a final set of parameters to use. """
-        # Convert all unit on the parameters into NEUWONs unit system.
-        if self.use_units:
-            for name, (value, units) in self.parameters.items():
-                factor, dimensions = self.units.standardize(units)
-                self.parameters[name] = (factor * value, dimensions)
-            1/0 # Get surface area parameters too?
-
-        1/0 # TODO: substitute parameters throughout the parsed code.
 
     def _solve(self):
         """ Processes all derivative_blocks into one of:
@@ -668,7 +678,6 @@ class _AssignStatement:
         self.rhs  = rhs       # Right hand side.
         self.derivative = bool(derivative)
         self.pointer = pointer # Associated with the left hand side.
-        # if self.pointer: assert(self.pointer.write)
 
     def to_python(self,  indent=""):
         if not isinstance(self.rhs, str):
