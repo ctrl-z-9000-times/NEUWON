@@ -419,7 +419,7 @@ class Model:
             for i in range(divisions):
                 cursor = self._create_segment_batch([cursor],
                     seg_coords[i], seg_diams[i], shape=shape, shells=shells,)[0]
-            tips.append(cursor)
+                tips.append(cursor)
         return [Segment(self, x) for x in tips]
 
     def _create_segment_batch(self, parents, coordinates, diameters, shape, shells):
