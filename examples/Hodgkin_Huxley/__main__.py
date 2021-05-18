@@ -38,7 +38,9 @@ class Experiment:
         """ Construct a soma with a single long axon. """
         self.model = m = Model(self.time_step)
         m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
-        # m.add_reaction("hh")
+        m.add_species("k")
+        m.add_species("na")
+        m.add_reaction("hh")
         self.soma = m.create_segment(None, [0,0,0], self.soma_diameter)
         if self.length > 0:
             self.axon = m.create_segment(self.soma[-1],

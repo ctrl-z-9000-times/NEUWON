@@ -11,25 +11,32 @@ import math
 import os.path
 import itertools
 import copy
+from zlib import crc32
+import pickle
 from neuwon.database import Real, Index
 import neuwon.units
-from neuwon import Reaction
+from neuwon.model import Reaction
 from scipy.linalg import expm
 
 ANT = nmodl.ast.AstNodeType
 
-# TODO: Move the entire init function into the reactions initialize callback.
-
-#   This will simplify things, and also allow me to cache the final product
-#   instead of an intermediate artifact. No error checking until model start up
-#   though.
-
-
-################################################################################
-
-
 # TODO: Initial state. Mostly works...  Need code to run a simulation until it
 # reaches a steady state, given the solved system.
+
+# TODO: Keep a cache of loaded nmodl mechanisms. The cache would need to
+# be keyed on all arguments: filename & file-contents, pointers,
+# parameter_overrides. Pickle the contents of self.__dict__. Doing this
+# should be easy, doing it *well* will take more time & energy.
+# 
+# I think that to do this I will need to split the initialization into two parts:
+#       1) What can happen without any user input (beyond the filename)
+#               Parse NMODL file, this is the expensive part, because I do 100's of
+#               individual passes instead of one big one. simple code solution, simple cache solution.
+#       2) Deal with user inputs & overrides, compile, find initial value.
+#       ???) Can I solve the equations without user input?
+#            Yes, for the standard sympy solutions.
+#               -> Cache the solutions when using sympy solver!
+#            No, for specialized linear system solutions, which require computing the propagator matrix.
 
 
 def NEURON_conversion_factor(self):
@@ -41,45 +48,50 @@ def NEURON_conversion_factor(self):
 
 
 class NmodlMechanism(Reaction):
-    def __init__(self, filename, pointers={}, parameter_overrides={}, cache=False):
+    def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
         """
-        Although the NMODL USEION statements are automatically dealt with, most
-        other pointer situations are not. Custom {variable: AccessHandle} mappings
-        can be passed passed into the NmodlMechanism class init for direct control.
+        Argument filename is an NMODL file to load.
+            The standard NMODL file name extension is ".mod"
+
+        Argument pointers is a mapping of POINTER variables to database
+            component names.
+
+        Argument parameter_overrides is a mapping of parameter names to custom
+            floating-point values.
         """
-        self.filename = os.path.normpath(str(filename))
-        self.parameter_overrides = dict(parameter_overrides)
+        self.filename = os.path.abspath(str(filename))
+        if use_cache and _try_loading_from_cache(self.filename, self): pass
+        else:
+            try:
+                with open(self.filename, 'rt') as f: nmodl_text = f.read()
+                self._parse_text(nmodl_text)
+                self._check_for_unsupported()
+                self._gather_documentation()
+                self._gather_units()
+                self._gather_parameters()
+                self.states = sorted(v.get_name() for v in
+                        self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
+                self._gather_IO()
+                self._gather_functions()
+                self._discard_ast()
+            except Exception:
+                print("ERROR while loading file", self.filename)
+                raise
+            self.save_to_cache()
         self.pointers = dict(pointers)
-        self.cache = cache
+        self.parameter_overrides = dict(parameter_overrides)
 
     def initialize(self, database):
-        # TODO: Consider keeping a cache of loaded nmodl mechanisms. The cache
-        # would need to be keyed on all arguments: filename & file-contents,
-        # pointers, parameter_overrides. Pickle the contents of self.__dict__.
-        # Doing this should be easy, doing it *well* will take more time & energy.
         try:
-            with open(self.filename, 'rt') as f: nmodl_text = f.read()
-            import time
-            start = time.clock()
-            self._parse_text(nmodl_text)
-            self._check_for_unsupported()
-            self._gather_documentation()
-            self._gather_units()
-            self._gather_parameters(database)
-            self.states = sorted(v.get_name() for v in
-                    self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-            self._gather_IO(database)
-            self._gather_functions()
-            self._discard_ast()
             self._solve()
             self.kinetic_models = {}
             # for name, block in self.derivative_functions.items():
             #     self.kinetic_models[name] = KineticModel(1/0)
-            self._run_initial_block(initial_values)
+            self._run_initial_block(database)
             self._compile_breakpoint_block(time_step)
-        except Exception as err:
-            print("Error: exception raised while loading file:", self.filename)
-            raise err
+        except Exception:
+            print("ERROR while loading file", self.filename)
+            raise
 
     def _parse_text(self, nmodl_text):
         """ Parse the NMDOL file into an abstract syntax tree (AST).
@@ -114,6 +126,7 @@ class NmodlMechanism(Reaction):
         # TODO: support for INCLUDE?
         # TODO: support for COMPARTMENT?
         # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
+        # TODO: sanity check for breakpoint block.
         disallow = (
             "FUNCTION_TABLE_BLOCK",
             "TABLE_STATEMENT",
@@ -225,19 +238,18 @@ class NmodlMechanism(Reaction):
                 if variable == equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif variable == inside:
-                    self.pointers[variable] = "membrane/inside/%s/concentrations"
-                    self._add_pointer(variable, ion, intra_concentration=True)
+                    self._add_pointer(variable, "membrane/inside/%s/concentrations"%ion)
                 elif variable == outside:
-                    self._add_pointer(variable, ion, extra_concentration=True)
+                    self._add_pointer(variable, "membrane/outside/%s/concentrations"%ion)
                 else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
             for y in x.writelist:
                 variable = y.name.value.eval()
                 if variable == current:
                     self.output_currents.append(variable)
                 elif variable == inside:
-                    self._add_pointer(variable, ion, intra_release_rate=True)
+                    self._add_pointer(variable, "membrane/inside/%s/release_rates"%ion)
                 elif variable == outside:
-                    self._add_pointer(variable, ion, extra_release_rate=True)
+                    self._add_pointer(variable, "membrane/outside/%s/release_rates"%ion)
                 else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
         for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
             self.output_nonspecific_currents.append(x.name.get_node_name())
@@ -246,37 +258,36 @@ class NmodlMechanism(Reaction):
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
             variable = x.conductance.get_node_name()
             ion = x.ion.get_node_name() if x.ion else None
-            if variable in self._pointers:
-                assert(ion is None or self._pointers[variable].species == ion)
+            if variable in self.pointers:
+                assert(ion is None or self.pointers[variable].species == ion)
             else:
-                self._add_pointer(variable, ion, conductance=True)
-        num_conductances = sum(ptr.conductance for ptr in self._pointers.values())
-        if len(self.output_currents) != num_conductances:
-            print("Output Currents:", ", ".join(self.output_currents))
-            print("Conductance AccessHandles:")
-            for name, ptr in self._pointers.items():
-                if ptr.conductance:
-                    print("\t" + name, "=", ptr)
-            raise ValueError("Failed to match output currents to conductance AccessHandles.")
+                self._add_pointer(variable, "membrane/%s/conductances"%ion)
+        # num_conductances = sum(ptr.conductance for ptr in self.pointers.values())
+        # if len(self.output_currents) != num_conductances:
+        #     print("Output Currents:", ", ".join(self.output_currents))
+        #     print("Conductance AccessHandles:")
+        #     for name, ptr in self.pointers.items():
+        #         if ptr.conductance:
+        #             print("\t" + name, "=", ptr)
+        #     raise ValueError("Failed to match output currents to conductance AccessHandles.")
         for name in self.states:
-            self._add_pointer(name, reaction_instance=Real)
+            self._add_pointer(name, self.name() + "/" + name)
         for name in self.surface_area_parameters:
-            self._add_pointer(name, reaction_instance=Real)
+            self._add_pointer(name, self.name() + "/" + name)
             # # Ensure that all output pointers are written to.
             # surface_area_parameters = sorted(self.surface_area_parameters)
-            # for variable, pointer in self._pointers.items():
+            # for variable, pointer in self.pointers.items():
             #     if pointer.conductance and variable not in self.breakpoint_block.assigned:
             #         if variable in surface_area_parameters:
             #             idx = surface_area_parameters.index(variable)
             #             self.breakpoint_block.statements.append(
             #                     _AssignStatement(variable, variable, pointer=pointer))                
 
-    def _add_pointer(self, name, *args, **kw_args):
-        pointer = AccessHandle(*args, **kw_args)
-        if name in self._pointers:
+    def _add_pointer(self, name, pointer):
+        if name in self.pointers:
             raise ValueError("Name conflict: \"%s\" used for %s and %s"%(
-                    name, self._pointers[name], pointer))
-        self._pointers[name] = pointer
+                    name, self.pointers[name], pointer))
+        self.pointers[name] = pointer
 
     def _gather_functions(self):
         """ Process all blocks of code which contain imperative instructions.
@@ -293,7 +304,7 @@ class NmodlMechanism(Reaction):
         assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
         self.initial_block = _CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = _CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
-        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", voltage=True)
+        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages")
 
     def _parse_statement(self, AST):
         """ Returns a list of Statement objects. """
@@ -318,7 +329,7 @@ class NmodlMechanism(Reaction):
             if lhsn in self.output_currents:             return []
             return [_AssignStatement(lhsn, self._parse_expression(AST.rhs),
                     derivative = is_derivative,
-                    pointer = self._pointers.get(lhsn, None),)]
+                    pointer = self.pointers.get(lhsn, None),)]
         # TODO: Catch procedure calls and raise an explicit error, instead of
         # just saying "unrecognised syntax". Procedure calls must be inlined by
         # the nmodl library.
@@ -328,43 +339,45 @@ class NmodlMechanism(Reaction):
         """ Returns a SymPy expression. """
         if AST.is_wrapped_expression() or AST.is_paren_expression():
             return self._parse_expression(AST.expression)
-        elif AST.is_name():
-            return sympy.symbols(AST.get_node_name())
-        elif AST.is_var_name():
-            name = AST.name.get_node_name()
-            if name in self.parameters:
-                return sympy.Float(self.parameters[name][0], 18)
-            else:
-                return sympy.symbols(AST.name.get_node_name())
-        elif AST.is_binary_expression():
+        if AST.is_integer():  return sympy.Integer(AST.eval())
+        if AST.is_double():   return sympy.Float(AST.eval(), 18)
+        if AST.is_name():     return sympy.symbols(AST.get_node_name())
+        if AST.is_var_name(): return sympy.symbols(AST.name.get_node_name())
+        if AST.is_unary_expression():
+            op = AST.op.eval()
+            if op == "-": return - self._parse_expression(AST.expression)
+            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+        if AST.is_binary_expression():
             op = AST.op.eval()
             lhs = self._parse_expression(AST.lhs)
             rhs = self._parse_expression(AST.rhs)
-            if   op == "+": return lhs + rhs
-            elif op == "-": return lhs - rhs
-            elif op == "*": return lhs * rhs
-            elif op == "/": return lhs / rhs
-            elif op == "^": return lhs ** rhs
-            elif op == "<": return lhs < rhs
-            elif op == ">": return lhs > rhs
-            else: raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
-        elif AST.is_unary_expression():
-            op = AST.op.eval()
-            if op == "-": return - self._parse_expression(AST.expression)
-            else: raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
-        elif AST.is_function_call():
+            if op == "+": return lhs + rhs
+            if op == "-": return lhs - rhs
+            if op == "*": return lhs * rhs
+            if op == "/": return lhs / rhs
+            if op == "^": return lhs ** rhs
+            if op == "<": return lhs < rhs
+            if op == ">": return lhs > rhs
+            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+        if AST.is_function_call():
             name = AST.name.get_node_name()
             if name == "fabs": name = "abs"
             args = [self._parse_expression(x) for x in AST.arguments]
             return sympy.Function(name)(*args)
-        elif AST.is_double_unit():
+        if AST.is_double_unit():
             if self.use_units:
                 factor, dimensions = self.units.standardize(AST.unit.name.eval())
             else: factor = 1
             return self._parse_expression(AST.value) * factor
-        elif AST.is_integer(): return sympy.Integer(AST.eval())
-        elif AST.is_double():  return sympy.Float(AST.eval(), 18)
-        else: raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+        raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+
+    def _resolve_parameters(self, database):
+        1/0
+        # builtins
+
+        # overrides
+
+        # substitute throughout the parsed code.
 
     def _solve(self):
         """ Processes all derivative_blocks into one of:
@@ -425,7 +438,7 @@ class NmodlMechanism(Reaction):
             A[:, i] = f(state, **kw_args)
         return expm(A * time_step)
 
-    def _run_initial_block(self, initial_values):
+    def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
         globals_ = {
@@ -433,7 +446,7 @@ class NmodlMechanism(Reaction):
             mangle2("index"): 0
         }
         for arg in self.initial_block.arguments:
-            try: globals_[arg] = initial_values[arg]
+            try: globals_[arg] = database[arg]
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {mangle(x): [0] for x in self.states}
         initial_python = self.initial_block.to_python()
@@ -471,9 +484,9 @@ class NmodlMechanism(Reaction):
                 input_variables.remove(variable)
                 initial_scope_carryover.append(variable, initial_value)
         for arg in input_variables:
-            if arg not in self._pointers:
+            if arg not in self.pointers:
                 raise ValueError("Mishandled argument: \"%s\"."%arg)
-        arguments = sorted(mangle(name) for name in  self._pointers)
+        arguments = sorted(mangle(name) for name in  self.pointers)
         locations = mangle2("locations")
         location  = mangle2("location")
         index     = mangle2("index")
@@ -488,7 +501,7 @@ class NmodlMechanism(Reaction):
             preamble.append("    %s = %s"%variable_value_pair)
         if not self.use_units: time_step *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
         preamble.append("    time_step = "+str(time_step))
-        for variable, pointer in self._pointers.items():
+        for variable, pointer in self.pointers.items():
             if not pointer.read: continue
             x = location if pointer.omnipresent else index
             factor = str(pointer.NEURON_conversion_factor())
@@ -542,7 +555,7 @@ class _CodeBlock:
         # hints and associated statements at the beginning of the block.
         self.statements.sort(key=lambda stmt: bool(
                 isinstance(stmt, _AssignStatement)
-                and stmt.pointer and stmt.pointer.conductance))
+                and stmt.pointer and "conductance" in stmt.pointer))
         self._gather_arguments(file)
 
     def _gather_arguments(self, file):
@@ -568,12 +581,13 @@ class _CodeBlock:
                 self.assigned.update(target_block.assigned)
             elif isinstance(stmt, _ConserveStatement): pass
             else: raise NotImplementedError(stmt)
-        # Remove the arguments which are implicit / always given.
-        self.arguments.discard("time_step")
-        for x in file.states: self.arguments.discard(x)
-        for x in file.surface_area_parameters: self.arguments.discard(x)
         self.arguments = sorted(self.arguments)
         self.assigned = sorted(self.assigned)
+
+        # # Remove the arguments which are implicit / always given.
+        # self.arguments.discard("time_step")
+        # for x in file.states: self.arguments.discard(x)
+        # for x in file.surface_area_parameters: self.arguments.discard(x)
 
     def __iter__(self):
         for stmt in self.statements:
@@ -647,7 +661,7 @@ class _AssignStatement:
         self.rhs  = rhs       # Right hand side.
         self.derivative = bool(derivative)
         self.pointer = pointer # Associated with the left hand side.
-        if self.pointer: assert(self.pointer.write)
+        # if self.pointer: assert(self.pointer.write)
 
     def to_python(self,  indent=""):
         if not isinstance(self.rhs, str):
@@ -918,6 +932,35 @@ def _conserve_sum(states, target_sum):
     for i in range(num_states):
         state[i] *= correction_factor
 
+class _cache:
+    @staticmethod
+    def _dir_and_file(filename):
+        cache_dir = os.path.abspath(".nmodl_cache")
+        cache_file = os.path.join(cache_dir, "%X"%crc32(bytes(filename, 'utf8')))
+        return (cache_dir, cache_file)
+
+    @staticmethod
+    def try_loading(filename, obj):
+        """ Returns True on success, False indicates that no changes were made to the object. """
+        cache_dir, cache_file = _cache._dir_and_file(filename)
+        # TODO: Check the last modification time stamps on the nmodl file and
+        # the cache files, to detect out of date caches.
+        try:
+            with open(cache_file, 'rb') as f: data = pickle.load(f)
+        except Exception as err:
+            print("CACHE ERROR", str(err))
+            return False
+        self.__dict__.update(data)
+        return True
+
+    @staticmethod
+    def save(obj):
+        cache_dir, cache_file = _cache._dir_and_file(obj.filename)
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(cache_file, 'wb') as f: pickle.dump(obj.__dict__, f)
+        except Exception as x:
+            print("Warning: cache error", str(x))
 
 pycode = lambda x: sympy.printing.pycode(x, user_functions={"abs": "abs"})
 insert_indent = lambda i, s: i + "\n".join(i + l for l in s.split("\n"))
