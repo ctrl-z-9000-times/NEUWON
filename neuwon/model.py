@@ -11,6 +11,7 @@ import neuwon.voronoi
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
+# Also, if I do this then I can get rid of a lot of nmodl shims...
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant

@@ -39,6 +39,17 @@ ANT = nmodl.ast.AstNodeType
 #            No, for specialized linear system solutions, which require computing the propagator matrix.
 
 
+
+# # Ensure that all output pointers are written to.
+# surface_area_parameters = sorted(self.surface_area_parameters)
+# for variable, pointer in self.pointers.items():
+#     if pointer.conductance and variable not in self.breakpoint_block.assigned:
+#         if variable in surface_area_parameters:
+#             idx = surface_area_parameters.index(variable)
+#             self.breakpoint_block.statements.append(
+#                     _AssignStatement(variable, variable, pointer=pointer))                
+
+
 def NEURON_conversion_factor(self):
     """ """ # TODO!
     if   self.reaction_instance: return 1
@@ -46,6 +57,9 @@ def NEURON_conversion_factor(self):
     elif self.conductance:       return 1
     else: raise NotImplementedError(self)
 
+_builtin_parameters = {
+    "celsius": (None, "degC")
+}
 
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
@@ -60,7 +74,7 @@ class NmodlMechanism(Reaction):
             floating-point values.
         """
         self.filename = os.path.abspath(str(filename))
-        if use_cache and _try_loading_from_cache(self.filename, self): pass
+        if use_cache and _cache.try_loading(self.filename, self): pass
         else:
             try:
                 with open(self.filename, 'rt') as f: nmodl_text = f.read()
@@ -74,24 +88,14 @@ class NmodlMechanism(Reaction):
                 self._gather_IO()
                 self._gather_functions()
                 self._discard_ast()
+                self._solve() # TODO: only solve with sympy solver here.
             except Exception:
                 print("ERROR while loading file", self.filename)
                 raise
-            self.save_to_cache()
-        self.pointers = dict(pointers)
-        self.parameter_overrides = dict(parameter_overrides)
-
-    def initialize(self, database):
-        try:
-            self._solve()
-            self.kinetic_models = {}
-            # for name, block in self.derivative_functions.items():
-            #     self.kinetic_models[name] = KineticModel(1/0)
-            self._run_initial_block(database)
-            self._compile_breakpoint_block(time_step)
-        except Exception:
-            print("ERROR while loading file", self.filename)
-            raise
+            _cache.save(self)
+        self.pointers.update(pointers)
+        self._apply_parameter_overrides(parameter_overrides)
+        self._separate_surface_area_parameters()
 
     def _parse_text(self, nmodl_text):
         """ Parse the NMDOL file into an abstract syntax tree (AST).
@@ -175,55 +179,44 @@ class NmodlMechanism(Reaction):
         self.use_units = False
         if not self.use_units: print("Warning: UNITSOFF detected.")
 
-    def _gather_parameters(self, database):
-        """ Sets parameters & surface_area_parameters.
+    def _gather_parameters(self):
+        """ Sets parameters. """
+        self.parameters = dict(_builtin_parameters)
+        # Parse the parameters from the NMODL file.
+        for assign in self.lookup(ANT.PARAM_ASSIGN):
+            name  = str(self.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
+            value = self.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
+            units = self.visitor.lookup(assign, ANT.UNIT)
+            value = float(value[0].eval())   if value else None
+            units = units[0].get_node_name() if units else None
+            self.parameters[name] = (value, units)
+
+    def _apply_parameter_overrides(self, parameter_overrides):
+        for name, value in parameter_overrides.items():
+            if name in self.parameters:
+                old_value, units = self.parameters[name]
+                self.parameters[name] = (value, units)
+            else: raise ValueError("Invalid parameter override \"%s\"."%name)
+
+    def _separate_surface_area_parameters(self):
+        """ Sets surface_area_parameters, Modifies parameters.
 
         The surface area parameters are special because each segment of neuron
         has its own surface area and so their actual values are different for
         each instance of the mechanism. They are not in-lined directly into the
         source code, instead they are stored alongside the state variables and
-        accessed at run time. """
-        self.parameters = {}
+        accessed at run time. 
+        """
         self.surface_area_parameters = {}
-        # Set built-in parameters to their default values.
-        self.parameters["celsius"] = (database.access("celsius"), "degC")
-        # Parse the parameters from the NMODL file.
-        for assign in self.lookup(ANT.PARAM_ASSIGN):
-            name = str(self.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
-            value = self.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
-            units = self.visitor.lookup(assign, ANT.UNIT)
-            if value: value = float(value[0].eval())
-            else: continue
-            assert(not bool(units) or len(units) == 1)
-            units = units[0].get_node_name() if units else None
-            self.parameters[name]          = (value, units)
-        # Deal with all parameter_overrides.
-        parameter_overrides = dict(self.parameter_overrides)
-        for name in list(parameter_overrides):
-            if name in self.parameters:
-                old_value, units = self.parameters.pop(name)
-                self.parameters[name] = (parameter_overrides.pop(name), units)
-        if parameter_overrides:
-            extra_parameters = "%s"%", ".join(str(x) for x in parameter_overrides.keys())
-            raise ValueError("Invalid parameter overrides: %s."%extra_parameters)
-        # Convert all unit on the parameters into NEUWONs unit system.
-        if self.use_units:
-            for name, (value, units) in self.parameters.items():
-                factor, dimensions = self.units.standardize(units)
-                self.parameters[name] = (factor * value, dimensions)
-        # Split out surface_area_parameters.
         for name, (value, units) in list(self.parameters.items()):
             if units and "/cm2" in units:
                 self.surface_area_parameters[name] = self.parameters.pop(name)
-        if False:
-            print("Parameters:", self.parameters)
-            print("Surface Area Parameters:", self.surface_area_parameters)
 
-    def _gather_IO(self, database):
+    def _gather_IO(self):
         """ Determine what external data the mechanism accesses. """
-        for ptr in self.pointers.values(): database.access(ptr)
         # Assignments to the variables in output_currents are ignored because
         # NEUWON converts all mechanisms to use conductances instead of currents.
+        self.pointers = {}
         self.output_currents = []
         self.output_nonspecific_currents = []
         for x in self.lookup(ANT.USEION):
@@ -258,30 +251,15 @@ class NmodlMechanism(Reaction):
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
             variable = x.conductance.get_node_name()
             ion = x.ion.get_node_name() if x.ion else None
-            if variable in self.pointers:
-                assert(ion is None or self.pointers[variable].species == ion)
-            else:
-                self._add_pointer(variable, "membrane/%s/conductances"%ion)
-        # num_conductances = sum(ptr.conductance for ptr in self.pointers.values())
-        # if len(self.output_currents) != num_conductances:
-        #     print("Output Currents:", ", ".join(self.output_currents))
-        #     print("Conductance AccessHandles:")
-        #     for name, ptr in self.pointers.items():
-        #         if ptr.conductance:
-        #             print("\t" + name, "=", ptr)
-        #     raise ValueError("Failed to match output currents to conductance AccessHandles.")
-        for name in self.states:
-            self._add_pointer(name, self.name() + "/" + name)
-        for name in self.surface_area_parameters:
-            self._add_pointer(name, self.name() + "/" + name)
-            # # Ensure that all output pointers are written to.
-            # surface_area_parameters = sorted(self.surface_area_parameters)
-            # for variable, pointer in self.pointers.items():
-            #     if pointer.conductance and variable not in self.breakpoint_block.assigned:
-            #         if variable in surface_area_parameters:
-            #             idx = surface_area_parameters.index(variable)
-            #             self.breakpoint_block.statements.append(
-            #                     _AssignStatement(variable, variable, pointer=pointer))                
+            self._add_pointer(variable, "membrane/%s/conductances"%ion)
+        num_conductances = sum("conductance" in ptr for ptr in self.pointers.values())
+        if len(self.output_currents) != num_conductances:
+            print("Output Currents:", ", ".join(self.output_currents))
+            print("Conductance AccessHandles:")
+            for name, ptr in self.pointers.items():
+                if ptr.conductance:
+                    print("\t" + name, "=", ptr)
+            raise ValueError("Failed to match output currents to conductance AccessHandles.")
 
     def _add_pointer(self, name, pointer):
         if name in self.pointers:
@@ -371,13 +349,42 @@ class NmodlMechanism(Reaction):
             return self._parse_expression(AST.value) * factor
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
 
+    def initialize(self, database):
+        try:
+            self._gather_builtin_parameters(database)
+            self._resolve_parameters(database)
+            database.add_archetype(self.name())
+            for name in list(self.states) + list(self.surface_area_parameters):
+                component_name = self.name() + "/data/" + name
+                self._add_pointer(name, component_name)
+                database.add_attribute(component_name)
+            for ptr in self.pointers.values(): database.access(ptr)
+            self._solve() # TODO: only solve for kinetic models here.
+            self.kinetic_models = {}
+            # for name, block in self.derivative_functions.items():
+            #     self.kinetic_models[name] = KineticModel(1/0)
+            self._run_initial_block(database)
+            self._compile_breakpoint_block(time_step)
+        except Exception:
+            print("ERROR while loading file", self.filename)
+            raise
+
+    def _gather_builtin_parameters(self, database):
+        for name in _builtin_parameters:
+            value, units = self.parameters[name]
+            if value is None:
+                self.parameters[name] = (database.access(name), units)
+
     def _resolve_parameters(self, database):
-        1/0
-        # builtins
+        """ Determine a final set of parameters to use. """
+        # Convert all unit on the parameters into NEUWONs unit system.
+        if self.use_units:
+            for name, (value, units) in self.parameters.items():
+                factor, dimensions = self.units.standardize(units)
+                self.parameters[name] = (factor * value, dimensions)
+            1/0 # Get surface area parameters too?
 
-        # overrides
-
-        # substitute throughout the parsed code.
+        1/0 # TODO: substitute parameters throughout the parsed code.
 
     def _solve(self):
         """ Processes all derivative_blocks into one of:
