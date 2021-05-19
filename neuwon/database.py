@@ -227,6 +227,16 @@ class Database:
         else:
             return self.components[str(component_name)].access(self)
 
+    def initial_value(self, component_name):
+        """ """
+        x = self.components[str(component_name)]
+        if isinstance(x, _Global_Constant):
+            return x.access(self)
+        elif isinstance(x, _Attribute):
+            return x.initial_value
+        elif isinstance(x, _Sparse_Matrix):
+            return x.initial_value
+
     def invalidate(self, archetype_or_component_name):
         x = str(archetype_or_component_name)
         try:             x = self.archetypes[x]

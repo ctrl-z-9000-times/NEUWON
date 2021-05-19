@@ -96,7 +96,7 @@ class NmodlMechanism(Reaction):
                 self._gather_IO()
                 self._gather_functions()
                 self._discard_ast()
-                self._solve() # TODO: only solve with sympy solver here.
+                self.breakpoint_block.map(self._sympy_solve_and_inline)
             except Exception:
                 print("ERROR while loading file", self.filename)
                 raise
@@ -233,8 +233,7 @@ class NmodlMechanism(Reaction):
             substitutions.append((name, value))
         for block in itertools.chain(
                     (self.initial_block, self.breakpoint_block,),
-                    self.derivative_blocks.values(),
-                    self.solved_blocks.values(),):
+                    self.derivative_blocks.values(),):
             for stmt in block:
                 if isinstance(stmt, _AssignStatement):
                     stmt.rhs = stmt.rhs.subs(substitutions)
@@ -376,37 +375,44 @@ class NmodlMechanism(Reaction):
             return self._parse_expression(AST.value) * factor
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
 
+    def _sympy_solve_and_inline(self, stmt):
+        """ Replace SolveStatements with the solved equations to advance the
+        systems of differential equations. """
+        if not isinstance(stmt, _SolveStatement): return [stmt]
+        if stmt.method == "cnexp":
+            block = copy.deepcopy(self.derivative_blocks[stmt.block])
+            for stmt in block:
+                if isinstance(stmt, _AssignStatement) and stmt.derivative:
+                    stmt.solve()
+            return block.statements
+        return [stmt]
+
     def initialize(self, database):
         try:
             self._gather_builtin_parameters(database)
             self._substitute_parameters(database)
+            for ptr in self.pointers.values(): database.access(ptr)
+            # self._solve() # TODO: only solve for kinetic models here.
+            # self.kinetic_models = {}
+            # for name, block in self.derivative_functions.items():
+            #     self.kinetic_models[name] = KineticModel(1/0)
+            self._run_initial_block(database)
+            self._compile_breakpoint_block(time_step)
             database.add_archetype(self.name())
             for name in list(self.states) + list(self.surface_area_parameters):
                 component_name = self.name() + "/data/" + name
                 self._add_pointer(name, component_name)
                 database.add_attribute(component_name)
-            for ptr in self.pointers.values(): database.access(ptr)
-            self._solve() # TODO: only solve for kinetic models here.
-            self.kinetic_models = {}
-            # for name, block in self.derivative_functions.items():
-            #     self.kinetic_models[name] = KineticModel(1/0)
-            self._run_initial_block(database)
-            self._compile_breakpoint_block(time_step)
         except Exception:
             print("ERROR while loading file", self.filename)
             raise
 
     def _solve(self):
-        """ Processes all derivative_blocks into one of:
-            solved_blocks or derivative_functions.
-
-        Dictionary solved_blocks contains the direct solutions to advance the
-        systems of differential equations.
+        """ Processes some derivative_blocks into derivative_functions.
 
         Dictionary derivative_functions contains functions to evaluate the
         derivative matrix with the given inputs. All systems in this dictionary
         are linear & time invariant. """
-        self.solved_blocks = {}
         self.derivative_functions = {}
         solve_statements = {stmt.block: stmt
                 for stmt in self.breakpoint_block if isinstance(stmt, _SolveStatement)}
@@ -415,17 +421,6 @@ class NmodlMechanism(Reaction):
             if solve_statements[name].method == "sparse":
                 self.derivative_functions[name] = self._compile_derivative_block(block)
                 # self._check_derivative_lti()
-            else:
-                block = copy.deepcopy(block)
-                for stmt in block:
-                    if isinstance(stmt, _AssignStatement) and stmt.derivative:
-                        stmt.solve()
-            self.solved_blocks[name] = block
-        # Substitute SolveStatements with their corresponding solved_blocks.
-        self.breakpoint_block.map(lambda stmt: (
-                self.solved_blocks[stmt.block].statements
-                if isinstance(stmt, _SolveStatement) and stmt.block in self.solved_blocks
-                else [stmt]))
 
     def _compile_derivative_block(self, block):
         """ Returns function in the form:
@@ -458,12 +453,14 @@ class NmodlMechanism(Reaction):
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
+        self.initial_block.gather_arguments(self)
         globals_ = {
             "solve_steadystate": self.solve_steadystate,
             mangle2("index"): 0
         }
+        print(self.pointers)
         for arg in self.initial_block.arguments:
-            try: globals_[arg] = database[arg]
+            try: globals_[arg] = database.initial_value(self.pointers[arg])
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {mangle(x): [0] for x in self.states}
         initial_python = self.initial_block.to_python()
@@ -493,7 +490,7 @@ class NmodlMechanism(Reaction):
             1/0 # TODO: run the simulation until the state stops changing.
         return states
 
-    def _compile_breakpoint_block(self, time_step):
+    def _compile_breakpoint_block(self, database):
         input_variables = list(self.breakpoint_block.arguments)
         initial_scope_carryover = []
         for variable, initial_value in self.initial_scope.items():
@@ -566,16 +563,17 @@ class _CodeBlock:
         # TODO: Move conserve statements to the end of the block, where they
         # belong. I think the nmodl library is moving them around...
         pass
-
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
         self.statements.sort(key=lambda stmt: bool(
                 isinstance(stmt, _AssignStatement)
                 and stmt.pointer and "conductance" in stmt.pointer))
-        self._gather_arguments(file)
+        # 
+        top_level = (self.name in ("BREAKPOINT", "INITIAL") or self.derivative)
+        if top_level: self.gather_arguments(file)
 
-    def _gather_arguments(self, file):
+    def gather_arguments(self, file):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned = set()
@@ -586,6 +584,7 @@ class _CodeBlock:
                         self.arguments.add(symbol.name)
                 self.assigned.add(stmt.lhsn)
             elif isinstance(stmt, _IfStatement):
+                stmt.gather_arguments(file)
                 for symbol in stmt.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
@@ -636,19 +635,21 @@ class _IfStatement:
         self.elif_blocks = [_CodeBlock(file, block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
         self.else_block = _CodeBlock(file, AST.elses)
-        self._gather_arguments()
 
-    def _gather_arguments(self):
+    def gather_arguments(self, file):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned = set()
         for symbol in self.condition.free_symbols:
             self.arguments.add(symbol.name)
+        self.main_block.gather_arguments(file)
         self.arguments.update(self.main_block.arguments)
         self.assigned.update(self.main_block.assigned)
         for block in self.elif_blocks:
+            block.gather_arguments(file)
             self.arguments.update(block.arguments)
             self.assigned.update(block.assigned)
+        self.else_block.gather_arguments(file)
         self.arguments.update(self.else_block.arguments)
         self.assigned.update(self.else_block.assigned)
 
