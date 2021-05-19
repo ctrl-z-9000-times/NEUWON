@@ -17,6 +17,10 @@ from neuwon.database import Real, Index
 import neuwon.units
 from neuwon.model import Reaction
 from scipy.linalg import expm
+import sys
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 ANT = nmodl.ast.AstNodeType
 
@@ -98,7 +102,7 @@ class NmodlMechanism(Reaction):
                 self._discard_ast()
                 self.breakpoint_block.map(self._sympy_solve_and_inline)
             except Exception:
-                print("ERROR while loading file", self.filename)
+                eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
         self.pointers.update(pointers)
@@ -185,7 +189,7 @@ class NmodlMechanism(Reaction):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
         self.use_units = not any(x.eval() == "UNITSOFF" for x in self.lookup(ANT.UNIT_STATE))
         self.use_units = False
-        if not self.use_units: print("Warning: UNITSOFF detected.")
+        if not self.use_units: eprint("Warning: UNITSOFF detected.")
 
     def _gather_parameters(self):
         """ Sets parameters. """
@@ -227,7 +231,9 @@ class NmodlMechanism(Reaction):
                 self.parameters[name] = (database.access(name), units)
 
     def _substitute_parameters(self, database):
-        substitutions = []
+        substitutions = [
+            ("time_step", database.access("time_step")),
+        ]
         for name, (value, units) in self.parameters.items():
             if value is None: continue
             substitutions.append((name, value))
@@ -272,7 +278,7 @@ class NmodlMechanism(Reaction):
                 else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
         for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
             self.output_nonspecific_currents.append(x.name.get_node_name())
-            print("Warning: NONSPECIFIC_CURRENT detected.")
+            eprint("Warning: NONSPECIFIC_CURRENT detected.")
         self.output_currents.extend(self.output_nonspecific_currents)
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
             variable = x.conductance.get_node_name()
@@ -280,11 +286,11 @@ class NmodlMechanism(Reaction):
             self._add_pointer(variable, "membrane/%s/conductances"%ion)
         num_conductances = sum("conductance" in ptr for ptr in self.pointers.values())
         if len(self.output_currents) != num_conductances:
-            print("Output Currents:", ", ".join(self.output_currents))
-            print("Conductance AccessHandles:")
+            eprint("Output Currents:", ", ".join(self.output_currents))
+            eprint("Conductance AccessHandles:")
             for name, ptr in self.pointers.items():
                 if ptr.conductance:
-                    print("\t" + name, "=", ptr)
+                    eprint("\t" + name, "=", ptr)
             raise ValueError("Failed to match output currents to conductance AccessHandles.")
 
     def _add_pointer(self, name, pointer):
@@ -391,20 +397,21 @@ class NmodlMechanism(Reaction):
         try:
             self._gather_builtin_parameters(database)
             self._substitute_parameters(database)
-            for ptr in self.pointers.values(): database.access(ptr)
+            database.add_archetype(self.name(), doc=self.description)
             # self._solve() # TODO: only solve for kinetic models here.
             # self.kinetic_models = {}
             # for name, block in self.derivative_functions.items():
             #     self.kinetic_models[name] = KineticModel(1/0)
             self._run_initial_block(database)
-            self._compile_breakpoint_block(time_step)
-            database.add_archetype(self.name())
             for name in list(self.states) + list(self.surface_area_parameters):
                 component_name = self.name() + "/data/" + name
                 self._add_pointer(name, component_name)
-                database.add_attribute(component_name)
+                database.add_attribute(component_name, 
+                    initial_value=None) # TODO
+            self._compile_breakpoint_block(database)
+            for ptr in self.pointers.values(): database.access(ptr)
         except Exception:
-            print("ERROR while loading file", self.filename)
+            eprint("ERROR while loading file", self.filename)
             raise
 
     def _solve(self):
@@ -458,7 +465,6 @@ class NmodlMechanism(Reaction):
             "solve_steadystate": self.solve_steadystate,
             mangle2("index"): 0
         }
-        print(self.pointers)
         for arg in self.initial_block.arguments:
             try: globals_[arg] = database.initial_value(self.pointers[arg])
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
@@ -491,12 +497,15 @@ class NmodlMechanism(Reaction):
         return states
 
     def _compile_breakpoint_block(self, database):
+        self.breakpoint_block.gather_arguments(self)
         input_variables = list(self.breakpoint_block.arguments)
         initial_scope_carryover = []
         for variable, initial_value in self.initial_scope.items():
             if variable in input_variables:
                 input_variables.remove(variable)
-                initial_scope_carryover.append(variable, initial_value)
+                initial_scope_carryover.append((variable, initial_value))
+        print(input_variables)
+        print(self.pointers)
         for arg in input_variables:
             if arg not in self.pointers:
                 raise ValueError("Mishandled argument: \"%s\"."%arg)
@@ -504,7 +513,7 @@ class NmodlMechanism(Reaction):
         locations = mangle2("locations")
         location  = mangle2("location")
         index     = mangle2("index")
-        preamble = []
+        preamble  = []
         preamble.append("import math")
         preamble.append("import numba.cuda")
         preamble.append("def BREAKPOINT("+locations+", %s):"%", ".join(arguments))
@@ -513,6 +522,7 @@ class NmodlMechanism(Reaction):
         preamble.append("    "+location+" = "+locations+"["+index+"]")
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)
+        time_step = database.access("time_step")
         if not self.use_units: time_step *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
         preamble.append("    time_step = "+str(time_step))
         for variable, pointer in self.pointers.items():
@@ -965,7 +975,7 @@ class _cache:
         try:
             with open(cache_file, 'rb') as f: data = pickle.load(f)
         except Exception as err:
-            print("CACHE ERROR", str(err))
+            eprint("CACHE ERROR", str(err))
             return False
         self.__dict__.update(data)
         return True
@@ -977,7 +987,7 @@ class _cache:
             os.makedirs(cache_dir, exist_ok=True)
             with open(cache_file, 'wb') as f: pickle.dump(obj.__dict__, f)
         except Exception as x:
-            print("Warning: cache error", str(x))
+            eprint("Warning: cache error", str(x))
 
 pycode = lambda x: sympy.printing.pycode(x, user_functions={"abs": "abs"})
 insert_indent = lambda i, s: i + "\n".join(i + l for l in s.split("\n"))
@@ -993,10 +1003,10 @@ def _exec_wrapper(python, globals_, locals_):
     except:
         for noshow in ("__builtins__", "math"):
             if noshow in globals_: globals_.pop(noshow)
-        print("Error while exec'ing the following python code:")
-        print(python)
-        print("globals():", repr(globals_))
-        print("locals():", repr(locals_))
+        eprint("Error while exec'ing the following python code:")
+        eprint(python)
+        eprint("globals():", repr(globals_))
+        eprint("locals():", repr(locals_))
         raise
 
 if __name__ == "__main__":
