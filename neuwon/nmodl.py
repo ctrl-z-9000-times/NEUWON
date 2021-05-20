@@ -27,22 +27,9 @@ ANT = nmodl.ast.AstNodeType
 # TODO: Initial state. Mostly works...  Need code to run a simulation until it
 # reaches a steady state, given the solved system.
 
-# TODO: Keep a cache of loaded nmodl mechanisms. The cache would need to
-# be keyed on all arguments: filename & file-contents, pointers,
-# parameter_overrides. Pickle the contents of self.__dict__. Doing this
-# should be easy, doing it *well* will take more time & energy.
-# 
-# I think that to do this I will need to split the initialization into two parts:
-#       1) What can happen without any user input (beyond the filename)
-#               Parse NMODL file, this is the expensive part, because I do 100's of
-#               individual passes instead of one big one. simple code solution, simple cache solution.
-#       2) Deal with user inputs & overrides, compile, find initial value.
-#       ???) Can I solve the equations without user input?
-#            Yes, for the standard sympy solutions.
-#               -> Cache the solutions when using sympy solver!
-#            No, for specialized linear system solutions, which require computing the propagator matrix.
+# TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
-
+# TODO: Cache does not work...
 
 # # Ensure that all output pointers are written to.
 # surface_area_parameters = sorted(self.surface_area_parameters)
@@ -136,7 +123,6 @@ class NmodlMechanism(Reaction):
         # TODO: support for NONLINEAR?
         # TODO: support for INCLUDE?
         # TODO: support for COMPARTMENT?
-        # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
         # TODO: sanity check for breakpoint block.
         disallow = (
             "FUNCTION_TABLE_BLOCK",

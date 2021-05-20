@@ -161,6 +161,8 @@ class Species:
                 voltages = database_access("membrane/voltages")
                 return _goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
 
+# TODO: (Once this is back working) make the next three methods into private methods on Species.
+
 def _nerst_potential(charge, T, inside_concentration, outside_concentration):
     """ Returns the reversal voltage for an ionic species. """
     xp = cp.get_array_module(inside_concentration)
@@ -283,12 +285,12 @@ class Model:
             branch. Non-primary segments are lateral branches off to the side of
             the parent branch.  """)
 
-        db.add_attribute("membrane/lengths", check=False, doc="""
+        db.add_attribute("membrane/lengths", doc="""
             The distance between each node and its parent node.
-            Root node lengths are NAN.\n
-            Units: Meters""")
+            Root node lengths are their radius.\n
+            Units: Meters""", initial_value=np.nan)
         db.add_attribute("membrane/surface_areas", check=(">=", epsilon * (1e-6)**2), doc="""
-            Units: Meters ^ 2""")
+            Units: Meters ^ 2""", initial_value=np.nan)
         db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2",
             check = (">=", epsilon * (1e-6)**2))
         db.add_attribute("membrane/volumes", check=(">=", epsilon * (1e-6)**3), doc="""
