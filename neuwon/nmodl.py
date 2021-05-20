@@ -62,15 +62,9 @@ ANT = nmodl.ast.AstNodeType
 #     1/0 # Get surface area parameters too?
 
 
-def NEURON_conversion_factor(self):
-    """ """ # TODO!
-    if   self.reaction_instance: return 1
-    elif self.voltage:           return 1000 # From NEUWONs volts to NEURONs millivolts.
-    elif self.conductance:       return 1
-    else: raise NotImplementedError(self)
-
 _builtin_parameters = {
-    "celsius": (None, "degC")
+    "celsius": (None, "degC"),
+    "time_step": (None, "ms"),
 }
 
 class NmodlMechanism(Reaction):
@@ -97,15 +91,16 @@ class NmodlMechanism(Reaction):
                 self._gather_parameters()
                 self.states = sorted(v.get_name() for v in
                         self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-                self._gather_IO()
+                self.pointers = {}
                 self._gather_functions()
+                self._gather_IO()
                 self._discard_ast()
                 self.breakpoint_block.map(self._sympy_solve_and_inline)
             except Exception:
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        self.pointers.update(pointers)
+        self.pointers.update({k: _Pointer(*v) for k, v in pointers.items()})
         self._apply_parameter_overrides(parameter_overrides)
         self._separate_surface_area_parameters()
 
@@ -156,23 +151,16 @@ class NmodlMechanism(Reaction):
     def _gather_documentation(self):
         """ Sets name, title, and description.
         This assumes that the first block comment is the primary documentation. """
-        self._name = os.path.split(self.filename)[1]
-        for x in self.lookup(ANT.SUFFIX):
-            self._name = x.name.get_node_name()
+        x = self.lookup(ANT.SUFFIX)
+        if x: self._name = x[0].name.get_node_name()
+        else: self._name = os.path.split(self.filename)[1] # TODO: Split extension too?
         title = self.lookup(ANT.MODEL)
-        if not title:
-            self.title = ""
-        else:
-            self.title = title[0].title.eval().strip()
-            if self.title.startswith(self._name + ".mod"):
-                self.title = self.title[len(self._name + ".mod"):].strip()
-            if self.title:
-                self.title = self.title[0].title() + self.title[1:] # Capitalize the first letter.
-        block_comments = self.lookup(ANT.BLOCK_COMMENT)
-        if block_comments:
-            self.description = block_comments[0].statement.eval()
-        else:
-            self.description = ""
+        self.title = title[0].title.eval().strip() if title else ""
+        if self.title.startswith(self._name + ".mod"):
+            self.title = self.title[len(self._name + ".mod"):].strip()
+        if self.title: self.title = self.title[0].title() + self.title[1:] # Capitalize the first letter.
+        comments = self.lookup(ANT.BLOCK_COMMENT)
+        self.description = comments[0].statement.eval() if comments else ""
 
     def name(self):
         return self._name
@@ -188,13 +176,12 @@ class NmodlMechanism(Reaction):
         for AST in self.lookup(ANT.UNIT_DEF):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
         self.use_units = not any(x.eval() == "UNITSOFF" for x in self.lookup(ANT.UNIT_STATE))
-        self.use_units = False
+        self.use_units = False # TODO, either implement this or delete it...
         if not self.use_units: eprint("Warning: UNITSOFF detected.")
 
     def _gather_parameters(self):
         """ Sets parameters. """
         self.parameters = dict(_builtin_parameters)
-        # Parse the parameters from the NMODL file.
         for assign in self.lookup(ANT.PARAM_ASSIGN):
             name  = str(self.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
             value = self.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
@@ -203,101 +190,12 @@ class NmodlMechanism(Reaction):
             units = units[0].get_node_name() if units else None
             self.parameters[name] = (value, units)
 
-    def _apply_parameter_overrides(self, parameter_overrides):
-        for name, value in parameter_overrides.items():
-            if name in self.parameters:
-                old_value, units = self.parameters[name]
-                self.parameters[name] = (value, units)
-            else: raise ValueError("Invalid parameter override \"%s\"."%name)
-
-    def _separate_surface_area_parameters(self):
-        """ Sets surface_area_parameters, Modifies parameters.
-
-        The surface area parameters are special because each segment of neuron
-        has its own surface area and so their actual values are different for
-        each instance of the mechanism. They are not in-lined directly into the
-        source code, instead they are stored alongside the state variables and
-        accessed at run time. 
+    def _add_pointer(self, name, pointer, mode):
         """
-        self.surface_area_parameters = {}
-        for name, (value, units) in list(self.parameters.items()):
-            if units and "/cm2" in units:
-                self.surface_area_parameters[name] = self.parameters.pop(name)
-
-    def _gather_builtin_parameters(self, database):
-        for name in _builtin_parameters:
-            value, units = self.parameters[name]
-            if value is None:
-                self.parameters[name] = (database.access(name), units)
-
-    def _substitute_parameters(self, database):
-        substitutions = [
-            ("time_step", database.access("time_step")),
-        ]
-        for name, (value, units) in self.parameters.items():
-            if value is None: continue
-            substitutions.append((name, value))
-        for block in itertools.chain(
-                    (self.initial_block, self.breakpoint_block,),
-                    self.derivative_blocks.values(),):
-            for stmt in block:
-                if isinstance(stmt, _AssignStatement):
-                    stmt.rhs = stmt.rhs.subs(substitutions)
-
-    def _gather_IO(self):
-        """ Determine what external data the mechanism accesses. """
-        # Assignments to the variables in output_currents are ignored because
-        # NEUWON converts all mechanisms to use conductances instead of currents.
-        self.pointers = {}
-        self.output_currents = []
-        self.output_nonspecific_currents = []
-        for x in self.lookup(ANT.USEION):
-            ion = x.name.value.eval()
-            # Automatically generate the variable names for this ion.
-            equilibrium = 'e' + ion
-            current = 'i' + ion
-            inside = ion + 'i'
-            outside = ion + 'o'
-            for y in x.readlist:
-                variable = y.name.value.eval()
-                if variable == equilibrium:
-                    pass # Ignored, mechanisms output conductances instead of currents.
-                elif variable == inside:
-                    self._add_pointer(variable, "membrane/inside/%s/concentrations"%ion)
-                elif variable == outside:
-                    self._add_pointer(variable, "membrane/outside/%s/concentrations"%ion)
-                else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
-            for y in x.writelist:
-                variable = y.name.value.eval()
-                if variable == current:
-                    self.output_currents.append(variable)
-                elif variable == inside:
-                    self._add_pointer(variable, "membrane/inside/%s/release_rates"%ion)
-                elif variable == outside:
-                    self._add_pointer(variable, "membrane/outside/%s/release_rates"%ion)
-                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
-        for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
-            self.output_nonspecific_currents.append(x.name.get_node_name())
-            eprint("Warning: NONSPECIFIC_CURRENT detected.")
-        self.output_currents.extend(self.output_nonspecific_currents)
-        for x in self.lookup(ANT.CONDUCTANCE_HINT):
-            variable = x.conductance.get_node_name()
-            ion = x.ion.get_node_name() if x.ion else None
-            self._add_pointer(variable, "membrane/%s/conductances"%ion)
-        num_conductances = sum("conductance" in ptr for ptr in self.pointers.values())
-        if len(self.output_currents) != num_conductances:
-            eprint("Output Currents:", ", ".join(self.output_currents))
-            eprint("Conductance AccessHandles:")
-            for name, ptr in self.pointers.items():
-                if ptr.conductance:
-                    eprint("\t" + name, "=", ptr)
-            raise ValueError("Failed to match output currents to conductance AccessHandles.")
-
-    def _add_pointer(self, name, pointer):
-        if name in self.pointers:
-            raise ValueError("Name conflict: \"%s\" used for %s and %s"%(
-                    name, self.pointers[name], pointer))
-        self.pointers[name] = pointer
+        Modifies Read & Write, which are mappings from nmodl variable names to 
+        database access names. """
+        assert name not in self.pointers
+        self.pointers[name] = _Pointer(pointer, mode)
 
     def _gather_functions(self):
         """ Process all blocks of code which contain imperative instructions.
@@ -314,7 +212,7 @@ class NmodlMechanism(Reaction):
         assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
         self.initial_block = _CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = _CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
-        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages")
+        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages", 'r')
 
     def _parse_statement(self, AST):
         """ Returns a list of Statement objects. """
@@ -335,14 +233,12 @@ class NmodlMechanism(Reaction):
         if AST.is_binary_expression():
             assert(AST.op.eval() == "=")
             lhsn = AST.lhs.name.get_node_name()
-            if lhsn in self.output_nonspecific_currents: return []
-            if lhsn in self.output_currents:             return []
             return [_AssignStatement(lhsn, self._parse_expression(AST.rhs),
-                    derivative = is_derivative,
-                    pointer = self.pointers.get(lhsn, None),)]
+                    derivative = is_derivative,)]
         # TODO: Catch procedure calls and raise an explicit error, instead of
         # just saying "unrecognised syntax". Procedure calls must be inlined by
         # the nmodl library.
+        # TODO: Get line number from AST and include it in error message.
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(original))
 
     def _parse_expression(self, AST):
@@ -381,17 +277,92 @@ class NmodlMechanism(Reaction):
             return self._parse_expression(AST.value) * factor
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
 
+    def _gather_IO(self):
+        """ Determine what external data the mechanism accesses. """
+        # Assignments to the variables in output_currents are ignored because
+        # NEUWON converts all mechanisms to use conductances instead of currents.
+        output_currents = []
+        output_nonspecific_currents = []
+        for x in self.lookup(ANT.USEION):
+            ion = x.name.value.eval()
+            # Automatically generate the variable names for this ion.
+            equilibrium = 'e' + ion
+            current = 'i' + ion
+            inside = ion + 'i'
+            outside = ion + 'o'
+            for y in x.readlist:
+                variable = y.name.value.eval()
+                if variable == equilibrium:
+                    pass # Ignored, mechanisms output conductances instead of currents.
+                elif variable == inside:
+                    self._add_pointer(variable, "membrane/inside/%s/concentrations"%ion, 'r')
+                elif variable == outside:
+                    self._add_pointer(variable, "membrane/outside/%s/concentrations"%ion, 'r')
+                else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
+            for y in x.writelist:
+                variable = y.name.value.eval()
+                if variable == current:
+                    output_currents.append(variable)
+                elif variable == inside:
+                    self._add_pointer(variable, "membrane/inside/%s/release_rates"%ion, 'a')
+                elif variable == outside:
+                    self._add_pointer(variable, "membrane/outside/%s/release_rates"%ion, 'a')
+                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
+        for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
+            output_nonspecific_currents.append(x.name.get_node_name())
+            eprint("Warning: NONSPECIFIC_CURRENT detected.")
+        output_currents.extend(output_nonspecific_currents)
+        for x in self.lookup(ANT.CONDUCTANCE_HINT):
+            variable = x.conductance.get_node_name()
+            ion = x.ion.get_node_name() if x.ion else None
+            self._add_pointer(variable, "membrane/%s/conductances"%ion, 'a')
+        num_conductances = sum("conductance" in ptr.name for ptr in self.pointers.values())
+        if len(output_currents) != num_conductances:
+            eprint("Output Currents:", ", ".join(output_currents))
+            eprint("Conductances:")
+            for name, ptr in self.write.items():
+                if "conductance" in ptr:
+                    eprint("\t" + name, "=", ptr)
+            raise ValueError("Failed to match output currents to conductance AccessHandles.")
+        # Ignore assignments to the variables in output_currents because NEUWON
+        # converts all mechanisms to use conductances instead of currents.
+        no_write = set(output_nonspecific_currents).union(set(output_currents))
+        self.breakpoint_block.map(lambda stmt: ([]
+                if isinstance(stmt, _AssignStatement) and stmt.lhsn in no_write
+                else [stmt]))
+
     def _sympy_solve_and_inline(self, stmt):
         """ Replace SolveStatements with the solved equations to advance the
         systems of differential equations. """
         if not isinstance(stmt, _SolveStatement): return [stmt]
         if stmt.method == "cnexp":
-            block = copy.deepcopy(self.derivative_blocks[stmt.block])
+            block = self.derivative_blocks[stmt.block]
             for stmt in block:
                 if isinstance(stmt, _AssignStatement) and stmt.derivative:
                     stmt.solve()
             return block.statements
         return [stmt]
+
+    def _apply_parameter_overrides(self, parameter_overrides):
+        for name, value in parameter_overrides.items():
+            if name in self.parameters:
+                old_value, units = self.parameters[name]
+                self.parameters[name] = (value, units)
+            else: raise ValueError("Invalid parameter override \"%s\"."%name)
+
+    def _separate_surface_area_parameters(self):
+        """ Sets surface_area_parameters, Modifies parameters.
+
+        The surface area parameters are special because each segment of neuron
+        has its own surface area and so their actual values are different for
+        each instance of the mechanism. They are not in-lined directly into the
+        source code, instead they are stored alongside the state variables and
+        accessed at run time. 
+        """
+        self.surface_area_parameters = {}
+        for name, (value, units) in list(self.parameters.items()):
+            if units and "/cm2" in units:
+                self.surface_area_parameters[name] = self.parameters.pop(name)
 
     def initialize(self, database):
         try:
@@ -405,14 +376,32 @@ class NmodlMechanism(Reaction):
             self._run_initial_block(database)
             for name in list(self.states) + list(self.surface_area_parameters):
                 component_name = self.name() + "/data/" + name
-                self._add_pointer(name, component_name)
+                self._add_pointer(name, component_name, 'rw')
                 database.add_attribute(component_name, 
-                    initial_value=None) # TODO
+                    initial_value=None) # TODO: get init value from output of "_run_initial_block"
             self._compile_breakpoint_block(database)
             for ptr in self.pointers.values(): database.access(ptr)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
+
+    def _gather_builtin_parameters(self, database):
+        for name in _builtin_parameters:
+            value, units = self.parameters[name]
+            if value is None:
+                self.parameters[name] = (database.access(name), units)
+
+    def _substitute_parameters(self, database):
+        substitutions = []
+        for name, (value, units) in self.parameters.items():
+            if value is None: continue
+            substitutions.append((name, value))
+        for block in itertools.chain(
+                    (self.initial_block, self.breakpoint_block,),
+                    self.derivative_blocks.values(),):
+            for stmt in block:
+                if isinstance(stmt, _AssignStatement):
+                    stmt.rhs = stmt.rhs.subs(substitutions)
 
     def _solve(self):
         """ Processes some derivative_blocks into derivative_functions.
@@ -466,7 +455,7 @@ class NmodlMechanism(Reaction):
             mangle2("index"): 0
         }
         for arg in self.initial_block.arguments:
-            try: globals_[arg] = database.initial_value(self.pointers[arg])
+            try: globals_[arg] = database.initial_value(self.pointers[arg].name)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {mangle(x): [0] for x in self.states}
         initial_python = self.initial_block.to_python()
@@ -497,6 +486,13 @@ class NmodlMechanism(Reaction):
         return states
 
     def _compile_breakpoint_block(self, database):
+        # Move assignments to conductances to the end of the block, where they
+        # belong. This is needed because the nmodl library inserts conductance
+        # hints and associated statements at the beginning of the block.
+        self.breakpoint_block.statements.sort(key=lambda stmt: bool(
+                isinstance(stmt, _AssignStatement)
+                and stmt.pointer and "conductance" in stmt.pointer))
+        # 
         self.breakpoint_block.gather_arguments(self)
         input_variables = list(self.breakpoint_block.arguments)
         initial_scope_carryover = []
@@ -504,8 +500,8 @@ class NmodlMechanism(Reaction):
             if variable in input_variables:
                 input_variables.remove(variable)
                 initial_scope_carryover.append((variable, initial_value))
-        print(input_variables)
-        print(self.pointers)
+        # print(input_variables)
+        # print(self.pointers)
         for arg in input_variables:
             if arg not in self.pointers:
                 raise ValueError("Mishandled argument: \"%s\"."%arg)
@@ -528,6 +524,12 @@ class NmodlMechanism(Reaction):
         for variable, pointer in self.pointers.items():
             if not pointer.read: continue
             x = location if pointer.omnipresent else index
+            def NEURON_conversion_factor(self):
+                """ """ # TODO!
+                if   self.reaction_instance: return 1
+                elif self.voltage:           return 1000 # From NEUWONs volts to NEURONs millivolts.
+                elif self.conductance:       return 1
+                else: raise NotImplementedError(self)
             factor = str(pointer.NEURON_conversion_factor())
             preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x, factor))
         py = self.breakpoint_block.to_python("    ")
@@ -555,32 +557,33 @@ class NmodlMechanism(Reaction):
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
 
+class _Pointer:
+    def __init__(self, name, mode='rw'):
+        self.name = str(name)
+        self.mode = str(mode)
+        assert self.mode in ('r', 'w', 'rw', 'a')
+    @property
+    def read(self):
+        return 'r' in self.mode
+    @property
+    def write(self):
+        return self.accumulate or 'w' in self.mode
+    @property
+    def accumulate(self):
+        return self.mode == 'a'
+
 class _CodeBlock:
     def __init__(self, file, AST):
-        if hasattr(AST, "name"):
-            self.name = AST.name.get_node_name()
-        elif AST.is_breakpoint_block():
-            self.name = "BREAKPOINT"
-        elif AST.is_initial_block():
-            self.name = "INITIAL"
-        else:
-            self.name = None
+        if hasattr(AST, "name"):        self.name = AST.name.get_node_name()
+        elif AST.is_breakpoint_block(): self.name = "BREAKPOINT"
+        elif AST.is_initial_block():    self.name = "INITIAL"
+        else:                           self.name = None
         self.derivative = AST.is_derivative_block()
+        top_level = self.derivative or self.name in ("BREAKPOINT", "INITIAL")
         self.statements = []
         AST = getattr(AST, "statement_block", AST)
         for stmt in AST.statements:
             self.statements.extend(file._parse_statement(stmt))
-        # TODO: Move conserve statements to the end of the block, where they
-        # belong. I think the nmodl library is moving them around...
-        pass
-        # Move assignments to conductances to the end of the block, where they
-        # belong. This is needed because the nmodl library inserts conductance
-        # hints and associated statements at the beginning of the block.
-        self.statements.sort(key=lambda stmt: bool(
-                isinstance(stmt, _AssignStatement)
-                and stmt.pointer and "conductance" in stmt.pointer))
-        # 
-        top_level = (self.name in ("BREAKPOINT", "INITIAL") or self.derivative)
         if top_level: self.gather_arguments(file)
 
     def gather_arguments(self, file):
@@ -609,11 +612,6 @@ class _CodeBlock:
             else: raise NotImplementedError(stmt)
         self.arguments = sorted(self.arguments)
         self.assigned = sorted(self.assigned)
-
-        # # Remove the arguments which are implicit / always given.
-        # self.arguments.discard("time_step")
-        # for x in file.states: self.arguments.discard(x)
-        # for x in file.surface_area_parameters: self.arguments.discard(x)
 
     def __iter__(self):
         for stmt in self.statements:
@@ -684,11 +682,11 @@ class _IfStatement:
         return py
 
 class _AssignStatement:
-    def __init__(self, lhsn, rhs, derivative=False, pointer=None):
+    def __init__(self, lhsn, rhs, derivative=False):
         self.lhsn = str(lhsn) # Left hand side name.
         self.rhs  = rhs       # Right hand side.
         self.derivative = bool(derivative)
-        self.pointer = pointer # Associated with the left hand side.
+        # self.pointer = pointer # Associated with the left hand side.
 
     def to_python(self,  indent=""):
         if not isinstance(self.rhs, str):
