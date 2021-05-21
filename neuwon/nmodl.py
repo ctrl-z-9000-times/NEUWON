@@ -425,10 +425,10 @@ class NmodlMechanism(Reaction):
         for arg in self.initial_block.arguments:
             try: globals_[arg] = database.initial_value(self.pointers[arg].name)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
-        self.initial_scope = {mangle(x): 0 for x in self.states}
+        self.initial_scope = {x: 0 for x in self.states}
         initial_python = self.initial_block.to_python(context="INITIAL_BLOCK")
         _exec_wrapper(initial_python, globals_, self.initial_scope)
-        self.initial_state = {x: self.initial_scope.pop(mangle(x)) for x in self.states}
+        self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def solve_steadystate(self, block, args):
         # First generate a state which satisfies the CONSERVE constraints.
@@ -483,23 +483,17 @@ class NmodlMechanism(Reaction):
                 and stmt.pointer and "conductance" in stmt.pointer.name))
         # 
         self.breakpoint_block.gather_arguments(self)
-        input_variables = list(self.breakpoint_block.arguments)
         initial_scope_carryover = []
-        for variable, initial_value in self.initial_scope.items():
-            if variable in input_variables:
-                input_variables.remove(variable)
-                initial_scope_carryover.append((variable, initial_value))
-        # print(input_variables)
-        # print(self.pointers)
-        for arg in input_variables:
-            if arg not in self.pointers:
-                raise ValueError("Mishandled argument: \"%s\"."%arg)
+        for arg in self.breakpoint_block.arguments:
+            if arg in self.pointers: pass
+            elif arg in self.initial_scope:
+                initial_scope_carryover.append((arg, self.initial_scope[arg]))
+            else: raise ValueError("Unhandled argument: \"%s\"."%arg)
         arguments = sorted(mangle(name) for name in  self.pointers)
         locations = mangle2("locations")
         location  = mangle2("location")
         index     = mangle2("index")
         preamble  = []
-        preamble.append("import math")
         preamble.append("import numba.cuda")
         preamble.append("def BREAKPOINT("+locations+", %s):"%", ".join(arguments))
         preamble.append("    "+index+" = numba.cuda.grid(1)")
@@ -520,21 +514,25 @@ class NmodlMechanism(Reaction):
         breakpoint_globals = {
             # mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
-        exec(py, breakpoint_globals)
+        _exec_wrapper(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
-    def new_instances(self, database_access, scale=1):
-        data = dict(self.initial_state)
+    def new_instances(self, database, locations, scale=1):
+        ent_idx = database.create_entity(self.name(), len(locations), return_entity=False)
+        ent_idx = np.array(ent_idx, dtype=np.int)
+        database.access(self.name() + "/insertions")[ent_idx] = locations
+        surface_areas = database.access("membrane/surface_areas")[locations]
         for name, (value, units) in self.surface_area_parameters.items():
-            sa = geometry.surface_areas[location] * scale
-            if not self.use_units: sa *= 10000 # Convert from NEUWONs m^2 to NEURONs cm^2.
-            data[name] = value * sa
-        return data
+            param = database.access(self.name() + "/data/" + name)
+            x = 10000 # Convert from NEUWONs m^2 to NEURONs cm^2.
+            param[ent_idx] = value * scale * surface_areas * x
 
-    def advance(self, database_access):
+    def advance(self, access):
         # for name, km in self.kinetic_models.items():
         #     1/0
         threads = 64
+        locations = access(self.name() + "/insertions")
+        pointers = {name: access(ptr.name) for name, ptr in self.pointers.items()}
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
@@ -986,7 +984,7 @@ demangle = lambda x: x[1:]
 mangle2 = lambda x: "_" + x + "_"
 demangle2 = lambda x: x[1:-1]
 
-def _exec_wrapper(python, globals_, locals_):
+def _exec_wrapper(python, globals_, locals_=None):
     globals_["math"] = math
     try: exec(python, globals_, locals_)
     except:

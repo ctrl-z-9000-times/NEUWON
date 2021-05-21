@@ -125,6 +125,7 @@ class Species:
                     self.inside_concentration,
                     doc="Units: Molar")
         if self.outside_diffusivity is not None:
+            1/0 # untested code paths...
             add_attribute("outside/%s/concentrations"%self.name,
                     initial_value=self.outside_concentration,
                     doc="Units: Molar")
@@ -154,7 +155,7 @@ class Species:
         else:
             T = database_access("T")
             inside = database_access("membrane/inside/%s/concentrations"%self.name)
-            outside = database_access("membrane/outside/%s/concentrations"%self.name)
+            outside = database_access("outside/%s/concentrations"%self.name)
             if self.reversal_potential == "nerst":
                 return _nerst_potential(self.charge, T, inside, outside)
             elif self.reversal_potential == "goldman_hodgkin_katz":
@@ -202,7 +203,7 @@ class Reaction:
         pass
 
     @classmethod
-    def new_instances(self, database_access, *args, **kw_args):
+    def new_instances(self, database, *args, **kwargs):
         """ """
         pass
 
@@ -260,7 +261,7 @@ class Model:
         db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/parents", dtype="membrane", check=False,
             doc="Cell membranes are connected in a tree.")
-        db.add_sparse_matrix("membrane/children", "membrane", dtype="membrane", doc="")
+        db.add_sparse_matrix("membrane/children", "membrane", dtype=np.bool, doc="")
         db.add_attribute("membrane/inside", dtype="inside", doc="""
                 A reference to the outermost shell.
                 The shells and the innermost core are allocated in a contiguous block
@@ -355,10 +356,10 @@ class Model:
         """
         r = reaction
         if not isinstance(r, Reaction) and not (isinstance(r, type) and issubclass(r, Reaction)):
-            try: nmodl_file_path, kw_args = reactions_library[str(r)]
+            try: nmodl_file_path, kwargs = reactions_library[str(r)]
             except KeyError: raise ValueError("Unrecognized Reaction: %s."%str(r))
             from neuwon.nmodl import NmodlMechanism
-            r = NmodlMechanism(nmodl_file_path, **kw_args)
+            r = NmodlMechanism(nmodl_file_path, **kwargs)
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
             retval = r.initialize(self.db)
@@ -604,8 +605,7 @@ class Model:
         1/0
 
     def insert_reaction(self, reaction, *args, **kwargs):
-        r = self.reactions[str(reaction)]
-        r.initialize(segment, *args, **kw_args)
+        self.reactions[str(reaction)].new_instances(self.db, *args, **kwargs)
 
     def remove_reaction(self, reaction, segments):
         1/0
@@ -740,6 +740,9 @@ class Segment:
     def __init__(self, model, membrane_index):
         self.model = model
         self.entity = Entity(model.db, "membrane", membrane_index)
+
+    def insert_reaction(self, reaction, *args, **kwargs):
+        self.model.insert_reaction(reaction, [self.entity.index], *args, **kwargs)
 
     @property
     def parent(self):

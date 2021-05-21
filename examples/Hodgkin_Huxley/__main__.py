@@ -52,10 +52,10 @@ class Experiment:
             self.axon = []
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
-        # for x in self.soma + self.axon:
-        #     x.insert_mechanism("hh")
-            # x.insert_mechanism("na11a", scale=3)
-            # x.insert_mechanism("Kv11_13States_temperature2", scale=3)
+        for x in self.soma + self.axon:
+            x.insert_reaction("hh")
+            # x.insert_reaction("na11a", scale=3)
+            # x.insert_reaction("Kv11_13States_temperature2", scale=3)
         print("Number of Locations:", len(self.model))
         # sa  = sum(self.model.geometry.surface_areas[x.index] for x in self.soma)
         # sa += sum(self.model.geometry.surface_areas[x.index] for x in self.axon)

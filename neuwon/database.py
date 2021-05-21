@@ -342,7 +342,10 @@ class _Component(_DocString):
             if self._check == "ALLOW_NULL":
                 1/0
             else:
-                assert cupy.all(data < reference.size), self.name
+                if isinstance(data, cupy.ndarray):
+                    assert cupy.all(data < reference.size), self.name
+                else:
+                    assert np.all(np.less(data, reference.size)), self.name
         elif isinstance(self._check, Iterable) and len(self._check) == 2:
             op, threshold = self._check
             if   op == "<":  assert data <  threshold, self.name
