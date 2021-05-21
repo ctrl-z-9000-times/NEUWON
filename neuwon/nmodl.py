@@ -78,7 +78,7 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        self.pointers.update({k: _Pointer(*v) for k, v in pointers.items()})
+        self.pointers.update({k: _Pointer(self, *v) for k, v in pointers.items()})
         self._apply_parameter_overrides(parameter_overrides)
         self._separate_surface_area_parameters()
 
@@ -242,7 +242,7 @@ class NmodlMechanism(Reaction):
         """ Argument name is an nmodl varaible name.
             Argument pointer is a database access path. """
         assert name not in self.pointers
-        self.pointers[name] = _Pointer(pointer, mode)
+        self.pointers[name] = _Pointer(self, pointer, mode)
 
     def _gather_IO(self):
         """ Determine what external data the mechanism accesses. """
@@ -350,21 +350,9 @@ class NmodlMechanism(Reaction):
             # for name, block in self.derivative_functions.items():
             #     self.kinetic_models[name] = KineticModel(1/0)
             self._run_initial_block(database)
-            database.add_archetype(self.name(), doc=self.description)
-            database.add_attribute(self.name() + "/insertions", dtype="membrane")
-            for name in self.surface_area_parameters:
-                path = self.name() + "/data/" + name
-                database.add_attribute(path)
-                self._add_pointer(name, path, 'r')
-            for name in self.states:
-                path = self.name() + "/data/" + name
-                database.add_attribute(path, initial_value=self.initial_state[name])
-                self._add_pointer(name, path, 'rw')
-            for stmt in self.breakpoint_block:
-                if isinstance(stmt, _AssignStatement):
-                    stmt.pointer = self.pointers.get(stmt.lhsn, None)
+            self._initialize_database(database)
             self._compile_breakpoint_block(database)
-            for ptr in self.pointers.values(): database.access(ptr)
+            for ptr in self.pointers.values(): database.access(ptr.name)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -437,10 +425,10 @@ class NmodlMechanism(Reaction):
         for arg in self.initial_block.arguments:
             try: globals_[arg] = database.initial_value(self.pointers[arg].name)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
-        self.initial_scope = {mangle(x): [0] for x in self.states}
+        self.initial_scope = {mangle(x): 0 for x in self.states}
         initial_python = self.initial_block.to_python(context="INITIAL_BLOCK")
         _exec_wrapper(initial_python, globals_, self.initial_scope)
-        self.initial_state = {x: self.initial_scope.pop(mangle(x))[0] for x in self.states}
+        self.initial_state = {x: self.initial_scope.pop(mangle(x)) for x in self.states}
 
     def solve_steadystate(self, block, args):
         # First generate a state which satisfies the CONSERVE constraints.
@@ -465,7 +453,28 @@ class NmodlMechanism(Reaction):
             1/0 # TODO: run the simulation until the state stops changing.
         return states
 
+    def _initialize_database(self, database):
+        database.add_archetype(self.name(), doc=self.description)
+        database.add_attribute(self.name() + "/insertions", dtype="membrane")
+        for name in self.surface_area_parameters:
+            path = self.name() + "/data/" + name
+            database.add_attribute(path)
+            self._add_pointer(name, path, 'r')
+        for name in self.states:
+            path = self.name() + "/data/" + name
+            database.add_attribute(path, initial_value=self.initial_state[name])
+            self._add_pointer(name, path, 'rw')
+
     def _compile_breakpoint_block(self, database):
+        # Link assignment to their pointers.
+        for stmt in self.breakpoint_block:
+            if isinstance(stmt, _AssignStatement):
+                stmt.pointer = self.pointers.get(stmt.lhsn, None)
+        # 
+        for x in self.pointers.values():
+            if   x.archetype == "membrane":  x.index = mangle2("location")
+            elif x.archetype == self.name(): x.index = mangle2("index")
+            else: raise NotImplementedError(x.archetype)
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
@@ -503,20 +512,13 @@ class NmodlMechanism(Reaction):
         preamble.append("    time_step = "+str(time_step))
         for variable, pointer in self.pointers.items():
             if not pointer.read: continue
-            # TODO: Determine local variable "x" which is the index to use by
-            # looking at the pointer. TODO: Add logic to the pointer to figure
-            # out what the archetype is and how to index its data....
-            1/0
-            # if pointer.name.startswith("membrane"):     x = location
-            # elif pointer.name.startswith(self._name):   x = index
-            # else: raise NotImplementedError(pointer.name)
             if pointer.name == "membrane/voltages": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
             else:                                   factor = 1
-            preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x, factor))
+            preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x.index, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
-            mangle(name): km.advance for name, km in self.kinetic_models.items()
+            # mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
         exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
@@ -538,17 +540,14 @@ class NmodlMechanism(Reaction):
                 *(ptr for name, ptr in sorted(pointers.items())))
 
 class _Pointer:
-    def __init__(self, name, mode='rw'):
+    def __init__(self, file, name, mode='rw', archetype=None):
         self.name = str(name)
         self.mode = str(mode)
         assert self.mode in ('r', 'w', 'rw', 'a')
-        # TODO: Somewhere, somehow, pointers aut to understand how indexing works.
-        # Maybe they could have an "indexed_by" property?
-        # It should be possible to determine the index from the archetype:
-        #           membrane/
-        #           this-mechanism/
-        #           other-mechanisms/ - passed in by the user?
-        1/0
+        if   archetype is not None:             self.archetype = str(archetype)
+        elif self.name.startswith("membrane"):  self.archetype = "membrane"
+        elif self.name.startswith(file.name()): self.archetype = file.name()
+        else: raise Exception("what archetype is this? " + self.name)
     @property
     def read(self):
         return 'r' in self.mode
@@ -681,11 +680,9 @@ class _AssignStatement:
             lhs = mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
         if context != "INITIAL_BLOCK" and self.pointer:
-            # TODO: I need a replacement for omnipresent which deals with how
-            # the data is indexed...
-            array_access = "[_location_]" if self.pointer.omnipresent else "[_index_]"
-            eq = " = " if self.pointer.read else " += "
-            lhs = mangle(self.lhsn) + array_access
+            assert self.pointer.write, self.pointer.name
+            lhs = mangle(self.lhsn) + "[" + self.pointer.index + "]"
+            eq = " += " if self.pointer.accumulate else " = "
             py = indent + lhs + eq + self.rhs + "\n"
             if self.pointer.read:
                 py += indent + self.lhsn + " = " + lhs + "\n"
