@@ -8,8 +8,9 @@ Entities can have associated data Components.
 * An Archetype is a template for constructing Entities; and an Entity is an
 instance of the Archetype which constructed it.
 
-* The user gives names to all Archetypes and Components; and they are referred
-to by their names in all API calls.
+* The user gives names to all Archetypes and Components, and they are referred
+to by their names in all API calls. Similar to a file system, the names reflect
+a hierarchical organization where Archetypes contain Components.
 
 * There are multiple types of Archetypes and Components for representing
 different and specialized things.

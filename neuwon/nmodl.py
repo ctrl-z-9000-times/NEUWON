@@ -38,16 +38,7 @@ ANT = nmodl.ast.AstNodeType
 #         if variable in surface_area_parameters:
 #             idx = surface_area_parameters.index(variable)
 #             self.breakpoint_block.statements.append(
-#                     _AssignStatement(variable, variable, pointer=pointer))                
-
-
-# # Convert all unit on the parameters into NEUWONs unit system.
-# if self.use_units:
-#     for name, (value, units) in self.parameters.items():
-#         factor, dimensions = self.units.standardize(units)
-#         self.parameters[name] = (factor * value, dimensions)
-#     1/0 # Get surface area parameters too?
-
+#                     _AssignStatement(variable, variable, pointer=pointer))
 
 _builtin_parameters = {
     "celsius": (None, "degC"),
@@ -82,7 +73,7 @@ class NmodlMechanism(Reaction):
                 self._gather_functions()
                 self._gather_IO()
                 self._discard_ast()
-                self.breakpoint_block.map(self._sympy_solve_and_inline)
+                self._solve()
             except Exception:
                 eprint("ERROR while loading file", self.filename)
                 raise
@@ -176,29 +167,13 @@ class NmodlMechanism(Reaction):
             units = units[0].get_node_name() if units else None
             self.parameters[name] = (value, units)
 
-    def _add_pointer(self, name, pointer, mode):
-        """
-        Modifies Read & Write, which are mappings from nmodl variable names to 
-        database access names. """
-        assert name not in self.pointers
-        self.pointers[name] = _Pointer(pointer, mode)
-
     def _gather_functions(self):
         """ Process all blocks of code which contain imperative instructions.
-        Sets:
-            initial_block, breakpoint_block,
-            derivative_blocks, conserve_statements.
-        """
-        self.derivative_blocks = {}
-        self.conserve_statements = {}
-        for AST in self.lookup(ANT.DERIVATIVE_BLOCK):
-            name = AST.name.get_node_name()
-            self.derivative_blocks[name] = block = _CodeBlock(self, AST)
-            self.conserve_statements[name] = [x for x in block if isinstance(x, _ConserveStatement)]
-        assert(len(self.derivative_blocks) <= 1) # Otherwise unimplemented.
-        self.initial_block = _CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
+        Sets: initial_block, breakpoint_block, derivative_blocks. """
+        self.derivative_blocks = {AST.name.get_node_name(): _CodeBlock(self, AST)
+                                    for AST in self.lookup(ANT.DERIVATIVE_BLOCK)}
+        self.initial_block    = _CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
         self.breakpoint_block = _CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
-        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages", 'r')
 
     def _parse_statement(self, AST):
         """ Returns a list of Statement objects. """
@@ -263,8 +238,15 @@ class NmodlMechanism(Reaction):
             return self._parse_expression(AST.value) * factor
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
 
+    def _add_pointer(self, name, pointer, mode):
+        """ Argument name is an nmodl varaible name.
+            Argument pointer is a database access path. """
+        assert name not in self.pointers
+        self.pointers[name] = _Pointer(pointer, mode)
+
     def _gather_IO(self):
         """ Determine what external data the mechanism accesses. """
+        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages", 'r')
         # Assignments to the variables in output_currents are ignored because
         # NEUWON converts all mechanisms to use conductances instead of currents.
         output_currents = []
@@ -317,17 +299,26 @@ class NmodlMechanism(Reaction):
                 if isinstance(stmt, _AssignStatement) and stmt.lhsn in no_write
                 else [stmt]))
 
-    def _sympy_solve_and_inline(self, stmt):
+    def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the
-        systems of differential equations. """
-        if not isinstance(stmt, _SolveStatement): return [stmt]
-        if stmt.method == "cnexp":
-            block = self.derivative_blocks[stmt.block]
-            for stmt in block:
-                if isinstance(stmt, _AssignStatement) and stmt.derivative:
-                    stmt.solve()
-            return block.statements
-        return [stmt]
+        systems of differential equations.
+
+        Sets solved_blocks. """
+        self.solved_blocks = {}
+        sympy_methods = ("euler", "cnexp")
+        self.breakpoint_block.map((lambda stmt: self._sympy_solve(stmt.block).statements
+                if isinstance(stmt, _SolveStatement) and stmt.method in sympy_methods else [stmt]))
+        self.breakpoint_block.map((lambda stmt: _LinearSystem(self, stmt.block)
+                if isinstance(stmt, _SolveStatement) and stmt.method == "sparse" else [stmt]))
+
+    def _sympy_solve(self, block_name):
+        if block_name in self.solved_blocks: return self.solved_blocks[block_name]
+        block = self.derivative_blocks[block_name]
+        self.solved_blocks[block_name] = block = copy.deepcopy(block)
+        for stmt in block:
+            if isinstance(stmt, _AssignStatement) and stmt.derivative:
+                stmt.solve()
+        return block
 
     def _apply_parameter_overrides(self, parameter_overrides):
         for name, value in parameter_overrides.items():
@@ -354,17 +345,24 @@ class NmodlMechanism(Reaction):
         try:
             self._gather_builtin_parameters(database)
             self._substitute_parameters(database)
-            database.add_archetype(self.name(), doc=self.description)
             # self._solve() # TODO: only solve for kinetic models here.
             # self.kinetic_models = {}
             # for name, block in self.derivative_functions.items():
             #     self.kinetic_models[name] = KineticModel(1/0)
             self._run_initial_block(database)
-            for name in list(self.states) + list(self.surface_area_parameters):
-                component_name = self.name() + "/data/" + name
-                self._add_pointer(name, component_name, 'rw')
-                database.add_attribute(component_name, 
-                    initial_value=None) # TODO: get init value from output of "_run_initial_block"
+            database.add_archetype(self.name(), doc=self.description)
+            database.add_attribute(self.name() + "/insertions", dtype="membrane")
+            for name in self.surface_area_parameters:
+                path = self.name() + "/data/" + name
+                database.add_attribute(path)
+                self._add_pointer(name, path, 'r')
+            for name in self.states:
+                path = self.name() + "/data/" + name
+                database.add_attribute(path, initial_value=self.initial_state[name])
+                self._add_pointer(name, path, 'rw')
+            for stmt in self.breakpoint_block:
+                if isinstance(stmt, _AssignStatement):
+                    stmt.pointer = self.pointers.get(stmt.lhsn, None)
             self._compile_breakpoint_block(database)
             for ptr in self.pointers.values(): database.access(ptr)
         except Exception:
@@ -389,12 +387,10 @@ class NmodlMechanism(Reaction):
                 if isinstance(stmt, _AssignStatement):
                     stmt.rhs = stmt.rhs.subs(substitutions)
 
-    def _solve(self):
-        """ Processes some derivative_blocks into derivative_functions.
-
-        Dictionary derivative_functions contains functions to evaluate the
-        derivative matrix with the given inputs. All systems in this dictionary
-        are linear & time invariant. """
+    def _compile_derivative_blocks(self):
+        """ Replace the derivative_blocks with compiled functions in the form:
+                f(state_vector, **block.arguments) ->  Δstate_vector/Δt
+        """
         self.derivative_functions = {}
         solve_statements = {stmt.block: stmt
                 for stmt in self.breakpoint_block if isinstance(stmt, _SolveStatement)}
@@ -402,7 +398,6 @@ class NmodlMechanism(Reaction):
             if name not in solve_statements: continue
             if solve_statements[name].method == "sparse":
                 self.derivative_functions[name] = self._compile_derivative_block(block)
-                # self._check_derivative_lti()
 
     def _compile_derivative_block(self, block):
         """ Returns function in the form:
@@ -421,7 +416,7 @@ class NmodlMechanism(Reaction):
         _exec_wrapper(py, globals_, locals_)
         return numba.njit(locals_["derivative"])
 
-    def _compute_propagator_matrix(self, block, time_step, kw_args):
+    def _compute_propagator_matrix(self, block, time_step, kwargs):
         1/0
         f = self.derivative_functions[block]
         n = len(self.states)
@@ -429,22 +424,21 @@ class NmodlMechanism(Reaction):
         for i in range(n):
             state = np.array([0. for x in self.states])
             state[i] = 1
-            A[:, i] = f(state, **kw_args)
+            A[:, i] = f(state, **kwargs)
         return expm(A * time_step)
 
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
-        self.initial_block.gather_arguments(self)
         globals_ = {
             "solve_steadystate": self.solve_steadystate,
-            mangle2("index"): 0
         }
+        self.initial_block.gather_arguments(self)
         for arg in self.initial_block.arguments:
             try: globals_[arg] = database.initial_value(self.pointers[arg].name)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {mangle(x): [0] for x in self.states}
-        initial_python = self.initial_block.to_python()
+        initial_python = self.initial_block.to_python(context="INITIAL_BLOCK")
         _exec_wrapper(initial_python, globals_, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(mangle(x))[0] for x in self.states}
 
@@ -452,8 +446,8 @@ class NmodlMechanism(Reaction):
         # First generate a state which satisfies the CONSERVE constraints.
         states = {x: 0 for x in self.states}
         conserved_states = set()
-        for block_name, stmt_list in self.conserve_statements.items():
-            for stmt in stmt_list:
+        for block_name, block in self.derivative_functions.items():
+            for stmt in block.conserve_statements:
                 initial_value = stmt.conserve_sum / len(stmt.states)
                 for x in stmt.states:
                     if x in conserved_states:
@@ -477,7 +471,7 @@ class NmodlMechanism(Reaction):
         # hints and associated statements at the beginning of the block.
         self.breakpoint_block.statements.sort(key=lambda stmt: bool(
                 isinstance(stmt, _AssignStatement)
-                and stmt.pointer and "conductance" in stmt.pointer))
+                and stmt.pointer and "conductance" in stmt.pointer.name))
         # 
         self.breakpoint_block.gather_arguments(self)
         input_variables = list(self.breakpoint_block.arguments)
@@ -509,18 +503,18 @@ class NmodlMechanism(Reaction):
         preamble.append("    time_step = "+str(time_step))
         for variable, pointer in self.pointers.items():
             if not pointer.read: continue
-            x = location if pointer.omnipresent else index
-            def NEURON_conversion_factor(self):
-                """ """ # TODO!
-                if   self.reaction_instance: return 1
-                elif self.voltage:           return 1000 # From NEUWONs volts to NEURONs millivolts.
-                elif self.conductance:       return 1
-                else: raise NotImplementedError(self)
-            factor = str(pointer.NEURON_conversion_factor())
+            # TODO: Determine local variable "x" which is the index to use by
+            # looking at the pointer. TODO: Add logic to the pointer to figure
+            # out what the archetype is and how to index its data....
+            1/0
+            # if pointer.name.startswith("membrane"):     x = location
+            # elif pointer.name.startswith(self._name):   x = index
+            # else: raise NotImplementedError(pointer.name)
+            if pointer.name == "membrane/voltages": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
+            else:                                   factor = 1
             preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
-        if False: print(py)
         breakpoint_globals = {
             mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
@@ -548,6 +542,13 @@ class _Pointer:
         self.name = str(name)
         self.mode = str(mode)
         assert self.mode in ('r', 'w', 'rw', 'a')
+        # TODO: Somewhere, somehow, pointers aut to understand how indexing works.
+        # Maybe they could have an "indexed_by" property?
+        # It should be possible to determine the index from the archetype:
+        #           membrane/
+        #           this-mechanism/
+        #           other-mechanisms/ - passed in by the user?
+        1/0
     @property
     def read(self):
         return 'r' in self.mode
@@ -556,7 +557,7 @@ class _Pointer:
         return self.accumulate or 'w' in self.mode
     @property
     def accumulate(self):
-        return self.mode == 'a'
+        return 'a' in self.mode
 
 class _CodeBlock:
     def __init__(self, file, AST):
@@ -570,6 +571,7 @@ class _CodeBlock:
         AST = getattr(AST, "statement_block", AST)
         for stmt in AST.statements:
             self.statements.extend(file._parse_statement(stmt))
+        self.conserve_statements = [x for x in self if isinstance(x, _ConserveStatement)]
         if top_level: self.gather_arguments(file)
 
     def gather_arguments(self, file):
@@ -614,12 +616,10 @@ class _CodeBlock:
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
-    def to_python(self, indent=""):
+    def to_python(self, indent="", **kwargs):
         py = ""
         for stmt in self.statements:
-            if isinstance(stmt, str):
-                1/0
-            else: py += stmt.to_python(indent)
+            py += stmt.to_python(indent, **kwargs)
         return py.rstrip() + "\n"
 
 class _IfStatement:
@@ -659,12 +659,12 @@ class _IfStatement:
         for block in self.elif_blocks: block.map(f)
         self.else_block.map(f)
 
-    def to_python(self, indent):
+    def to_python(self, indent, **kwargs):
         py = indent + "if %s:\n"%pycode(self.condition)
-        py += self.main_block.to_python(indent + "    ")
+        py += self.main_block.to_python(indent + "    ", **kwargs)
         assert(not self.elif_blocks) # TODO: Unimplemented.
         py += indent + "else:\n"
-        py += self.else_block.to_python(indent + "    ")
+        py += self.else_block.to_python(indent + "    ", **kwargs)
         return py
 
 class _AssignStatement:
@@ -674,13 +674,15 @@ class _AssignStatement:
         self.derivative = bool(derivative)
         # self.pointer = pointer # Associated with the left hand side.
 
-    def to_python(self,  indent=""):
+    def to_python(self,  indent="", context=None, **kwargs):
         if not isinstance(self.rhs, str):
             self.rhs = pycode(self.rhs.simplify())
         if self.derivative:
             lhs = mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
-        elif self.pointer:
+        if context != "INITIAL_BLOCK" and self.pointer:
+            # TODO: I need a replacement for omnipresent which deals with how
+            # the data is indexed...
             array_access = "[_location_]" if self.pointer.omnipresent else "[_index_]"
             eq = " = " if self.pointer.read else " += "
             lhs = mangle(self.lhsn) + array_access
@@ -688,8 +690,7 @@ class _AssignStatement:
             if self.pointer.read:
                 py += indent + self.lhsn + " = " + lhs + "\n"
             return py
-        else:
-            return indent + self.lhsn + " = " + self.rhs + "\n"
+        return indent + self.lhsn + " = " + self.rhs + "\n"
 
     def solve(self):
         """ Solve this differential equation in-place. """
@@ -746,11 +747,18 @@ class _SolveStatement:
         #     self.py = self.block + "(%s)\n"%(
         #                 ", ".join(arguments))
 
-    def to_python(self, indent):
+    def to_python(self, indent, **kwargs):
         1/0
         if self.steadystate: return insert_indent(indent, self._steadystate_callback)
         else:
             return indent + 1/0
+
+class _LinearSystem:
+    def __init__(self, file, name):
+        1/0
+
+    def to_python(self, indent, **kwargs):
+        1/0
 
 class _ConserveStatement:
     def __init__(self, file, AST):
@@ -765,7 +773,7 @@ class _ConserveStatement:
         assert(len(sum_solution) == 1)
         self.conserve_sum = sum_solution[0].evalf()
 
-    def to_python(self, indent):
+    def to_python(self, indent, **kwargs):
         py  = indent + "_CORRECTION_FACTOR = %s / (%s)\n"%(str(self.conserve_sum), " + ".join(self.states))
         for x in self.states:
             py += indent + x + " *= _CORRECTION_FACTOR\n"
@@ -994,6 +1002,6 @@ def _exec_wrapper(python, globals_, locals_):
         raise
 
 if __name__ == "__main__":
-    for name, (nmodl_file_path, kw_args) in sorted(library.items()):
+    for name, (nmodl_file_path, kwargs) in sorted(library.items()):
         print("ATTEMPTING:", name)
-        new_mechanism = NmodlMechanism(nmodl_file_path, **kw_args)
+        new_mechanism = NmodlMechanism(nmodl_file_path, **kwargs)
