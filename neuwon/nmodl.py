@@ -283,7 +283,7 @@ class NmodlMechanism(Reaction):
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
             variable = x.conductance.get_node_name()
             ion = x.ion.get_node_name() if x.ion else None
-            self._add_pointer(variable, "membrane/%s/conductances"%ion, 'a')
+            self._add_pointer(variable, "membrane/conductances/%s"%ion, 'a')
         num_conductances = sum("conductance" in ptr.name for ptr in self.pointers.values())
         if len(output_currents) != num_conductances:
             eprint("Output Currents:", ", ".join(output_currents))

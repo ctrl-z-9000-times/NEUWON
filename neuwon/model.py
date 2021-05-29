@@ -28,7 +28,7 @@ class Species:
     # Instead provide it in code examples which the user can copy paste into their
     # code, or possible import directly from an "examples" sub-module (like with
     # htm.core: `import htm.examples`). The problem with this std-lib is that there
-    # is no real consensus on what's standard... Species have a lot of arguments and
+    # is no real consensus on what's standard? Species have a lot of arguments and
     # while there may be one scientifically correct value for each argument, the
     # user might want to omit options for run-speed. Mechanisms come in so many
     # different flavors too, with varying levels of bio-accuracy vs run-speed.
@@ -78,8 +78,8 @@ class Species:
             outside_diffusivity = None,
             inside_decay_period = float("inf"),
             outside_decay_period = float("inf"),
-            inside_shells = False,
-            outside_grid = None,):
+            use_shells = False,
+            use_grid = None,):
         """
         If diffusivity is not given, then the concentration is constant.
         Argument reversal_potential is one of: number, "nerst", "goldman_hodgkin_katz"
@@ -97,93 +97,103 @@ class Species:
         self.outside_diffusivity = float(outside_diffusivity) if outside_diffusivity is not None else None
         self.inside_decay_period  = float(inside_decay_period)
         self.outside_decay_period = float(outside_decay_period)
-        self.inside_shells = bool(inside_shells)
-        self.outside_grid  = None if outside_grid is None else tuple(float(x) for x in outside_grid)
+        self.use_shells = bool(use_shells)
+        self.use_grid = None if use_grid is None else tuple(float(x) for x in use_grid)
         assert(self.inside_concentration  >= 0.0)
         assert(self.outside_concentration >= 0.0)
         assert(self.inside_diffusivity  is None or self.inside_diffusivity >= 0)
         assert(self.outside_diffusivity is None or self.outside_diffusivity >= 0)
         assert(self.inside_decay_period  > 0.0)
         assert(self.outside_decay_period > 0.0)
-        if self.outside_grid: assert(len(self.outside_grid) == 3 and all(x > 0 for x in self.outside_grid))
+        if self.use_shells: assert(self.inside_diffusivity is not None)
+        if self.use_grid: assert(len(self.use_grid) == 3 and all(x > 0 for x in self.use_grid))
 
     def _initialize(self, database):
-        """ Called on a shallow copy of this Species. """
-        add_attribute = database.add_attribute
-        inside_entity = "inside" if self.inside_shells else "membrane/inside"
-        if self.inside_diffusivity is not None:
-            add_attribute("%s/%s/concentrations"%(inside_entity, self.name),
-                    initial_value=self.inside_concentration,
-                    doc="Units: Molar")
-            add_attribute("%s/%s/release_rates"%(inside_entity, self.name),
-                    initial_value=0,
-                    doc="Units: Molar / Second")
-            database.add_linear_system("%s/%s/diffusion"%(inside_entity, self.name),
-                function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+        db = database
+        concentrations_doc = "Units: Molar"
+        release_rates_doc = "Units: Molar / Second"
+        reversal_potentials_doc = "Units:"
+        conductances_doc = "Units: Siemens"
+        if self.inside_diffusivity is None:
+            db.add_global_constant("inside/concentrations/%s"%self.name,
+                    self.inside_concentration, doc=concentrations_doc)
         else:
-            database.add_global_constant("%s/%s/concentrations"%(inside_entity, self.name),
-                    self.inside_concentration,
-                    doc="Units: Molar")
-        if self.outside_diffusivity is not None:
-            1/0 # untested code paths...
-            add_attribute("outside/%s/concentrations"%self.name,
-                    initial_value=self.outside_concentration,
-                    doc="Units: Molar")
-            add_attribute("outside/%s/release_rates"%self.name,
-                    initial_value=0,
-                    doc="Units: Molar / Second")
-            # add_attribute("outside/%s/diffusion"%self.name, shape="sparse") # TODO
+            if self.use_shells:
+                db.add_attribute("inside/concentrations/%s"%self.name,
+                        initial_value=self.inside_concentration, doc=concentrations_doc)
+                db.add_attribute("inside/release_rates/%s"%self.name,
+                        initial_value=0, doc=release_rates_doc)
+                db.add_linear_system("inside/%s/diffusion"%self.name,
+                        function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+            else:
+                db.add_attribute("membrane/inside/concentrations/%s"%self.name,
+                        initial_value=self.inside_concentration, doc=concentrations_doc)
+                db.add_attribute("membrane/inside/release_rates/%s"%self.name,
+                        initial_value=0, doc=release_rates_doc)
+                db.add_linear_system("membrane/inside/diffusion/%s"%self.name,
+                        function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+        if self.outside_diffusivity is None:
+            db.add_global_constant("outside/concentrations/%s"%self.name,
+                    self.outside_concentration, doc=concentrations_doc)
         else:
-            database.add_global_constant("outside/%s/concentrations"%self.name,
-                    self.outside_concentration,
-                    doc="Units: Molar")
+            db.add_attribute("outside/concentrations/%s"%self.name,
+                    initial_value=self.outside_concentration, doc=concentrations_doc)
+            db.add_attribute("outside/release_rates/%s"%self.name,
+                    initial_value=0, doc=release_rates_doc)
+            db.add_linear_system("outside/diffusion/%s"%self.name,
+                    function=_outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
-            add_attribute("membrane/%s/conductances"%self.name,
-                    initial_value=0,
-                    doc="Units: Siemens")
-        # Detect if the reversal potential is a global constant and pre-compute it.
-        if (self.reversal_potential == "nerst"
-                and self.inside_diffusivity is None
-                and self.outside_diffusivity is None):
-            pass # TODO...
-            # self.reversal_potential = 1/0
-            # _nerst_potential(charge, T, inside_concentration, outside_concentration)
+            db.add_attribute("membrane/conductances/%s"%self.name,
+                    initial_value=0, doc=conductances_doc)
+            if isinstance(self.reversal_potential, float):
+                db.add_global_constant("membrane/reversal_potentials/%s"%self.name,
+                        self.reversal_potential, doc=reversal_potentials_doc)
+            elif (self.inside_diffusivity is None and self.outside_diffusivity is None
+                    and self.reversal_potential == "nerst"):
+                x = self._nerst_potential(
+                        db.access("T"), self.inside_concentration, self.outside_concentration)
+                db.add_global_constant("membrane/reversal_potentials/%s"%self.name,
+                        x, doc=reversal_potentials_doc)
+            else:
+                db.add_attribute("membrane/reversal_potentials/%s"%self.name,
+                        doc=reversal_potentials_doc)
 
     def _reversal_potential(self, database_access):
-        if isinstance(self.reversal_potential, float):
-            return self.reversal_potential
+        if isinstance(self.reversal_potential, float): return self.reversal_potential
+        T = database_access("T")
+        try:             inside = database_access("inside/concentrations/%s"%self.name)
+        except KeyError: inside = database_access("membrane/inside/concentrations/%s"%self.name)
         else:
-            T = database_access("T")
-            inside = database_access("membrane/inside/%s/concentrations"%self.name)
-            outside = database_access("outside/%s/concentrations"%self.name)
-            if self.reversal_potential == "nerst":
-                return _nerst_potential(self.charge, T, inside, outside)
-            elif self.reversal_potential == "goldman_hodgkin_katz":
-                voltages = database_access("membrane/voltages")
-                return _goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
+            if isinstance(inside, Iterable):
+                index = database_access("membrane/inside")
+                inside = inside[index]
+        outside = database_access("outside/concentrations/%s"%self.name)
+        if self.reversal_potential == "nerst":
+            return self._nerst_potential(T, inside, outside)
+        elif self.reversal_potential == "goldman_hodgkin_katz":
+            voltages = database_access("membrane/voltages")
+            return self._goldman_hodgkin_katz(T, inside, outside, voltages)
 
-# TODO: (Once this is back working) make the next three methods into private methods on Species.
+    def _nerst_potential(self, T, inside_concentration, outside_concentration):
+        """ Returns the reversal voltage for an ionic species. """
+        xp = cp.get_array_module(inside_concentration)
+        if self.charge == 0: return xp.zeros_like(inside_concentration)
+        ratio = xp.divide(outside_concentration, inside_concentration)
+        return xp.nan_to_num(R * T / F / self.charge * xp.log(ratio))
 
-def _nerst_potential(charge, T, inside_concentration, outside_concentration):
-    """ Returns the reversal voltage for an ionic species. """
-    xp = cp.get_array_module(inside_concentration)
-    if charge == 0: return xp.full_like(inside_concentration, xp.nan)
-    ratio = xp.divide(outside_concentration, inside_concentration)
-    return xp.nan_to_num(R * T / F / charge * xp.log(ratio))
+    def _goldman_hodgkin_katz(self, T, inside_concentration, outside_concentration, voltages):
+        """ Returns the reversal voltage for an ionic species. """
+        xp = cp.get_array_module(inside_concentration)
+        if self.charge == 0: return xp.full_like(inside_concentration, np.nan)
+        z = (self.charge * F / (R * T)) * voltages
+        return (self.charge * F) * (inside_concentration * self._efun(-z) - outside_concentration * self._efun(z))
 
-@cp.fuse()
-def _efun(z):
-    if abs(z) < 1e-4:
-        return 1 - z / 2
-    else:
-        return z / (math.exp(z) - 1)
-
-def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
-    """ Returns the reversal voltage for an ionic species. """
-    xp = cp.get_array_module(inside_concentration)
-    if charge == 0: return xp.full_like(inside_concentration, np.nan)
-    z = (charge * F / (R * T)) * voltages
-    return (charge * F) * (inside_concentration * _efun(-z) - outside_concentration * _efun(z))
+    @cp.fuse()
+    def _efun(z):
+        if abs(z) < 1e-4:
+            return 1 - z / 2
+        else:
+            return z / (math.exp(z) - 1)
 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
@@ -215,24 +225,21 @@ class Reaction:
         """
         raise TypeError("Abstract method called by %s."%repr(self))
 
-# TODO: Move the reactions library into the Reactions class as a private class
-# attribute, for code folding purposes.
+    _library = {
+        "hh": ("nmodl_library/hh.mod",
+            dict(pointers={"gl": ("membrane/conductances/L", 'a')},
+                 parameter_overrides = {"celsius": 6.3})),
 
-reactions_library = {
-    "hh": ("nmodl_library/hh.mod",
-        dict(pointers={"gl": ("membrane/L/conductances", 'a')},
-             parameter_overrides = {"celsius": 6.3})),
+        # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
 
-    # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
+        # "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
 
-    # "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
+        # "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
+        #     dict(pointers={"C": AccessHandle("Glu", outside_concentration=True)})),
 
-    # "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
-    #     dict(pointers={"C": AccessHandle("Glu", outside_concentration=True)})),
-
-    # "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
-    #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
-}
+        # "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
+        #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
+    }
 
 class Model:
     def __init__(self, time_step,
@@ -326,6 +333,12 @@ class Model:
     def __len__(self):
         return self.db.num_entity("membrane")
 
+    def __str__(self):
+        return str(self.db)
+
+    def __repr__(self):
+        return repr(self.db)
+
     def check_data(self):
         self.db.check()
 
@@ -341,9 +354,7 @@ class Model:
         elif isinstance(species, str):
             if species in Species._library: species = Species(species, **Species._library[species])
             else: raise ValueError("Unrecognized species: %s."%species)
-        else:
-            species = copy.copy(species)
-            assert(isinstance(species, Species))
+        else: assert(isinstance(species, Species))
         assert(species.name not in self.species)
         self.species[species.name] = species
         species._initialize(self.db)
@@ -356,7 +367,7 @@ class Model:
         """
         r = reaction
         if not isinstance(r, Reaction) and not (isinstance(r, type) and issubclass(r, Reaction)):
-            try: nmodl_file_path, kwargs = reactions_library[str(r)]
+            try: nmodl_file_path, kwargs = Reaction._library[str(r)]
             except KeyError: raise ValueError("Unrecognized Reaction: %s."%str(r))
             from neuwon.nmodl import NmodlMechanism
             r = NmodlMechanism(nmodl_file_path, **kwargs)
@@ -659,7 +670,7 @@ class Model:
         for s in self.species.values():
             if not s.transmembrane: continue
             reversal_potential = s._reversal_potential(access)
-            g = access("membrane/%s/conductances"%s.name)
+            g = access("membrane/conductances/%s"%s.name)
             conductances += g
             driving_voltages += g * reversal_potential
         driving_voltages /= conductances
@@ -697,11 +708,11 @@ class Model:
         access = self.db.access
         for name, species in self.species.items():
             if species.transmembrane:
-                access("membrane/%s/conductances"%name).fill(0.0)
+                access("membrane/conductances/%s"%name).fill(0.0)
             if species.inside_diffusivity is not None:
-                access("inside/%s/release_rates"%name).fill(0.0)
+                access("inside/release_rates/%s"%name).fill(0.0)
             if species.outside_diffusivity is not None:
-                access("outside/%s/release_rates"%name).fill(0.0)
+                access("outside/release_rates/%s"%name).fill(0.0)
         for r in self.reactions.values():
             r.advance(access)
 
