@@ -19,8 +19,7 @@ from neuwon.model import Reaction
 from scipy.linalg import expm
 import sys
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+def eprint(*args, **kwargs): print(*args, file=sys.stderr, **kwargs)
 
 ANT = nmodl.ast.AstNodeType
 
@@ -359,9 +358,11 @@ class NmodlMechanism(Reaction):
 
     def _gather_builtin_parameters(self, database):
         for name in _builtin_parameters:
-            value, units = self.parameters[name]
-            if value is None:
-                self.parameters[name] = (database.access(name), units)
+            builtin_value = database.access(name)
+            given_value, units = self.parameters[name]
+            if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
+            if given_value is None:
+                self.parameters[name] = (builtin_value, units)
 
     def _substitute_parameters(self, database):
         substitutions = []
@@ -501,9 +502,6 @@ class NmodlMechanism(Reaction):
         preamble.append("    "+location+" = "+locations+"["+index+"]")
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)
-        time_step = database.access("time_step")
-        if not self.use_units: time_step *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
-        preamble.append("    time_step = "+str(time_step))
         for variable, pointer in self.pointers.items():
             if not pointer.read: continue
             if pointer.name == "membrane/voltages": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
@@ -985,6 +983,7 @@ mangle2 = lambda x: "_" + x + "_"
 demangle2 = lambda x: x[1:-1]
 
 def _exec_wrapper(python, globals_, locals_=None):
+    if False: print(python)
     globals_["math"] = math
     try: exec(python, globals_, locals_)
     except:

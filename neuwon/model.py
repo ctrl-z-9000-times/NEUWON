@@ -115,59 +115,66 @@ class Species:
         reversal_potentials_doc = "Units:"
         conductances_doc = "Units: Siemens"
         if self.inside_diffusivity is None:
-            db.add_global_constant("inside/concentrations/%s"%self.name,
+            db.add_global_constant("inside/concentrations/" + self.name,
                     self.inside_concentration, doc=concentrations_doc)
         else:
             if self.use_shells:
-                db.add_attribute("inside/concentrations/%s"%self.name,
+                db.add_attribute("inside/concentrations/" + self.name,
                         initial_value=self.inside_concentration, doc=concentrations_doc)
-                db.add_attribute("inside/release_rates/%s"%self.name,
+                db.add_attribute("inside/release_rates/" + self.name,
                         initial_value=0, doc=release_rates_doc)
-                db.add_linear_system("inside/%s/diffusion"%self.name,
+                db.add_linear_system("inside/diffusions/" + self.name,
                         function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
             else:
-                db.add_attribute("membrane/inside/concentrations/%s"%self.name,
+                db.add_attribute("membrane/inside/concentrations/" + self.name,
                         initial_value=self.inside_concentration, doc=concentrations_doc)
-                db.add_attribute("membrane/inside/release_rates/%s"%self.name,
+                db.add_attribute("membrane/inside/release_rates/" + self.name,
                         initial_value=0, doc=release_rates_doc)
-                db.add_linear_system("membrane/inside/diffusion/%s"%self.name,
+                db.add_linear_system("membrane/inside/diffusions/" + self.name,
                         function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.outside_diffusivity is None:
-            db.add_global_constant("outside/concentrations/%s"%self.name,
+            db.add_global_constant("outside/concentrations/" + self.name,
                     self.outside_concentration, doc=concentrations_doc)
         else:
-            db.add_attribute("outside/concentrations/%s"%self.name,
+            db.add_attribute("outside/concentrations/" + self.name,
                     initial_value=self.outside_concentration, doc=concentrations_doc)
-            db.add_attribute("outside/release_rates/%s"%self.name,
+            db.add_attribute("outside/release_rates/" + self.name,
                     initial_value=0, doc=release_rates_doc)
-            db.add_linear_system("outside/diffusion/%s"%self.name,
+            db.add_linear_system("outside/diffusions/" + self.name,
                     function=_outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
-            db.add_attribute("membrane/conductances/%s"%self.name,
+            db.add_attribute("membrane/conductances/" + self.name,
                     initial_value=0, doc=conductances_doc)
             if isinstance(self.reversal_potential, float):
-                db.add_global_constant("membrane/reversal_potentials/%s"%self.name,
+                db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         self.reversal_potential, doc=reversal_potentials_doc)
             elif (self.inside_diffusivity is None and self.outside_diffusivity is None
                     and self.reversal_potential == "nerst"):
                 x = self._nerst_potential(
                         db.access("T"), self.inside_concentration, self.outside_concentration)
-                db.add_global_constant("membrane/reversal_potentials/%s"%self.name,
+                db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         x, doc=reversal_potentials_doc)
             else:
-                db.add_attribute("membrane/reversal_potentials/%s"%self.name,
+                db.add_attribute("membrane/reversal_potentials/" + self.name,
                         doc=reversal_potentials_doc)
 
     def _reversal_potential(self, database_access):
-        if isinstance(self.reversal_potential, float): return self.reversal_potential
+        # TODO: Write the computed E-rev to this buffer...
+        # if self.charge == 0: return xp.zeros_like(inside_concentration) # Zero or NaN?
+        # if self.charge == 0: return xp.full_like(inside_concentration, np.nan)
+        x = database_access("membrane/reversal_potentials/" + self.name)
+        if isinstance(x, float): return x
         T = database_access("T")
-        try:             inside = database_access("inside/concentrations/%s"%self.name)
-        except KeyError: inside = database_access("membrane/inside/concentrations/%s"%self.name)
+        try:             inside = database_access("inside/concentrations/" + self.name)
+        except KeyError: inside = database_access("membrane/inside/concentrations/" + self.name)
         else:
             if isinstance(inside, Iterable):
                 index = database_access("membrane/inside")
                 inside = inside[index]
-        outside = database_access("outside/concentrations/%s"%self.name)
+        outside = database_access("outside/concentrations/" + self.name)
+        if isinstance(outside, Iterable):
+            index = database_access("membrane/outside")
+            outside = outside[index]
         if self.reversal_potential == "nerst":
             return self._nerst_potential(T, inside, outside)
         elif self.reversal_potential == "goldman_hodgkin_katz":
@@ -175,16 +182,12 @@ class Species:
             return self._goldman_hodgkin_katz(T, inside, outside, voltages)
 
     def _nerst_potential(self, T, inside_concentration, outside_concentration):
-        """ Returns the reversal voltage for an ionic species. """
         xp = cp.get_array_module(inside_concentration)
-        if self.charge == 0: return xp.zeros_like(inside_concentration)
         ratio = xp.divide(outside_concentration, inside_concentration)
         return xp.nan_to_num(R * T / F / self.charge * xp.log(ratio))
 
     def _goldman_hodgkin_katz(self, T, inside_concentration, outside_concentration, voltages):
-        """ Returns the reversal voltage for an ionic species. """
         xp = cp.get_array_module(inside_concentration)
-        if self.charge == 0: return xp.full_like(inside_concentration, np.nan)
         z = (self.charge * F / (R * T)) * voltages
         return (self.charge * F) * (inside_concentration * self._efun(-z) - outside_concentration * self._efun(z))
 
@@ -812,7 +815,7 @@ def _electric_coefficients(access):
     Compute the coefficients of the derivative function:
     dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
     """
-    dt           = access("time_step")
+    dt           = access("time_step") / 2
     parents      = access("membrane/parents").get()
     resistances  = access("membrane/axial_resistances").get()
     capacitances = access("membrane/capacitances").get()
