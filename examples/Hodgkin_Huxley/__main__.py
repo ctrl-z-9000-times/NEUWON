@@ -15,12 +15,12 @@ class Experiment:
     def __init__(self,
             axon_length   = 1000e-6,
             axon_diameter = 1e-6,
-            soma_diameter = 10e-6,
+            soma_diameter = 11e-6,
             time_step     = 1e-6,
             length_step   = 20e-6,
             stagger       = True,
             probes        = None,
-            stimulus      = 2e-9,
+            stimulus      = 2e-10,
         ):
         self.time_step = time_step
         self.length_step = length_step
@@ -57,6 +57,10 @@ class Experiment:
             # x.insert_reaction("na11a", scale=3)
             # x.insert_reaction("Kv11_13States_temperature2", scale=3)
         print("Number of Locations:", len(self.model))
+        sa = sum(x.read("membrane/surface_areas") for x in self.soma)
+        print("Soma surface area:", sa, "M^2")
+        sa += sum(x.read("membrane/surface_areas") for x in self.axon)
+        print("Total surface area:", sa, "M^2")
         print(repr(self.model))
 
     def generate_input(self):

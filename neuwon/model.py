@@ -432,7 +432,10 @@ class Model:
             x = np.linspace(0.0, 1.0, num=divisions + 1)[1:].reshape(-1, 1)
             _x = np.subtract(1.0, x)
             seg_coords = c * x + old_coords[p] * _x
-            seg_diams  = d * x + old_diams[p] * _x
+            if shape == 1:
+                seg_diams = np.full(divisions, d)
+            elif shape == 2:
+                seg_diams = d * x + old_diams[p] * _x
             cursor = p
             for i in range(divisions):
                 cursor = self._create_segment_batch([cursor],
