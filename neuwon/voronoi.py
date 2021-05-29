@@ -5,9 +5,9 @@ import math
 import scipy.spatial
 import time
 import random
-from neuwon.common import Real, epsilon, Location, ROOT
+from neuwon.database import Real, epsilon, Index, NULL
 
-__all__ = ["voronoi_cell"]
+__all__ = ["voronoi_cell"] # Public API entry point.
 
 origin = np.zeros(3, dtype=Real)
 
@@ -22,19 +22,19 @@ Plane = np.dtype([
 
 Triangle = np.dtype([
     ("vertexes", Real, (3, 3)),
-    ("facing_location", Location),
+    ("facing_location", Index),
     ("max_dist_sqr", Real),
     ("surface_area", Real),
 ])
 
 Neighbor = np.dtype([
-    ("location", Location),
+    ("location", Index),
     ("distance", Real),
     ("border_surface_area", Real),
 ])
 
 Real_t      = numba.from_dtype(Real)
-Location_t  = numba.from_dtype(Location)
+Index_t     = numba.from_dtype(Index)
 Vec_t       = Real_t[::1] # Contiguous.
 Void_t      = numba.void
 Boolean_t   = numba.boolean
@@ -71,7 +71,7 @@ def plane_line_intersection(plane, a, b):
         intersection[i] = x * intersection[i] + a[i]
     return intersection
 
-@numba.njit(Void_t(Triangle_t, Real_t[:], Real_t[:], Real_t[:], Location_t), cache=True)
+@numba.njit(Void_t(Triangle_t, Real_t[:], Real_t[:], Real_t[:], Index_t), cache=True)
 def new_triangle(triangle, v0, v1, v2, facing_location):
     triangle["vertexes"][0] = v0
     triangle["vertexes"][1] = v1
@@ -113,10 +113,10 @@ def triangles_to_neighbors(triangles):
     # Secondary sort key is border_surface_area to avoid sorting by uninitialized data.
     with numba.objmode():
         neighbors_array.sort(order=["location", "border_surface_area"])
-    previous = ROOT # Detect boundaries of contiguous blocks of each facing_location.
+    previous = NULL # Detect boundaries of contiguous blocks of each facing_location.
     write_idx = -1 # Scan and compress in place.
     for neighbor in neighbors_array:
-        if neighbor["location"] == ROOT:
+        if neighbor["location"] == NULL:
             break
         elif neighbor["location"] != previous:
             write_idx += 1
@@ -127,7 +127,7 @@ def triangles_to_neighbors(triangles):
             neighbors_array[write_idx]["border_surface_area"] += neighbor["border_surface_area"]
     return neighbors_array[:write_idx+1]
 
-@numba.njit(Triangle_t[::1](Triangle_t[::1], Plane_t, Location_t), cache=True)
+@numba.njit(Triangle_t[::1](Triangle_t[::1], Plane_t, Index_t), cache=True)
 def add_plane(triangles, plane, facing_location):
     len_new_triangles = 0
     new_triangles = np.empty(3 * len(triangles) - 1, dtype=Triangle)
@@ -210,26 +210,26 @@ def sphere(r):
                 corners[x, d] = r
     triangles = np.empty(12, dtype=Triangle)
     # Dimension 0 -
-    new_triangle(triangles[0], corners[0], corners[6], corners[2], ROOT)
-    new_triangle(triangles[1], corners[0], corners[6], corners[4], ROOT)
+    new_triangle(triangles[0], corners[0], corners[6], corners[2], NULL)
+    new_triangle(triangles[1], corners[0], corners[6], corners[4], NULL)
     # Dimension 0 +
-    new_triangle(triangles[2], corners[1], corners[7], corners[3], ROOT)
-    new_triangle(triangles[3], corners[1], corners[7], corners[5], ROOT)
+    new_triangle(triangles[2], corners[1], corners[7], corners[3], NULL)
+    new_triangle(triangles[3], corners[1], corners[7], corners[5], NULL)
     # Dimension 1 -
-    new_triangle(triangles[4], corners[0], corners[1], corners[4], ROOT)
-    new_triangle(triangles[5], corners[1], corners[4], corners[5], ROOT)
+    new_triangle(triangles[4], corners[0], corners[1], corners[4], NULL)
+    new_triangle(triangles[5], corners[1], corners[4], corners[5], NULL)
     # Dimension 1 +
-    new_triangle(triangles[6], corners[2], corners[3], corners[6], ROOT)
-    new_triangle(triangles[7], corners[3], corners[6], corners[7], ROOT)
+    new_triangle(triangles[6], corners[2], corners[3], corners[6], NULL)
+    new_triangle(triangles[7], corners[3], corners[6], corners[7], NULL)
     # Dimension 2 -
-    new_triangle(triangles[8], corners[0], corners[2], corners[3], ROOT)
-    new_triangle(triangles[9], corners[3], corners[1], corners[0], ROOT)
+    new_triangle(triangles[8], corners[0], corners[2], corners[3], NULL)
+    new_triangle(triangles[9], corners[3], corners[1], corners[0], NULL)
     # Dimension 2 +
-    new_triangle(triangles[10], corners[7], corners[4], corners[6], ROOT)
-    new_triangle(triangles[11], corners[4], corners[7], corners[5], ROOT)
+    new_triangle(triangles[10], corners[7], corners[4], corners[6], NULL)
+    new_triangle(triangles[11], corners[4], corners[7], corners[5], NULL)
     return triangles
 
-@numba.njit(Tuple_t((Real_t, Neighbor_t[::1]))(Location_t, Real_t, Location_t[:], Real_t[:, ::1]), cache=True)
+@numba.njit(Tuple_t((Real_t, Neighbor_t[::1]))(Index_t, Real_t, Index_t[:], Real_t[:, ::1]), cache=True)
 def voronoi_cell(home_location, maximum_extent, neighbor_locations, coordinates):
     """ Returns pair of (volume, neighbors) where neighbors is an array with
     data type Neighbor. """
@@ -304,7 +304,7 @@ if __name__ == "__main__": # Run unit tests.
         locations = list(range(size ** 3))
         random.shuffle(locations)
         home = locations.pop()
-        locations = np.array(locations, dtype=Location)
+        locations = np.array(locations, dtype=Index)
         compare_implementations(home, maximum_extent, locations, coordinates.reshape(-1,3))
 
     cubes_in_cubes(10, 10*um, 0., 10*um)
@@ -315,7 +315,7 @@ if __name__ == "__main__": # Run unit tests.
         print("Random Locations (%d)"%num_points)
         coordinates = np.random.uniform(0, arena_size, size=(num_points, 3))
         coordinates = np.array(coordinates, dtype=Real)
-        locations = np.arange(num_points - 1, dtype=Location)
+        locations = np.arange(num_points - 1, dtype=Index)
         compare_implementations(num_points - 1, maximum_extent, locations, coordinates)
 
     random_locations(100*um, 100, 50*um)

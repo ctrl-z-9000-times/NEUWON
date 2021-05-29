@@ -85,8 +85,6 @@ chapter 4 of the NEURON book.
 
 [todo]
 
-[todo: discuss prefix-less unit system]
-
 #### Examples
 
 [todo]

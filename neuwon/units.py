@@ -7,6 +7,7 @@ one = sympy.S.One
 class Units:
     def __init__(self):
         self.library_path = os.path.join(os.path.split(__file__)[0], "nrnunits.lib.in")
+        self.library_path = "nrnunits.lib.in"
         with open(self.library_path, 'rt') as f: library = f.read()
         library = [re.sub(r"^/.*", "", line.strip()) for line in library.split("\n")]
         library = [line.split(maxsplit=1) for line in library if line]
@@ -134,6 +135,8 @@ class Units:
         else: raise ValueError("Unrecognized unit \"%s\"."%word)
         return (value ** power, dimensions ** power)
 
+builtin_units = Units()
+
 if __name__ == "__main__":
-    print("Loading built-in units library ... ")
-    print(Units())
+    print("Built in units library")
+    print(builtin_units)

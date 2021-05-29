@@ -5,7 +5,7 @@ The model is a single long axon with Hodgkin-Huxley channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon.api import *
+from neuwon.model import *
 import numpy as np
 import bisect
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ class Experiment:
     def __init__(self,
             axon_length   = 1000e-6,
             axon_diameter = 1e-6,
-            soma_diameter = 20e-6,
+            soma_diameter = 11e-6,
             time_step     = 1e-6,
             length_step   = 20e-6,
             stagger       = True,
@@ -36,32 +36,32 @@ class Experiment:
 
     def make_model(self):
         """ Construct a soma with a single long axon. """
-        self.soma = [Segment([0,0,0], self.soma_diameter)]
-        self.soma.extend(self.soma[0].add_segment([0,0,self.soma_diameter], self.axon_diameter))
+        self.model = m = Model(self.time_step)
+        m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
+        m.add_species("k")
+        m.add_species("na")
+        m.add_reaction("hh")
+        self.soma = m.create_segment(None, [0,0,0], self.soma_diameter)
         if self.length > 0:
-            self.axon = self.soma[-1].add_segment(
+            self.axon = m.create_segment(self.soma[-1],
                     [0,0,self.length + self.soma_diameter],
-                    self.axon_diameter, self.length_step)
+                    self.axon_diameter,
+                    maximum_segment_length=self.length_step)
             self.tip = self.axon[-1]
         else:
             self.axon = []
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
         for x in self.soma + self.axon:
-            x.insert_mechanism("hh")
-            # x.insert_mechanism("na11a", scale=3)
-            # x.insert_mechanism("Kv11_13States_temperature2", scale=3)
-        self.model = Model(self.time_step, [self.soma[0]],
-            reactions=(),
-            species=[
-                Species("L", transmembrane = True, reversal_potential = -54.3e-3,)
-            ],
-            stagger=self.stagger)
+            x.insert_reaction("hh", scale=1)
+            # x.insert_reaction("na11a", scale=3)
+            # x.insert_reaction("Kv11_13States_temperature2", scale=3)
         print("Number of Locations:", len(self.model))
-        # sa  = sum(self.model.geometry.surface_areas[x.index] for x in self.soma)
-        # sa += sum(self.model.geometry.surface_areas[x.index] for x in self.axon)
-        # print("Surface area:", sa, "m^2")
-        # print()
+        sa = sum(x.read("membrane/surface_areas") for x in self.soma)
+        print("Soma surface area:", sa, "M^2")
+        sa += sum(x.read("membrane/surface_areas") for x in self.axon)
+        print("Total surface area:", sa, "M^2")
+        print(repr(self.model))
 
     def generate_input(self):
         """ Subject the soma to three pulses of current injection. """
@@ -83,16 +83,15 @@ class Experiment:
         self.time_stamps = []
         self.v = [[] for _ in self.probes]
         self.m = [[] for _ in self.probes]
-        m = AccessHandle(reaction_reference=("hh", "m"))
-        gna = AccessHandle("na", conductance=True)
         for tick, inp in enumerate(self.input_current):
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
             self.model.advance()
             self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
-                self.v[idx].append(p.get_voltage() * 1e3)
-                self.m[idx].append(self.model.read_pointer(m, p.location))
+                self.v[idx].append(p.voltage() * 1e3)
+                # self.m[idx].append(p.read("hh/m"))
+                self.m[idx].append(np.nan)
 
 def analyze_accuracy():
     caption = ""
