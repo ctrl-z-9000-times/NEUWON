@@ -804,12 +804,12 @@ def _volume_sphere(diameter):
 def _surface_area_sphere(diameter):
     return 1/0
 
-def surface_area_frustum(radius_1, radius_2, length):
+def _surface_area_frustum(radius_1, radius_2, length):
     """ Lateral surface area, does not include the ends. """
     s = sqrt((radius_1 - radius_2) ** 2 + length ** 2)
     return np.pi * (radius_1 + radius_2) * s
 
-def volume_of_frustum(radius_1, radius_2, length):
+def _volume_of_frustum(radius_1, radius_2, length):
     return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
 
 def _electric_coefficients(access):
