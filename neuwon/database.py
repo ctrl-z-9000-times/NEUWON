@@ -18,6 +18,7 @@ different and specialized things.
 
 # OUTSTANDING TASKS:
 #       repr & str formatting
+#       API for check arguments
 #       Destroy & Relocate Entities
 #       Grid Archetypes
 

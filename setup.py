@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import setuptools
+import re
 
 setuptools.setup(
     name="neuwon",
@@ -13,10 +14,10 @@ setuptools.setup(
     author_email = "dam1784@rit.edu",
     # url="https://github.com/pypa/sampleproject",
     install_requires=[
-        'numpy',
-        'scipy',
-        'graph_algorithms',
-    ],
+            line for line in open("requirements.txt", "rt").read().split_lines()
+            .map(lambda line: re.sub(r"#.*", "", line).strip()) # Remove comments.
+            .map(lambda line: line.partition("==")[0].strip()) # Remove version specifiers.
+            if line], # Remove empty lines.
     packages=setuptools.find_packages(),
     classifiers=[
         "License :: OSI Approved :: MIT License",

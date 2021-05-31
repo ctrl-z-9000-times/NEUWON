@@ -7,6 +7,10 @@ This file provides tools for performing constructive solid geometry:
 """
 import numpy as np
 
+# IDEA: Make a region subclass for working with arbitrary shapes which are loaded from file.
+#       Do a 3D projection of a 2D image to a uniform height?
+#       Or accept a stack of images and interpolate an arbitrary 3D volume?
+
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
 

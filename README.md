@@ -4,7 +4,25 @@ NEUWON is a simulation framework for neuroscience and artificial intelligence
 specializing in conductance based models. This software is a modern remake of
 the NEURON simulator. It is accurate, efficient, and easy to use.
 
-## Methods
+## Examples
+
+[todo: show off the images. 3d animations, AP-waveforms]
+
+## Usage
+
+#### Prerequisites and Installation
+
+* [Python 3](https://www.python.org/)
+* [An NVIDIA graphics card](https://www.nvidia.com/en-us/geforce/)
+* [The CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
+* `$ pip install neuwon`
+* `$ pydoc neuwon`
+
+#### Model Specification
+
+[todo]
+
+## Simulation Methods
 
 #### Exact Integration
 
@@ -22,29 +40,3 @@ chapter 4 of the NEURON book.
 
 * Carnevale, N., & Hines, M. (2006). The NEURON Book. Cambridge: Cambridge
 University Press. https://doi.org/10.1017/CBO9780511541612
-
-## Usage
-
-#### Prerequisites
-
-* An NVIDIA graphics card
-* CUDA
-* [Python 3](https://www.python.org/)
-* Numba
-* CuPY
-
-#### Installation
-
-* `$ pip install neuwon`
-
-#### Documentation
-
-* `$ pydoc neuwon`
-
-#### Model Specification
-
-[todo]
-
-#### Examples
-
-[todo]

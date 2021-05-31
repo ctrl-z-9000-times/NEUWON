@@ -1,0 +1,8 @@
+cupy-cuda91
+graph-algorithms
+matplotlib
+NMODL
+numba
+numpy
+scipy
+sympy
