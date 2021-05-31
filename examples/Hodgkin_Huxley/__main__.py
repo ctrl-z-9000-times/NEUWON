@@ -58,10 +58,10 @@ class Experiment:
             # x.insert_reaction("Kv11_13States_temperature2", scale=3)
         print("Number of Locations:", len(self.model))
         sa = sum(x.read("membrane/surface_areas") for x in self.soma)
-        print("Soma surface area:", sa, "M^2")
+        print("Soma surface area:", sa, "m^2")
         sa += sum(x.read("membrane/surface_areas") for x in self.axon)
-        print("Total surface area:", sa, "M^2")
-        print(repr(self.model))
+        print("Total surface area:", sa, "m^2")
+        if True: print(repr(self.model))
 
     def generate_input(self):
         """ Subject the soma to three pulses of current injection. """
@@ -86,12 +86,15 @@ class Experiment:
         for tick, inp in enumerate(self.input_current):
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1e-3)
-            self.model.advance()
+            if self.stagger:
+                self.model.advance()
+            else:
+                self.model._advance_lockstep()
             self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.voltage() * 1e3)
-                # self.m[idx].append(p.read("hh/m"))
-                self.m[idx].append(np.nan)
+                hh_idx = np.nonzero(self.model.access("hh/insertions") == p.entity.index)[0][0]
+                self.m[idx].append(self.model.access("hh/data/m")[hh_idx])
 
 def analyze_accuracy():
     caption = ""
@@ -101,11 +104,11 @@ def analyze_accuracy():
         "axon_diameter": 4e-6,
         "soma_diameter": 4e-6,
         "stimulus": 0.025e-9,
-        "length_step": .5e-6,
+        "length_step": 1e-6,
         "probes": [0],
     }
     def make_label(x):
-        if x.model.stagger:
+        if x.stagger:
             return "staggered, dt = %g ms"%(x.time_step * 1e3)
         else:
             return "unstaggered, dt = %g ms"%(x.time_step * 1e3)
@@ -206,26 +209,26 @@ the dynamics near that point."""
     plt.ylabel('mV')
 
 def analyze_length_step():
-    x2 = Experiment(length_step=10e-6)
-    x3 = Experiment(length_step=20e-6)
-    x4 = Experiment(length_step=100e-6)
-    x5 = Experiment(length_step=200e-6)
+    x2 = Experiment(time_step=25e-6, length_step=10e-6)
+    x3 = Experiment(time_step=25e-6, length_step=20e-6)
+    x4 = Experiment(time_step=25e-6, length_step=100e-6)
+    x5 = Experiment(time_step=25e-6, length_step=200e-6)
     plt.figure("Segment Length")
-    plt.plot(x2.time_stamps, x2.v[0], 'b', label="Maximum Inter-Nodal Length: %g μm"%(x2.length_step*1e6))
-    plt.plot(x3.time_stamps, x3.v[0], 'g', label="Maximum Inter-Nodal Length: %g μm"%(x3.length_step*1e6))
-    plt.plot(x4.time_stamps, x4.v[0], 'y', label="Maximum Inter-Nodal Length: %g μm"%(x4.length_step*1e6))
+    plt.plot(x2.time_stamps, x2.v[0], 'k', label="Maximum Inter-Nodal Length: %g μm"%(x2.length_step*1e6))
+    plt.plot(x3.time_stamps, x3.v[0], 'b', label="Maximum Inter-Nodal Length: %g μm"%(x3.length_step*1e6))
+    plt.plot(x4.time_stamps, x4.v[0], 'g', label="Maximum Inter-Nodal Length: %g μm"%(x4.length_step*1e6))
     plt.plot(x5.time_stamps, x5.v[0], 'r', label="Maximum Inter-Nodal Length: %g μm"%(x5.length_step*1e6))
     plt.legend()
     plt.title("Effect of inter-nodal length on simulation accuracy")
     plt.xlabel('ms')
-    plt.ylabel('mV')
+    plt.ylabel('mV at axon tip (1000 μm from soma)')
 
 def analyze_axon_diameter():
-    x1 = Experiment(axon_diameter = .5e-6, stimulus=3e-9, time_step=2.5e-6)
-    x2 = Experiment(axon_diameter = 1e-6,  stimulus=3e-9, time_step=2.5e-6)
-    x3 = Experiment(axon_diameter = 2e-6,  stimulus=3e-9, time_step=2.5e-6)
-    x4 = Experiment(axon_diameter = 4e-6,  stimulus=3e-9, time_step=2.5e-6)
-    x5 = Experiment(axon_diameter = 8e-6,  stimulus=3e-9, time_step=2.5e-6)
+    x1 = Experiment(axon_diameter = .5e-6, stimulus=3e-9, time_step=25e-6)
+    x2 = Experiment(axon_diameter = 1e-6,  stimulus=3e-9, time_step=25e-6)
+    x3 = Experiment(axon_diameter = 2e-6,  stimulus=3e-9, time_step=25e-6)
+    x4 = Experiment(axon_diameter = 4e-6,  stimulus=3e-9, time_step=25e-6)
+    x5 = Experiment(axon_diameter = 8e-6,  stimulus=3e-9, time_step=25e-6)
     plt.figure("Axon Diameter")
     plt.plot(x1.time_stamps, x1.v[0], 'purple', label="Axon Diameter: %g μm"%(x1.axon_diameter*1e6))
     plt.plot(x2.time_stamps, x2.v[0], 'b', label="Axon Diameter: %g μm"%(x2.axon_diameter*1e6))
@@ -235,7 +238,7 @@ def analyze_axon_diameter():
     plt.legend()
     plt.title("Effect of axon diameter on AP propagation speed")
     plt.xlabel('ms')
-    plt.ylabel('mV')
+    plt.ylabel('mV at axon tip (1000 μm from soma)')
 
 def animation():
     import animation

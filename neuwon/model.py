@@ -763,8 +763,18 @@ class Segment:
         self.model = model
         self.entity = Entity(model.db, "membrane", membrane_index)
 
-    def insert_reaction(self, reaction, *args, **kwargs):
-        self.model.insert_reaction(reaction, [self.entity.index], *args, **kwargs)
+    def __eq__(self, other):
+        return (type(self) == type(other) and
+                self.model == other.model and
+                self.index == other.index)
+
+    def __hash__(self):
+        # TODO: This is a terrible design, BC the entity index is not immutable.
+        return self.index
+
+    @property
+    def index(self):
+        return self.entity.index
 
     @property
     def parent(self):
@@ -775,7 +785,7 @@ class Segment:
     @property
     def children(self):
         children = self.entity.read("membrane/children")
-        return [Segment(self.model, c) for c in children]
+        return [Segment(self.model, c) for c in children.indices]
 
     @property
     def coordinates(self):

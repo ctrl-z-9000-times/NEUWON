@@ -3,6 +3,7 @@ import os
 import tempfile
 import subprocess
 from PIL import Image, ImageFont, ImageDraw
+from neuwon.database import NULL
 
 # Idea for API: "my_model.draw_image(pointer, f(v) -> [r,g,b], *args)"
 # 
@@ -39,22 +40,23 @@ def draw_image(model, segment_colors,
     else:
         pov += "fog { distance %s color rgb<%s>}\n"%(str(fog_distance),
         ", ".join(str(x) for x in fog_color))
+    all_parent = model.access("membrane/parents").get()
+    all_coords = model.access("membrane/coordinates").get()
+    all_diams  = model.access("membrane/diameters").get()
     for location in range(len(model)):
-        parent = model.geometry.parents[location]
-        coords = model.geometry.coordinates[location]
-        # Special cases for root of tree, whos segment body is split between
-        # it and its eldest child.
-        if model.geometry.is_root(location):
-            eldest = model.geometry.children[location][0]
-            other_coords = (coords + model.geometry.coordinates[eldest]) / 2
-        elif model.geometry.is_root(parent) and model.geometry.children[parent][0] == location:
-            other_coords = (coords + model.geometry.coordinates[parent]) / 2
+        parent = all_parent[location]
+        coords = all_coords[location]
+        # Special cases for root of tree, which is a sphere.
+        if parent == NULL:
+            pov += "sphere { <%s>, %s "%(
+                ", ".join(str(x) for x in coords),
+                str(all_diams[location] / 2))
         else:
-            other_coords = model.geometry.coordinates[parent]
-        pov += "cylinder { <%s>, <%s>, %s "%(
-            ", ".join(str(x) for x in coords),
-            ", ".join(str(x) for x in other_coords),
-            str(model.geometry.diameters[location] / 2))
+            parent_coords = all_coords[parent]
+            pov += "cylinder { <%s>, <%s>, %s "%(
+                ", ".join(str(x) for x in coords),
+                ", ".join(str(x) for x in parent_coords),
+                str(all_diams[location] / 2))
         pov += "texture { pigment { rgb <%s> } } }\n"%", ".join(str(x) for x in segment_colors[location])
     pov_file = tempfile.NamedTemporaryFile(suffix=".pov", mode='w+t', delete=False)
     pov_file.write(pov)
@@ -107,7 +109,7 @@ class Animation:
     def save(self, output_filename):
         """ Save into a GIF file that loops forever. """
         self.frames = [Image.open(i) for i in self.frames] # Load all of the frames.
-        dt = (self.skip+1) * self.model.time_step * 1e3
+        dt = (self.skip+1) * self.model.access("time_step") * 1e3
         self.frames[0].save(output_filename, format='GIF',
                 append_images=self.frames[1:], save_all=True,
                 duration=int(round(dt * 1e3)), # Milliseconds per frame.

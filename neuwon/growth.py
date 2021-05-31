@@ -5,8 +5,8 @@ import itertools
 import random
 from collections.abc import Callable, Iterable
 from graph_algorithms import depth_first_traversal as dft
-from neuwon.api.regions import Region
-from neuwon.api import Segment
+from neuwon.regions import Region
+from neuwon.model import Segment
 
 # TODO: This code got ripped out of the Segment module...
 def set_diameter(self, P = (0, .01, 1e-6)):
@@ -113,6 +113,7 @@ class Growth:
         Neurosci. 14:13. doi: 10.3389/fncom.2020.00013
     """
     def __init__(self,
+            model,
             seeds,
             region,
             carrier_point_density,
@@ -124,7 +125,8 @@ class Growth:
             extend_before_bifurcate=False,
             only_bifurcate=False,
             maximum_segment_length=np.inf,
-            diameter=None,):
+            diameter=.3e-6,):
+        self.model = model
         if isinstance(seeds, Segment):
             self.seeds = [seeds]
         else:
@@ -139,7 +141,7 @@ class Growth:
         self.extend_before_bifurcate = bool(extend_before_bifurcate)
         self.only_bifurcate         = bool(only_bifurcate)
         self.maximum_segment_length = float(maximum_segment_length)
-        self.diameter               = diameter
+        self.diameter               = float(diameter)
         assert(all(isinstance(s, Segment) for s in self.seeds))
         assert(isinstance(region, Region))
         assert(0 <= self.carrier_point_density)
@@ -151,6 +153,7 @@ class Growth:
         self._compute()
 
     def _compute(self):
+        self.path_lengths = {}
         self.segments = [] # List of all newly created segments, user facing output.
         carrier_points = self.region.sample_points(self.carrier_point_density)
         free_points = np.ones(len(carrier_points), dtype=bool)
@@ -181,22 +184,23 @@ class Growth:
             if not self.morphological_constraints_satisfied(parent, coordinates):
                 continue
             free_points[index] = False
-            s = parent.add_segment(coordinates, .3e-6, self.maximum_segment_length)
+            s = self.model.create_segment(parent, coordinates, self.diameter,
+                    maximum_segment_length=self.maximum_segment_length)
             self.segments.extend(s)
             compute_costs_to_all_carriers(s[-1])
-        for s in self.segments:
-            if s.parent in self.seeds:
-                if self.diameter is None:
-                    s.set_diameter()
-                elif isinstance(self.diameter, Iterable):
-                    s.set_diameter(self.diameter)
-                else:
-                    for x in dft(s, lambda x: x.children):
-                        x.diameter = self.diameter
 
     def cost_function(self, parent, child_coordinates):
+        if parent not in self.path_lengths:
+            self.path_lengths[parent] = 0
+            cursor = parent
+            while cursor.parent is not None:
+                self.path_lengths[parent] += np.linalg.norm(cursor.coordinates - cursor.parent.coordinates)
+                cursor = cursor.parent
+                if cursor in self.path_lengths:
+                    self.path_lengths[parent] += self.path_lengths[cursor]
+                    break
         distance = np.linalg.norm(np.subtract(parent.coordinates, child_coordinates))
-        path_length = parent.path_length + distance
+        path_length = self.path_lengths[parent] + distance
         return distance + self.balancing_factor * path_length
 
     def morphological_constraints_satisfied(self, parent, child_coordinates):

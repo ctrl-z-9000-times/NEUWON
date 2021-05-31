@@ -36,6 +36,21 @@ different and specialized things.
 #   -> Attribute coordinates of entity.
 #   -> Function Nearest neighbor to convert coordinates to entity index.
 
+# TODO: Entity.read() should make an effort to follow references, in the
+# situation where the requested data is not associated with the same archetype.
+# This is a major quality-of-life improvement for working with the Entity API.
+# 
+# I want to make this example work:
+#       probe.read("hh/data/m")
+# 
+# Instead, Right now I have to do:
+#        hh_idx = np.nonzero(self.model.access("hh/insertions") == p.entity.index)[0][0]
+#        m = self.model.access("hh/data/m")[hh_idx]
+# 
+# This would not have to work in every conceivable situation, but 99% of the
+# time it just needs to follow a basic reference or search for an index, and it
+# should balk if the situation is ambiguous.
+
 import cupy
 import cupyx.scipy.sparse
 import numpy as np
@@ -284,7 +299,11 @@ class Entity:
             self.archetype = archetype
         else:
             self.archetype = database.archetypes[str(archetype)]
-        self.index = index
+        if isinstance(index, Iterable):
+            index = list(index)
+            assert(len(index) == 1)
+            index = index.pop()
+        self.index = int(index)
         assert(self.index < self.archetype.size)
         self.database.entities.append(weakref.ref(self))
 
@@ -292,9 +311,14 @@ class Entity:
         """ """
         archetype, _ = self.database._split_archetype(component_name)
         assert(archetype == self.archetype)
-        data = self.database.access(component_name)
-        if isinstance(data, Iterable): return data[self.index]
-        else: return data
+        component = self.database.components[str(component_name)]
+        data = component.access(self.database)
+        if isinstance(data, Iterable): data = data[self.index]
+        if hasattr(data, "get"): data = data.get()
+        if getattr(component, "reference", False): data = int(data)
+        # TODO: Clean the data into a python type, if able. Otherwise numpy or
+        # cupy will wrap it in extra type info like "np.float64"...
+        return data
 
     def write(self, component, value):
         """ """
