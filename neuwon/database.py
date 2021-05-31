@@ -253,7 +253,7 @@ class Database:
     def __repr__(self, is_str=False):
         f = str if is_str else repr
         s = ""
-        # TODO: SORT CASE INSENSITIVE!
+        # TODO: sort case insensitive!
         for comp_name, comp in sorted(self.components.items()):
             try: self._split_archetype(comp_name)
             except ValueError:

@@ -215,6 +215,7 @@ class Reaction:
         (Optional) Returns a new Reaction object to use in place of this one. """
         pass
 
+    # TODO: Delete this method in favor of model.get_reaction().insert()
     @classmethod
     def new_instances(self, database, *args, **kwargs):
         """ """
@@ -381,6 +382,9 @@ class Model:
         name = str(r.name())
         assert(name not in self.reactions)
         self.reactions[name] = r
+
+    def get_reaction(self, reaction_name):
+        return self.reactions[str(reaction_name)]
 
     def create_segment(self, parents, coordinates, diameters,
                 shape="cylinder", shells=0, maximum_segment_length=np.inf):
@@ -621,6 +625,7 @@ class Model:
         """ """
         1/0
 
+    # TODO: Delete this method and rework all of the examples to do: model.get_reaction().insert()
     def insert_reaction(self, reaction, *args, **kwargs):
         self.reactions[str(reaction)].new_instances(self.db, *args, **kwargs)
 
