@@ -520,10 +520,11 @@ class NmodlMechanism(Reaction):
         locations = list(locations)
         for i, x in enumerate(locations):
             if isinstance(x, Segment):
-                locations[i] = x.index
+                locations[i] = x = x.index
             elif isinstance(x, Entity):
                 assert(x.archetype.name == "membrane")
-                locations[i] = x.index
+                locations[i] = x = x.index
+            assert(isinstance(x, int))
         ent_idx = database.create_entity(self.name(), len(locations), return_entity=False)
         ent_idx = np.array(ent_idx, dtype=np.int)
         database.access(self.name() + "/insertions")[ent_idx] = locations
@@ -538,6 +539,7 @@ class NmodlMechanism(Reaction):
         #     1/0
         threads = 64
         locations = access(self.name() + "/insertions")
+        if not len(locations): return
         pointers = {name: access(ptr.name) for name, ptr in self.pointers.items()}
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,

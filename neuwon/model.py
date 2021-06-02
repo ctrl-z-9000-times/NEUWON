@@ -390,6 +390,7 @@ class Model:
         name = str(r.name())
         assert(name not in self.reactions)
         self.reactions[name] = r
+        return r
 
     def get_reaction(self, reaction_name):
         return self.reactions[str(reaction_name)]
@@ -733,8 +734,12 @@ class Model:
                 access("inside/release_rates/%s"%name).fill(0.0)
             if species.outside_diffusivity is not None:
                 access("outside/release_rates/%s"%name).fill(0.0)
-        for r in self.reactions.values():
-            r.advance(access)
+        for name, r in self.reactions.items():
+            try:
+                r.advance(access)
+            except Exception:
+                print("Error in reaction: " + name)
+                raise
 
     def render_frame(self, membrane_colors,
             output_filename, resolution,
@@ -864,6 +869,7 @@ class Segment:
     def write(self, component, value):
         return self.entity.write(component, value)
 
+    # TODO: Consider renaming this to "get_voltage" so that its name contains a verb.
     def voltage(self):
         return self.entity.read("membrane/voltages")
 
