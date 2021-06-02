@@ -275,8 +275,8 @@ class Model:
         db.add_archetype("membrane", doc=""" """)
         db.add_archetype("inside", doc="Intracellular space.")
         db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
-        db.add_attribute("membrane/parents", dtype="membrane", check=False,
-            doc="Cell membranes are connected in a tree.")
+        db.add_attribute("membrane/parents", dtype="membrane", allow_invalid=True,
+                doc="Cell membranes are connected in a tree.")
         db.add_sparse_matrix("membrane/children", "membrane", dtype=np.bool, doc="")
         db.add_attribute("membrane/inside", dtype="inside", doc="""
                 A reference to the outermost shell.
@@ -288,30 +288,30 @@ class Model:
         db.add_attribute("inside/shell_radius")
         # Geometric properties.
         db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
-        db.add_attribute("membrane/diameters", check=(">=", 0.0), doc="""
-            Units: """)
+        db.add_attribute("membrane/diameters", bounds=(0.0, np.inf), doc="""
+                Units: """)
         db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
-            0 - Sphere
-            1 - Cylinder
-            2 - Frustum
+                0 - Sphere
+                1 - Cylinder
+                2 - Frustum
 
-            Note: all & only root segments are spheres. """)
+                Note: all & only root segments are spheres. """)
         db.add_attribute("membrane/primary", dtype=np.bool, doc="""
 
-            Primary segments are straightforward extensions of the parent
-            branch. Non-primary segments are lateral branches off to the side of
-            the parent branch.  """)
+                Primary segments are straightforward extensions of the parent
+                branch. Non-primary segments are lateral branches off to the side of
+                the parent branch.  """)
 
         db.add_attribute("membrane/lengths", doc="""
-            The distance between each node and its parent node.
-            Root node lengths are their radius.\n
-            Units: Meters""", initial_value=np.nan)
-        db.add_attribute("membrane/surface_areas", check=(">=", epsilon * (1e-6)**2), doc="""
-            Units: Meters ^ 2""", initial_value=np.nan)
+                The distance between each node and its parent node.
+                Root node lengths are their radius.\n
+                Units: Meters""", initial_value=np.nan)
+        db.add_attribute("membrane/surface_areas", bounds=(epsilon * (1e-6)**2, np.inf), doc="""
+                Units: Meters ^ 2""", initial_value=np.nan)
         db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2",
-            check = (">=", epsilon * (1e-6)**2))
-        db.add_attribute("membrane/volumes", check=(">=", epsilon * (1e-6)**3), doc="""
-            Units: Liters""")
+                bounds = (epsilon * (1e-6)**2, np.inf))
+        db.add_attribute("membrane/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
+                Units: Liters""")
         db.add_sparse_matrix("inside/neighbors", "inside", dtype=Neighbor)
         # Extracellular space properties.
         db.add_attribute("membrane/outside", dtype="outside", doc="")
@@ -320,24 +320,27 @@ class Model:
         db.add_attribute("outside/volumes", doc="Units: Litres")
         db.add_sparse_matrix("outside/neighbors", "outside", dtype=Neighbor)
         db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction),
-            check=("in", (0.0, 1.0)), doc="")
-        db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity), check=(">=", 1.0))
+                bounds=(0.0, 1.0), doc="")
+        db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity),
+                bounds=(1.0, np.inf))
         db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius),
-            check=(">=", epsilon * 1e-6))
+                bounds=(epsilon * 1e-6, np.inf))
         # Electric properties.
-        db.add_global_constant("inside/resistance", float(intracellular_resistance), check=(">", 0.0), doc="""
-            Cytoplasmic resistance,
-            In NEURON this variable is named Ra?
-            Units: """)
-        db.add_global_constant("membrane/capacitance", float(membrane_capacitance), check=(">", 0.0), doc="""
-            Units: Farads / Meter^2""")
+        db.add_global_constant("inside/resistance", float(intracellular_resistance),
+                bounds=(epsilon, np.inf), doc="""
+                Cytoplasmic resistance,
+                In NEURON this variable is named Ra?
+                Units: """)
+        db.add_global_constant("membrane/capacitance", float(membrane_capacitance),
+                bounds=(epsilon, np.inf), doc="""
+                Units: Farads / Meter^2""")
         db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
-        db.add_attribute("membrane/axial_resistances", check=False, doc="Units: ")
+        db.add_attribute("membrane/axial_resistances", allow_invalid=True, doc="Units: ")
         db.add_attribute("membrane/capacitances", doc="Units: Farads")
         db.add_attribute("membrane/conductances")
         db.add_attribute("membrane/driving_voltages")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
-            epsilon=epsilon * 1e-3,) # Epsilon millivolts.
+                epsilon=epsilon * 1e-3,) # Epsilon millivolts.
 
     def __len__(self):
         return self.db.num_entity("membrane")

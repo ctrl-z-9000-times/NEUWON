@@ -18,24 +18,21 @@ different and specialized things.
 
 # OUTSTANDING TASKS:
 #       repr & str formatting
-#       API for check arguments
 #       Destroy & Relocate Entities
+#           The "allow_invalid" flag should control whether destroying referenced
+#           entities causes recursive destruction of more entities.
 #       Grid Archetypes
-
-# TODO: Rework the API for the check argument:
-#   -> Split off a separate "allow_invalid" flag: for NAN & NULL checking.
-#           This flag also controls whether destroying referenced entities causes
-#           recursive destruction of more entities.
-#   -> Simplify the check argument. make it a pair of (low, high) bounds which are
-#       always inclusive, and can be None to indicate +/- infinity
-#       Default (None, None)
-#           + Also, rename it from check to bounds, and add a widget for getting the data as a fraction of range
-#   -> Documentation.
 
 # TODO: Make the API for grid archetypes.
 #   Consider making two new components, which would be auto-magically updated:
 #   -> Attribute coordinates of entity.
 #   -> Function Nearest neighbor to convert coordinates to entity index.
+
+# TODO: Add a widget for getting the data as a fraction of its range, using the
+# optionally given "bounds". This would be really useful for making color maps
+# of simulations. It could automatically scale my voltages into a nice viewable
+# [0-1] range ready to be rendered. If data does not have bounds then raise
+# exception.
 
 # TODO: Entity.read() should make an effort to follow references, in the
 # situation where the requested data is not associated with the same archetype.
@@ -84,22 +81,24 @@ class Database:
         assert(name not in self.archetypes)
         self.archetypes[name] = _Archetype(name, doc, grid)
 
-    def get_archetype(self, name):
+    def _get_archetype(self, name):
         name = str(name)
         for ark_name, ark in self.archetypes.items():
             if name.startswith(ark_name):
                 return ark
         raise ValueError("Name must begin with an archetype name.")
 
-    def add_global_constant(self, name, value: float, doc="", check=True):
+    def add_global_constant(self, name, value: float, doc="",
+                allow_invalid=False, bounds=(None, None),):
         """ Add a singular floating-point value. """
-        _Global_Constant(self, name, doc, value, check=check)
+        _Global_Constant(self, name, doc, value, allow_invalid=allow_invalid, bounds=bounds,)
 
     def add_function(self, name, function: Callable, doc=""):
         """ Add a callable function. """
         _Function(self, name, doc, function)
 
-    def add_attribute(self, name, doc="", dtype=Real, shape=(1,), initial_value=None, check=True):
+    def add_attribute(self, name, doc="", dtype=Real, shape=(1,), initial_value=None,
+                allow_invalid=False, bounds=(None, None),):
         """ Add a piece of data to an Archetype. Every Entity will be allocated
         one instance of this attribute.
 
@@ -121,9 +120,11 @@ class Database:
             Destroying entities can cause a recursive destruction of multiple other
             entities.
         """
-        _Attribute(self, name, doc, dtype=dtype, shape=shape, initial_value=initial_value, check=check)
+        _Attribute(self, name, doc, dtype=dtype, shape=shape, initial_value=initial_value,
+                allow_invalid=allow_invalid, bounds=bounds,)
 
-    def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="", check=True):
+    def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="",
+                allow_invalid=False, bounds=(None, None),):
         """ Add a sparse matrix which is indexed by Entities.
         This is useful for implementing any-to-any connections between entities.
 
@@ -133,13 +134,13 @@ class Database:
 
         Argument name: determines the archetype for the row.
         """
-        _Sparse_Matrix(self, name, doc, dtype=dtype, initial_value=0, check=check,
-            column_archetype=column_archetype)
+        _Sparse_Matrix(self, name, doc, dtype=dtype, initial_value=0,
+                column_archetype=column_archetype, allow_invalid=allow_invalid, bounds=bounds,)
 
     def add_kd_tree(self, name, coordinates_attribute, doc=""):
         _KD_Tree(self, name, doc, coordinates_attribute)
 
-    def add_linear_system(self, name, function, epsilon, doc="", check=True):
+    def add_linear_system(self, name, function, epsilon, doc="", allow_invalid=False,):
         """ Add a system of linear & time-invariant differential equations.
 
         Argument function(database_access) -> coefficients
@@ -151,7 +152,7 @@ class Database:
         The database computes the propagator matrix but does not apply it.
         The matrix is updated after any of the entity are created or destroyed.
         """
-        _LinearSystem(self, name, doc, function, epsilon=epsilon, check=check)
+        _LinearSystem(self, name, doc, function, epsilon=epsilon, allow_invalid=allow_invalid)
 
     def create_entity(self, archetype_name, number_of_instances = 1, return_entity=True) -> list:
         """ Create instances of an archetype.
@@ -273,7 +274,7 @@ class Database:
         s = ""
         # TODO: sort case insensitive!
         for comp_name, comp in sorted(self.components.items()):
-            try: self.get_archetype(comp_name)
+            try: self._get_archetype(comp_name)
             except ValueError:
                 s += f(comp) + "\n"
         for ark_name, ark in sorted(self.archetypes.items()):
@@ -311,7 +312,7 @@ class Entity:
 
     def read(self, component_name):
         """ """
-        archetype = self.database.get_archetype(component_name)
+        archetype = self.database._get_archetype(component_name)
         assert(archetype == self.archetype)
         component = self.database.components[str(component_name)]
         data = component.access(self.database)
@@ -324,7 +325,7 @@ class Entity:
 
     def write(self, component, value):
         """ """
-        archetype = self.database.get_archetype(component_name)
+        archetype = self.database._get_archetype(component_name)
         assert(archetype == self.archetype)
         data = self.database.access(component)
         data[self.index] = value
@@ -350,11 +351,14 @@ class _DocString:
         return s
 
 class _Component(_DocString):
-    def __init__(self, database, name, doc, check):
+    def __init__(self, database, name, doc, allow_invalid=True, bounds=(None, None)):
         _DocString.__init__(self, name, doc)
         assert(self.name not in database.components)
         database.components[self.name] = self
-        self._check = check
+        self.allow_invalid = bool(allow_invalid)
+        self.bounds = tuple((x if x is None else float(x) for x in bounds))
+        if None not in self.bounds: self.bounds = tuple(sorted(self.bounds))
+        assert(len(self.bounds) == 2)
 
     def access(self, database):
         1/0 # Abstract method, required.
@@ -364,38 +368,17 @@ class _Component(_DocString):
 
     def check_data(self, database, data, reference=False):
         """ Helper method to interpret the check flags and dtypes. """
-        if not self._check: return
-        if reference:
-            if self._check == "ALLOW_NULL":
-                1/0
+        xp = cupy.get_array_module(data)
+        if not self.allow_invalid:
+            if reference: assert xp.all(xp.less(data, reference.size)), self.name
             else:
-                if isinstance(data, cupy.ndarray):
-                    assert cupy.all(data < reference.size), self.name
-                else:
-                    assert np.all(np.less(data, reference.size)), self.name
-        elif isinstance(self._check, Iterable) and len(self._check) == 2:
-            op, threshold = self._check
-            if   op == "<":  assert data <  threshold, self.name
-            elif op == "<=": assert data <= threshold, self.name
-            elif op == ">":  assert data >  threshold, self.name
-            elif op == ">=": assert data >= threshold, self.name
-            elif op == "in":
-                low  = min(threshold)
-                high = max(threshold)
-                assert data >= low, self.name
-                assert data <= high, self.name
-            else:
-                try:
-                    low = float(op)
-                    high = float(threshold)
-                except ValueError:
-                    raise ValueError("Invalid 'check' argument %s."%str(self._check))
-                assert data >= low, self.name
-                assert data <= high, self.name
-        else:
-            kind = data.dtype.kind
-            if kind == "f" or kind == "c":
-                assert cupy.all(cupy.isfinite(data)), self.name
+                kind = data.dtype.kind
+                if kind in ("f", "c"): assert not xp.any(xp.isnan(data)), self.name
+        lower_bound, upper_bound = self.bounds
+        if lower_bound is not None:
+            assert xp.all(xp.less_equal(lower_bound, data)), self.name
+        if upper_bound is not None:
+            assert xp.all(xp.greater_equal(upper_bound, data)), self.name
 
 class _Archetype(_DocString):
     def __init__(self, name, doc, grid):
@@ -418,11 +401,10 @@ class _Archetype(_DocString):
         for sys in self.linear_systems: sys.invalidate()
 
 class _Global_Constant(_Component):
-    def __init__(self, database, name, doc, value, check):
-        _Component.__init__(self, database, name, doc, check)
+    def __init__(self, database, name, doc, value, allow_invalid, bounds):
+        _Component.__init__(self, database, name, doc, allow_invalid, bounds)
         self.value = float(value)
-        if self.check:
-            _Component.check_data(self, database, cupy.array([self.value]))
+        _Component.check_data(self, database, np.array([self.value]))
 
     def access(self, database):
         return self.value
@@ -433,7 +415,7 @@ class _Global_Constant(_Component):
 class _Function(_Component):
     def __init__(self, database, name, doc, function):
         if not doc and function.__doc__: doc = function.__doc__
-        _Component.__init__(self, database, name, doc, False)
+        _Component.__init__(self, database, name, doc)
         self.function = function
         assert isinstance(self.function, Callable), self.name
 
@@ -444,9 +426,9 @@ class _Function(_Component):
         return "%s()"%(self.name)
 
 class _Attribute(_Component):
-    def __init__(self, database, name, doc, dtype, shape, initial_value, check):
-        _Component.__init__(self, database, name, doc, check)
-        self.archetype = ark = database.get_archetype(self.name)
+    def __init__(self, database, name, doc, dtype, shape, initial_value, allow_invalid, bounds):
+        _Component.__init__(self, database, name, doc, allow_invalid, bounds)
+        self.archetype = ark = database._get_archetype(self.name)
         ark.attributes.append(self)
         if isinstance(dtype, str):
             self.dtype = Index
@@ -499,9 +481,9 @@ class _Attribute(_Component):
         return s
 
 class _Sparse_Matrix(_Component):
-    def __init__(self, database, name, doc, dtype, initial_value, check, column_archetype):
-        _Component.__init__(self, database, name, doc, check)
-        self.archetype = ark = database.get_archetype(self.name)
+    def __init__(self, database, name, doc, dtype, initial_value, column_archetype, allow_invalid, bounds):
+        _Component.__init__(self, database, name, doc, allow_invalid, bounds)
+        self.archetype = ark = database._get_archetype(self.name)
         ark.sparse_matrixes.append(self)
         self.column_archetype = database.archetypes[str(column_archetype)]
         self.column_archetype.sparse_matrixes.append(self)
@@ -541,11 +523,11 @@ class _Sparse_Matrix(_Component):
 
 class _KD_Tree(_Component):
     def __init__(self, database, name, doc, component):
-        _Component.__init__(self, database, name, doc, False)
+        _Component.__init__(self, database, name, doc)
         self.component = database.components[str(component)]
         assert(isinstance(self.component, _Attribute))
         assert(not self.component.reference)
-        archetype = database.get_archetype(self.name)
+        archetype = database._get_archetype(self.name)
         archetype.kd_trees.append(self)
         assert archetype == self.component.archetype, "KD-Tree and its coordinates must have the same archetype."
         self.tree = None
@@ -565,9 +547,9 @@ class _KD_Tree(_Component):
         return "%s"%self.name
 
 class _LinearSystem(_Component):
-    def __init__(self, database, name, doc, function, epsilon, check):
-        _Component.__init__(self, database, name, doc, check)
-        self.archetype = database.get_archetype(self.name)
+    def __init__(self, database, name, doc, function, epsilon, allow_invalid):
+        _Component.__init__(self, database, name, doc, allow_invalid)
+        self.archetype = database._get_archetype(self.name)
         self.archetype.linear_systems.append(self)
         self.function   = function
         self.epsilon    = float(epsilon)
@@ -592,8 +574,7 @@ class _LinearSystem(_Component):
         return self.data
 
     def check(self, database):
-        if self._check:
-            _Component.check_data(self, database, self.access(database))
+        _Component.check_data(self, database, self.access(database))
 
     def __repr__(self):
         # TODO: For sparse matrixes: print the average num-non-zero per row.

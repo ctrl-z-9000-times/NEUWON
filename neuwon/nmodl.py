@@ -13,9 +13,9 @@ import itertools
 import copy
 from zlib import crc32
 import pickle
-from neuwon.database import Real, Index
+from neuwon.database import Real, Index, Entity
 import neuwon.units
-from neuwon.model import Reaction
+from neuwon.model import Reaction, Model, Segment
 from scipy.linalg import expm
 import sys
 
@@ -516,6 +516,14 @@ class NmodlMechanism(Reaction):
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
     def new_instances(self, database, locations, scale=1):
+        if isinstance(database, Model): database = database.db
+        locations = list(locations)
+        for i, x in enumerate(locations):
+            if isinstance(x, Segment):
+                locations[i] = x.index
+            elif isinstance(x, Entity):
+                assert(x.archetype.name == "membrane")
+                locations[i] = x.index
         ent_idx = database.create_entity(self.name(), len(locations), return_entity=False)
         ent_idx = np.array(ent_idx, dtype=np.int)
         database.access(self.name() + "/insertions")[ent_idx] = locations

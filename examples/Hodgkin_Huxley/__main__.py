@@ -52,10 +52,7 @@ class Experiment:
             self.axon = []
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
-        for x in self.soma + self.axon:
-            x.insert_reaction("hh", scale=1)
-            # x.insert_reaction("na11a", scale=3)
-            # x.insert_reaction("Kv11_13States_temperature2", scale=3)
+        m.get_reaction("hh").new_instances(m, self.soma + self.axon, scale=1)
         print("Number of Locations:", len(self.model))
         sa = sum(x.read("membrane/surface_areas") for x in self.soma)
         print("Soma surface area:", sa, "m^2")
