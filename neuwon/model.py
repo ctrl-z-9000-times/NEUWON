@@ -1,13 +1,17 @@
-from collections.abc import Callable, Iterable, Mapping
-from scipy.sparse import csr_matrix, csc_matrix
-from scipy.sparse.linalg import expm
 import copy
-import numba.cuda
 import cupy as cp
 import math
-import numpy as np
-from neuwon.database import *
 import neuwon.voronoi
+import numba.cuda
+import numpy as np
+import os
+import subprocess
+import tempfile
+from collections.abc import Callable, Iterable, Mapping
+from neuwon.database import *
+from PIL import Image, ImageFont, ImageDraw
+from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse.linalg import expm
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
@@ -257,6 +261,7 @@ class Model:
         self.species = {}
         self.reactions = {}
         self._injected_currents = _InjectedCurrents()
+        self.animations = set()
         # TODO: Either make the db private or rename it to the full name "database"
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
@@ -659,6 +664,7 @@ class Model:
         self._advance_species()
         self._advance_reactions()
         self._advance_species()
+        for x in self.animations: x._advance()
 
     def _advance_lockstep(self):
         """ Naive integration strategy, for reference only. """
@@ -726,6 +732,60 @@ class Model:
                 access("outside/release_rates/%s"%name).fill(0.0)
         for r in self.reactions.values():
             r.advance(access)
+
+    def render_frame(self, membrane_colors,
+            output_filename, resolution,
+            camera_coordinates,
+            camera_look_at=(0,0,0),
+            fog_color=(1,1,1),
+            fog_distance=np.inf,
+            lights=((1, 0, 0),
+                    (-1, 0, 0),
+                    (0, 1, 0),
+                    (0, -1, 0),
+                    (0, 0, 1),
+                    (0, 0, -1),)):
+        """ Use POVRAY to render an image of the model. """
+        pov = ""
+        pov += "camera { location <%s> look_at  <%s> }\n"%(
+            ", ".join(str(x) for x in camera_coordinates),
+            ", ".join(str(x) for x in camera_look_at))
+        pov += "global_settings { ambient_light rgb<1, 1, 1> }\n"
+        for coords in lights:
+            pov += "light_source { <%s, %s, %s> color rgb<1, 1, 1>}\n"%coords
+        if fog_distance == np.inf:
+            pov += "background { color rgb<%s> }\n"%", ".join(str(x) for x in fog_color)
+        else:
+            pov += "fog { distance %s color rgb<%s>}\n"%(str(fog_distance),
+            ", ".join(str(x) for x in fog_color))
+        all_parent = self.access("membrane/parents").get()
+        all_coords = self.access("membrane/coordinates").get()
+        all_diams  = self.access("membrane/diameters").get()
+        for location, (parent, coords, diam) in enumerate(zip(all_parent, all_coords, all_diams)):
+            # Special cases for root of tree, which is a sphere.
+            if parent == NULL:
+                pov += "sphere { <%s>, %s "%(
+                    ", ".join(str(x) for x in coords),
+                    str(diam / 2))
+            else:
+                parent_coords = all_coords[parent]
+                pov += "cylinder { <%s>, <%s>, %s "%(
+                    ", ".join(str(x) for x in coords),
+                    ", ".join(str(x) for x in parent_coords),
+                    str(diam / 2))
+            pov += "texture { pigment { rgb <%s> } } }\n"%", ".join(str(x) for x in membrane_colors[location])
+        pov_file = tempfile.NamedTemporaryFile(suffix=".pov", mode='w+t', delete=False)
+        pov_file.write(pov)
+        pov_file.close()
+        subprocess.run(["povray",
+            "-D", # Disables immediate graphical output, save to file instead.
+            "+O" + output_filename,
+            "+W" + str(resolution[0]),
+            "+H" + str(resolution[1]),
+            pov_file.name,],
+            stderr=subprocess.STDOUT, stdout=subprocess.DEVNULL,
+            check=True,)
+        os.remove(pov_file.name)
 
 class _InjectedCurrents:
     def __init__(self):
@@ -806,6 +866,70 @@ class Segment:
 
     def inject_current(self, current, duration=1e-3):
         self.model._injected_currents.inject_current(self.entity.index, current, duration)
+
+class Animation:
+    def __init__(self, model, color_function, text_function = None,
+            skip = 0,
+            scale = None,
+            **render_args):
+        """
+        Argument scale: multiplier on the image dimensions to reduce filesize.
+        Argument skip: Don't render this many frames between every actual render.
+        """
+        self.model = model
+        model.animations.add(self)
+        self.color_function = color_function
+        self.text_function = text_function
+        self.render_args = render_args
+        self.frames_dir = tempfile.TemporaryDirectory()
+        self.frames = []
+        self.skip = int(skip)
+        self.ticks = 0
+        self.scale = scale
+
+    def _advance(self):
+        """
+        Argument text: is overlayed on the top right corner.
+        """
+        self.ticks += 1
+        if self.ticks % (self.skip+1) != 0: return
+        colors = self.color_function(self.model.db.access)
+        if self.text_function:  text = self.text_function(self.model.db.access)
+        else:                   text = None
+        self.frames.append(os.path.join(self.frames_dir.name, str(len(self.frames))+".png"))
+        self.model.render_frame(colors, self.frames[-1], **self.render_args)
+        if text or self.scale:
+            img = Image.open(self.frames[-1])
+            if self.scale is not None:
+                new_size = (int(round(img.size[0] * self.scale)), int(round(img.size[1] * self.scale)))
+                img = img.resize(new_size, resample=Image.LANCZOS)
+            if text:
+                draw = ImageDraw.Draw(img)
+                draw.text((5, 5), text, (0, 0, 0))
+            img.save(self.frames[-1])
+
+    def start(self):
+        self.model.animations.add(self)
+
+    def pause(self):
+        if self in self.model.animations:
+            self.model.animations.remove(self)
+
+    def save(self, output_filename):
+        """ Save into a GIF file that loops forever. """
+        self.frames = [Image.open(i) for i in self.frames] # Load all of the frames.
+        dt = (self.skip+1) * self.model.access("time_step") * 1e3
+        self.frames[0].save(output_filename, format='GIF',
+                append_images=self.frames[1:], save_all=True,
+                duration=int(round(dt * 1e3)), # Milliseconds per frame.
+                optimize=True, quality=0,
+                loop=0,) # Loop forever.
+
+    def stop(self, output_filename):
+        self.pause()
+        self.save(output_filename)
+        self.frames.clear()
+        self.ticks = 0
 
 @cp.fuse()
 def _area_circle(diameter):
