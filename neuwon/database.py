@@ -29,6 +29,7 @@ different and specialized things.
 #   -> Simplify the check argument. make it a pair of (low, high) bounds which are
 #       always inclusive, and can be None to indicate +/- infinity
 #       Default (None, None)
+#           + Also, rename it from check to bounds, and add a widget for getting the data as a fraction of range
 #   -> Documentation.
 
 # TODO: Make the API for grid archetypes.
@@ -63,6 +64,7 @@ from collections.abc import Callable, Iterable, Mapping
 
 Real    = np.dtype('f4')
 epsilon = np.finfo(Real).eps
+# TODO: Consider renaming Index to Pointer.
 Index   = np.dtype('u4')
 NULL    = np.iinfo(Index).max
 
@@ -82,12 +84,12 @@ class Database:
         assert(name not in self.archetypes)
         self.archetypes[name] = _Archetype(name, doc, grid)
 
-    def _split_archetype(self, component_name):
-        component_name = str(component_name)
+    def get_archetype(self, name):
+        name = str(name)
         for ark_name, ark in self.archetypes.items():
-            if component_name.startswith(ark_name):
-                return ark, component_name[len(ark_name):]
-        raise ValueError("Component name must be prefixed by an archetype name.")
+            if name.startswith(ark_name):
+                return ark
+        raise ValueError("Name must begin with an archetype name.")
 
     def add_global_constant(self, name, value: float, doc="", check=True):
         """ Add a singular floating-point value. """
@@ -271,7 +273,7 @@ class Database:
         s = ""
         # TODO: sort case insensitive!
         for comp_name, comp in sorted(self.components.items()):
-            try: self._split_archetype(comp_name)
+            try: self.get_archetype(comp_name)
             except ValueError:
                 s += f(comp) + "\n"
         for ark_name, ark in sorted(self.archetypes.items()):
@@ -309,7 +311,7 @@ class Entity:
 
     def read(self, component_name):
         """ """
-        archetype, _ = self.database._split_archetype(component_name)
+        archetype = self.database.get_archetype(component_name)
         assert(archetype == self.archetype)
         component = self.database.components[str(component_name)]
         data = component.access(self.database)
@@ -322,7 +324,7 @@ class Entity:
 
     def write(self, component, value):
         """ """
-        archetype, _ = self.database._split_archetype(component_name)
+        archetype = self.database.get_archetype(component_name)
         assert(archetype == self.archetype)
         data = self.database.access(component)
         data[self.index] = value
@@ -444,7 +446,7 @@ class _Function(_Component):
 class _Attribute(_Component):
     def __init__(self, database, name, doc, dtype, shape, initial_value, check):
         _Component.__init__(self, database, name, doc, check)
-        self.archetype = ark = database._split_archetype(self.name)[0]
+        self.archetype = ark = database.get_archetype(self.name)
         ark.attributes.append(self)
         if isinstance(dtype, str):
             self.dtype = Index
@@ -499,7 +501,7 @@ class _Attribute(_Component):
 class _Sparse_Matrix(_Component):
     def __init__(self, database, name, doc, dtype, initial_value, check, column_archetype):
         _Component.__init__(self, database, name, doc, check)
-        self.archetype = ark = database._split_archetype(self.name)[0]
+        self.archetype = ark = database.get_archetype(self.name)
         ark.sparse_matrixes.append(self)
         self.column_archetype = database.archetypes[str(column_archetype)]
         self.column_archetype.sparse_matrixes.append(self)
@@ -543,7 +545,7 @@ class _KD_Tree(_Component):
         self.component = database.components[str(component)]
         assert(isinstance(self.component, _Attribute))
         assert(not self.component.reference)
-        archetype = database._split_archetype(self.name)[0]
+        archetype = database.get_archetype(self.name)
         archetype.kd_trees.append(self)
         assert archetype == self.component.archetype, "KD-Tree and its coordinates must have the same archetype."
         self.tree = None
@@ -565,7 +567,7 @@ class _KD_Tree(_Component):
 class _LinearSystem(_Component):
     def __init__(self, database, name, doc, function, epsilon, check):
         _Component.__init__(self, database, name, doc, check)
-        self.archetype = database._split_archetype(self.name)[0]
+        self.archetype = database.get_archetype(self.name)
         self.archetype.linear_systems.append(self)
         self.function   = function
         self.epsilon    = float(epsilon)
