@@ -207,7 +207,7 @@ class Reaction:
     @classmethod
     def name(self):
         """ A unique name for this reaction and all of its instances. """
-        raise TypeError("Abstract method called by %s."%repr(self))
+        return type(self).__name__
 
     @classmethod
     def initialize(self, database):

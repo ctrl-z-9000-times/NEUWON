@@ -50,7 +50,7 @@ class NmodlMechanism(Reaction):
         Argument filename is an NMODL file to load.
             The standard NMODL file name extension is ".mod"
 
-        Argument pointers is a mapping of POINTER variables to database
+        Argument pointers is a mapping of NMODL variable names to database
             component names.
 
         Argument parameter_overrides is a mapping of parameter names to custom
@@ -77,7 +77,7 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        self.pointers.update({k: _Pointer(self, *v) for k, v in pointers.items()})
+        self.pointers.update({k: _Pointer(self, v) for k, v in pointers.items()})
         self._apply_parameter_overrides(parameter_overrides)
         self._separate_surface_area_parameters()
 
@@ -546,13 +546,13 @@ class NmodlMechanism(Reaction):
                 *(ptr for name, ptr in sorted(pointers.items())))
 
 class _Pointer:
-    def __init__(self, file, name, mode='rw', archetype=None):
+    def __init__(self, nmodl, name, mode='rw', archetype=None):
         self.name = str(name)
         self.mode = str(mode)
         assert self.mode in ('r', 'w', 'rw', 'a')
         if   archetype is not None:             self.archetype = str(archetype)
         elif self.name.startswith("membrane"):  self.archetype = "membrane"
-        elif self.name.startswith(file.name()): self.archetype = file.name()
+        elif self.name.startswith(nmodl.name()): self.archetype = nmodl.name()
         else: raise Exception("what archetype is this? " + self.name)
     @property
     def read(self):
@@ -565,7 +565,7 @@ class _Pointer:
         return 'a' in self.mode
 
 class _CodeBlock:
-    def __init__(self, file, AST):
+    def __init__(self, nmodl, AST):
         if hasattr(AST, "name"):        self.name = AST.name.get_node_name()
         elif AST.is_breakpoint_block(): self.name = "BREAKPOINT"
         elif AST.is_initial_block():    self.name = "INITIAL"
@@ -575,11 +575,11 @@ class _CodeBlock:
         self.statements = []
         AST = getattr(AST, "statement_block", AST)
         for stmt in AST.statements:
-            self.statements.extend(file._parse_statement(stmt))
+            self.statements.extend(nmodl._parse_statement(stmt))
         self.conserve_statements = [x for x in self if isinstance(x, _ConserveStatement)]
-        if top_level: self.gather_arguments(file)
+        if top_level: self.gather_arguments(nmodl)
 
-    def gather_arguments(self, file):
+    def gather_arguments(self, nmodl):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned = set()
@@ -590,13 +590,13 @@ class _CodeBlock:
                         self.arguments.add(symbol.name)
                 self.assigned.add(stmt.lhsn)
             elif isinstance(stmt, _IfStatement):
-                stmt.gather_arguments(file)
+                stmt.gather_arguments(nmodl)
                 for symbol in stmt.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
                 self.assigned.update(stmt.assigned)
             elif isinstance(stmt, _SolveStatement):
-                target_block = file.derivative_blocks[stmt.block]
+                target_block = nmodl.derivative_blocks[stmt.block]
                 for symbol in target_block.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
@@ -628,27 +628,27 @@ class _CodeBlock:
         return py.rstrip() + "\n"
 
 class _IfStatement:
-    def __init__(self, file, AST):
-        self.condition = file._parse_expression(AST.condition)
-        self.main_block = _CodeBlock(file, AST.statement_block)
-        self.elif_blocks = [_CodeBlock(file, block) for block in AST.elseifs]
+    def __init__(self, nmodl, AST):
+        self.condition = nmodl._parse_expression(AST.condition)
+        self.main_block = _CodeBlock(nmodl, AST.statement_block)
+        self.elif_blocks = [_CodeBlock(nmodl, block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
-        self.else_block = _CodeBlock(file, AST.elses)
+        self.else_block = _CodeBlock(nmodl, AST.elses)
 
-    def gather_arguments(self, file):
+    def gather_arguments(self, nmodl):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned = set()
         for symbol in self.condition.free_symbols:
             self.arguments.add(symbol.name)
-        self.main_block.gather_arguments(file)
+        self.main_block.gather_arguments(nmodl)
         self.arguments.update(self.main_block.arguments)
         self.assigned.update(self.main_block.assigned)
         for block in self.elif_blocks:
-            block.gather_arguments(file)
+            block.gather_arguments(nmodl)
             self.arguments.update(block.arguments)
             self.assigned.update(block.assigned)
-        self.else_block.gather_arguments(file)
+        self.else_block.gather_arguments(nmodl)
         self.arguments.update(self.else_block.arguments)
         self.assigned.update(self.else_block.assigned)
 
@@ -698,13 +698,12 @@ class _AssignStatement:
     def solve(self):
         """ Solve this differential equation in-place. """
         assert(self.derivative)
-        # TODO: Sympy can't solve everything. It needs to fall back
-        # to approximate methods in a nice way (currently it will
-        # either crash or hang).
-        self._solve_sympy()
-        # self._solve_crank_nicholson()
-        # self._solve_foward_euler()
         self.derivative = False
+        try: self._solve_sympy(); return
+        except Exception: pass
+        try: self._solve_crank_nicholson(); return
+        except Exception: pass
+        self._solve_foward_euler()
 
     def _solve_sympy(self):
         dt    = sympy.Symbol("time_step", real=True, positive=True)
@@ -731,20 +730,20 @@ class _AssignStatement:
         self.rhs = sympy.Symbol(self.lhsn) + self.rhs * dt
 
 class _SolveStatement:
-    def __init__(self, file, AST):
+    def __init__(self, nmodl, AST):
         self.block = AST.block_name.get_node_name()
         self.steadystate = AST.steadystate
         if AST.method: self.method = AST.method.get_node_name()
         else: self.method = "sparse" # FIXME
         AST.ifsolerr # TODO: What does this do?
-        assert(self.block in file.derivative_blocks)
-        # arguments = file.derivative_blocks[self.block].arguments
+        assert(self.block in nmodl.derivative_blocks)
+        # arguments = nmodl.derivative_blocks[self.block].arguments
         # if self.steadystate:
         #     states_var = mangle2("states")
         #     index_var  = mangle2("index")
         #     self.py = states_var + " = solve_steadystate('%s', {%s})\n"%(self.block,
         #             ", ".join("'%s': %s"%(x, x) for x in arguments))
-        #     for x in file.states:
+        #     for x in nmodl.states:
         #         self.py += "%s[%s] = %s['%s']\n"%(mangle(x), index_var, states_var, x)
         # else:
         #     self.py = self.block + "(%s)\n"%(
@@ -757,15 +756,15 @@ class _SolveStatement:
             return indent + 1/0
 
 class _LinearSystem:
-    def __init__(self, file, name):
+    def __init__(self, nmodl, name):
         1/0
 
     def to_python(self, indent, **kwargs):
         1/0
 
 class _ConserveStatement:
-    def __init__(self, file, AST):
-        conserved_expr = file._parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
+    def __init__(self, nmodl, AST):
+        conserved_expr = nmodl._parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
         self.states = sorted(str(x) for x in conserved_expr.free_symbols)
         # Assume that the conserve statement was once in the form: sum-of-states = constant-value
         sum_symbol = sympy.Symbol("_CONSERVED_SUM")
