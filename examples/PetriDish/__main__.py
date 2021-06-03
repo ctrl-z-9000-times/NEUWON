@@ -8,11 +8,17 @@ import argparse
 from neuwon.model import *
 from neuwon.growth import *
 from neuwon.regions import *
+from neuwon.nmodl import NmodlMechanism
 
 min_v = -90e-3
 max_v = +70e-3
 
 um3 = (1e6) ** 3
+
+reactions = (
+    NmodlMechanism("examples/PetriDish/Destexhe/ampa5.mod",
+            pointers={"C": "ouside/concentrations/glu"}),
+)
 
 class ExcitatoryNeuron:
     def __init__(self, model, region):
