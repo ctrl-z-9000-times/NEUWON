@@ -77,7 +77,8 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        self.pointers.update({k: _Pointer(self, v) for k, v in pointers.items()})
+        self.pointers.update({nmodl_name: _Pointer(self, database_name, mode)
+                for nmodl_name, (database_name, mode) in pointers.items()})
         self._apply_parameter_overrides(parameter_overrides)
         self._separate_surface_area_parameters()
 
@@ -550,10 +551,12 @@ class _Pointer:
         self.name = str(name)
         self.mode = str(mode)
         assert self.mode in ('r', 'w', 'rw', 'a')
-        if   archetype is not None:             self.archetype = str(archetype)
-        elif self.name.startswith("membrane"):  self.archetype = "membrane"
+        if   archetype is not None:              self.archetype = str(archetype)
+        elif self.name.startswith("membrane"):   self.archetype = "membrane"
+        elif self.name.startswith("inside"):     self.archetype = "inside"
+        elif self.name.startswith("outside"):    self.archetype = "outside"
         elif self.name.startswith(nmodl.name()): self.archetype = nmodl.name()
-        else: raise Exception("what archetype is this? " + self.name)
+        else: raise Exception("Unrecognised archetype: " + self.name)
     @property
     def read(self):
         return 'r' in self.mode

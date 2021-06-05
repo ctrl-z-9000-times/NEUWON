@@ -41,20 +41,6 @@ class GrowSomata:
         for coordinates in self.region.sample_points(self.density):
             self.segments.extend(self.single(coordinates, self.diameter))
 
-    @classmethod
-    def single(cls, coordinates, diameter):
-        """ This approximates a sphere using a cylinder with an equivalent
-        surface area and volume. """
-        cylinder_diameter = (2 / 3) * diameter
-        cylinder_length = (3 / 2) * diameter
-        x = list(coordinates)
-        x[1] -= cylinder_length / 2
-        s1 = Segment(x, cylinder_diameter, None)
-        x = list(coordinates)
-        x[1] += cylinder_length / 2
-        s2 = Segment(x, cylinder_diameter, s1)
-        return [s1, s2]
-
 class GrowSynapses:
     def __init__(self, axons, dendrites, pre_gap_post, diameter, num_synapses):
         self.axons = list(axons)

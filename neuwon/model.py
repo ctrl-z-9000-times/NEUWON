@@ -252,9 +252,9 @@ class Reaction:
 class Model:
     def __init__(self, time_step,
             celsius = 37,
-            maximum_extracellular_radius=3e-6,
-            extracellular_volume_fraction=.20,
-            extracellular_tortuosity=1.55,
+            maximum_outside_radius=3e-6,
+            outside_volume_fraction=.20,
+            outside_tortuosity=1.55,
             intracellular_resistance = 1,
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3,):
@@ -262,31 +262,26 @@ class Model:
         self.reactions = {}
         self._injected_currents = _InjectedCurrents()
         self.animations = set()
-        # TODO: Either make the db private or rename it to the full name "database"
+
+        # TODO: Rename "db" to the full "database", add method model.get_database().
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
         db.add_global_constant("celsius", float(celsius))
         db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature in Kelvins.")
         db.add_function("create_segment", self.create_segment)
         db.add_function("destroy_segment", self.destroy_segment)
-        db.add_function("insert_reaction", self.insert_reaction)
-        db.add_function("remove_reaction", self.remove_reaction)
-        # Basic entities and their relations.
+        self._initialize_database_membrane(db)
+        self._initialize_database_intracellular(db)
+        self._initialize_database_outside(db, outside_volume_fraction=outside_volume_fraction,
+                outside_tortuosity=outside_tortuosity, maximum_outside_radius=maximum_outside_radius,)
+        self._initialize_database_electric(db, intracellular_resistance=intracellular_resistance,
+                membrane_capacitance=membrane_capacitance, initial_voltage=initial_voltage)
+
+    def _initialize_database_membrane(self, db):
         db.add_archetype("membrane", doc=""" """)
-        db.add_archetype("inside", doc="Intracellular space.")
-        db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/parents", dtype="membrane", allow_invalid=True,
                 doc="Cell membranes are connected in a tree.")
         db.add_sparse_matrix("membrane/children", "membrane", dtype=np.bool, doc="")
-        db.add_attribute("membrane/inside", dtype="inside", doc="""
-                A reference to the outermost shell.
-                The shells and the innermost core are allocated in a contiguous block
-                with this referencing the start of range of length "membrane/shells" + 1.
-                """)
-        db.add_attribute("membrane/shells", dtype=np.uint8)
-        db.add_attribute("inside/membrane", dtype="membrane")
-        db.add_attribute("inside/shell_radius")
-        # Geometric properties.
         db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
         db.add_attribute("membrane/diameters", bounds=(0.0, np.inf), doc="""
                 Units: """)
@@ -295,7 +290,7 @@ class Model:
                 1 - Cylinder
                 2 - Frustum
 
-                Note: all & only root segments are spheres. """)
+                Note: only and all root segments are spheres. """)
         db.add_attribute("membrane/primary", dtype=np.bool, doc="""
 
                 Primary segments are straightforward extensions of the parent
@@ -312,20 +307,34 @@ class Model:
                 bounds = (epsilon * (1e-6)**2, np.inf))
         db.add_attribute("membrane/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
                 Units: Liters""")
+
+    def _initialize_database_intracellular(self, db):
+        db.add_archetype("inside", doc="Intracellular space.")
+        db.add_attribute("membrane/inside", dtype="inside", doc="""
+                A reference to the outermost shell.
+                The shells and the innermost core are allocated in a contiguous block
+                with this referencing the start of range of length "membrane/shells" + 1.
+                """)
+        db.add_attribute("membrane/shells", dtype=np.uint8)
+        db.add_attribute("inside/membrane", dtype="membrane")
+        db.add_attribute("inside/shell_radius")
         db.add_sparse_matrix("inside/neighbors", "inside", dtype=Neighbor)
-        # Extracellular space properties.
+
+    def _initialize_database_outside(self, db, outside_volume_fraction, outside_tortuosity, maximum_outside_radius):
+        db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/outside", dtype="outside", doc="")
         db.add_attribute("outside/coordinates", shape=(3,), doc="Units: ")
         db.add_kd_tree(  "outside/tree", "outside/coordinates")
         db.add_attribute("outside/volumes", doc="Units: Litres")
         db.add_sparse_matrix("outside/neighbors", "outside", dtype=Neighbor)
-        db.add_global_constant("outside/volume_fraction", float(extracellular_volume_fraction),
+        db.add_global_constant("outside/volume_fraction", float(outside_volume_fraction),
                 bounds=(0.0, 1.0), doc="")
-        db.add_global_constant("outside/tortuosity", float(extracellular_tortuosity),
+        db.add_global_constant("outside/tortuosity", float(outside_tortuosity),
                 bounds=(1.0, np.inf))
-        db.add_global_constant("outside/maximum_radius", float(maximum_extracellular_radius),
+        db.add_global_constant("outside/maximum_radius", float(maximum_outside_radius),
                 bounds=(epsilon * 1e-6, np.inf))
-        # Electric properties.
+
+    def _initialize_database_electric(self, db, intracellular_resistance, membrane_capacitance, initial_voltage):
         db.add_global_constant("inside/resistance", float(intracellular_resistance),
                 bounds=(epsilon, np.inf), doc="""
                 Cytoplasmic resistance,
@@ -608,37 +617,32 @@ class Model:
         #    in the diffusion equation, and include the new frustum in the new attribute.
 
     def _initialize_outside(self, locations):
-        # TODO: Update this code to use the database. Also consider: how will it
-        # get the coordinates? Does this use "membrane/coordinates"? if so then
-        # it can't really have extra tracking points which are not associated
-        # with the membrane... Or should the extracellular stuff have its own
-        # system, complete with its own coordinates?
-        1/0
-
-        tree = self.db.access("outside/tree")
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
+        coordinates     = self.db.access("outside/coordinates").get()
+        tree            = self.db.access("outside/tree")
+        max_dist        = self.db.access("outside/maximum_radius")
+        outside_volumes = self.db.access("outside/volumes")
+        volume_fraction = self.db.access("outside/volume_fraction")
+        write_neighbor_cols = []
+        write_neighbor_data = []
         for location in locations:
-            coords = self.coordinates[location]
-            max_dist = self.maximum_extracellular_radius + self.diameters[location] / 2
-            neighbors = tree.query_ball_point(coords, 2 * max_dist)
-            neighbors.remove(location)
-            neighbors = np.array(neighbors, dtype=Index)
-            v, n = neuwon.voronoi.voronoi_cell(location, max_dist,
-                    neighbors, self.coordinates)
-            self.outside_volumes[location] = v * self.extracellular_volume_fraction * 1e3
-            self.neighbors[location] = n
-            for n in self.neighbors[location]:
-                n["distance"] = np.linalg.norm(coords - self.coordinates[n["location"]])
+            coords = coordinates[location]
+            potential_neighbors = tree.query_ball_point(coords, 2 * max_dist)
+            potential_neighbors.remove(location)
+            volume, neighbors = neuwon.voronoi.voronoi_cell(location, 
+                    max_dist, np.array(potential_neighbors, dtype=Index), coordinates)
+            outside_volumes[location] = volume * volume_fraction * 1000
+            neighbor_cols = neighbors['location']
+            neighbor_data = np.empty(len(neighbors), dtype=Neighbor)
+            neighbor_data['distance'] = neighbors['distance']
+            neighbor_data['border_surface_area'] = neighbors['border_surface_area']
+            write_neighbor_cols.append(list(neighbor_cols))
+            write_neighbor_data.append(list(neighbor_data))
+        self.db.access("outside/neighbors",
+                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_data))
 
     def destroy_segment(self, segments):
         """ """
-        1/0
-
-    # TODO: Delete this method and rework all of the examples to do: model.get_reaction().insert()
-    def insert_reaction(self, reaction, *args, **kwargs):
-        self.reactions[str(reaction)].new_instances(self.db, *args, **kwargs)
-
-    def remove_reaction(self, reaction, segments):
         1/0
 
     def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):

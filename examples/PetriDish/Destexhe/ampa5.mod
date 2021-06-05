@@ -9,9 +9,9 @@ COMMENT
       Patneau and Mayer, Neuron 6:785 (1991)
       Patneau et al, J Neurosci 13:3496 (1993)
 
-      C ---- C1 -- C2 -- O
-             |     |
-             D1    D2
+      C -- C1 -- C2 -- O
+           |     |
+           D1    D2
 
 Based on voltage-clamp recordings of AMPA receptor-mediated currents in rat
 hippocampal slices (Xiang et al., J. Neurophysiol. 71: 2552-2556, 1994), this

@@ -235,8 +235,9 @@ def voronoi_cell(home_location, maximum_extent, neighbor_locations, coordinates)
     data type Neighbor. """
     triangles = sphere(maximum_extent)
     planes = np.empty(len(neighbor_locations), dtype=Plane)
+    home_coordinates = coordinates[home_location]
     for i, n in enumerate(neighbor_locations):
-        new_plane(planes[i], coordinates[home_location], coordinates[n])
+        new_plane(planes[i], home_coordinates, coordinates[n])
     with numba.objmode(order='intp[:]'):
         order = np.argsort(planes, order="offset")
     for i in order:
@@ -246,7 +247,10 @@ def voronoi_cell(home_location, maximum_extent, neighbor_locations, coordinates)
     volume = 0.0
     for t in triangles:
         volume += triangle_volume(t)
-    return (volume, triangles_to_neighbors(triangles))
+    neighbors = triangles_to_neighbors(triangles)
+    for n in neighbors:
+        n["distance"] = np.linalg.norm(home_coordinates - coordinates[n["location"]])
+    return (volume, neighbors)
 
 def reference_implementation(home_coordinates, maximum_extent,
         neighbor_locations, neighbor_coordinates):
