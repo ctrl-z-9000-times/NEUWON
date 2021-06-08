@@ -506,11 +506,13 @@ class _Sparse_Matrix(_Component):
             rows, columns, data = sparse_matrix_write
             lil = scipy.sparse.lil_matrix(self.data)
             for r, c, d in zip(rows, columns, data):
-                lil.rows[r] = [int(x) for x in c]
-                lil.data[r] = list(d)
-                order = np.argsort(lil.rows[r])
-                lil.rows[r] = list(np.take(lil.rows[r], order))
-                lil.data[r] = list(np.take(lil.data[r], order))
+                r = int(r)
+                lil.rows[r].clear()
+                lil.data[r].clear()
+                cols_data = [int(x) for x in c]
+                order = np.argsort(cols_data)
+                lil.rows[r].extend(np.take(cols_data, order))
+                lil.data[r].extend(np.take(list(d), order))
             self.data = scipy.sparse.csr_matrix(lil, shape=self.data.shape)
         return self.data
 
@@ -518,7 +520,7 @@ class _Sparse_Matrix(_Component):
         _Component.check_data(self, database, self.data, reference=self.reference)
 
     def __repr__(self):
-        s = "%s is a sparse matrix"%self.name
+        s = "%s nnz/row: %g"%(self.name, self.data.nnz / self.data.shape[0])
         return s
 
 class _KD_Tree(_Component):
