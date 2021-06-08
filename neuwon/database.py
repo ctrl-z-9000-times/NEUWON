@@ -23,6 +23,12 @@ different and specialized things.
 #           entities causes recursive destruction of more entities.
 #       Grid Archetypes
 
+# TODO: Consider reworking the sparse-matrix-write arguments to access so that
+# the user can do more things:
+#       1) Write rows.
+#       2) Add coordinates.
+#       3) Overwrite the matrix? Are scipy.sparse.CSR immutable?
+
 # TODO: Make the API for grid archetypes.
 #   Consider making two new components, which would be auto-magically updated:
 #   -> Attribute coordinates of entity.
@@ -181,7 +187,7 @@ class Database:
         if return_entity:
             return [Entity(self, ark, idx) for idx in range(old_size, new_size)]
         else:
-            return range(old_size, new_size)
+            return np.arange(old_size, new_size)
 
     def destroy_entity(self, archetype_name, instances: list):
         # TODO: Consider how to rework this to instead of keeping lists of links

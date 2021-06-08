@@ -247,12 +247,26 @@ class Reaction:
 class Model:
     def __init__(self, time_step,
             celsius = 37,
-            maximum_outside_radius=3e-6,
+            fh_space = 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
+            max_outside_radius=20e-6,
             outside_volume_fraction=.20,
             outside_tortuosity=1.55,
-            intracellular_resistance = 1,
+            cytoplasmic_resistance = 1,
             membrane_capacitance = 1e-2,
             initial_voltage = -70e-3,):
+        """
+        Argument cytoplasmic_resistance
+                Units:
+
+        Argument outside_volume_fraction
+
+        Argument outside_tortuosity
+
+        Argument max_outside_radius
+
+        Argument membrane_capacitance
+                Units: Farads / Meter^2
+        """
         self.species = {}
         self.reactions = {}
         self._injected_currents = _InjectedCurrents()
@@ -267,10 +281,21 @@ class Model:
         db.add_function("destroy_segment", self.destroy_segment)
         self._initialize_database_membrane(db)
         self._initialize_database_inside(db)
-        self._initialize_database_outside(db, outside_volume_fraction=outside_volume_fraction,
-                outside_tortuosity=outside_tortuosity, maximum_outside_radius=maximum_outside_radius,)
-        self._initialize_database_electric(db, intracellular_resistance=intracellular_resistance,
-                membrane_capacitance=membrane_capacitance, initial_voltage=initial_voltage)
+        self._initialize_database_outside(db)
+        self._initialize_database_electric(db, initial_voltage)
+
+        self.fh_space = float(fh_space)
+        self.cytoplasmic_resistance = float(cytoplasmic_resistance) # TODO: rename to cytoplasmic_resistance.
+        self.max_outside_radius = float(max_outside_radius)
+        self.membrane_capacitance = float(membrane_capacitance)
+        self.outside_tortuosity = float(outside_tortuosity)
+        self.outside_volume_fraction = float(outside_volume_fraction)
+        assert(self.fh_space >= epsilon * 1e-10)
+        assert(self.cytoplasmic_resistance >= epsilon)
+        assert(self.max_outside_radius >= epsilon * 1e-6)
+        assert(self.membrane_capacitance >= epsilon)
+        assert(self.outside_tortuosity >= 1.0)
+        assert(1.0 >= self.outside_volume_fraction >= 0.0)
 
     def _initialize_database_membrane(self, db):
         db.add_archetype("membrane", doc=""" """)
@@ -316,7 +341,7 @@ class Model:
         db.add_sparse_matrix("inside/neighbor_distances", "inside")
         db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
 
-    def _initialize_database_outside(self, db, outside_volume_fraction, outside_tortuosity, maximum_outside_radius):
+    def _initialize_database_outside(self, db):
         db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/outside", dtype="outside", doc="")
         db.add_attribute("outside/coordinates", shape=(3,), doc="Units: ")
@@ -325,22 +350,7 @@ class Model:
         db.add_sparse_matrix("outside/neighbor_distances", "outside")
         db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
 
-        db.add_global_constant("outside/volume_fraction", float(outside_volume_fraction),
-                bounds=(0.0, 1.0), doc="")
-        db.add_global_constant("outside/tortuosity", float(outside_tortuosity),
-                bounds=(1.0, np.inf))
-        db.add_global_constant("outside/maximum_radius", float(maximum_outside_radius),
-                bounds=(epsilon * 1e-6, np.inf))
-
-    def _initialize_database_electric(self, db, intracellular_resistance, membrane_capacitance, initial_voltage):
-        db.add_global_constant("inside/resistance", float(intracellular_resistance),
-                bounds=(epsilon, np.inf), doc="""
-                Cytoplasmic resistance,
-                In NEURON this variable is named Ra?
-                Units: """)
-        db.add_global_constant("membrane/capacitance", float(membrane_capacitance),
-                bounds=(epsilon, np.inf), doc="""
-                Units: Farads / Meter^2""")
+    def _initialize_database_electric(self, db, initial_voltage):
         db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
         db.add_attribute("membrane/axial_resistances", allow_invalid=True, doc="Units: ")
         db.add_attribute("membrane/capacitances", doc="Units: Farads")
@@ -377,6 +387,9 @@ class Model:
         assert(species.name not in self.species)
         self.species[species.name] = species
         species._initialize(self.db)
+
+    def get_species(self, species_name):
+        return self.species[str(species_name)]
 
     def add_reaction(self, reaction):
         """
@@ -428,16 +441,17 @@ class Model:
         parents = parents_clean
         if not isinstance(diameters, Iterable):
             diameters = np.full(len(parents), diameters, dtype=Real)
-        if   shape == "cylinder":   shape = 1
-        elif shape == "frustum":    shape = 2
+        if   shape == "cylinder":   shape = np.full(len(parents), 1, dtype=np.uint8)
+        elif shape == "frustum":    shape = np.full(len(parents), 2, dtype=np.uint8)
         else: raise ValueError("Invalid argument 'shape'")
+        shape[parents == NULL] = 0 # Shape of root is always sphere.
         # This method only deals with the "maximum_segment_length" argument and
         # delegates the remaining work to the method: "_create_segment_batch".
         maximum_segment_length = float(maximum_segment_length)
         assert(maximum_segment_length > 0)
         if maximum_segment_length == np.inf:
             tips = self._create_segment_batch(parents, coordinates, diameters,
-                    shape=shape, shells=shells,)
+                    shapes=shape, shells=shells,)
             return [Segment(self, x) for x in tips]
         # Accept defeat... Batching operations is too complicated.
         tips = []
@@ -445,7 +459,7 @@ class Model:
         old_diams = self.db.access("membrane/diameters").get()
         for p, c, d in zip(parents, coordinates, diameters):
             if p == NULL:
-                tips.append(self._create_segment_batch([p], [c], [d], shape=shape, shells=shells,))
+                tips.append(self._create_segment_batch([p], [c], [d], shapes=shape, shells=shells,))
                 continue
             length = np.linalg.norm(np.subtract(old_coords[p], c))
             divisions = np.maximum(1, int(np.ceil(length / maximum_segment_length)))
@@ -459,83 +473,62 @@ class Model:
             cursor = p
             for i in range(divisions):
                 cursor = self._create_segment_batch([cursor],
-                    seg_coords[i], seg_diams[i], shape=shape, shells=shells,)[0]
+                    seg_coords[i], seg_diams[i], shapes=shape, shells=shells,)[0]
                 tips.append(cursor)
         return [Segment(self, x) for x in tips]
 
-    def _create_segment_batch(self, parents, coordinates, diameters, shape, shells):
-        access = self.db.access
-        # Allocate memory.
+    def _create_segment_batch(self, parents, coordinates, diameters, shapes, shells):
         num_new_segs = len(parents)
-        membrane_idx = self.db.create_entity("membrane", num_new_segs, return_entity=False)
-        inside_idx   = self.db.create_entity("inside", num_new_segs * (shells + 1), return_entity=False)
-        outside_idx  = self.db.create_entity("outside", num_new_segs, return_entity=False)
-        membrane_idx = np.array(membrane_idx, dtype=int)
-        inside_idx   = np.array(inside_idx, dtype=int)
-        outside_idx  = np.array(outside_idx, dtype=int)
-        # Save segment arguments.
-        access("membrane/parents")[membrane_idx]     = parents
-        access("membrane/coordinates")[membrane_idx] = coordinates
-        access("membrane/diameters")[membrane_idx]   = diameters
-        access("membrane/shells")[membrane_idx]      = shells
-        #
-        shapes = access("membrane/shapes")
-        for p, m in zip(parents, membrane_idx):
-            # Shape of root is always sphere.
-            if p == NULL:   shapes[m] = 0
-            else:           shapes[m] = shape
-        # Cross-link the membrane parent to child to form a doubly linked tree.
+        m_idx = self.db.create_entity("membrane", num_new_segs, return_entity=False)
+        i_idx = self.db.create_entity("inside", num_new_segs * (shells + 1), return_entity=False)
+        o_idx = self.db.create_entity("outside", num_new_segs, return_entity=False)
+        access = self.db.access
+        access("membrane/inside")[m_idx]      = i_idx[slice(None,None,shells + 1)]
+        access("inside/membrane")[i_idx]      = cp.repeat(m_idx, shells + 1)
+        access("membrane/outside")[m_idx]     = o_idx
+        access("membrane/parents")[m_idx]     = parents
+        access("membrane/coordinates")[m_idx] = coordinates
+        access("membrane/diameters")[m_idx]   = diameters
+        access("membrane/shapes")[m_idx]      = shapes
+        access("membrane/shells")[m_idx]      = shells
         children = access("membrane/children")
         write_rows = []
         write_cols = []
-        for p, m in zip(parents, membrane_idx):
+        for p, c in zip(parents, m_idx):
             if p != NULL:
                 siblings = list(children[p].indices)
-                siblings.append(m)
+                siblings.append(c)
                 write_rows.append(p)
                 write_cols.append(siblings)
-        data = [np.ones(len(x), dtype=np.bool) for x in write_cols]
+        data = [np.full(len(x), True) for x in write_cols]
         access("membrane/children", sparse_matrix_write=(write_rows, write_cols, data))
-        # Set some branches as primary.
-        primary  = access("membrane/primary")
-        parents  = access("membrane/parents")
-        children = access("membrane/children")
-        for m in membrane_idx:
-            p = parents[m]
-            # Shape of root is always sphere.
+        primary    = access("membrane/primary")
+        all_parent = access("membrane/parents").get()
+        children   = access("membrane/children")
+        for p, m in zip(parents, m_idx):
             if p == NULL: # Root.
-                primary[m] = True # Value does not matter.
-            elif parents[p] == NULL: # Parent is root.
+                primary[m] = False # Shape of root is always sphere, value does not matter.
+            elif all_parent[p] == NULL: # Parent is root.
                 primary[m] = False # Spheres have no primary branches off of a them.
             else:
                 # Set the first child added to a segment as the primary extension,
                 # and all subsequent children as secondary branches.
-                primary[m] = (children.getrow(p).getnnz() == 1)
-        # 
-        self._initialize_membrane(membrane_idx)
-        self._initialize_membrane([p for p in parents[membrane_idx] if p != NULL])
-        # 
-        access("membrane/inside")[membrane_idx] = inside_idx[slice(None,None,shells + 1)]
-        access("inside/membrane")[inside_idx]   = cp.repeat(membrane_idx, shells + 1)
+                primary[m] = (children[p].getnnz() == 1)
+        self._initialize_membrane_geometry(m_idx)
+        self._initialize_membrane_geometry([p for p in parents if p != NULL])
+
         # shell_radius = [1.0] # TODO
-        # access("inside/shell_radius")[inside_idx] = cp.tile(shell_radius, membrane_idx)
+        # access("inside/shell_radius")[i_idx] = cp.tile(shell_radius, m_idx)
         # 
-        access("membrane/outside")[membrane_idx] = outside_idx
+
         # TODO: Consider moving the extracellular tracking point to over the
         # center of the cylinder, instead of the tip. Using the tip only really
         # makes sense for synapses. Also sphere are special case.
-        access("outside/coordinates")[membrane_idx] = coordinates
-        self._initialize_outside(outside_idx)
-        cleaned = set(outside_idx)
-        touched = set()
-        for neighbors in access("outside/neighbor_distances")[outside_idx]:
-            for n in neighbors.indices:
-                if n not in cleaned:
-                    touched.add(n)
-        self._initialize_outside(list(touched))
-        return membrane_idx
+        access("outside/coordinates")[m_idx] = coordinates
+        self._initialize_outside(o_idx)
+        return m_idx
 
-    def _initialize_membrane(self, membrane_idx):
+    def _initialize_membrane_geometry(self, membrane_idx):
         access   = self.db.access
         parents  = access("membrane/parents")
         children = access("membrane/children")
@@ -606,9 +599,9 @@ class Model:
                 elif shape == 2: # Frustum.
                     volumes[idx] = 1/0
         # Compute passive electric properties
-        Ra       = access("inside/resistance")
+        Ra       = self.cytoplasmic_resistance
         r        = access("membrane/axial_resistances")
-        Cm       = access("membrane/capacitance")
+        Cm       = self.membrane_capacitance
         c        = access("membrane/capacitances")
         # Compute axial membrane resistance.
         # TODO: This formula only works for cylinders.
@@ -624,23 +617,31 @@ class Model:
         # -> For chemical diffusion: make a new attribute for the geometry terms
         #    in the diffusion equation, and include the new frustum in the new attribute.
 
+        outside_volumes = access("outside/volumes")
+        fh_space = self.fh_space * s_areas[membrane_idx] * 1000
+        outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
+
     def _initialize_outside(self, locations):
+        self._initialize_outside_inner(locations)
+        touched = set()
+        for neighbors in self.db.access("outside/neighbor_distances")[locations]:
+            touched.update(neighbors.indices)
+        touched.difference_update(set(locations))
+        self._initialize_outside_inner(list(touched))
+
+    def _initialize_outside_inner(self, locations):
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
         coordinates     = self.db.access("outside/coordinates").get()
         tree            = self.db.access("outside/tree")
-        max_dist        = self.db.access("outside/maximum_radius")
-        outside_volumes = self.db.access("outside/volumes")
-        volume_fraction = self.db.access("outside/volume_fraction")
         write_neighbor_cols = []
         write_neighbor_dist = []
         write_neighbor_area = []
         for location in locations:
             coords = coordinates[location]
-            potential_neighbors = tree.query_ball_point(coords, 2 * max_dist)
+            potential_neighbors = tree.query_ball_point(coords, 2 * self.max_outside_radius)
             potential_neighbors.remove(location)
-            volume, neighbors = neuwon.voronoi.voronoi_cell(location, 
-                    max_dist, np.array(potential_neighbors, dtype=Index), coordinates)
-            outside_volumes[location] = volume * volume_fraction * 1000
+            volume, neighbors = neuwon.voronoi.voronoi_cell(location,
+                    self.max_outside_radius, np.array(potential_neighbors, dtype=Index), coordinates)
             write_neighbor_cols.append(list(neighbors['location']))
             write_neighbor_dist.append(list(neighbors['distance']))
             write_neighbor_area.append(list(neighbors['border_surface_area']))
@@ -1045,10 +1046,3 @@ def _outside_diffusion_coefficients(database_access, species):
         dst.append(location)
         coef.append(-dt / species.outside_decay_period)
     return (coef, (dst, src))
-
-if __name__ == "__main__":
-    print("#"*30, "REPR")
-    print(repr(Model(1e-4).db))
-    print("#"*30, "STR")
-    print(str(Model(1e-4).db))
-    Model(1e-4).db.check()
