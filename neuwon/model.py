@@ -20,11 +20,6 @@ from scipy.sparse.linalg import expm
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 
-Neighbor = np.dtype([
-    ("distance", Real),
-    ("border_surface_area", Real),
-])
-
 class Species:
     """ """
 
@@ -271,7 +266,7 @@ class Model:
         db.add_function("create_segment", self.create_segment)
         db.add_function("destroy_segment", self.destroy_segment)
         self._initialize_database_membrane(db)
-        self._initialize_database_intracellular(db)
+        self._initialize_database_inside(db)
         self._initialize_database_outside(db, outside_volume_fraction=outside_volume_fraction,
                 outside_tortuosity=outside_tortuosity, maximum_outside_radius=maximum_outside_radius,)
         self._initialize_database_electric(db, intracellular_resistance=intracellular_resistance,
@@ -308,7 +303,7 @@ class Model:
         db.add_attribute("membrane/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
                 Units: Liters""")
 
-    def _initialize_database_intracellular(self, db):
+    def _initialize_database_inside(self, db):
         db.add_archetype("inside", doc="Intracellular space.")
         db.add_attribute("membrane/inside", dtype="inside", doc="""
                 A reference to the outermost shell.
@@ -318,7 +313,8 @@ class Model:
         db.add_attribute("membrane/shells", dtype=np.uint8)
         db.add_attribute("inside/membrane", dtype="membrane")
         db.add_attribute("inside/shell_radius")
-        db.add_sparse_matrix("inside/neighbors", "inside", dtype=Neighbor)
+        db.add_sparse_matrix("inside/neighbor_distances", "inside")
+        db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
 
     def _initialize_database_outside(self, db, outside_volume_fraction, outside_tortuosity, maximum_outside_radius):
         db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
@@ -326,7 +322,9 @@ class Model:
         db.add_attribute("outside/coordinates", shape=(3,), doc="Units: ")
         db.add_kd_tree(  "outside/tree", "outside/coordinates")
         db.add_attribute("outside/volumes", doc="Units: Litres")
-        db.add_sparse_matrix("outside/neighbors", "outside", dtype=Neighbor)
+        db.add_sparse_matrix("outside/neighbor_distances", "outside")
+        db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
+
         db.add_global_constant("outside/volume_fraction", float(outside_volume_fraction),
                 bounds=(0.0, 1.0), doc="")
         db.add_global_constant("outside/tortuosity", float(outside_tortuosity),
@@ -523,8 +521,18 @@ class Model:
         # access("inside/shell_radius")[inside_idx] = cp.tile(shell_radius, membrane_idx)
         # 
         access("membrane/outside")[membrane_idx] = outside_idx
-        # self._initialize_outside(outside)
-        # 1/0 # TODO: Also re-initialize all of the neighbors of new outside points.
+        # TODO: Consider moving the extracellular tracking point to over the
+        # center of the cylinder, instead of the tip. Using the tip only really
+        # makes sense for synapses. Also sphere are special case.
+        access("outside/coordinates")[membrane_idx] = coordinates
+        self._initialize_outside(outside_idx)
+        cleaned = set(outside_idx)
+        touched = set()
+        for neighbors in access("outside/neighbor_distances")[outside_idx]:
+            for n in neighbors.indices:
+                if n not in cleaned:
+                    touched.add(n)
+        self._initialize_outside(list(touched))
         return membrane_idx
 
     def _initialize_membrane(self, membrane_idx):
@@ -624,7 +632,8 @@ class Model:
         outside_volumes = self.db.access("outside/volumes")
         volume_fraction = self.db.access("outside/volume_fraction")
         write_neighbor_cols = []
-        write_neighbor_data = []
+        write_neighbor_dist = []
+        write_neighbor_area = []
         for location in locations:
             coords = coordinates[location]
             potential_neighbors = tree.query_ball_point(coords, 2 * max_dist)
@@ -632,14 +641,13 @@ class Model:
             volume, neighbors = neuwon.voronoi.voronoi_cell(location, 
                     max_dist, np.array(potential_neighbors, dtype=Index), coordinates)
             outside_volumes[location] = volume * volume_fraction * 1000
-            neighbor_cols = neighbors['location']
-            neighbor_data = np.empty(len(neighbors), dtype=Neighbor)
-            neighbor_data['distance'] = neighbors['distance']
-            neighbor_data['border_surface_area'] = neighbors['border_surface_area']
-            write_neighbor_cols.append(list(neighbor_cols))
-            write_neighbor_data.append(list(neighbor_data))
-        self.db.access("outside/neighbors",
-                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_data))
+            write_neighbor_cols.append(list(neighbors['location']))
+            write_neighbor_dist.append(list(neighbors['distance']))
+            write_neighbor_area.append(list(neighbors['border_surface_area']))
+        self.db.access("outside/neighbor_distances",
+                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_dist))
+        self.db.access("outside/neighbor_border_areas",
+                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_area))
 
     def destroy_segment(self, segments):
         """ """
