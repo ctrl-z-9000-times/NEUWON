@@ -64,7 +64,7 @@ class Species:
             "outside_concentration": 110e-3,
         },
         "glu": {
-            "outside_diffusivity": 1e-6,
+            "outside_diffusivity": 1e-9,
             "outside_decay_period": 2e-3,
         },
     }
