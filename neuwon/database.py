@@ -525,7 +525,7 @@ class _Sparse_Matrix(_Component):
         return self.data
 
     def check(self, database):
-        _Component.check_data(self, database, self.data, reference=self.reference)
+        _Component.check_data(self, database, self.data.data, reference=self.reference)
 
     def __repr__(self):
         s = "%s nnz/row: %g"%(self.name, self.data.nnz / self.data.shape[0])
@@ -564,13 +564,12 @@ class _LinearSystem(_Component):
         self.function   = function
         self.epsilon    = float(epsilon)
         self.data       = None
-        self.invalidate()
 
     def invalidate(self):
-        self.up_to_date = False
+        self.data = None
 
     def access(self, database):
-        if not self.up_to_date:
+        if self.data is None:
             coef = self.function(database.access)
             coef = scipy.sparse.csc_matrix(coef, shape=(self.archetype.size, self.archetype.size))
             # Note: always use double precision floating point for building the impulse response matrix.
@@ -580,13 +579,15 @@ class _LinearSystem(_Component):
             matrix.data[np.abs(matrix.data) < self.epsilon] = 0
             matrix.eliminate_zeros()
             self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
-            self.up_to_date = True
         return self.data
 
     def check(self, database):
-        _Component.check_data(self, database, self.access(database))
+        _Component.check_data(self, database, self.access(database).get().data)
 
     def __repr__(self):
-        # TODO: For sparse matrixes: print the average num-non-zero per row.
-        s = "%s is a linear system of equations."%self.name
+        s = "%s linear diff-eq"%self.name
+        if self.data is None:
+            s += ", invalid."
+        else:
+            s += ", nnz/row %g"%(self.data.nnz / self.data.shape[0])
         return s
