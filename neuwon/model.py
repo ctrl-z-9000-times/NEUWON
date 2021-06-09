@@ -31,6 +31,9 @@ class Species:
     # while there may be one scientifically correct value for each argument, the
     # user might want to omit options for run-speed. Mechanisms come in so many
     # different flavors too, with varying levels of bio-accuracy vs run-speed.
+    # 
+    # Also, modify add_reactions to accept a whole dictionary of reactions so
+    # that this works: model.add_reactions(neuwon.examples.Hodgkin_Huxley.reactions)
     _library = {
         "na": {
             "charge": 1,
@@ -61,9 +64,8 @@ class Species:
             "outside_concentration": 110e-3,
         },
         "glu": {
-            # "outside_concentration": 1/0, # TODO!
-            "outside_diffusivity": 1e-6, # TODO!
-            # "outside_decay_period": 1/0, # TODO!
+            "outside_diffusivity": 1,
+            "outside_decay_period": 2e-3,
         },
     }
 
@@ -767,17 +769,21 @@ class Model:
                     (0, 0, 1),
                     (0, 0, -1),)):
         """ Use POVRAY to render an image of the model. """
+        qq = 1e6 # Convert to microns for POVRAY.
         pov = ""
+        pov += '#include "shapes.inc"\n'
+        pov += '#include "colors.inc"\n'
+        pov += '#include "textures.inc"\n'
         pov += "camera { location <%s> look_at  <%s> }\n"%(
-            ", ".join(str(x) for x in camera_coordinates),
-            ", ".join(str(x) for x in camera_look_at))
+            ", ".join(str(x*qq) for x in camera_coordinates),
+            ", ".join(str(x*qq) for x in camera_look_at))
         pov += "global_settings { ambient_light rgb<1, 1, 1> }\n"
         for coords in lights:
-            pov += "light_source { <%s, %s, %s> color rgb<1, 1, 1>}\n"%coords
+            pov += "light_source { <%s> color rgb<1, 1, 1>}\n"%", ".join(str(x*qq) for x in coords)
         if fog_distance == np.inf:
             pov += "background { color rgb<%s> }\n"%", ".join(str(x) for x in fog_color)
         else:
-            pov += "fog { distance %s color rgb<%s>}\n"%(str(fog_distance),
+            pov += "fog { distance %s color rgb<%s>}\n"%(str(fog_distance*qq),
             ", ".join(str(x) for x in fog_color))
         all_parent = self.access("membrane/parents").get()
         all_coords = self.access("membrane/coordinates").get()
@@ -786,18 +792,17 @@ class Model:
             # Special cases for root of tree, which is a sphere.
             if parent == NULL:
                 pov += "sphere { <%s>, %s "%(
-                    ", ".join(str(x) for x in coords),
-                    str(diam / 2))
+                    ", ".join(str(x*qq) for x in coords),
+                    str(diam / 2 * qq))
             else:
                 parent_coords = all_coords[parent]
                 pov += "cylinder { <%s>, <%s>, %s "%(
-                    ", ".join(str(x) for x in coords),
-                    ", ".join(str(x) for x in parent_coords),
-                    str(diam / 2))
-            pov += "texture { pigment { rgb <%s> } } }\n"%", ".join(str(x) for x in membrane_colors[location])
+                    ", ".join(str(x*qq) for x in coords),
+                    ", ".join(str(x*qq) for x in parent_coords),
+                    str(diam / 2 * qq))
+            pov += "texture { pigment { color rgb <%s> } } }\n"%", ".join(str(x) for x in membrane_colors[location])
         pov_file = tempfile.NamedTemporaryFile(suffix=".pov", mode='w+t', delete=False)
-        pov_file.write(pov)
-        pov_file.close()
+        pov_file.write(pov); pov_file.flush(); os.fsync(pov_file.fileno())
         subprocess.run(["povray",
             "-D", # Disables immediate graphical output, save to file instead.
             "+O" + output_filename,
