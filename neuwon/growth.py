@@ -190,28 +190,29 @@ class Growth:
         return distance + self.balancing_factor * path_length
 
     def morphological_constraints_satisfied(self, parent, child_coordinates):
-        if self.only_bifurcate:
-            if parent not in self.seeds: pass
-            elif len(parent.children) >= 2: return False
+        if (self.only_bifurcate and
+            len(parent.children) >= 2 and
+            parent not in self.seeds):
+            return False
         distance = np.linalg.norm(np.subtract(parent.coordinates, child_coordinates))
-        def angle(a, b):
+        def angle_function(a, b):
             return np.arccos(np.dot(a, b) / np.linalg.norm(a) / np.linalg.norm(b))
         if parent.parent:
             parent_vector = np.subtract(parent.coordinates, parent.parent.coordinates)
             child_vector = np.subtract(child_coordinates, parent.coordinates)
-            angle = angle(parent_vector, child_vector)
+            angle = angle_function(parent_vector, child_vector)
         else:
             angle = None
         # Check extension distance & angle.
         if not parent.children:
             if distance > self.extension_distance:
                 return False
-            if angle and angle > self.extension_angle:
+            if angle is not None and angle > self.extension_angle:
                 return False
         else:
             # Check bifurcation distance & angle.
             if distance > self.bifurcation_distance:
                 return False
-            if angle and angle > self.bifurcation_angle:
+            if angle is not None and angle > self.bifurcation_angle:
                 return False
         return True
