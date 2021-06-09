@@ -89,7 +89,6 @@ class NmodlMechanism(Reaction):
         nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
         nmodl.symtab.SymtabVisitor().visit_program(AST)
         nmodl.dsl.visitor.InlineVisitor().visit_program(AST)
-        nmodl.dsl.visitor.SympyConductanceVisitor().visit_program(AST)
         nmodl.dsl.visitor.KineticBlockVisitor().visit_program(AST)
         self.visitor = nmodl.dsl.visitor.AstLookupVisitor()
         self.lookup = lambda n: self.visitor.lookup(AST, n)
@@ -117,9 +116,10 @@ class NmodlMechanism(Reaction):
         # TODO: sanity check for breakpoint block.
         disallow = (
             "FUNCTION_TABLE_BLOCK",
+            "LON_DIFUSE",
+            "NONSPECIFIC_CUR_VAR",
             "TABLE_STATEMENT",
             "VERBATIM",
-            "LON_DIFUSE",
         )
         for x in disallow:
             if self.lookup(getattr(ANT, x)):
@@ -238,24 +238,15 @@ class NmodlMechanism(Reaction):
             return self._parse_expression(AST.value) * factor
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
 
-    def _add_pointer(self, name, pointer, mode):
-        """ Argument name is an nmodl varaible name.
-            Argument pointer is a database access path. """
-        assert name not in self.pointers
-        self.pointers[name] = _Pointer(self, pointer, mode)
-
     def _gather_IO(self):
         """ Determine what external data the mechanism accesses. """
         if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages", 'r')
-        # Assignments to the variables in output_currents are ignored because
-        # NEUWON converts all mechanisms to use conductances instead of currents.
-        output_currents = []
-        output_nonspecific_currents = []
         for x in self.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
             equilibrium = 'e' + ion
             current = 'i' + ion
+            conductance = 'g' + ion
             inside = ion + 'i'
             outside = ion + 'o'
             for y in x.readlist:
@@ -270,34 +261,25 @@ class NmodlMechanism(Reaction):
             for y in x.writelist:
                 variable = y.name.value.eval()
                 if variable == current:
-                    output_currents.append(variable)
+                    raise NotImplementedError(variable)
+                elif variable == conductance:
+                    self._add_pointer(variable, "membrane/conductances/%s"%ion, 'a')
                 elif variable == inside:
                     self._add_pointer(variable, "membrane/inside/%s/release_rates"%ion, 'a')
                 elif variable == outside:
                     self._add_pointer(variable, "membrane/outside/%s/release_rates"%ion, 'a')
                 else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
-        for x in self.lookup(ANT.NONSPECIFIC_CUR_VAR):
-            output_nonspecific_currents.append(x.name.get_node_name())
-            eprint("Warning: NONSPECIFIC_CURRENT detected.")
-        output_currents.extend(output_nonspecific_currents)
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
             variable = x.conductance.get_node_name()
-            ion = x.ion.get_node_name() if x.ion else None
-            self._add_pointer(variable, "membrane/conductances/%s"%ion, 'a')
-        num_conductances = sum("conductance" in ptr.name for ptr in self.pointers.values())
-        if len(output_currents) != num_conductances:
-            eprint("Output Currents:", ", ".join(output_currents))
-            eprint("Conductances:")
-            for name, ptr in self.write.items():
-                if "conductance" in ptr:
-                    eprint("\t" + name, "=", ptr)
-            raise ValueError("Failed to match output currents to conductance AccessHandles.")
-        # Ignore assignments to the variables in output_currents because NEUWON
-        # converts all mechanisms to use conductances instead of currents.
-        no_write = set(output_nonspecific_currents).union(set(output_currents))
-        self.breakpoint_block.map(lambda stmt: ([]
-                if isinstance(stmt, _AssignStatement) and stmt.lhsn in no_write
-                else [stmt]))
+            if variable not in self.pointers:
+                ion = x.ion.get_node_name()
+                self._add_pointer(variable, "membrane/conductances/%s"%ion, 'a')
+
+    def _add_pointer(self, name, pointer, mode):
+        """ Argument name is an nmodl varaible name.
+            Argument pointer is a database access path. """
+        assert name not in self.pointers
+        self.pointers[name] = _Pointer(self, pointer, mode)
 
     def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the
@@ -474,7 +456,10 @@ class NmodlMechanism(Reaction):
                 stmt.pointer = self.pointers.get(stmt.lhsn, None)
         # 
         for x in self.pointers.values():
+            # TODO: rename mangle2(location) to mangle2(membrane)
             if   x.archetype == "membrane":  x.index = mangle2("location")
+            elif x.archetype == "inside":    x.index = mangle2("inside")
+            elif x.archetype == "outside":   x.index = mangle2("outside")
             elif x.archetype == self.name(): x.index = mangle2("index")
             else: raise NotImplementedError(x.archetype)
         # Move assignments to conductances to the end of the block, where they
@@ -566,6 +551,8 @@ class _Pointer:
     @property
     def accumulate(self):
         return 'a' in self.mode
+    def __repr__(self):
+        return "_Pointer('%s', '%s')"%(self.name, self.mode)
 
 class _CodeBlock:
     def __init__(self, nmodl, AST):
@@ -684,7 +671,10 @@ class _AssignStatement:
 
     def to_python(self,  indent="", context=None, **kwargs):
         if not isinstance(self.rhs, str):
-            self.rhs = pycode(self.rhs.simplify())
+            try: self.rhs = pycode(self.rhs.simplify())
+            except Exception:
+                print("Failed at:", self.lhsn, "=", repr(self.rhs))
+                raise
         if self.derivative:
             lhs = mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
@@ -974,7 +964,7 @@ class _cache:
         except Exception as err:
             eprint("CACHE ERROR", str(err))
             return False
-        self.__dict__.update(data)
+        obj.__dict__.update(data)
         return True
 
     @staticmethod
