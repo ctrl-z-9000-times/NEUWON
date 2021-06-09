@@ -28,8 +28,6 @@ ANT = nmodl.ast.AstNodeType
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
-# TODO: Cache does not work...
-
 # # Ensure that all output pointers are written to.
 # surface_area_parameters = sorted(self.surface_area_parameters)
 # for variable, pointer in self.pointers.items():
@@ -960,6 +958,7 @@ class _cache:
         # TODO: Check the last modification time stamps on the nmodl file and
         # the cache files, to detect out of date caches.
         try:
+            1/0
             with open(cache_file, 'rb') as f: data = pickle.load(f)
         except Exception as err:
             eprint("CACHE ERROR", str(err))

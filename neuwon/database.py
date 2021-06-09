@@ -16,12 +16,13 @@ a hierarchical organization where Archetypes contain Components.
 different and specialized things.
 """
 
-# OUTSTANDING TASKS:
-#       repr & str formatting
-#       Destroy & Relocate Entities
+# TODO: repr & str formatting
+
+# TODO: Consider renaming data types: Index to Pointer.
+
+# TODO: Destroy & Relocate Entities
 #           The "allow_invalid" flag should control whether destroying referenced
 #           entities causes recursive destruction of more entities.
-#       Grid Archetypes
 
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:
@@ -29,7 +30,8 @@ different and specialized things.
 #       2) Add coordinates.
 #       3) Overwrite the matrix? Are scipy.sparse.CSR immutable?
 
-# TODO: Make the API for grid archetypes.
+# TODO: Grid Archetypes
+#   Design the API:
 #   Consider making two new components, which would be auto-magically updated:
 #   -> Attribute coordinates of entity.
 #   -> Function Nearest neighbor to convert coordinates to entity index.
@@ -278,15 +280,15 @@ class Database:
     def __repr__(self, is_str=False):
         f = str if is_str else repr
         s = ""
-        # TODO: sort case insensitive!
-        for comp_name, comp in sorted(self.components.items()):
+        case_insensitive = lambda kv_pair: kv_pair[0].lower()
+        for comp_name, comp in sorted(self.components.items(), key=case_insensitive):
             try: self._get_archetype(comp_name)
             except ValueError:
                 s += f(comp) + "\n"
-        for ark_name, ark in sorted(self.archetypes.items()):
+        for ark_name, ark in sorted(self.archetypes.items(), key=case_insensitive):
             s += "=" * 80 + "\n"
             s += f(ark) + "\n"
-            for comp_name, comp in sorted(self.components.items()):
+            for comp_name, comp in sorted(self.components.items(), key=case_insensitive):
                 if not comp_name.startswith(ark_name): continue
                 s += f(comp) + "\n"
         return s
