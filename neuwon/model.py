@@ -64,7 +64,7 @@ class Species:
             "outside_concentration": 110e-3,
         },
         "glu": {
-            "outside_diffusivity": 1,
+            "outside_diffusivity": 1e-6,
             "outside_decay_period": 2e-3,
         },
     }
@@ -125,14 +125,14 @@ class Species:
                 db.add_attribute("inside/release_rates/" + self.name,
                         initial_value=0, doc=release_rates_doc)
                 db.add_linear_system("inside/diffusions/" + self.name,
-                        function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+                        function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
             else:
                 db.add_attribute("membrane/inside/concentrations/" + self.name,
                         initial_value=self.inside_concentration, doc=concentrations_doc)
                 db.add_attribute("membrane/inside/release_rates/" + self.name,
                         initial_value=0, doc=release_rates_doc)
                 db.add_linear_system("membrane/inside/diffusions/" + self.name,
-                        function=_inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+                        function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.outside_diffusivity is None:
             db.add_global_constant("outside/concentrations/" + self.name,
                     self.outside_concentration, doc=concentrations_doc)
@@ -142,7 +142,7 @@ class Species:
             db.add_attribute("outside/release_rates/" + self.name,
                     initial_value=0, doc=release_rates_doc)
             db.add_linear_system("outside/diffusions/" + self.name,
-                    function=_outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+                    function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
             db.add_attribute("membrane/conductances/" + self.name,
                     initial_value=0, doc=conductances_doc)
@@ -198,6 +198,60 @@ class Species:
             return 1 - z / 2
         else:
             return z / (math.exp(z) - 1)
+
+    def _inside_diffusion_coefficients(self, database_access):
+        dt           = database_access("time_step") / 2
+        src = []; dst = []; coef = []
+        for location in range(len(geometry)):
+            if geometry.is_root(location):
+                continue
+            parent = geometry.parents[location]
+            l = geometry.lengths[location]
+            flux = self.inside_diffusivity * geometry.cross_sectional_areas[location] / l
+            src.append(location)
+            dst.append(parent)
+            coef.append(+dt * flux / geometry.inside_volumes[parent])
+            src.append(location)
+            dst.append(location)
+            coef.append(-dt * flux / geometry.inside_volumes[location])
+            src.append(parent)
+            dst.append(location)
+            coef.append(+dt * flux / geometry.inside_volumes[location])
+            src.append(parent)
+            dst.append(parent)
+            coef.append(-dt * flux / geometry.inside_volumes[parent])
+        for location in range(len(geometry)):
+            src.append(location)
+            dst.append(location)
+            coef.append(-dt / self.inside_decay_period)
+        return (coef, (dst, src))
+
+    def _outside_diffusion_coefficients(self, access):
+        extracellular_tortuosity = 1.4 # TODO: FIXME: put this one back in the db?
+        D = self.outside_diffusivity / extracellular_tortuosity ** 2
+        dt          = access("time_step") / 2
+        decay       = -dt / self.outside_decay_period
+        recip_vol   = (1.0 / access("outside/volumes")).get()
+        area        = access("outside/neighbor_border_areas")
+        dist        = access("outside/neighbor_distances")
+        flux_data   = D * area.data / dist.data
+        src         = np.empty(2*len(flux_data))
+        dst         = np.empty(2*len(flux_data))
+        coef        = np.empty(2*len(flux_data))
+        write_idx   = 0
+        for location in range(len(recip_vol)):
+            for ii in range(area.indptr[location], area.indptr[location+1]):
+                neighbor = area.indices[ii]
+                flux     = flux_data[ii]
+                src[write_idx] = location
+                dst[write_idx] = neighbor
+                coef[write_idx] = +dt * flux * recip_vol[neighbor]
+                write_idx += 1
+                src[write_idx] = location
+                dst[write_idx] = location
+                coef[write_idx] = -dt * flux * recip_vol[location] + decay
+                write_idx += 1
+        return (coef, (dst, src))
 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
@@ -370,7 +424,7 @@ class Model:
     def __repr__(self):
         return repr(self.db)
 
-    def check_data(self):
+    def check(self):
         self.db.check()
 
     def add_species(self, species):
@@ -1006,48 +1060,4 @@ def _electric_coefficients(access):
         src.append(parent)
         dst.append(parent)
         coef.append(-dt / (r * c_parent))
-    return (coef, (dst, src))
-
-def _inside_diffusion_coefficients(database_access, species):
-    src = []; dst = []; coef = []
-    for location in range(len(geometry)):
-        if geometry.is_root(location):
-            continue
-        parent = geometry.parents[location]
-        l = geometry.lengths[location]
-        flux = species.inside_diffusivity * geometry.cross_sectional_areas[location] / l
-        src.append(location)
-        dst.append(parent)
-        coef.append(+dt * flux / geometry.inside_volumes[parent])
-        src.append(location)
-        dst.append(location)
-        coef.append(-dt * flux / geometry.inside_volumes[location])
-        src.append(parent)
-        dst.append(location)
-        coef.append(+dt * flux / geometry.inside_volumes[location])
-        src.append(parent)
-        dst.append(parent)
-        coef.append(-dt * flux / geometry.inside_volumes[parent])
-    for location in range(len(geometry)):
-        src.append(location)
-        dst.append(location)
-        coef.append(-dt / species.inside_decay_period)
-    return (coef, (dst, src))
-
-def _outside_diffusion_coefficients(database_access, species):
-    src = []; dst = []; coef = []
-    D = species.outside_diffusivity / geometry.extracellular_tortuosity ** 2
-    for location in range(len(geometry)):
-        for neighbor in geometry.neighbors[location]:
-            flux = D * neighbor["border_surface_area"] / neighbor["distance"]
-            src.append(location)
-            dst.append(neighbor["location"])
-            coef.append(+dt * flux / geometry.outside_volumes[neighbor["location"]])
-            src.append(location)
-            dst.append(location)
-            coef.append(-dt * flux / geometry.outside_volumes[location])
-    for location in range(len(geometry)):
-        src.append(location)
-        dst.append(location)
-        coef.append(-dt / species.outside_decay_period)
     return (coef, (dst, src))
