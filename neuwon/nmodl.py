@@ -3,7 +3,7 @@ import nmodl.ast
 import nmodl.dsl
 import nmodl.symtab
 import sympy
-import sympy.printing.pycode
+import sympy.printing.pycode as pycode
 import numba.cuda
 import numba
 import numpy as np
@@ -226,9 +226,10 @@ class NmodlMechanism(Reaction):
             raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
         if AST.is_function_call():
             name = AST.name.get_node_name()
-            if name == "fabs": name = "abs"
             args = [self._parse_expression(x) for x in AST.arguments]
-            return sympy.Function(name)(*args)
+            if name == "fabs":  return sympy.Abs(*args)
+            if name == "exp":   return sympy.exp(*args)
+            else: return sympy.Function(name)(*args)
         if AST.is_double_unit():
             if self.use_units:
                 factor, dimensions = self.units.standardize(AST.unit.name.eval())
@@ -948,20 +949,23 @@ class _cache:
     @staticmethod
     def _dir_and_file(filename):
         cache_dir = os.path.abspath(".nmodl_cache")
-        cache_file = os.path.join(cache_dir, "%X"%crc32(bytes(filename, 'utf8')))
+        cache_file = os.path.join(cache_dir, "%X.pickle"%crc32(bytes(filename, 'utf8')))
         return (cache_dir, cache_file)
 
     @staticmethod
     def try_loading(filename, obj):
         """ Returns True on success, False indicates that no changes were made to the object. """
         cache_dir, cache_file = _cache._dir_and_file(filename)
-        # TODO: Check the last modification time stamps on the nmodl file and
-        # the cache files, to detect out of date caches.
+        if not os.path.exists(cache_file): return False
+        nmodl_ts  = os.path.getmtime(filename)
+        cache_ts  = os.path.getmtime(cache_file)
+        python_ts = os.path.getmtime(__file__)
+        if nmodl_ts > cache_ts: return False
+        if python_ts > cache_ts: return False
         try:
-            1/0
             with open(cache_file, 'rb') as f: data = pickle.load(f)
         except Exception as err:
-            eprint("CACHE ERROR", str(err))
+            eprint("Error: loading nmodl from cache:", str(err))
             return False
         obj.__dict__.update(data)
         return True
@@ -975,7 +979,6 @@ class _cache:
         except Exception as x:
             eprint("Warning: cache error", str(x))
 
-pycode = lambda x: sympy.printing.pycode(x, user_functions={"abs": "abs"})
 insert_indent = lambda i, s: i + "\n".join(i + l for l in s.split("\n"))
 
 mangle = lambda x: "_" + x
