@@ -20,9 +20,9 @@ UNITS {
 ? interface
 NEURON {
     SUFFIX hh
-    USEION na READ ena WRITE ina
-    USEION k READ ek WRITE ik
-    NONSPECIFIC_CURRENT il
+    USEION na WRITE gna
+    USEION k WRITE gk
+    USEION l WRITE gl
     RANGE gnabar, gkbar, glbar, gl, el, gna, gk
     RANGE minf, hinf, ninf, mtau, htau, ntau
     THREADSAFE
@@ -39,30 +39,11 @@ STATE {
     m h n
 }
 
-ASSIGNED {
-    v (mV)
-    celsius (degC)
-    ena (mV)
-    ek (mV)
-    gna (S/cm2)
-    gk (S/cm2)
-    gl (S/cm2)
-    ina (mA/cm2)
-    ik (mA/cm2)
-    il (mA/cm2)
-    minf hinf ninf
-    mtau (ms) htau (ms) ntau (ms)
-}
-
-? currents
 BREAKPOINT {
     SOLVE states METHOD cnexp
     gna = gnabar*m*m*m*h
-    ina = gna*(v - ena)
     gk = gkbar*n*n*n*n
-    ik = gk*(v - ek)
     gl = glbar
-    il = gl*(v - el)
 }
 
 INITIAL {
@@ -72,7 +53,6 @@ INITIAL {
     n = ninf
 }
 
-? states
 DERIVATIVE states {
     rates(v)
     m' = (minf-m)/mtau
@@ -80,7 +60,6 @@ DERIVATIVE states {
     n' = (ninf-n)/ntau
 }
 
-? rates
 PROCEDURE rates(v(mV)) {  :Computes rate and other constants at current v.
     :Call once from HOC to initialize inf at resting v.
     LOCAL  alpha, beta, sum, q10
