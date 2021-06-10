@@ -3,7 +3,6 @@ import nmodl.ast
 import nmodl.dsl
 import nmodl.symtab
 import sympy
-import sympy.printing.pycode as pycode
 import numba.cuda
 import numba
 import numpy as np
@@ -376,15 +375,15 @@ class NmodlMechanism(Reaction):
         block = copy.deepcopy(block)
         globals_ = {}
         locals_ = {}
-        py = "def derivative(%s, %s):\n"%(mangle2("state"), ", ".join(block.arguments))
+        py = "def derivative(%s, %s):\n"%(_CodeGen.mangle2("state"), ", ".join(block.arguments))
         for idx, name in enumerate(self.states):
-            py += "    %s = %s[%d]\n"%(name, mangle2("state"), idx)
+            py += "    %s = %s[%d]\n"%(name, _CodeGen.mangle2("state"), idx)
         for name in self.states:
-            py += "    %s = 0\n"%mangle('d' + name)
+            py += "    %s = 0\n"%_CodeGen.mangle('d' + name)
         block.map(lambda x: [] if isinstance(x, _ConserveStatement) else [x])
         py += block.to_python(indent="    ")
-        py += "    return [%s]\n"%", ".join(mangle('d' + x) for x in self.states)
-        _exec_wrapper(py, globals_, locals_)
+        py += "    return [%s]\n"%", ".join(_CodeGen.mangle('d' + x) for x in self.states)
+        _CodeGen.py_exec(py, globals_, locals_)
         return numba.njit(locals_["derivative"])
 
     def _compute_propagator_matrix(self, block, time_step, kwargs):
@@ -410,7 +409,7 @@ class NmodlMechanism(Reaction):
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {x: 0 for x in self.states}
         initial_python = self.initial_block.to_python(context="INITIAL_BLOCK")
-        _exec_wrapper(initial_python, globals_, self.initial_scope)
+        _CodeGen.py_exec(initial_python, globals_, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def solve_steadystate(self, block, args):
@@ -456,10 +455,10 @@ class NmodlMechanism(Reaction):
         # 
         for x in self.pointers.values():
             # TODO: rename mangle2(location) to mangle2(membrane)
-            if   x.archetype == "membrane":  x.index = mangle2("location")
-            elif x.archetype == "inside":    x.index = mangle2("inside")
-            elif x.archetype == "outside":   x.index = mangle2("outside")
-            elif x.archetype == self.name(): x.index = mangle2("index")
+            if   x.archetype == "membrane":  x.index = _CodeGen.mangle2("location")
+            elif x.archetype == "inside":    x.index = _CodeGen.mangle2("inside")
+            elif x.archetype == "outside":   x.index = _CodeGen.mangle2("outside")
+            elif x.archetype == self.name(): x.index = _CodeGen.mangle2("index")
             else: raise NotImplementedError(x.archetype)
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
@@ -475,10 +474,10 @@ class NmodlMechanism(Reaction):
             elif arg in self.initial_scope:
                 initial_scope_carryover.append((arg, self.initial_scope[arg]))
             else: raise ValueError("Unhandled argument: \"%s\"."%arg)
-        arguments = sorted(mangle(name) for name in  self.pointers)
-        locations = mangle2("locations")
-        location  = mangle2("location")
-        index     = mangle2("index")
+        arguments = sorted(_CodeGen.mangle(name) for name in  self.pointers)
+        locations = _CodeGen.mangle2("locations")
+        location  = _CodeGen.mangle2("location")
+        index     = _CodeGen.mangle2("index")
         preamble  = []
         preamble.append("import numba.cuda")
         preamble.append("def BREAKPOINT("+locations+", %s):"%", ".join(arguments))
@@ -491,13 +490,13 @@ class NmodlMechanism(Reaction):
             if not pointer.read: continue
             if pointer.name == "membrane/voltages": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
             else:                                   factor = 1
-            preamble.append("    %s = %s[%s] * %s"%(variable, mangle(variable), x.index, factor))
+            preamble.append("    %s = %s[%s] * %s"%(variable, _CodeGen.mangle(variable), x.index, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
-            # mangle(name): km.advance for name, km in self.kinetic_models.items()
+            # _CodeGen.mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
-        _exec_wrapper(py, breakpoint_globals)
+        _CodeGen.py_exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
     def new_instances(self, database, locations, scale=1):
@@ -654,7 +653,7 @@ class _IfStatement:
         self.else_block.map(f)
 
     def to_python(self, indent, **kwargs):
-        py = indent + "if %s:\n"%pycode(self.condition)
+        py = indent + "if %s:\n"%_CodeGen.sympy_to_pycode(self.condition)
         py += self.main_block.to_python(indent + "    ", **kwargs)
         assert(not self.elif_blocks) # TODO: Unimplemented.
         py += indent + "else:\n"
@@ -670,16 +669,16 @@ class _AssignStatement:
 
     def to_python(self,  indent="", context=None, **kwargs):
         if not isinstance(self.rhs, str):
-            try: self.rhs = pycode(self.rhs.simplify())
+            try: self.rhs = _CodeGen.sympy_to_pycode(self.rhs.simplify())
             except Exception:
                 print("Failed at:", self.lhsn, "=", repr(self.rhs))
                 raise
         if self.derivative:
-            lhs = mangle('d' + self.lhsn)
+            lhs = _CodeGen.mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
         if context != "INITIAL_BLOCK" and self.pointer:
             assert self.pointer.write, self.pointer.name
-            lhs = mangle(self.lhsn) + "[" + self.pointer.index + "]"
+            lhs = _CodeGen.mangle(self.lhsn) + "[" + self.pointer.index + "]"
             eq = " += " if self.pointer.accumulate else " = "
             py = indent + lhs + eq + self.rhs + "\n"
             if self.pointer.read:
@@ -731,12 +730,12 @@ class _SolveStatement:
         assert(self.block in nmodl.derivative_blocks)
         # arguments = nmodl.derivative_blocks[self.block].arguments
         # if self.steadystate:
-        #     states_var = mangle2("states")
-        #     index_var  = mangle2("index")
+        #     states_var = _CodeGen.mangle2("states")
+        #     index_var  = _CodeGen.mangle2("index")
         #     self.py = states_var + " = solve_steadystate('%s', {%s})\n"%(self.block,
         #             ", ".join("'%s': %s"%(x, x) for x in arguments))
         #     for x in nmodl.states:
-        #         self.py += "%s[%s] = %s['%s']\n"%(mangle(x), index_var, states_var, x)
+        #         self.py += "%s[%s] = %s['%s']\n"%(_CodeGen.mangle(x), index_var, states_var, x)
         # else:
         #     self.py = self.block + "(%s)\n"%(
         #                 ", ".join(arguments))
@@ -979,25 +978,29 @@ class _cache:
         except Exception as x:
             eprint("Warning: cache error", str(x))
 
-insert_indent = lambda i, s: i + "\n".join(i + l for l in s.split("\n"))
+class _CodeGen:
+    def mangle(x):      return "_" + x
+    def demangle(x):    return x[1:]
+    def mangle2(x):     return "_" + x + "_"
+    def demangle2(x):   return x[1:-1]
 
-mangle = lambda x: "_" + x
-demangle = lambda x: x[1:]
-mangle2 = lambda x: "_" + x + "_"
-demangle2 = lambda x: x[1:-1]
+    import sympy.printing.pycode as sympy_to_pycode
 
-def _exec_wrapper(python, globals_, locals_=None):
-    if False: print(python)
-    globals_["math"] = math
-    try: exec(python, globals_, locals_)
-    except:
-        for noshow in ("__builtins__", "math"):
-            if noshow in globals_: globals_.pop(noshow)
-        eprint("Error while exec'ing the following python code:")
-        eprint(python)
-        eprint("globals():", repr(globals_))
-        eprint("locals():", repr(locals_))
-        raise
+    def insert_indent(indent, string):
+        return indent + "\n".join(indent + line for line in string.split("\n"))
+
+    def py_exec(python, globals_, locals_=None):
+        if True: print(python)
+        globals_["math"] = math
+        try: exec(python, globals_, locals_)
+        except:
+            for noshow in ("__builtins__", "math"):
+                if noshow in globals_: globals_.pop(noshow)
+            eprint("Error while exec'ing the following python code:")
+            eprint(python)
+            eprint("globals():", repr(globals_))
+            eprint("locals():", repr(locals_))
+            raise
 
 if __name__ == "__main__":
     for name, (nmodl_file_path, kwargs) in sorted(library.items()):
