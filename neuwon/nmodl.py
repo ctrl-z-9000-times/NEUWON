@@ -490,7 +490,7 @@ class NmodlMechanism(Reaction):
             if not pointer.read: continue
             if pointer.name == "membrane/voltages": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
             else:                                   factor = 1
-            preamble.append("    %s = %s[%s] * %s"%(variable, _CodeGen.mangle(variable), x.index, factor))
+            preamble.append("    %s = %s[%s] * %s"%(variable, _CodeGen.mangle(variable), pointer.index, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
@@ -990,7 +990,7 @@ class _CodeGen:
         return indent + "\n".join(indent + line for line in string.split("\n"))
 
     def py_exec(python, globals_, locals_=None):
-        if True: print(python)
+        if False: print(python)
         globals_["math"] = math
         try: exec(python, globals_, locals_)
         except:
