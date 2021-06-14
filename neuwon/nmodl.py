@@ -74,9 +74,27 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        for var_name, kwargs in pointers.items(): _Pointer.update(self, var_name, **kwargs)
         self._apply_parameter_overrides(parameter_overrides)
         self._separate_surface_area_parameters()
+        for var_name, kwargs in pointers.items(): _Pointer.update(self, var_name, **kwargs)
+
+    def initialize(self, database):
+        try:
+            self._gather_builtin_parameters(database)
+            self._substitute_parameters(database)
+            # self._solve() # TODO: only solve for kinetic models here.
+            # self.kinetic_models = {}
+            # for name, block in self.derivative_functions.items():
+            #     self.kinetic_models[name] = KineticModel(1/0)
+            self._run_initial_block(database)
+            self._initialize_database(database)
+            self._compile_breakpoint_block(database)
+            for ptr in self.pointers.values():
+                if ptr.r: database.access(ptr.read)
+                if ptr.w: database.access(ptr.write)
+        except Exception:
+            eprint("ERROR while loading file", self.filename)
+            raise
 
     def _parse_text(self, nmodl_text):
         """ Parse the NMDOL file into an abstract syntax tree (AST).
@@ -315,24 +333,6 @@ class NmodlMechanism(Reaction):
             if units and "/cm2" in units:
                 self.surface_area_parameters[name] = self.parameters.pop(name)
 
-    def initialize(self, database):
-        try:
-            self._gather_builtin_parameters(database)
-            self._substitute_parameters(database)
-            # self._solve() # TODO: only solve for kinetic models here.
-            # self.kinetic_models = {}
-            # for name, block in self.derivative_functions.items():
-            #     self.kinetic_models[name] = KineticModel(1/0)
-            self._run_initial_block(database)
-            self._initialize_database(database)
-            self._compile_breakpoint_block(database)
-            for ptr in self.pointers.values():
-                if ptr.r: database.access(ptr.read)
-                if ptr.w: database.access(ptr.write)
-        except Exception:
-            eprint("ERROR while loading file", self.filename)
-            raise
-
     def _gather_builtin_parameters(self, database):
         for name in _builtin_parameters:
             builtin_value = database.access(name)
@@ -404,7 +404,7 @@ class NmodlMechanism(Reaction):
             try: globals_[arg] = database.initial_value(self.pointers[arg].read)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {x: 0 for x in self.states}
-        initial_python = self.initial_block.to_python(context="INITIAL_BLOCK")
+        initial_python = self.initial_block.to_python(INITIAL_BLOCK=True)
         _CodeGen.py_exec(initial_python, globals_, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
@@ -476,8 +476,8 @@ class NmodlMechanism(Reaction):
             preamble.append("    %s = %s"%variable_value_pair)
         for variable, pointer in self.pointers.items():
             if not pointer.read: continue
-            if pointer.name == "membrane/voltages": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
-            else:                                   factor = 1
+            if pointer.name == "v": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
+            else:                   factor = 1
             preamble.append("    %s = %s[%s] * %s"%(variable, _CodeGen.mangle(variable), pointer.index, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
@@ -551,7 +551,7 @@ class _Pointer:
         self.read  = str(read)  if read  is not None else None
         self.write = str(write) if write is not None else None
         self.accumulate = bool(accumulate)
-        component = self.read or self.write or self.accumulate
+        component = self.read or self.write
         if   component.startswith(nmodl.name()):  self.archetype = nmodl.name()
         elif component.startswith("membrane"):    self.archetype = "membrane"
         elif component.startswith("inside"):      self.archetype = "inside"
@@ -569,18 +569,18 @@ class _Pointer:
     @property
     def w(self): return self.write is not None
     @property
-    def a(self): return self.accumulate is not None
+    def a(self): return self.accumulate
     @property
     def mode(self):
         return (('r' if self.r else '') +
                 ('w' if self.w else '') +
                 ('a' if self.a else ''))
     def __repr__(self):
-        args = [self.name, repr(self.mode)]
-        if self.read  is not None: args.append("read='%s'"%self.read)
-        if self.write is not None: args.append("write='%s'"%self.write)
-        if self.a is not None: args.append("accumulate='%s'"%self.a)
-        return "_Pointer(%s)"%', '.join(args)
+        args = []
+        if self.r: args.append("read='%s'"%self.read)
+        if self.w: args.append("write='%s'"%self.write)
+        if self.a: args.append("accumulate")
+        return self.name + " = _Pointer(%s)"%', '.join(args)
 
 class _CodeBlock:
     def __init__(self, nmodl, AST):
@@ -695,9 +695,9 @@ class _AssignStatement:
         self.lhsn = str(lhsn) # Left hand side name.
         self.rhs  = rhs       # Right hand side.
         self.derivative = bool(derivative)
-        # self.pointer = pointer # Associated with the left hand side.
+        self.pointer = None # Associated with the left hand side.
 
-    def to_python(self,  indent="", context=None, **kwargs):
+    def to_python(self,  indent="", INITIAL_BLOCK=False, **kwargs):
         if not isinstance(self.rhs, str):
             try: self.rhs = _CodeGen.sympy_to_pycode(self.rhs.simplify())
             except Exception:
@@ -706,14 +706,12 @@ class _AssignStatement:
         if self.derivative:
             lhs = _CodeGen.mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
-        if context != "INITIAL_BLOCK" and self.pointer:
-            assert self.pointer.w, self.pointer.name
-            lhs = _CodeGen.mangle(self.lhsn) + "[" + self.pointer.index + "]"
+        if self.pointer and not INITIAL_BLOCK:
+            assert self.pointer.w, self.pointer.name + " is not a writable pointer!"
+            array_access = _CodeGen.mangle(self.lhsn) + "[" + self.pointer.index + "]"
             eq = " += " if self.pointer.a else " = "
-            py = indent + lhs + eq + self.rhs + "\n"
-            if self.pointer.r:
-                py += indent + self.lhsn + " = " + lhs + "\n" # Assign to the local variable.
-            return py
+            assign_local = self.lhsn + " = " if self.pointer.r else ""
+            return indent + array_access + eq + assign_local + self.rhs + "\n"
         return indent + self.lhsn + " = " + self.rhs + "\n"
 
     def solve(self):

@@ -58,7 +58,7 @@ class Experiment:
         print("Soma surface area:", sa, "m^2")
         sa += sum(x.read("membrane/surface_areas") for x in self.axon)
         print("Total surface area:", sa, "m^2")
-        if True: print(repr(self.model))
+        if True: self.model.advance(); print(repr(self.model))
 
     def generate_input(self):
         """ Subject the soma to three pulses of current injection. """
@@ -87,7 +87,7 @@ class Experiment:
                 self.model.advance()
             else:
                 self.model._advance_lockstep()
-            self.model.check()
+            if False: self.model.check()
             self.time_stamps.append((tick + 1) * self.time_step * 1e3)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.voltage() * 1e3)
