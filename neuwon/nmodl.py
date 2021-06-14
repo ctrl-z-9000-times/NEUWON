@@ -74,8 +74,7 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        self.pointers.update({nmodl_name: _Pointer(self, database_name, mode)
-                for nmodl_name, (database_name, mode) in pointers.items()})
+        for var_name, kwargs in pointers.items(): _Pointer.update(self, var_name, **kwargs)
         self._apply_parameter_overrides(parameter_overrides)
         self._separate_surface_area_parameters()
 
@@ -238,7 +237,8 @@ class NmodlMechanism(Reaction):
 
     def _gather_IO(self):
         """ Determine what external data the mechanism accesses. """
-        if "v" in self.breakpoint_block.arguments: self._add_pointer("v", "membrane/voltages", 'r')
+        if "v" in self.breakpoint_block.arguments:
+            _Pointer.update(self, "v", read="membrane/voltages")
         for x in self.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
@@ -248,36 +248,30 @@ class NmodlMechanism(Reaction):
             inside = ion + 'i'
             outside = ion + 'o'
             for y in x.readlist:
-                variable = y.name.value.eval()
-                if variable == equilibrium:
+                var_name = y.name.value.eval()
+                if var_name == equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
-                elif variable == inside:
-                    self._add_pointer(variable, "membrane/inside/%s/concentrations"%ion, 'r')
-                elif variable == outside:
-                    self._add_pointer(variable, "membrane/outside/%s/concentrations"%ion, 'r')
-                else: raise ValueError("Unrecognized ion READ: \"%s\"."%variable)
+                elif var_name == inside:
+                    _Pointer.update(self, var_name, read="membrane/inside/%s/concentrations"%ion)
+                elif var_name == outside:
+                    _Pointer.update(self, var_name, read="membrane/outside/%s/concentrations"%ion)
+                else: raise ValueError("Unrecognized ion READ: \"%s\"."%var_name)
             for y in x.writelist:
-                variable = y.name.value.eval()
-                if variable == current:
-                    raise NotImplementedError(variable)
-                elif variable == conductance:
-                    self._add_pointer(variable, "membrane/conductances/%s"%ion, 'a')
-                elif variable == inside:
-                    self._add_pointer(variable, "membrane/inside/%s/release_rates"%ion, 'a')
-                elif variable == outside:
-                    self._add_pointer(variable, "membrane/outside/%s/release_rates"%ion, 'a')
-                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%variable)
+                var_name = y.name.value.eval()
+                if var_name == current:
+                    raise NotImplementedError(var_name)
+                elif var_name == conductance:
+                    _Pointer.update(self, var_name, write="membrane/conductances/%s"%ion, accumulate=True)
+                elif var_name == inside:
+                    _Pointer.update(self, var_name, write="membrane/inside/%s/release_rates"%ion, accumulate=True)
+                elif var_name == outside:
+                    _Pointer.update(self, var_name, write="membrane/outside/%s/release_rates"%ion, accumulate=True)
+                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%var_name)
         for x in self.lookup(ANT.CONDUCTANCE_HINT):
-            variable = x.conductance.get_node_name()
-            if variable not in self.pointers:
+            var_name = x.conductance.get_node_name()
+            if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                self._add_pointer(variable, "membrane/conductances/%s"%ion, 'a')
-
-    def _add_pointer(self, name, pointer, mode):
-        """ Argument name is an nmodl varaible name.
-            Argument pointer is a database access path. """
-        assert name not in self.pointers
-        self.pointers[name] = _Pointer(self, pointer, mode)
+                _Pointer.update(self, var_name, write="membrane/conductances/%s"%ion, accumulate=True)
 
     def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the
@@ -332,7 +326,9 @@ class NmodlMechanism(Reaction):
             self._run_initial_block(database)
             self._initialize_database(database)
             self._compile_breakpoint_block(database)
-            for ptr in self.pointers.values(): database.access(ptr.name)
+            for ptr in self.pointers.values():
+                if ptr.r: database.access(ptr.read)
+                if ptr.w: database.access(ptr.write)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -405,7 +401,7 @@ class NmodlMechanism(Reaction):
         }
         self.initial_block.gather_arguments(self)
         for arg in self.initial_block.arguments:
-            try: globals_[arg] = database.initial_value(self.pointers[arg].name)
+            try: globals_[arg] = database.initial_value(self.pointers[arg].read)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {x: 0 for x in self.states}
         initial_python = self.initial_block.to_python(context="INITIAL_BLOCK")
@@ -441,25 +437,17 @@ class NmodlMechanism(Reaction):
         for name in self.surface_area_parameters:
             path = self.name() + "/data/" + name
             database.add_attribute(path)
-            self._add_pointer(name, path, 'r')
+            _Pointer.update(self, name, read=path)
         for name in self.states:
             path = self.name() + "/data/" + name
             database.add_attribute(path, initial_value=self.initial_state[name])
-            self._add_pointer(name, path, 'rw')
+            _Pointer.update(self, name, read=path, write=path)
 
     def _compile_breakpoint_block(self, database):
         # Link assignment to their pointers.
         for stmt in self.breakpoint_block:
             if isinstance(stmt, _AssignStatement):
                 stmt.pointer = self.pointers.get(stmt.lhsn, None)
-        # 
-        for x in self.pointers.values():
-            # TODO: rename mangle2(location) to mangle2(membrane)
-            if   x.archetype == "membrane":  x.index = _CodeGen.mangle2("location")
-            elif x.archetype == "inside":    x.index = _CodeGen.mangle2("inside")
-            elif x.archetype == "outside":   x.index = _CodeGen.mangle2("outside")
-            elif x.archetype == self.name(): x.index = _CodeGen.mangle2("index")
-            else: raise NotImplementedError(x.archetype)
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
@@ -524,33 +512,75 @@ class NmodlMechanism(Reaction):
         threads = 64
         locations = access(self.name() + "/insertions")
         if not len(locations): return
-        pointers = {name: access(ptr.name) for name, ptr in self.pointers.items()}
+        # TODO: How to pass multiple buffers into the kernel, from pointers
+        # which have multiple database buffers?
+        pointers = {name: access(ptr.read or ptr.write or ptr.accum) for name, ptr in self.pointers.items()}
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
 
 class _Pointer:
-    def __init__(self, nmodl, name, mode='rw', archetype=None):
-        self.name = str(name)
-        self.mode = str(mode)
-        assert self.mode in ('r', 'w', 'rw', 'a')
-        if   archetype is not None:              self.archetype = str(archetype)
-        elif self.name.startswith("membrane"):   self.archetype = "membrane"
-        elif self.name.startswith("inside"):     self.archetype = "inside"
-        elif self.name.startswith("outside"):    self.archetype = "outside"
-        elif self.name.startswith(nmodl.name()): self.archetype = nmodl.name()
-        else: raise Exception("Unrecognised archetype: " + self.name)
+    @staticmethod
+    def update(nmodl, name, read=None, write=None, accumulate=None):
+        """ Factory method for _Pointer objects.
+
+        Argument name is an nmodl varaible name.
+        Arguments read & write are a database access paths.
+        Argument accumulate must be given at the same time as the "write" argument.
+        """
+        if name in nmodl.pointers:
+            self = nmodl.pointers[name]
+            if read is not None:
+                read = str(read)
+                if read != self.read:
+                    eprint("Warning: Pointer override: %s read=%s"(self.name, self.read))
+                self.read = str(read)
+            if write is not None:
+                write = str(write)
+                if write != self.write:
+                    eprint("Warning: Pointer override: %s write=%s"(self.name, self.write))
+                self.write = str(write)
+                self.accumulate = bool(accumulate)
+            else: assert accumulate is None
+        else:
+            nmodl.pointers[name] = self = _Pointer(nmodl, name, read, write, accumulate)
+        return self
+
+    def __init__(self, nmodl, name, read, write, accumulate):
+        self.name  = str(name)
+        self.read  = str(read)  if read  is not None else None
+        self.write = str(write) if write is not None else None
+        self.accumulate = bool(accumulate)
+        component = self.read or self.write or self.accumulate
+        if   component.startswith(nmodl.name()):  self.archetype = nmodl.name()
+        elif component.startswith("membrane"):    self.archetype = "membrane"
+        elif component.startswith("inside"):      self.archetype = "inside"
+        elif component.startswith("outside"):     self.archetype = "outside"
+        else: raise Exception("Unrecognised archetype: " + component)
+        # TODO: rename mangle2(location) to mangle2(membrane)
+        if   self.archetype == "membrane":  self.index = _CodeGen.mangle2("location")
+        elif self.archetype == "inside":    self.index = _CodeGen.mangle2("inside")
+        elif self.archetype == "outside":   self.index = _CodeGen.mangle2("outside")
+        elif self.archetype == nmodl.name(): self.index = _CodeGen.mangle2("index")
+        else: raise NotImplementedError(self.archetype)
+
     @property
-    def read(self):
-        return 'r' in self.mode
+    def r(self): return self.read is not None
     @property
-    def write(self):
-        return self.accumulate or 'w' in self.mode
+    def w(self): return self.write is not None
     @property
-    def accumulate(self):
-        return 'a' in self.mode
+    def a(self): return self.accumulate is not None
+    @property
+    def mode(self):
+        return (('r' if self.r else '') +
+                ('w' if self.w else '') +
+                ('a' if self.a else ''))
     def __repr__(self):
-        return "_Pointer('%s', '%s')"%(self.name, self.mode)
+        args = [self.name, repr(self.mode)]
+        if self.read  is not None: args.append("read='%s'"%self.read)
+        if self.write is not None: args.append("write='%s'"%self.write)
+        if self.a is not None: args.append("accumulate='%s'"%self.a)
+        return "_Pointer(%s)"%', '.join(args)
 
 class _CodeBlock:
     def __init__(self, nmodl, AST):
@@ -677,12 +707,12 @@ class _AssignStatement:
             lhs = _CodeGen.mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
         if context != "INITIAL_BLOCK" and self.pointer:
-            assert self.pointer.write, self.pointer.name
+            assert self.pointer.w, self.pointer.name
             lhs = _CodeGen.mangle(self.lhsn) + "[" + self.pointer.index + "]"
-            eq = " += " if self.pointer.accumulate else " = "
+            eq = " += " if self.pointer.a else " = "
             py = indent + lhs + eq + self.rhs + "\n"
-            if self.pointer.read:
-                py += indent + self.lhsn + " = " + lhs + "\n"
+            if self.pointer.r:
+                py += indent + self.lhsn + " = " + lhs + "\n" # Assign to the local variable.
             return py
         return indent + self.lhsn + " = " + self.rhs + "\n"
 

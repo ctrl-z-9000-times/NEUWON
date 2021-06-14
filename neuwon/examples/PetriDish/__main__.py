@@ -5,6 +5,8 @@ import itertools
 import matplotlib.pyplot as plt
 import argparse
 
+chain = itertools.chain.from_iterable
+
 from neuwon.model import *
 from neuwon.growth import *
 from neuwon.regions import *

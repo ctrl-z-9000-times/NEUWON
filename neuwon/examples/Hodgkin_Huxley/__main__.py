@@ -37,7 +37,7 @@ class Experiment:
     def make_model(self):
         """ Construct a soma with a single long axon. """
         self.model = m = Model(self.time_step)
-        m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
+        m.add_species(Species("l", transmembrane = True, reversal_potential = -54.3e-3,))
         m.add_species("k")
         m.add_species("na")
         m.add_reaction("hh")

@@ -286,8 +286,7 @@ class Reaction:
 
     _library = {
         "hh": ("nmodl_library/hh.mod",
-            dict(pointers={"gl": ("membrane/conductances/L", 'a')},
-                 parameter_overrides = {"celsius": 6.3})),
+            dict(parameter_overrides = {"celsius": 6.3})),
 
         # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
 
