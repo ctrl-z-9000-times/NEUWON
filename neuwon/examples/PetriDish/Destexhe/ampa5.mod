@@ -31,50 +31,26 @@ ENDCOMMENT
 
 NEURON {
         POINT_PROCESS AMPA5
+        USEION na WRITE gna
+        USEION k WRITE gk
         POINTER C
-        RANGE C0, C1, C2, D1, D2, O
-        RANGE g, gmax, rb
-        GLOBAL Erev
-        GLOBAL Rb, Ru1, Ru2, Rd, Rr, Ro, Rc
-        GLOBAL vmin, vmax
-        NONSPECIFIC_CURRENT i
 }
 
 UNITS {
-        (nA) = (nanoamp)
-        (mV) = (millivolt)
         (pS) = (picosiemens)
-        (umho) = (micromho)
         (mM) = (milli/liter)
-        (uM) = (micro/liter)
 }
 
 PARAMETER {
-
-        Erev    = 0    (mV)     : reversal potential
-        gmax    = 500  (pS)     : maximal conductance
-        vmin = -120     (mV)
-        vmax = 100      (mV)
-        
-: Rates
-
-        Rb      = 13   (/mM /ms): binding 
-                                : diffusion limited (DO NOT ADJUST)
-        Ru1     = 0.0059  (/ms) : unbinding (1st site)
-        Ru2     = 86  (/ms)     : unbinding (2nd site)          
-        Rd      = 0.9   (/ms)   : desensitization
-        Rr      = 0.064 (/ms)   : resensitization 
-        Ro      = 2.7    (/ms)  : opening
-        Rc      = 0.2    (/ms)  : closing
-}
-
-ASSIGNED {
-        v               (mV)            : postsynaptic voltage
-        i               (nA)            : current = g*(v - Erev)
-        g               (pS)            : conductance
-        C               (mM)            : pointer to glutamate concentration
-
-        rb              (/ms)    : binding
+        gna_max = 250  (pS)     : maximal na conductance
+        gk_max  = 250  (pS)     : maximal k conductance
+        Rb      = 13   (/mM /ms): rate of binding, diffusion limited (DO NOT ADJUST)
+        Ru1     = 0.0059  (/ms) : rate of unbinding (1st site)
+        Ru2     = 86  (/ms)     : rate of unbinding (2nd site)          
+        Rd      = 0.9   (/ms)   : rate of desensitization
+        Rr      = 0.064 (/ms)   : rate of resensitization 
+        Ro      = 2.7    (/ms)  : rate of opening
+        Rc      = 0.2    (/ms)  : rate of closing
 }
 
 STATE {
@@ -98,20 +74,16 @@ INITIAL {
 
 BREAKPOINT {
         SOLVE kstates METHOD cnexp
-
-        g = gmax * O
-        i = (1e-6) * g * (v - Erev)
+        gna = (1e-9) * gna_max * O
+        gk  = (1e-9) * gk_max * O
 }
 
 KINETIC kstates {
-
         rb = Rb * C 
-
         ~ C0  <-> C1    (rb,Ru1)
         ~ C1 <-> C2     (rb,Ru2)
         ~ C1 <-> D1     (Rd,Rr)
         ~ C2 <-> D2     (Rd,Rr)
         ~ C2 <-> O      (Ro,Rc)
-
         CONSERVE C0+C1+C2+D1+D2+O = 1
 }
