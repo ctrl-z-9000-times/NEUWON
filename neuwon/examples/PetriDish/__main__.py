@@ -42,8 +42,9 @@ class ExcitatoryNeuron:
                 diameter = 1.5e-6,
         )
         self.segments = [self.soma] + self.axon.segments + self.dendrite.segments
-        model.get_reaction("hh").new_instances(model, self.axon.segments,
-                scale = 1.5)
+        hh = model.get_reaction("hh")
+        hh.new_instances(model, [self.soma], scale = 1.5)
+        hh.new_instances(model, self.axon.segments, scale = 1.5)
         self.voltage = [] # millivolts.
 
     def collect_data(self):
@@ -52,16 +53,6 @@ class ExcitatoryNeuron:
 class InhibitoryNeuron:
     def __init__(self, region):
         1/0
-
-def excitatory_synapses(axons, dendrites, num_synapses):
-    synapses = GrowSynapses(axons, dendrites,
-            (0, .6e-6, 3e-6), 1e-6, num_synapses)
-    for x in synapses.presynaptic_segments:
-        # x.insert_mechanism("rel")
-        pass
-    for x in synapses.postsynaptic_segments:
-        x.insert_mechanism("AMPA5")
-    return synapses
 
 class PetriDish:
     def __init__(self, num_excit, num_inhib):
@@ -80,17 +71,24 @@ class PetriDish:
         m.add_species("na")
         m.add_species("glu")
         m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
-        # DEBUGGING: Removed for faster startup speed...
-        # hh = m.add_reaction(
-        #         NmodlMechanism("neuwon/examples/PetriDish/Destexhe/ampa5.mod",
-        #             pointers={"C": ("outside/concentrations/glu", "r")}),)
+        hh = m.add_reaction(
+                NmodlMechanism("neuwon/examples/PetriDish/Destexhe/release.mod",
+                    pointers={"T": ("outside/concentrations/glu", "r")}),)
+        hh = m.add_reaction(
+                NmodlMechanism("neuwon/examples/PetriDish/Destexhe/ampa5.mod",
+                    pointers={"C": ("outside/concentrations/glu", "r")}),)
         hh = m.add_reaction("hh")
         self.excit = [ExcitatoryNeuron(m, self.region) for _ in range(num_excit)]
         self.inhib = [InhibitoryNeuron(m, self.region) for _ in range(num_inhib)]
-        # self.glu = excitatory_synapses(
-        #         itertools.chain.from_iterable(n.axon.segments for n in self.excit),
-        #         itertools.chain.from_iterable(n.dendrite.segments for n in self.excit),
-        #         int(round(number_of_cells * synapses_per_cell)))
+        self.glu_syn = GrowSynapses(
+                chain(n.axon.segments for n in self.excit),
+                chain(n.dendrite.segments for n in self.excit),
+                (0, .6e-6, 3e-6), 1e-6, int(round(100 * num_excit)))
+        m.get_reaction("rel").new_instances(m, list(self.glu_syn.presynaptic_segments),
+                scale=1.0)
+        m.get_reaction("AMPA5").new_instances(m, list(self.glu_syn.postsynaptic_segments),
+                scale=1.0)
+
         self.model.check()
         if True: print(repr(self.model))
         print("num dendrites:", sum(len(n.dendrite.segments) for n in self.excit))

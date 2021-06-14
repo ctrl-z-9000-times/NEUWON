@@ -721,9 +721,9 @@ class _AssignStatement:
         assert(self.derivative)
         self.derivative = False
         try: self._solve_sympy(); return
-        except Exception: pass
+        except Exception as x: eprint("Warning Sympy solver failed: "+str(x))
         try: self._solve_crank_nicholson(); return
-        except Exception: pass
+        except Exception as x: eprint("Warning Crank-Nicholson solver failed: "+str(x))
         self._solve_foward_euler()
 
     def _solve_sympy(self):
