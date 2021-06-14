@@ -275,7 +275,11 @@ class Database:
         if component_name is not None:
             self.components[str(component_name)].check(self)
         else:
-            for x in self.components.values(): x.check(self)
+            for c in self.components.values():
+                exceptions = []
+                try: c.check(self)
+                except Exception as x: exceptions.append(x)
+            if exceptions: raise AssertionError(",\n".join(str(x) for x in exceptions))
 
     def __repr__(self, is_str=False):
         f = str if is_str else repr
@@ -378,15 +382,15 @@ class _Component(_DocString):
         """ Helper method to interpret the check flags and dtypes. """
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
-            if reference: assert xp.all(xp.less(data, reference.size)), self.name
+            if reference: assert xp.all(xp.less(data, reference.size)), self.name + " is NULL"
             else:
                 kind = data.dtype.kind
-                if kind in ("f", "c"): assert not xp.any(xp.isnan(data)), self.name
+                if kind in ("f", "c"): assert not xp.any(xp.isnan(data)), self.name + " is NaN"
         lower_bound, upper_bound = self.bounds
         if lower_bound is not None:
-            assert xp.all(xp.less_equal(lower_bound, data)), self.name
+            assert xp.all(xp.less_equal(lower_bound, data)), self.name + " less than %g"%lower_bound
         if upper_bound is not None:
-            assert xp.all(xp.greater_equal(upper_bound, data)), self.name
+            assert xp.all(xp.greater_equal(upper_bound, data)), self.name + " greater than %g"%upper_bound
 
 class _Archetype(_DocString):
     def __init__(self, name, doc, grid):

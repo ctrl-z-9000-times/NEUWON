@@ -150,7 +150,7 @@ class NmodlMechanism(Reaction):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
         self.use_units = not any(x.eval() == "UNITSOFF" for x in self.lookup(ANT.UNIT_STATE))
         self.use_units = False # TODO, either implement this or delete it...
-        if not self.use_units: eprint("Warning: UNITSOFF detected.")
+        # if not self.use_units: eprint("Warning: UNITSOFF detected.")
 
     def _gather_parameters(self):
         """ Sets parameters. """
