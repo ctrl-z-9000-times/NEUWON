@@ -297,7 +297,7 @@ class NmodlMechanism(Reaction):
 
         Sets solved_blocks. """
         self.solved_blocks = {}
-        sympy_methods = ("euler", "cnexp")
+        sympy_methods = ("cnexp", "derivimplicit", "euler")
         self.breakpoint_block.map((lambda stmt: self._sympy_solve(stmt.block).statements
                 if isinstance(stmt, _SolveStatement) and stmt.method in sympy_methods else [stmt]))
         self.breakpoint_block.map((lambda stmt: _LinearSystem(self, stmt.block)
@@ -514,7 +514,7 @@ class NmodlMechanism(Reaction):
         if not len(locations): return
         # TODO: How to pass multiple buffers into the kernel, from pointers
         # which have multiple database buffers?
-        pointers = {name: access(ptr.read or ptr.write or ptr.accum) for name, ptr in self.pointers.items()}
+        pointers = {name: access(ptr.read or ptr.write) for name, ptr in self.pointers.items()}
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
@@ -532,14 +532,16 @@ class _Pointer:
             self = nmodl.pointers[name]
             if read is not None:
                 read = str(read)
-                if read != self.read:
-                    eprint("Warning: Pointer override: %s read=%s"(self.name, self.read))
-                self.read = str(read)
+                if self.r and self.read != read:
+                    eprint("Warning: Pointer override: %s read changed from '%s' to '%s'"%(
+                            self.name, self.read, read))
+                self.read = read
             if write is not None:
                 write = str(write)
-                if write != self.write:
-                    eprint("Warning: Pointer override: %s write=%s"(self.name, self.write))
-                self.write = str(write)
+                if self.w and self.write != write:
+                    eprint("Warning: Pointer override: %s write changed from '%s' to '%s'"%(
+                            self.name, self.write, write))
+                self.write = write
                 self.accumulate = bool(accumulate)
             else: assert accumulate is None
         else:

@@ -73,10 +73,11 @@ class PetriDish:
         m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
         hh = m.add_reaction(
                 NmodlMechanism("neuwon/examples/PetriDish/Destexhe/release.mod",
-                    pointers={"T": ("outside/concentrations/glu", "r")}),)
+                    pointers={"T": {'read': "outside/concentrations/glu",
+                                    'write': "outside/release_rates/glu", 'accumulate': True}}))
         hh = m.add_reaction(
                 NmodlMechanism("neuwon/examples/PetriDish/Destexhe/ampa5.mod",
-                    pointers={"C": ("outside/concentrations/glu", "r")}),)
+                    pointers={"C": {'read': "outside/concentrations/glu"}}))
         hh = m.add_reaction("hh")
         self.excit = [ExcitatoryNeuron(m, self.region) for _ in range(num_excit)]
         self.inhib = [InhibitoryNeuron(m, self.region) for _ in range(num_inhib)]
