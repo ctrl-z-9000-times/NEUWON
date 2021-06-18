@@ -528,8 +528,9 @@ class _Sparse_Matrix(_Component):
         _Component.check_data(self, database, self.data.data, reference=self.reference)
 
     def __repr__(self):
-        s = "%s nnz/row: %g"%(self.name, self.data.nnz / self.data.shape[0])
-        return s
+        try: nnz_per_row = self.data.nnz / self.data.shape[0]
+        except ZeroDivisionError: nnz_per_row = 0
+        return "%s nnz/row: %g"%(self.name, nnz_per_row)
 
 class _KD_Tree(_Component):
     def __init__(self, database, name, doc, component):

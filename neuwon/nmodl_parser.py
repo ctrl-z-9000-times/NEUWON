@@ -1,4 +1,5 @@
 """ Private module. """
+import neuwon.units
 import nmodl
 import nmodl.ast
 import nmodl.dsl
@@ -8,7 +9,7 @@ import sympy
 ANT = nmodl.ast.AstNodeType
 
 class _NmodlParser:
-    """ Attributes visitor, lookup, and symbols.
+    """ Attributes: visitor, lookup, and symbols.
 
     Keep all references to the "nmodl" library separate from the main classes
     for clean & easy deletion. The nmodl library is implemented in C++ and as
@@ -35,6 +36,23 @@ class _NmodlParser:
     def gather_states(self):
         return sorted(v.get_name() for v in
                 self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
+
+    def gather_units(self):
+        units = copy.deepcopy(neuwon.units.builtin_units)
+        for AST in parser.lookup(ANT.UNIT_DEF):
+            units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
+        return units
+
+    def gather_parameters(self):
+        parameters = {}
+        for assign_stmt in self.lookup(ANT.PARAM_ASSIGN):
+            name  = str(self.visitor.lookup(assign_stmt, ANT.NAME)[0].get_node_name())
+            value = self.visitor.lookup(assign_stmt, [ANT.INTEGER, ANT.DOUBLE])
+            units = self.visitor.lookup(assign_stmt, ANT.UNIT)
+            value = float(value[0].eval())        if value else None
+            units = str(units[0].get_node_name()) if units else None
+            parameters[name] = (value, units)
+        return parameters
 
     @classmethod
     def parse_expression(cls, AST):

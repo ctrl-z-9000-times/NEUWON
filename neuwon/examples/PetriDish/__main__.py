@@ -69,8 +69,10 @@ class PetriDish:
         self.model = m = Model(self.time_step)
         m.add_species("k")
         m.add_species("na")
+        m.add_species("ca")
         m.add_species("glu")
         m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
+        print(repr(m))
         hh = m.add_reaction(
                 NmodlMechanism("neuwon/examples/PetriDish/Destexhe/release.mod",
                     pointers={"T": {'read': "outside/concentrations/glu",

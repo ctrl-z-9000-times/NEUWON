@@ -9,7 +9,6 @@ import copy
 from zlib import crc32
 import pickle
 from neuwon.database import Real, Entity
-import neuwon.units
 from neuwon.model import Reaction, Model, Segment
 from scipy.linalg import expm
 import sys
@@ -57,8 +56,8 @@ class NmodlMechanism(Reaction):
                 parser = _NmodlParser(nmodl_text)
                 self._check_for_unsupported(parser)
                 self._gather_documentation(parser)
-                # self._gather_units(parser)
-                self._gather_parameters(parser)
+                self.units = parser.gather_units()
+                self.parameters = dict(_builtin_parameters).update(parser.gather_parameters())
                 self.states = parser.gather_states()
                 self.pointers = {}
                 self._gather_functions(parser)
@@ -122,22 +121,6 @@ class NmodlMechanism(Reaction):
 
     def name(self):
         return self._name
-
-    def _gather_units(self, parser):
-        self.units = copy.deepcopy(neuwon.units.builtin_units)
-        for AST in parser.lookup(ANT.UNIT_DEF):
-            self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
-
-    def _gather_parameters(self, parser):
-        """ Sets parameters. """
-        self.parameters = dict(_builtin_parameters)
-        for assign in parser.lookup(ANT.PARAM_ASSIGN):
-            name  = str(parser.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
-            value = parser.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
-            units = parser.visitor.lookup(assign, ANT.UNIT)
-            value = float(value[0].eval())   if value else None
-            units = units[0].get_node_name() if units else None
-            self.parameters[name] = (value, units)
 
     def _gather_functions(self, parser):
         """ Process all blocks of code which contain imperative instructions.
