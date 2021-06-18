@@ -462,7 +462,11 @@ class NmodlMechanism(Reaction):
             elif arg in self.initial_scope:
                 initial_scope_carryover.append((arg, self.initial_scope[arg]))
             else: raise ValueError("Unhandled argument: \"%s\"."%arg)
-        arguments = sorted(_CodeGen.mangle(name) for name in  self.pointers)
+        arguments = set()
+        for ptr in self.pointers.values():
+            if ptr.r: arguments.add(ptr.read_py)
+            if ptr.w: arguments.add(ptr.write_py)
+        arguments = sorted(arguments)
         locations = _CodeGen.mangle2("locations")
         location  = _CodeGen.mangle2("location")
         index     = _CodeGen.mangle2("index")
@@ -474,11 +478,11 @@ class NmodlMechanism(Reaction):
         preamble.append("    "+location+" = "+locations+"["+index+"]")
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)
-        for variable, pointer in self.pointers.items():
-            if not pointer.read: continue
-            if pointer.name == "v": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
-            else:                   factor = 1
-            preamble.append("    %s = %s[%s] * %s"%(variable, _CodeGen.mangle(variable), pointer.index, factor))
+        for variable, ptr in sorted(self.pointers.items()):
+            if not ptr.r: continue
+            if ptr.name == "v": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
+            else:               factor = 1
+            preamble.append("    %s = %s[%s] * %s"%(ptr.name, ptr.read_py, ptr.index_py, factor))
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
@@ -512,9 +516,10 @@ class NmodlMechanism(Reaction):
         threads = 64
         locations = access(self.name() + "/insertions")
         if not len(locations): return
-        # TODO: How to pass multiple buffers into the kernel, from pointers
-        # which have multiple database buffers?
-        pointers = {name: access(ptr.read or ptr.write) for name, ptr in self.pointers.items()}
+        pointers = {}
+        for ptr in self.pointers.values():
+            if ptr.r: pointers[ptr.read_py] = access(ptr.read)
+            if ptr.w: pointers[ptr.write_py] = access(ptr.write)
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
@@ -549,22 +554,11 @@ class _Pointer:
         return self
 
     def __init__(self, nmodl, name, read, write, accumulate):
+        self.nmodl_name = nmodl.name()
         self.name  = str(name)
         self.read  = str(read)  if read  is not None else None
         self.write = str(write) if write is not None else None
         self.accumulate = bool(accumulate)
-        component = self.read or self.write
-        if   component.startswith(nmodl.name()):  self.archetype = nmodl.name()
-        elif component.startswith("membrane"):    self.archetype = "membrane"
-        elif component.startswith("inside"):      self.archetype = "inside"
-        elif component.startswith("outside"):     self.archetype = "outside"
-        else: raise Exception("Unrecognised archetype: " + component)
-        # TODO: rename mangle2(location) to mangle2(membrane)
-        if   self.archetype == "membrane":  self.index = _CodeGen.mangle2("location")
-        elif self.archetype == "inside":    self.index = _CodeGen.mangle2("inside")
-        elif self.archetype == "outside":   self.index = _CodeGen.mangle2("outside")
-        elif self.archetype == nmodl.name(): self.index = _CodeGen.mangle2("index")
-        else: raise NotImplementedError(self.archetype)
 
     @property
     def r(self): return self.read is not None
@@ -583,6 +577,37 @@ class _Pointer:
         if self.w: args.append("write='%s'"%self.write)
         if self.a: args.append("accumulate")
         return self.name + " = _Pointer(%s)"%', '.join(args)
+    @property
+    def archetype(self):
+        component = self.read or self.write
+        if component is None:                       return None
+        elif component.startswith(self.nmodl_name): return self.nmodl_name
+        elif component.startswith("membrane"):      return "membrane"
+        elif component.startswith("inside"):        return "inside"
+        elif component.startswith("outside"):       return "outside"
+        else: raise Exception("Unrecognised archetype: " + component)
+    @property
+    def index(self):
+        if   self.archetype == "membrane":      return "location"
+        elif self.archetype == "inside":        return "inside"
+        elif self.archetype == "outside":       return "outside"
+        elif self.archetype == self.nmodl_name: return "index"
+        else: raise NotImplementedError(self.archetype)
+    @property
+    def read_py(self):
+        if self.r:
+            if self.w and self.read != self.write:
+                return _CodeGen.mangle('read_' + self.name)
+            return _CodeGen.mangle(self.name)
+    @property
+    def write_py(self):
+        if self.w:
+            if self.r and self.read != self.write:
+                return _CodeGen.mangle('write_' + self.name)
+            return _CodeGen.mangle(self.name)
+    # TODO: rename mangle2(location) to mangle2(membrane)
+    @property
+    def index_py(self): return _CodeGen.mangle2(self.index)
 
 class _CodeBlock:
     def __init__(self, nmodl, AST):
@@ -710,9 +735,9 @@ class _AssignStatement:
             return indent + lhs + " += " + self.rhs + "\n"
         if self.pointer and not INITIAL_BLOCK:
             assert self.pointer.w, self.pointer.name + " is not a writable pointer!"
-            array_access = _CodeGen.mangle(self.lhsn) + "[" + self.pointer.index + "]"
+            array_access = self.pointer.write_py + "[" + self.pointer.index_py + "]"
             eq = " += " if self.pointer.a else " = "
-            assign_local = self.lhsn + " = " if self.pointer.r else ""
+            assign_local = self.lhsn + " = " if self.pointer.r and not self.pointer.a else ""
             return indent + array_access + eq + assign_local + self.rhs + "\n"
         return indent + self.lhsn + " = " + self.rhs + "\n"
 
