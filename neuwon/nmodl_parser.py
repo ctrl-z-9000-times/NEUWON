@@ -1,4 +1,5 @@
 """ Private module. """
+import copy
 import neuwon.units
 import nmodl
 import nmodl.ast
@@ -39,7 +40,7 @@ class _NmodlParser:
 
     def gather_units(self):
         units = copy.deepcopy(neuwon.units.builtin_units)
-        for AST in parser.lookup(ANT.UNIT_DEF):
+        for AST in self.lookup(ANT.UNIT_DEF):
             units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
         return units
 

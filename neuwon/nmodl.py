@@ -8,6 +8,7 @@ import itertools
 import copy
 from zlib import crc32
 import pickle
+from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Entity
 from neuwon.model import Reaction, Model, Segment
 from scipy.linalg import expm
@@ -31,11 +32,6 @@ from neuwon.nmodl_parser import _NmodlParser, ANT
 #             self.breakpoint_block.statements.append(
 #                     _AssignStatement(variable, variable, pointer=pointer))
 
-_builtin_parameters = {
-    "celsius": (None, "degC"),
-    "time_step": (None, "ms"),
-}
-
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
         """
@@ -57,7 +53,7 @@ class NmodlMechanism(Reaction):
                 self._check_for_unsupported(parser)
                 self._gather_documentation(parser)
                 self.units = parser.gather_units()
-                self.parameters = dict(_builtin_parameters).update(parser.gather_parameters())
+                self.parameters = _Parameters().update(parser.gather_parameters())
                 self.states = parser.gather_states()
                 self.pointers = {}
                 self._gather_functions(parser)
@@ -67,8 +63,8 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             _cache.save(self)
-        self._apply_parameter_overrides(parameter_overrides)
-        self._separate_surface_area_parameters()
+        self.parameters.update(parameter_overrides, strict=True)
+        self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
         for var_name, kwargs in pointers.items(): _Pointer.update(self, var_name, **kwargs)
 
     def initialize(self, database):
@@ -216,29 +212,8 @@ class NmodlMechanism(Reaction):
                 stmt.solve()
         return block
 
-    def _apply_parameter_overrides(self, parameter_overrides):
-        for name, value in parameter_overrides.items():
-            if name in self.parameters:
-                old_value, units = self.parameters[name]
-                self.parameters[name] = (value, units)
-            else: raise ValueError("Invalid parameter override \"%s\"."%name)
-
-    def _separate_surface_area_parameters(self):
-        """ Sets surface_area_parameters, Modifies parameters.
-
-        The surface area parameters are special because each segment of neuron
-        has its own surface area and so their actual values are different for
-        each instance of the mechanism. They are not in-lined directly into the
-        source code, instead they are stored alongside the state variables and
-        accessed at run time. 
-        """
-        self.surface_area_parameters = {}
-        for name, (value, units) in list(self.parameters.items()):
-            if units and "/cm2" in units:
-                self.surface_area_parameters[name] = self.parameters.pop(name)
-
     def _gather_builtin_parameters(self, database):
-        for name in _builtin_parameters:
+        for name in _Parameters._builtin_parameters:
             builtin_value = database.access(name)
             given_value, units = self.parameters[name]
             if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
@@ -427,6 +402,49 @@ class NmodlMechanism(Reaction):
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](locations,
                 *(ptr for name, ptr in sorted(pointers.items())))
+
+class _Parameters(dict):
+    """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
+
+    _builtin_parameters = {
+        "celsius": (None, "degC"),
+        "time_step": (None, "ms"),
+    }
+
+    def __init__(self, parameters=_builtin_parameters):
+        dict.__init__(self)
+        self.update(parameters)
+
+    def update(self, parameters, strict=False):
+        for name, value in parameters.items():
+            name = str(name)
+            if not isinstance(value, Iterable): value = (value, None)
+            value, units = value
+            value = float(value) if value is not None else None
+            units = str(units)   if units is not None else None
+            if name in self:
+                old_value, old_units = self[name]
+                if units is None: units = old_units
+                elif strict and old_units is not None:
+                    assert units == old_units, "Parameter \"%s\" units changed."%name
+            elif strict: raise ValueError("Invalid parameter override \"%s\"."%name)
+            self[name] = (value, units)
+        return self
+
+    def separate_surface_area_parameters(self):
+        """ Returns surface_area_parameters, Modifies parameters (self).
+
+        The surface area parameters are special because each segment of neuron
+        has its own surface area and so their actual values are different for
+        each instance of the mechanism. They are not in-lined directly into the
+        source code, instead they are stored alongside the state variables and
+        accessed at run time. 
+        """
+        surface_area_parameters = _Parameters({})
+        for name, (value, units) in list(self.items()):
+            if units and "/cm2" in units:
+                surface_area_parameters[name] = self.pop(name)
+        return surface_area_parameters
 
 class _Pointer:
     @staticmethod
