@@ -119,7 +119,7 @@ class NmodlMechanism(Reaction):
                 parser = _NmodlParser(nmodl_text)
                 self._check_for_unsupported(parser)
                 self._gather_documentation(parser)
-                self._gather_units(parser)
+                # self._gather_units(parser)
                 self._gather_parameters(parser)
                 self.states = sorted(v.get_name() for v in
                         parser.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
@@ -187,18 +187,9 @@ class NmodlMechanism(Reaction):
         return self._name
 
     def _gather_units(self, parser):
-        """
-        Sets flag "use_units" which determines how to deal with differences
-        between NEURONs and NEUWONs unit systems:
-          * True: modify the mechanism to use NEUWONs unit system.
-          * False: convert the I/O into NEURON unit system.
-        """
         self.units = copy.deepcopy(neuwon.units.builtin_units)
         for AST in parser.lookup(ANT.UNIT_DEF):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
-        self.use_units = not any(x.eval() == "UNITSOFF" for x in parser.lookup(ANT.UNIT_STATE))
-        self.use_units = False # TODO, either implement this or delete it...
-        # if not self.use_units: eprint("Warning: UNITSOFF detected.")
 
     def _gather_parameters(self, parser):
         """ Sets parameters. """
