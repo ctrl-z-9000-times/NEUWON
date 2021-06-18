@@ -18,12 +18,6 @@ different and specialized things.
 
 # TODO: repr & str formatting
 
-# TODO: Consider renaming data types: Index to Pointer.
-
-# TODO: Destroy & Relocate Entities
-#           The "allow_invalid" flag should control whether destroying referenced
-#           entities causes recursive destruction of more entities.
-
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:
 #       1) Write rows.
@@ -69,9 +63,8 @@ from collections.abc import Callable, Iterable, Mapping
 
 Real    = np.dtype('f4')
 epsilon = np.finfo(Real).eps
-# TODO: Consider renaming Index to Pointer.
-Index   = np.dtype('u4')
-NULL    = np.iinfo(Index).max
+Pointer = np.dtype('u4')
+NULL    = np.iinfo(Pointer).max
 
 class Database:
     def __init__(self):
@@ -192,6 +185,9 @@ class Database:
             return np.arange(old_size, new_size)
 
     def destroy_entity(self, archetype_name, instances: list):
+        # TODO: The "allow_invalid" flag should control whether destroying
+        # referenced entities causes recursive destruction of more entities.
+
         # TODO: Consider how to rework this to instead of keeping lists of links
         # to archetypes which need updating, to just scan through all of the
         # archetypes (in a fixed number of passes). It would allow me to
@@ -443,7 +439,7 @@ class _Attribute(_Component):
         self.archetype = ark = database._get_archetype(self.name)
         ark.attributes.append(self)
         if isinstance(dtype, str):
-            self.dtype = Index
+            self.dtype = Pointer
             self.initial_value = NULL
             self.reference = database.archetypes[str(dtype)]
             self.reference.referenced_by.append(self)
@@ -500,7 +496,7 @@ class _Sparse_Matrix(_Component):
         self.column_archetype = database.archetypes[str(column_archetype)]
         self.column_archetype.sparse_matrixes.append(self)
         if isinstance(dtype, str):
-            self.dtype = Index
+            self.dtype = Pointer
             self.initial_value = NULL
             self.reference = database.archetypes[str(dtype)]
             self.reference.referenced_by.append(self)

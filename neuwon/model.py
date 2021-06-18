@@ -485,7 +485,7 @@ class Model:
         if not isinstance(parents, Iterable):
             parents     = [parents]
             coordinates = [coordinates]
-        parents_clean = np.empty(len(parents), dtype=Index)
+        parents_clean = np.empty(len(parents), dtype=Pointer)
         for idx, p in enumerate(parents):
             if p is None:
                 parents_clean[idx] = NULL
@@ -696,7 +696,7 @@ class Model:
             potential_neighbors = tree.query_ball_point(coords, 2 * self.max_outside_radius)
             potential_neighbors.remove(location)
             volume, neighbors = neuwon.voronoi.voronoi_cell(location,
-                    self.max_outside_radius, np.array(potential_neighbors, dtype=Index), coordinates)
+                    self.max_outside_radius, np.array(potential_neighbors, dtype=Pointer), coordinates)
             write_neighbor_cols.append(list(neighbors['location']))
             write_neighbor_dist.append(list(neighbors['distance']))
             write_neighbor_area.append(list(neighbors['border_surface_area']))

@@ -8,7 +8,7 @@ import itertools
 import copy
 from zlib import crc32
 import pickle
-from neuwon.database import Real, Index, Entity
+from neuwon.database import Real, Entity
 import neuwon.units
 from neuwon.model import Reaction, Model, Segment
 from scipy.linalg import expm
