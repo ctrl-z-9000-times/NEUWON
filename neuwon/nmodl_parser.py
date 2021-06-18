@@ -40,7 +40,7 @@ class _NmodlParser:
         """ Returns triple of (name, title, and description).
         This assumes that the first block comment is the primary documentation. """
         x = self.lookup(ANT.SUFFIX)
-        if x: name = x[0].name.get_nodename()
+        if x: name = x[0].name.get_node_name()
         else: name = os.path.split(self.filename)[1] # TODO: Split extension too?
         title = self.lookup(ANT.MODEL)
         title = title[0].title.eval().strip() if title else ""

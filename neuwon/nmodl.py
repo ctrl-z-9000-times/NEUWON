@@ -69,7 +69,9 @@ class NmodlMechanism(Reaction):
     def initialize(self, database):
         try:
             self.parameters.gather_builtin_parameters(database, self.pointers)
-            self._substitute_parameters(database)
+            self.parameters.substitute(itertools.chain(
+                    (self.initial_block, self.breakpoint_block,),
+                    self.derivative_blocks.values(),))
             # self._solve() # TODO: only solve for kinetic models here.
             # self.kinetic_models = {}
             # for name, block in self.derivative_functions.items():
@@ -196,18 +198,6 @@ class NmodlMechanism(Reaction):
             if isinstance(stmt, _AssignStatement) and stmt.derivative:
                 stmt.solve()
         return block
-
-    def _substitute_parameters(self, database):
-        substitutions = []
-        for name, (value, units) in self.parameters.items():
-            if value is None: continue
-            substitutions.append((name, value))
-        for block in itertools.chain(
-                    (self.initial_block, self.breakpoint_block,),
-                    self.derivative_blocks.values(),):
-            for stmt in block:
-                if isinstance(stmt, _AssignStatement):
-                    stmt.rhs = stmt.rhs.subs(substitutions)
 
     def _compile_derivative_blocks(self):
         """ Replace the derivative_blocks with compiled functions in the form:
@@ -435,6 +425,15 @@ class _Parameters(dict):
                 value = database.access(ptr.read)
                 if isinstance(value, float): self.update({ptr.name: value})
 
+    def substitute(self, blocks):
+        substitutions = []
+        for name, (value, units) in self.items():
+            if value is None: continue
+            substitutions.append((name, value))
+        for block in blocks:
+            for stmt in block:
+                if isinstance(stmt, _AssignStatement):
+                    stmt.rhs = stmt.rhs.subs(substitutions)
 
 class _Pointer:
     @staticmethod
