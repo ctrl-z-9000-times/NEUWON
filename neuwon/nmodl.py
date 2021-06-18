@@ -453,15 +453,15 @@ class _Parameters(dict):
 
 class _Pointer:
     @staticmethod
-    def update(nmodl, name, read=None, write=None, accumulate=None):
+    def update(mechanism, name, read=None, write=None, accumulate=None):
         """ Factory method for _Pointer objects.
 
         Argument name is an nmodl varaible name.
         Arguments read & write are a database access paths.
         Argument accumulate must be given at the same time as the "write" argument.
         """
-        if name in nmodl.pointers:
-            self = nmodl.pointers[name]
+        if name in mechanism.pointers:
+            self = mechanism.pointers[name]
             if read is not None:
                 read = str(read)
                 if self.r and self.read != read:
@@ -477,11 +477,11 @@ class _Pointer:
                 self.accumulate = bool(accumulate)
             else: assert accumulate is None
         else:
-            nmodl.pointers[name] = self = _Pointer(nmodl, name, read, write, accumulate)
+            mechanism.pointers[name] = self = _Pointer(mechanism, name, read, write, accumulate)
         return self
 
-    def __init__(self, nmodl, name, read, write, accumulate):
-        self.nmodl_name = nmodl.name()
+    def __init__(self, mechanism, name, read, write, accumulate):
+        self.nmodl_name = mechanism.name()
         self.name  = str(name)
         self.read  = str(read)  if read  is not None else None
         self.write = str(write) if write is not None else None
@@ -537,7 +537,7 @@ class _Pointer:
     def index_py(self): return _CodeGen.mangle2(self.index)
 
 class _CodeBlock:
-    def __init__(self, nmodl, AST):
+    def __init__(self, mechanism, AST):
         if hasattr(AST, "name"):        self.name = AST.name.get_node_name()
         elif AST.is_breakpoint_block(): self.name = "BREAKPOINT"
         elif AST.is_initial_block():    self.name = "INITIAL"
@@ -547,11 +547,11 @@ class _CodeBlock:
         self.statements = []
         AST = getattr(AST, "statement_block", AST)
         for stmt in AST.statements:
-            self.statements.extend(nmodl._parse_statement(stmt))
+            self.statements.extend(mechanism._parse_statement(stmt))
         self.conserve_statements = [x for x in self if isinstance(x, _ConserveStatement)]
-        if top_level: self.gather_arguments(nmodl)
+        if top_level: self.gather_arguments(mechanism)
 
-    def gather_arguments(self, nmodl):
+    def gather_arguments(self, mechanism):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned = set()
@@ -562,13 +562,13 @@ class _CodeBlock:
                         self.arguments.add(symbol.name)
                 self.assigned.add(stmt.lhsn)
             elif isinstance(stmt, _IfStatement):
-                stmt.gather_arguments(nmodl)
+                stmt.gather_arguments(mechanism)
                 for symbol in stmt.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
                 self.assigned.update(stmt.assigned)
             elif isinstance(stmt, _SolveStatement):
-                target_block = nmodl.derivative_blocks[stmt.block]
+                target_block = mechanism.derivative_blocks[stmt.block]
                 for symbol in target_block.arguments:
                     if symbol not in self.assigned:
                         self.arguments.add(symbol)
@@ -600,27 +600,27 @@ class _CodeBlock:
         return py.rstrip() + "\n"
 
 class _IfStatement:
-    def __init__(self, nmodl, AST):
+    def __init__(self, mechanism, AST):
         self.condition = _NmodlParser.parse_expression(AST.condition)
-        self.main_block = _CodeBlock(nmodl, AST.statement_block)
-        self.elif_blocks = [_CodeBlock(nmodl, block) for block in AST.elseifs]
+        self.main_block = _CodeBlock(mechanism, AST.statement_block)
+        self.elif_blocks = [_CodeBlock(mechanism, block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
-        self.else_block = _CodeBlock(nmodl, AST.elses)
+        self.else_block = _CodeBlock(mechanism, AST.elses)
 
-    def gather_arguments(self, nmodl):
+    def gather_arguments(self, mechanism):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned = set()
         for symbol in self.condition.free_symbols:
             self.arguments.add(symbol.name)
-        self.main_block.gather_arguments(nmodl)
+        self.main_block.gather_arguments(mechanism)
         self.arguments.update(self.main_block.arguments)
         self.assigned.update(self.main_block.assigned)
         for block in self.elif_blocks:
-            block.gather_arguments(nmodl)
+            block.gather_arguments(mechanism)
             self.arguments.update(block.arguments)
             self.assigned.update(block.assigned)
-        self.else_block.gather_arguments(nmodl)
+        self.else_block.gather_arguments(mechanism)
         self.arguments.update(self.else_block.arguments)
         self.assigned.update(self.else_block.assigned)
 
@@ -703,20 +703,20 @@ class _AssignStatement:
         self.rhs = sympy.Symbol(self.lhsn) + self.rhs * dt
 
 class _SolveStatement:
-    def __init__(self, nmodl, AST):
+    def __init__(self, mechanism, AST):
         self.block = AST.block_name.get_node_name()
         self.steadystate = AST.steadystate
         if AST.method: self.method = AST.method.get_node_name()
         else: self.method = "sparse" # FIXME
         AST.ifsolerr # TODO: What does this do?
-        assert(self.block in nmodl.derivative_blocks)
-        # arguments = nmodl.derivative_blocks[self.block].arguments
+        assert(self.block in mechanism.derivative_blocks)
+        # arguments = mechanism.derivative_blocks[self.block].arguments
         # if self.steadystate:
         #     states_var = _CodeGen.mangle2("states")
         #     index_var  = _CodeGen.mangle2("index")
         #     self.py = states_var + " = solve_steadystate('%s', {%s})\n"%(self.block,
         #             ", ".join("'%s': %s"%(x, x) for x in arguments))
-        #     for x in nmodl.states:
+        #     for x in mechanism.states:
         #         self.py += "%s[%s] = %s['%s']\n"%(_CodeGen.mangle(x), index_var, states_var, x)
         # else:
         #     self.py = self.block + "(%s)\n"%(
@@ -729,14 +729,14 @@ class _SolveStatement:
             return indent + 1/0
 
 class _LinearSystem:
-    def __init__(self, nmodl, name):
+    def __init__(self, mechanism, name):
         1/0
 
     def to_python(self, indent, **kwargs):
         1/0
 
 class _ConserveStatement:
-    def __init__(self, nmodl, AST):
+    def __init__(self, mechanism, AST):
         conserved_expr = _NmodlParser.parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
         self.states = sorted(str(x) for x in conserved_expr.free_symbols)
         # Assume that the conserve statement was once in the form: sum-of-states = constant-value
