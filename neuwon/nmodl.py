@@ -219,6 +219,11 @@ class NmodlMechanism(Reaction):
             if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
             if given_value is None:
                 self.parameters[name] = (builtin_value, units)
+        for ptr in self.pointers.values():
+            if ptr.r:
+                value = database.access(ptr.read)
+                if isinstance(value, float):
+                    self.parameters[ptr.name] = (value, None)
 
     def _substitute_parameters(self, database):
         substitutions = []
