@@ -41,6 +41,64 @@ _builtin_parameters = {
     "time_step": (None, "ms"),
 }
 
+class _NmodlParser:
+    """ Attributes visitor, lookup, and symbols.
+
+    Keep all references to the "nmodl" library separate for clean & easy
+    deletion. The nmodl library is implemented in C++ and as such does not
+    support some critical python features: objects returned from the nmodl
+    library do not support copying or pickling. """
+    def __init__(self, nmodl_text):
+        """ Parse the NMDOL file into an abstract syntax tree (AST). """
+        AST = nmodl.dsl.NmodlDriver().parse_string(nmodl_text)
+        nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
+        nmodl.symtab.SymtabVisitor().visit_program(AST)
+        nmodl.dsl.visitor.InlineVisitor().visit_program(AST)
+        nmodl.dsl.visitor.KineticBlockVisitor().visit_program(AST)
+        self.visitor = nmodl.dsl.visitor.AstLookupVisitor()
+        self.lookup = lambda n: self.visitor.lookup(AST, n)
+        nmodl.symtab.SymtabVisitor().visit_program(AST)
+        self.symbols = AST.get_symbol_table()
+        # Helpful debugging printouts:
+        if False: print(nmodl.dsl.to_nmodl(AST))
+        if False: print(AST.get_symbol_table())
+        if False: nmodl.ast.view(AST)
+
+    @classmethod
+    def parse_expression(cls, AST):
+        """ Returns a SymPy expression. """
+        if AST.is_wrapped_expression() or AST.is_paren_expression():
+            return cls.parse_expression(AST.expression)
+        if AST.is_integer():  return sympy.Integer(AST.eval())
+        if AST.is_double():   return sympy.Float(AST.eval(), 18)
+        if AST.is_name():     return sympy.symbols(AST.get_node_name())
+        if AST.is_var_name(): return sympy.symbols(AST.name.get_node_name())
+        if AST.is_unary_expression():
+            op = AST.op.eval()
+            if op == "-": return - cls.parse_expression(AST.expression)
+            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+        if AST.is_binary_expression():
+            op = AST.op.eval()
+            lhs = cls.parse_expression(AST.lhs)
+            rhs = cls.parse_expression(AST.rhs)
+            if op == "+": return lhs + rhs
+            if op == "-": return lhs - rhs
+            if op == "*": return lhs * rhs
+            if op == "/": return lhs / rhs
+            if op == "^": return lhs ** rhs
+            if op == "<": return lhs < rhs
+            if op == ">": return lhs > rhs
+            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+        if AST.is_function_call():
+            name = AST.name.get_node_name()
+            args = [cls.parse_expression(x) for x in AST.arguments]
+            if name == "fabs":  return sympy.Abs(*args)
+            if name == "exp":   return sympy.exp(*args)
+            else: return sympy.Function(name)(*args)
+        if AST.is_double_unit():
+            return cls.parse_expression(AST.value)
+        raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
+
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
         """
@@ -58,17 +116,16 @@ class NmodlMechanism(Reaction):
         else:
             try:
                 with open(self.filename, 'rt') as f: nmodl_text = f.read()
-                self._parse_text(nmodl_text)
-                self._check_for_unsupported()
-                self._gather_documentation()
-                self._gather_units()
-                self._gather_parameters()
+                parser = _NmodlParser(nmodl_text)
+                self._check_for_unsupported(parser)
+                self._gather_documentation(parser)
+                self._gather_units(parser)
+                self._gather_parameters(parser)
                 self.states = sorted(v.get_name() for v in
-                        self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
+                        parser.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
                 self.pointers = {}
-                self._gather_functions()
-                self._gather_IO()
-                self._discard_ast()
+                self._gather_functions(parser)
+                self._gather_IO(parser)
                 self._solve()
             except Exception:
                 eprint("ERROR while loading file", self.filename)
@@ -96,34 +153,7 @@ class NmodlMechanism(Reaction):
             eprint("ERROR while loading file", self.filename)
             raise
 
-    def _parse_text(self, nmodl_text):
-        """ Parse the NMDOL file into an abstract syntax tree (AST).
-        Sets visitor, lookup, and symbols. """
-        AST = nmodl.dsl.NmodlDriver().parse_string(nmodl_text)
-        nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
-        nmodl.symtab.SymtabVisitor().visit_program(AST)
-        nmodl.dsl.visitor.InlineVisitor().visit_program(AST)
-        nmodl.dsl.visitor.KineticBlockVisitor().visit_program(AST)
-        self.visitor = nmodl.dsl.visitor.AstLookupVisitor()
-        self.lookup = lambda n: self.visitor.lookup(AST, n)
-        nmodl.symtab.SymtabVisitor().visit_program(AST)
-        self.symbols = AST.get_symbol_table()
-        # Helpful debugging printouts:
-        if False: print(nmodl.dsl.to_nmodl(AST))
-        if False: print(AST.get_symbol_table())
-        if False: nmodl.ast.view(AST)
-
-    def _discard_ast(self):
-        """ Cleanup. Delete all references to the nmodl library.
-
-        The nmodl library is implemented in C++ and as such does not
-        automatically support some python features. In specific: objects
-        returned from the nmodl library do not support copying or pickling. """
-        del self.visitor
-        del self.lookup
-        del self.symbols
-
-    def _check_for_unsupported(self):
+    def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
         # TODO: support for INCLUDE?
         # TODO: support for COMPARTMENT?
@@ -136,27 +166,27 @@ class NmodlMechanism(Reaction):
             "VERBATIM",
         )
         for x in disallow:
-            if self.lookup(getattr(ANT, x)):
+            if parser.lookup(getattr(ANT, x)):
                 raise ValueError("\"%s\"s are not allowed."%x)
 
-    def _gather_documentation(self):
+    def _gather_documentation(self, parser):
         """ Sets name, title, and description.
         This assumes that the first block comment is the primary documentation. """
-        x = self.lookup(ANT.SUFFIX)
+        x = parser.lookup(ANT.SUFFIX)
         if x: self._name = x[0].name.get_node_name()
         else: self._name = os.path.split(self.filename)[1] # TODO: Split extension too?
-        title = self.lookup(ANT.MODEL)
+        title = parser.lookup(ANT.MODEL)
         self.title = title[0].title.eval().strip() if title else ""
         if self.title.startswith(self._name + ".mod"):
             self.title = self.title[len(self._name + ".mod"):].strip()
         if self.title: self.title = self.title[0].title() + self.title[1:] # Capitalize the first letter.
-        comments = self.lookup(ANT.BLOCK_COMMENT)
+        comments = parser.lookup(ANT.BLOCK_COMMENT)
         self.description = comments[0].statement.eval() if comments else ""
 
     def name(self):
         return self._name
 
-    def _gather_units(self):
+    def _gather_units(self, parser):
         """
         Sets flag "use_units" which determines how to deal with differences
         between NEURONs and NEUWONs unit systems:
@@ -164,30 +194,30 @@ class NmodlMechanism(Reaction):
           * False: convert the I/O into NEURON unit system.
         """
         self.units = copy.deepcopy(neuwon.units.builtin_units)
-        for AST in self.lookup(ANT.UNIT_DEF):
+        for AST in parser.lookup(ANT.UNIT_DEF):
             self.units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
-        self.use_units = not any(x.eval() == "UNITSOFF" for x in self.lookup(ANT.UNIT_STATE))
+        self.use_units = not any(x.eval() == "UNITSOFF" for x in parser.lookup(ANT.UNIT_STATE))
         self.use_units = False # TODO, either implement this or delete it...
         # if not self.use_units: eprint("Warning: UNITSOFF detected.")
 
-    def _gather_parameters(self):
+    def _gather_parameters(self, parser):
         """ Sets parameters. """
         self.parameters = dict(_builtin_parameters)
-        for assign in self.lookup(ANT.PARAM_ASSIGN):
-            name  = str(self.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
-            value = self.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
-            units = self.visitor.lookup(assign, ANT.UNIT)
+        for assign in parser.lookup(ANT.PARAM_ASSIGN):
+            name  = str(parser.visitor.lookup(assign, ANT.NAME)[0].get_node_name())
+            value = parser.visitor.lookup(assign, [ANT.INTEGER, ANT.DOUBLE])
+            units = parser.visitor.lookup(assign, ANT.UNIT)
             value = float(value[0].eval())   if value else None
             units = units[0].get_node_name() if units else None
             self.parameters[name] = (value, units)
 
-    def _gather_functions(self):
+    def _gather_functions(self, parser):
         """ Process all blocks of code which contain imperative instructions.
         Sets: initial_block, breakpoint_block, derivative_blocks. """
         self.derivative_blocks = {AST.name.get_node_name(): _CodeBlock(self, AST)
-                                    for AST in self.lookup(ANT.DERIVATIVE_BLOCK)}
-        self.initial_block    = _CodeBlock(self, self.lookup(ANT.INITIAL_BLOCK).pop())
-        self.breakpoint_block = _CodeBlock(self, self.lookup(ANT.BREAKPOINT_BLOCK).pop())
+                                    for AST in parser.lookup(ANT.DERIVATIVE_BLOCK)}
+        self.initial_block    = _CodeBlock(self, parser.lookup(ANT.INITIAL_BLOCK).pop())
+        self.breakpoint_block = _CodeBlock(self, parser.lookup(ANT.BREAKPOINT_BLOCK).pop())
 
     def _parse_statement(self, AST):
         """ Returns a list of Statement objects. """
@@ -208,7 +238,7 @@ class NmodlMechanism(Reaction):
         if AST.is_binary_expression():
             assert(AST.op.eval() == "=")
             lhsn = AST.lhs.name.get_node_name()
-            return [_AssignStatement(lhsn, self._parse_expression(AST.rhs),
+            return [_AssignStatement(lhsn, _NmodlParser.parse_expression(AST.rhs),
                     derivative = is_derivative,)]
         # TODO: Catch procedure calls and raise an explicit error, instead of
         # just saying "unrecognised syntax". Procedure calls must be inlined by
@@ -216,48 +246,11 @@ class NmodlMechanism(Reaction):
         # TODO: Get line number from AST and include it in error message.
         raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(original))
 
-    def _parse_expression(self, AST):
-        """ Returns a SymPy expression. """
-        if AST.is_wrapped_expression() or AST.is_paren_expression():
-            return self._parse_expression(AST.expression)
-        if AST.is_integer():  return sympy.Integer(AST.eval())
-        if AST.is_double():   return sympy.Float(AST.eval(), 18)
-        if AST.is_name():     return sympy.symbols(AST.get_node_name())
-        if AST.is_var_name(): return sympy.symbols(AST.name.get_node_name())
-        if AST.is_unary_expression():
-            op = AST.op.eval()
-            if op == "-": return - self._parse_expression(AST.expression)
-            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
-        if AST.is_binary_expression():
-            op = AST.op.eval()
-            lhs = self._parse_expression(AST.lhs)
-            rhs = self._parse_expression(AST.rhs)
-            if op == "+": return lhs + rhs
-            if op == "-": return lhs - rhs
-            if op == "*": return lhs * rhs
-            if op == "/": return lhs / rhs
-            if op == "^": return lhs ** rhs
-            if op == "<": return lhs < rhs
-            if op == ">": return lhs > rhs
-            raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
-        if AST.is_function_call():
-            name = AST.name.get_node_name()
-            args = [self._parse_expression(x) for x in AST.arguments]
-            if name == "fabs":  return sympy.Abs(*args)
-            if name == "exp":   return sympy.exp(*args)
-            else: return sympy.Function(name)(*args)
-        if AST.is_double_unit():
-            if self.use_units:
-                factor, dimensions = self.units.standardize(AST.unit.name.eval())
-            else: factor = 1
-            return self._parse_expression(AST.value) * factor
-        raise ValueError("Unrecognized syntax at %s."%nmodl.dsl.to_nmodl(AST))
-
-    def _gather_IO(self):
+    def _gather_IO(self, parser):
         """ Determine what external data the mechanism accesses. """
         if "v" in self.breakpoint_block.arguments:
             _Pointer.update(self, "v", read="membrane/voltages")
-        for x in self.lookup(ANT.USEION):
+        for x in parser.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
             equilibrium = 'e' + ion
@@ -285,7 +278,7 @@ class NmodlMechanism(Reaction):
                 elif var_name == outside:
                     _Pointer.update(self, var_name, write="membrane/outside/%s/release_rates"%ion, accumulate=True)
                 else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%var_name)
-        for x in self.lookup(ANT.CONDUCTANCE_HINT):
+        for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
@@ -674,7 +667,7 @@ class _CodeBlock:
 
 class _IfStatement:
     def __init__(self, nmodl, AST):
-        self.condition = nmodl._parse_expression(AST.condition)
+        self.condition = _NmodlParser.parse_expression(AST.condition)
         self.main_block = _CodeBlock(nmodl, AST.statement_block)
         self.elif_blocks = [_CodeBlock(nmodl, block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
@@ -810,7 +803,7 @@ class _LinearSystem:
 
 class _ConserveStatement:
     def __init__(self, nmodl, AST):
-        conserved_expr = nmodl._parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
+        conserved_expr = _NmodlParser.parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
         self.states = sorted(str(x) for x in conserved_expr.free_symbols)
         # Assume that the conserve statement was once in the form: sum-of-states = constant-value
         sum_symbol = sympy.Symbol("_CONSERVED_SUM")
