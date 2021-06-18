@@ -48,10 +48,9 @@ class NmodlMechanism(Reaction):
         if use_cache and _cache.try_loading(self.filename, self): pass
         else:
             try:
-                with open(self.filename, 'rt') as f: nmodl_text = f.read()
-                parser = _NmodlParser(nmodl_text)
+                parser = _NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
-                self._gather_documentation(parser)
+                self._name, self.title, self.description = parser.gather_documentation()
                 self.units = parser.gather_units()
                 self.parameters = _Parameters().update(parser.gather_parameters())
                 self.states = parser.gather_states()
@@ -100,20 +99,6 @@ class NmodlMechanism(Reaction):
         for x in disallow:
             if parser.lookup(getattr(ANT, x)):
                 raise ValueError("\"%s\"s are not allowed."%x)
-
-    def _gather_documentation(self, parser):
-        """ Sets name, title, and description.
-        This assumes that the first block comment is the primary documentation. """
-        x = parser.lookup(ANT.SUFFIX)
-        if x: self._name = x[0].name.get_node_name()
-        else: self._name = os.path.split(self.filename)[1] # TODO: Split extension too?
-        title = parser.lookup(ANT.MODEL)
-        self.title = title[0].title.eval().strip() if title else ""
-        if self.title.startswith(self._name + ".mod"):
-            self.title = self.title[len(self._name + ".mod"):].strip()
-        if self.title: self.title = self.title[0].title() + self.title[1:] # Capitalize the first letter.
-        comments = parser.lookup(ANT.BLOCK_COMMENT)
-        self.description = comments[0].statement.eval() if comments else ""
 
     def name(self):
         return self._name

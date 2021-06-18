@@ -16,8 +16,10 @@ class _NmodlParser:
     for clean & easy deletion. The nmodl library is implemented in C++ and as
     such does not support some critical python features: objects returned from
     the nmodl library do not support copying or pickling. """
-    def __init__(self, nmodl_text):
+    def __init__(self, nmodl_filename):
         """ Parse the NMDOL file into an abstract syntax tree (AST). """
+        self.filename = str(nmodl_filename)
+        with open(self.filename, 'rt') as f: nmodl_text = f.read()
         AST = nmodl.dsl.NmodlDriver().parse_string(nmodl_text)
         nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
         nmodl.symtab.SymtabVisitor().visit_program(AST)
@@ -33,6 +35,21 @@ class _NmodlParser:
         if False: nmodl.ast.view(AST)
 
     to_nmodl = nmodl.dsl.to_nmodl
+
+    def gather_documentation(self):
+        """ Returns triple of (name, title, and description).
+        This assumes that the first block comment is the primary documentation. """
+        x = self.lookup(ANT.SUFFIX)
+        if x: name = x[0].name.get_nodename()
+        else: name = os.path.split(self.filename)[1] # TODO: Split extension too?
+        title = self.lookup(ANT.MODEL)
+        title = title[0].title.eval().strip() if title else ""
+        if title.startswith(name + ".mod"):
+            title = title[len(name + ".mod"):].strip()
+        if title: title = title[0].title() + title[1:] # Capitalize the first letter.
+        comments = self.lookup(ANT.BLOCK_COMMENT)
+        description = comments[0].statement.eval() if comments else ""
+        return (name, title, description)
 
     def gather_states(self):
         return sorted(v.get_name() for v in
