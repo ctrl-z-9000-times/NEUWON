@@ -69,7 +69,7 @@ class NmodlMechanism(Reaction):
 
     def initialize(self, database):
         try:
-            self._gather_builtin_parameters(database)
+            self.parameters.gather_builtin_parameters(database, self.pointers)
             self._substitute_parameters(database)
             # self._solve() # TODO: only solve for kinetic models here.
             # self.kinetic_models = {}
@@ -211,19 +211,6 @@ class NmodlMechanism(Reaction):
             if isinstance(stmt, _AssignStatement) and stmt.derivative:
                 stmt.solve()
         return block
-
-    def _gather_builtin_parameters(self, database):
-        for name in _Parameters._builtin_parameters:
-            builtin_value = database.access(name)
-            given_value, units = self.parameters[name]
-            if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
-            if given_value is None:
-                self.parameters[name] = (builtin_value, units)
-        for ptr in self.pointers.values():
-            if ptr.r:
-                value = database.access(ptr.read)
-                if isinstance(value, float):
-                    self.parameters[ptr.name] = (value, None)
 
     def _substitute_parameters(self, database):
         substitutions = []
@@ -445,11 +432,24 @@ class _Parameters(dict):
         source code, instead they are stored alongside the state variables and
         accessed at run time. 
         """
-        surface_area_parameters = _Parameters({})
+        surface_area_parameters = {}
         for name, (value, units) in list(self.items()):
             if units and "/cm2" in units:
                 surface_area_parameters[name] = self.pop(name)
         return surface_area_parameters
+
+    def gather_builtin_parameters(self, database, pointers):
+        """ Fill in missing parameter values from the database. """
+        for name in self._builtin_parameters:
+            builtin_value = float(database.access(name))
+            given_value, units = self[name]
+            if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
+            if given_value is None: self[name] = (builtin_value, units)
+        for ptr in pointers.values():
+            if ptr.r:
+                value = database.access(ptr.read)
+                if isinstance(value, float): self.update({ptr.name: value})
+
 
 class _Pointer:
     @staticmethod
