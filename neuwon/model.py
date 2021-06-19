@@ -55,6 +55,7 @@ class Species:
             "reversal_potential": "goldman_hodgkin_katz",
             "inside_concentration": 70e-9,
             "outside_concentration": 2e-3,
+            "inside_diffusivity": 1e-9,
         },
         "cl": {
             "charge": -1,
@@ -115,24 +116,20 @@ class Species:
         release_rates_doc = "Units: Molar / Second"
         reversal_potentials_doc = "Units:"
         conductances_doc = "Units: Siemens"
+        if self.use_shells:
+            inside_archetype = "inside"
+        else:
+            inside_archetype = "membrane/inside"
         if self.inside_diffusivity is None:
-            db.add_global_constant("inside/concentrations/" + self.name,
+            db.add_global_constant(inside_archetype+"/concentrations/" + self.name,
                     self.inside_concentration, doc=concentrations_doc)
         else:
-            if self.use_shells:
-                db.add_attribute("inside/concentrations/" + self.name,
-                        initial_value=self.inside_concentration, doc=concentrations_doc)
-                db.add_attribute("inside/release_rates/" + self.name,
-                        initial_value=0, doc=release_rates_doc)
-                db.add_linear_system("inside/diffusions/" + self.name,
-                        function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
-            else:
-                db.add_attribute("membrane/inside/concentrations/" + self.name,
-                        initial_value=self.inside_concentration, doc=concentrations_doc)
-                db.add_attribute("membrane/inside/release_rates/" + self.name,
-                        initial_value=0, doc=release_rates_doc)
-                db.add_linear_system("membrane/inside/diffusions/" + self.name,
-                        function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+            db.add_attribute(inside_archetype+"/concentrations/" + self.name,
+                    initial_value=self.inside_concentration, doc=concentrations_doc)
+            db.add_attribute(inside_archetype+"/release_rates/" + self.name,
+                    initial_value=0, doc=release_rates_doc)
+            db.add_linear_system(inside_archetype+"/diffusions/" + self.name,
+                    function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.outside_diffusivity is None:
             db.add_global_constant("outside/concentrations/" + self.name,
                     self.outside_concentration, doc=concentrations_doc)

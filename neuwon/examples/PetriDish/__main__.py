@@ -71,7 +71,7 @@ class PetriDish:
         m.add_species("na")
         m.add_species("ca")
         m.add_species("glu")
-        m.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
+        m.add_species(Species("l", transmembrane = True, reversal_potential = -54.3e-3,))
         print(repr(m))
         hh = m.add_reaction(
                 NmodlMechanism("neuwon/examples/PetriDish/Destexhe/release.mod",

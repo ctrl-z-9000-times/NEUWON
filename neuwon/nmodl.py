@@ -157,9 +157,9 @@ class NmodlMechanism(Reaction):
                 if var_name == equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name == inside:
-                    _Pointer.update(self, var_name, read="membrane/inside/%s/concentrations"%ion)
+                    _Pointer.update(self, var_name, read="membrane/inside/concentrations/%s"%ion)
                 elif var_name == outside:
-                    _Pointer.update(self, var_name, read="membrane/outside/%s/concentrations"%ion)
+                    _Pointer.update(self, var_name, read="outside/concentrations/%s"%ion)
                 else: raise ValueError("Unrecognized ion READ: \"%s\"."%var_name)
             for y in x.writelist:
                 var_name = y.name.value.eval()
@@ -168,9 +168,9 @@ class NmodlMechanism(Reaction):
                 elif var_name == conductance:
                     _Pointer.update(self, var_name, write="membrane/conductances/%s"%ion, accumulate=True)
                 elif var_name == inside:
-                    _Pointer.update(self, var_name, write="membrane/inside/%s/release_rates"%ion, accumulate=True)
+                    _Pointer.update(self, var_name, write="membrane/inside/release_rates/%s"%ion, accumulate=True)
                 elif var_name == outside:
-                    _Pointer.update(self, var_name, write="membrane/outside/%s/release_rates"%ion, accumulate=True)
+                    _Pointer.update(self, var_name, write="outside/release_rates/%s"%ion, accumulate=True)
                 else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%var_name)
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
@@ -308,27 +308,31 @@ class NmodlMechanism(Reaction):
             elif arg in self.initial_scope:
                 initial_scope_carryover.append((arg, self.initial_scope[arg]))
             else: raise ValueError("Unhandled argument: \"%s\"."%arg)
-        arguments = set()
+        self.arguments = set()
         for ptr in self.pointers.values():
-            if ptr.r: arguments.add(ptr.read_py)
-            if ptr.w: arguments.add(ptr.write_py)
-        arguments = sorted(arguments)
-        locations = _CodeGen.mangle2("locations")
-        location  = _CodeGen.mangle2("location")
+            if ptr.r: self.arguments.add((ptr.read_py, ptr.read))
+            if ptr.w: self.arguments.add((ptr.write_py, ptr.write))
+        self.arguments = sorted(self.arguments)
         index     = _CodeGen.mangle2("index")
         preamble  = []
         preamble.append("import numba.cuda")
-        preamble.append("def BREAKPOINT("+locations+", %s):"%", ".join(arguments))
+        preamble.append("def BREAKPOINT(%s):"%", ".join(py for py, db in self.arguments))
         preamble.append("    "+index+" = numba.cuda.grid(1)")
-        preamble.append("    if "+index+" >= "+locations+".shape[0]: return")
-        preamble.append("    "+location+" = "+locations+"["+index+"]")
-        for variable_value_pair in initial_scope_carryover:
-            preamble.append("    %s = %s"%variable_value_pair)
+        membrane = self.pointers.get("membrane", None)
+        inside   = self.pointers.get("inside",   None)
+        outside  = self.pointers.get("outside",  None)
+        preamble.append("    if "+index+" >= "+membrane.read_py+".shape[0]: return")
+        for ptr in (membrane, inside, outside):
+            if ptr is None: continue
+            preamble.append("    %s = %s[%s]"%(
+                _CodeGen.mangle2(ptr.name), ptr.read_py, ptr.index_py))
         for variable, ptr in sorted(self.pointers.items()):
             if not ptr.r: continue
-            if ptr.name == "v": factor = 1000 # From NEUWONs volts to NEURONs millivolts.
-            else:               factor = 1
-            preamble.append("    %s = %s[%s] * %s"%(ptr.name, ptr.read_py, ptr.index_py, factor))
+            stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py, ptr.index_py)
+            if ptr.name == "v": stmt += " * 1000" # From NEUWONs volts to NEURONs millivolts.
+            preamble.append(stmt)
+        for variable_value_pair in initial_scope_carryover:
+            preamble.append("    %s = %s"%variable_value_pair)
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
@@ -362,13 +366,8 @@ class NmodlMechanism(Reaction):
         threads = 64
         locations = access(self.name() + "/insertions")
         if not len(locations): return
-        pointers = {}
-        for ptr in self.pointers.values():
-            if ptr.r: pointers[ptr.read_py] = access(ptr.read)
-            if ptr.w: pointers[ptr.write_py] = access(ptr.write)
         blocks = (locations.shape[0] + (threads - 1)) // threads
-        self._cuda_advance[blocks,threads](locations,
-                *(ptr for name, ptr in sorted(pointers.items())))
+        self._cuda_advance[blocks,threads](*(access(db) for py, db in self.arguments))
 
 class _Parameters(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
@@ -422,7 +421,8 @@ class _Parameters(dict):
             if given_value is None: self[name] = (builtin_value, units)
         for ptr in pointers.values():
             if ptr.r:
-                value = database.access(ptr.read)
+                try: value = database.access(ptr.read)
+                except KeyError: continue
                 if isinstance(value, float): self.update({ptr.name: value})
 
     def substitute(self, blocks):
@@ -462,6 +462,13 @@ class _Pointer:
             else: assert accumulate is None
         else:
             mechanism.pointers[name] = self = _Pointer(mechanism, name, read, write, accumulate)
+        archetype = self.archetype
+        if (archetype not in mechanism.pointers) and (archetype != mechanism.name()):
+            if   archetype == "membrane": component = mechanism.name() + "/insertions"
+            elif archetype == "inside":   component = "membrane/inside"
+            elif archetype == "outside":  component = "membrane/outside"
+            else: raise NotImplementedError(archetype)
+            _Pointer.update(mechanism, archetype, read=component)
         return self
 
     def __init__(self, mechanism, name, read, write, accumulate):
@@ -499,7 +506,7 @@ class _Pointer:
         else: raise Exception("Unrecognised archetype: " + component)
     @property
     def index(self):
-        if   self.archetype == "membrane":      return "location"
+        if   self.archetype == "membrane":      return "membrane"
         elif self.archetype == "inside":        return "inside"
         elif self.archetype == "outside":       return "outside"
         elif self.archetype == self.nmodl_name: return "index"
@@ -516,9 +523,9 @@ class _Pointer:
             if self.r and self.read != self.write:
                 return _CodeGen.mangle('write_' + self.name)
             return _CodeGen.mangle(self.name)
-    # TODO: rename mangle2(location) to mangle2(membrane)
     @property
-    def index_py(self): return _CodeGen.mangle2(self.index)
+    def index_py(self):
+        return _CodeGen.mangle2(self.index)
 
 class _CodeBlock:
     def __init__(self, mechanism, AST):
@@ -635,11 +642,17 @@ class _AssignStatement:
         self.derivative = bool(derivative)
         self.pointer = None # Associated with the left hand side.
 
+    def __repr__(self):
+        s = self.lhsn + " = " + str(self.rhs)
+        if self.derivative: s = "'" + s
+        if self.pointer: s += "  (%s)"%str(self.pointer)
+        return s
+
     def to_python(self,  indent="", INITIAL_BLOCK=False, **kwargs):
         if not isinstance(self.rhs, str):
             try: self.rhs = _CodeGen.sympy_to_pycode(self.rhs.simplify())
             except Exception:
-                print("Failed at:", self.lhsn, "=", repr(self.rhs))
+                eprint("Failed at:", repr(self))
                 raise
         if self.derivative:
             lhs = _CodeGen.mangle('d' + self.lhsn)
@@ -656,21 +669,23 @@ class _AssignStatement:
         """ Solve this differential equation in-place. """
         assert(self.derivative)
         self.derivative = False
-        try: self._solve_sympy(); return
-        except Exception as x: eprint("Warning Sympy solver failed: "+str(x))
+        # try:
+        self._solve_sympy(); return
+        # except Exception as x: eprint("Warning Sympy solver failed: "+str(x))
         try: self._solve_crank_nicholson(); return
         except Exception as x: eprint("Warning Crank-Nicholson solver failed: "+str(x))
         self._solve_foward_euler()
 
     def _solve_sympy(self):
-        dt    = sympy.Symbol("time_step", real=True, positive=True)
-        state = sympy.Function(self.lhsn)(dt)
-        deriv = self.rhs.subs(sympy.Symbol(self.lhsn), state)
-        eq    = sympy.Eq(state.diff(dt), deriv)
-        self.rhs = sympy.dsolve(eq, state)
-        # TODO: Look up how to give the initial values to sympy to get rid of the constants.
-        C1 = sympy.solve(self.rhs.subs(state, self.lhsn).subs(dt, 0), "C1")[0]
-        self.rhs = self.rhs.subs("C1", C1).rhs
+        from sympy import Symbol, Function, Eq
+        dt    = Symbol("time_step")
+        lhsn  = _CodeGen.mangle2(self.lhsn)
+        state = Function(lhsn)(dt)
+        deriv = self.rhs.subs(Symbol(self.lhsn), state)
+        eq    = Eq(state.diff(dt), deriv)
+        ics   = {state.subs(dt, 0): Symbol(lhsn)}
+        self.rhs = sympy.dsolve(eq, state, ics=ics).rhs.simplify()
+        self.rhs = self.rhs.subs(Symbol(lhsn), Symbol(self.lhsn))
 
     def _solve_crank_nicholson(self):
         dt              = sympy.Symbol("time_step", real=True, positive=True)
