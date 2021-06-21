@@ -101,6 +101,7 @@ class Species:
         self.outside_decay_period = float(outside_decay_period)
         self.use_shells = bool(use_shells)
         self.use_grid = None if use_grid is None else tuple(float(x) for x in use_grid)
+        self.inside_archetype = "inside" if self.use_shells else "membrane/inside"
         assert(self.inside_concentration  >= 0.0)
         assert(self.outside_concentration >= 0.0)
         assert(self.inside_diffusivity  is None or self.inside_diffusivity >= 0)
@@ -116,19 +117,15 @@ class Species:
         release_rates_doc = "Units: Molar / Second"
         reversal_potentials_doc = "Units:"
         conductances_doc = "Units: Siemens"
-        if self.use_shells:
-            inside_archetype = "inside"
-        else:
-            inside_archetype = "membrane/inside"
         if self.inside_diffusivity is None:
-            db.add_global_constant(inside_archetype+"/concentrations/" + self.name,
+            db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
                     self.inside_concentration, doc=concentrations_doc)
         else:
-            db.add_attribute(inside_archetype+"/concentrations/" + self.name,
+            db.add_attribute(self.inside_archetype+"/concentrations/" + self.name,
                     initial_value=self.inside_concentration, doc=concentrations_doc)
-            db.add_attribute(inside_archetype+"/release_rates/" + self.name,
+            db.add_attribute(self.inside_archetype+"/release_rates/" + self.name,
                     initial_value=0, doc=release_rates_doc)
-            db.add_linear_system(inside_archetype+"/diffusions/" + self.name,
+            db.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
                     function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.outside_diffusivity is None:
             db.add_global_constant("outside/concentrations/" + self.name,
@@ -796,7 +793,7 @@ class Model:
             if species.transmembrane:
                 access("membrane/conductances/%s"%name).fill(0.0)
             if species.inside_diffusivity is not None:
-                access("inside/release_rates/%s"%name).fill(0.0)
+                access(species.inside_archetype + "/release_rates/%s"%name).fill(0.0)
             if species.outside_diffusivity is not None:
                 access("outside/release_rates/%s"%name).fill(0.0)
         for name, r in self.reactions.items():
