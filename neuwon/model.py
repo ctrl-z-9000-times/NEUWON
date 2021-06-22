@@ -374,7 +374,7 @@ class Model:
                 Units: Meters ^ 2""", initial_value=np.nan)
         db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2",
                 bounds = (epsilon * (1e-6)**2, np.inf))
-        db.add_attribute("membrane/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
+        db.add_attribute("membrane/inside/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
                 Units: Liters""")
 
     def _initialize_database_inside(self, db):
@@ -387,6 +387,8 @@ class Model:
         db.add_attribute("membrane/shells", dtype=np.uint8)
         db.add_attribute("inside/membrane", dtype="membrane")
         db.add_attribute("inside/shell_radius")
+        db.add_attribute("inside/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
+                Units: Liters""")
         db.add_sparse_matrix("inside/neighbor_distances", "inside")
         db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
 
@@ -588,7 +590,7 @@ class Model:
         lengths  = access("membrane/lengths")
         s_areas  = access("membrane/surface_areas")
         x_areas  = access("membrane/cross_sectional_areas")
-        volumes  = access("membrane/volumes")
+        volumes  = access("membrane/inside/volumes")
         # Compute lengths.
         for idx in membrane_idx:
             p = parents[idx]
