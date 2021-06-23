@@ -59,7 +59,7 @@ class InhibitoryNeuron:
 class PetriDish:
     def __init__(self, num_excit, num_inhib):
         self.tick = 0
-        self.time_step = .1e-3
+        self.time_step = .1
         self.time_stamps = []
         self.input_queue = [] # List of pairs of (time_stamp, segment)
         self.diameter = .2e-3
@@ -96,14 +96,14 @@ class PetriDish:
         print("num dendrites:", sum(len(n.dendrite.segments) for n in self.excit))
         print("num axons:", sum(len(n.axon.segments) for n in self.excit))
         print("Advancing to steady state...")
-        for i in range(int(30e-3 / self.time_step)):
+        for i in range(int(30 / self.time_step)):
             if i < 10: m.check()
             m.advance()
 
     @property
     def t(self):
         """ Milliseconds """
-        return self.tick * self.time_step * 1000
+        return self.tick * self.time_step
 
     def inject_stimulus(self, num_aps=3, num_active=1, stim_duration=10):
         soma = [x.soma for x in self.excit]
@@ -126,7 +126,7 @@ class PetriDish:
         while self.input_queue:
             input_t, segment = self.input_queue[-1]
             if self.t > input_t:
-                segment.inject_current(1e-9, 1.4e-3)
+                segment.inject_current(1e-9, 1.4)
                 print("stim", segment, "@ t =", self.t)
                 self.input_queue.pop()
             else: break

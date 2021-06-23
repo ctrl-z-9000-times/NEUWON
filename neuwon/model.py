@@ -200,7 +200,7 @@ class Species:
             return z / (math.exp(z) - 1)
 
     def _inside_diffusion_coefficients(self, access):
-        dt      = access("time_step") / 2
+        dt      = access("time_step") / 1000 / 2
         parents = access("membrane/parents").get()
         lengths = access("membrane/lengths").get()
         xareas  = access("membrane/cross_sectional_areas").get()
@@ -232,7 +232,7 @@ class Species:
     def _outside_diffusion_coefficients(self, access):
         extracellular_tortuosity = 1.4 # TODO: FIXME: put this one back in the db?
         D = self.outside_diffusivity / extracellular_tortuosity ** 2
-        dt          = access("time_step") / 2
+        dt          = access("time_step") / 1000 / 2
         decay       = -dt / self.outside_decay_period
         recip_vol   = (1.0 / access("outside/volumes")).get()
         area        = access("outside/neighbor_border_areas")
@@ -332,7 +332,7 @@ class Model:
 
         # TODO: Rename "db" to the full "database", add method model.get_database().
         self.db = db = Database()
-        db.add_global_constant("time_step", float(time_step), doc="Units: Seconds")
+        db.add_global_constant("time_step", float(time_step), doc="Units: Milliseconds")
         db.add_global_constant("celsius", float(celsius))
         db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature in Kelvins.")
         db.add_function("create_segment", self.create_segment)
@@ -343,7 +343,7 @@ class Model:
         self._initialize_database_electric(db, initial_voltage)
 
         self.fh_space = float(fh_space)
-        self.cytoplasmic_resistance = float(cytoplasmic_resistance) # TODO: rename to cytoplasmic_resistance.
+        self.cytoplasmic_resistance = float(cytoplasmic_resistance)
         self.max_outside_radius = float(max_outside_radius)
         self.membrane_capacitance = float(membrane_capacitance)
         self.outside_tortuosity = float(outside_tortuosity)
@@ -757,7 +757,7 @@ class Model:
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
         access = self.db.access
-        dt     = access("time_step") / 2
+        dt     = access("time_step") / 1000 / 2
         conductances        = access("membrane/conductances")
         driving_voltages    = access("membrane/driving_voltages")
         voltages            = access("membrane/voltages")
@@ -891,7 +891,7 @@ class _InjectedCurrents:
         self.remaining = []
 
     def advance(self, database):
-        time_step = database.access("time_step")
+        time_step = database.access("time_step") / 1000
         capacitances = database.access("membrane/capacitances")
         voltages = database.access("membrane/voltages")
         for idx, (amps, location, t) in enumerate(
@@ -904,7 +904,7 @@ class _InjectedCurrents:
         self.locations = [x for k, x in zip(keep, self.locations) if k]
         self.remaining = [x for k, x in zip(keep, self.remaining) if k]
 
-    def inject_current(self, location, current, duration = 1.4e-3):
+    def inject_current(self, location, current, duration = 1.4):
         location = int(location)
         # assert(location < len(self))
         duration = float(duration)
@@ -1016,7 +1016,7 @@ class Animation:
     def save(self, output_filename):
         """ Save into a GIF file that loops forever. """
         self.frames = [Image.open(i) for i in self.frames] # Load all of the frames.
-        dt = (self.skip+1) * self.model.access("time_step") * 1e3
+        dt = (self.skip+1) * self.model.access("time_step")
         self.frames[0].save(output_filename, format='GIF',
                 append_images=self.frames[1:], save_all=True,
                 duration=int(round(dt * 1e3)), # Milliseconds per frame.
@@ -1055,7 +1055,7 @@ def _electric_coefficients(access):
     Compute the coefficients of the derivative function:
     dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
     """
-    dt           = access("time_step") / 2
+    dt           = access("time_step") / 1000 / 2
     parents      = access("membrane/parents").get()
     resistances  = access("membrane/axial_resistances").get()
     capacitances = access("membrane/capacitances").get()

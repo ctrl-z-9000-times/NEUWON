@@ -16,7 +16,7 @@ class Experiment:
             axon_length   = 1000e-6,
             axon_diameter = 1e-6,
             soma_diameter = 11e-6,
-            time_step     = 1e-6,
+            time_step     = 1e-3,
             length_step   = 20e-6,
             stagger       = True,
             probes        = None,
@@ -62,17 +62,17 @@ class Experiment:
 
     def generate_input(self):
         """ Subject the soma to three pulses of current injection. """
-        self.time_span = 50e-3
+        self.time_span = 50
         self.input_current = []
-        ap_times = [10e-3, 25e-3, 40e-3]
+        ap_times = [10, 25, 40]
         for step in range(int(self.time_span / self.time_step)):
             t = step * self.time_step
             self.input_current.append(any(abs(x - t) < self.time_step / 2 for x in ap_times))
 
     def input_pattern(self, time):
-        ap_times = [10e-3, 25e-3, 40e-3]
+        ap_times = [10, 25, 40]
         for ap_start in ap_times:
-            if time >= ap_start and time < ap_start + 1e-3:
+            if time >= ap_start and time < ap_start + 1:
                 return self.stimulus
         return 0
 
@@ -82,13 +82,13 @@ class Experiment:
         self.m = [[] for _ in self.probes]
         for tick, inp in enumerate(self.input_current):
             if inp:
-                self.soma[0].inject_current(self.stimulus, duration=1e-3)
+                self.soma[0].inject_current(self.stimulus, duration=1)
             if self.stagger:
                 self.model.advance()
             else:
                 self.model._advance_lockstep()
             if False: self.model.check()
-            self.time_stamps.append((tick + 1) * self.time_step * 1e3)
+            self.time_stamps.append((tick + 1) * self.time_step)
             for idx, p in enumerate(self.probes):
                 self.v[idx].append(p.voltage() * 1e3)
                 hh_idx = np.nonzero(self.model.access("hh/insertions") == p.entity.index)[0][0]
@@ -107,11 +107,11 @@ def analyze_accuracy():
     }
     def make_label(x):
         if x.stagger:
-            return "staggered, dt = %g ms"%(x.time_step * 1e3)
+            return "staggered, dt = %g ms"%(x.time_step)
         else:
-            return "unstaggered, dt = %g ms"%(x.time_step * 1e3)
+            return "unstaggered, dt = %g ms"%(x.time_step)
 
-    x_1 = Experiment(time_step = 1e-6, **args)
+    x_1 = Experiment(time_step = 1e-3, **args)
 
     def measure_error(experiment):
         error_v = []
@@ -125,9 +125,9 @@ def analyze_accuracy():
         return (error_v, error_m)
 
     def make_figure(stagger):
-        x_250 = Experiment(time_step = 300e-6, stagger=stagger, **args)
-        x_slow = Experiment(time_step = 150e-6, stagger=stagger, **args)
-        x_fast = Experiment(time_step =  75e-6, stagger=stagger, **args)
+        x_250 = Experiment(time_step = 300e-3, stagger=stagger, **args)
+        x_slow = Experiment(time_step = 150e-3, stagger=stagger, **args)
+        x_fast = Experiment(time_step =  75e-3, stagger=stagger, **args)
 
         x_250_error = measure_error(x_250)
         x_fast_error = measure_error(x_fast)
@@ -192,7 +192,7 @@ Simulated action potential propagating through a single long axon with Hodgkin-
 Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
 the action potential. The axon terminates after 1000 μm which slightly alters
 the dynamics near that point."""
-    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-6,)
+    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=5e-3,)
     colors = 'k purple b g y r'.split()
     plt.figure("AP Propagation")
     soma_coords = x.soma[-1].coordinates
@@ -207,10 +207,10 @@ the dynamics near that point."""
     plt.ylabel('mV')
 
 def analyze_length_step():
-    x2 = Experiment(time_step=25e-6, length_step=10e-6)
-    x3 = Experiment(time_step=25e-6, length_step=20e-6)
-    x4 = Experiment(time_step=25e-6, length_step=100e-6)
-    x5 = Experiment(time_step=25e-6, length_step=200e-6)
+    x2 = Experiment(time_step=25e-3, length_step=10e-6)
+    x3 = Experiment(time_step=25e-3, length_step=20e-6)
+    x4 = Experiment(time_step=25e-3, length_step=100e-6)
+    x5 = Experiment(time_step=25e-3, length_step=200e-6)
     plt.figure("Segment Length")
     plt.plot(x2.time_stamps, x2.v[0], 'k', label="Maximum Inter-Nodal Length: %g μm"%(x2.length_step*1e6))
     plt.plot(x3.time_stamps, x3.v[0], 'b', label="Maximum Inter-Nodal Length: %g μm"%(x3.length_step*1e6))
@@ -222,11 +222,11 @@ def analyze_length_step():
     plt.ylabel('mV at axon tip (1000 μm from soma)')
 
 def analyze_axon_diameter():
-    x1 = Experiment(axon_diameter = .5e-6, stimulus=3e-9, time_step=25e-6)
-    x2 = Experiment(axon_diameter = 1e-6,  stimulus=3e-9, time_step=25e-6)
-    x3 = Experiment(axon_diameter = 2e-6,  stimulus=3e-9, time_step=25e-6)
-    x4 = Experiment(axon_diameter = 4e-6,  stimulus=3e-9, time_step=25e-6)
-    x5 = Experiment(axon_diameter = 8e-6,  stimulus=3e-9, time_step=25e-6)
+    x1 = Experiment(axon_diameter = .5e-6, stimulus=3e-9, time_step=25e-3)
+    x2 = Experiment(axon_diameter = 1e-6,  stimulus=3e-9, time_step=25e-3)
+    x3 = Experiment(axon_diameter = 2e-6,  stimulus=3e-9, time_step=25e-3)
+    x4 = Experiment(axon_diameter = 4e-6,  stimulus=3e-9, time_step=25e-3)
+    x5 = Experiment(axon_diameter = 8e-6,  stimulus=3e-9, time_step=25e-3)
     plt.figure("Axon Diameter")
     plt.plot(x1.time_stamps, x1.v[0], 'purple', label="Axon Diameter: %g μm"%(x1.axon_diameter*1e6))
     plt.plot(x2.time_stamps, x2.v[0], 'b', label="Axon Diameter: %g μm"%(x2.axon_diameter*1e6))

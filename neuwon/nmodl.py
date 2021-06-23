@@ -423,7 +423,6 @@ class _Parameters(dict):
         for name in self._builtin_parameters:
             builtin_value = float(database.access(name))
             given_value, units = self[name]
-            if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
             if given_value is None: self[name] = (builtin_value, units)
         for name, ptr in list(pointers.items()):
             if ptr.r:
