@@ -45,7 +45,9 @@ class ExcitatoryNeuron:
         hh = model.get_reaction("hh")
         hh.new_instances(model, [self.soma], scale = 1.5)
         hh.new_instances(model, self.axon.segments, scale = 1.5)
+        hh.new_instances(model, self.dendrite.segments, scale = 1.5)
         self.voltage = [] # millivolts.
+        self.pre_ca = []
 
     def collect_data(self):
         self.voltage.append(self.soma.voltage() * 1000)
@@ -72,32 +74,31 @@ class PetriDish:
         m.add_species("ca")
         m.add_species("glu")
         m.add_species(Species("l", transmembrane = True, reversal_potential = -54.3e-3,))
-        print(repr(m))
-        hh = m.add_reaction(
-                NmodlMechanism("neuwon/examples/PetriDish/Destexhe/release.mod",
-                    pointers={"T": {'read': "outside/concentrations/glu",
-                                    'write': "outside/release_rates/glu", 'accumulate': True}}))
-        hh = m.add_reaction(
-                NmodlMechanism("neuwon/examples/PetriDish/Destexhe/ampa5.mod",
-                    pointers={"C": {'read': "outside/concentrations/glu"}}))
+        caL3d = m.add_reaction(NmodlMechanism("neuwon/examples/PetriDish/Destexhe/caL3d.mod"))
+        rel   = m.add_reaction(NmodlMechanism("neuwon/examples/PetriDish/Destexhe/release.mod"))
+        ampa5 = m.add_reaction(NmodlMechanism("neuwon/examples/PetriDish/Destexhe/ampa5.mod"))
         hh = m.add_reaction("hh")
         self.excit = [ExcitatoryNeuron(m, self.region) for _ in range(num_excit)]
         self.inhib = [InhibitoryNeuron(m, self.region) for _ in range(num_inhib)]
-        self.glu_syn = GrowSynapses(
+        self.glu_syn = GrowSynapses(m,
                 chain(n.axon.segments for n in self.excit),
                 chain(n.dendrite.segments for n in self.excit),
                 (0, .6e-6, 3e-6), 1e-6, int(round(100 * num_excit)))
-        m.get_reaction("rel").new_instances(m, list(self.glu_syn.presynaptic_segments),
+        caL3d.new_instances(m, list(self.glu_syn.presynaptic_segments),
                 scale=1.0)
-        m.get_reaction("AMPA5").new_instances(m, list(self.glu_syn.postsynaptic_segments),
+        rel.new_instances(m, list(self.glu_syn.presynaptic_segments),
                 scale=1.0)
+        # ampa5.new_instances(m, list(self.glu_syn.postsynaptic_segments),
+        #         scale=1.0)
 
         self.model.check()
         if True: print(repr(self.model))
         print("num dendrites:", sum(len(n.dendrite.segments) for n in self.excit))
         print("num axons:", sum(len(n.axon.segments) for n in self.excit))
         print("Advancing to steady state...")
-        for _ in range(int(30e-3 / self.time_step)): m.advance()
+        for i in range(int(30e-3 / self.time_step)):
+            if i < 10: m.check()
+            m.advance()
 
     @property
     def t(self):
@@ -149,16 +150,20 @@ class PetriDish:
         self.model.render_frame(colors, filename, (640*r, 480*r), self.camera_position)
 
     def animate(self):
-        r = 1 # Resolution multiplier.
+        r = .5 # Resolution multiplier.
         skip = 2
-        def color_function(db_access):
+        def voltage(db_access):
             v = db_access("membrane/voltages")
             v = ((v - min_v) / (max_v - min_v)).get()
             return [(x, 0, 1-x) for x in v]
+        def inside_ca(db_access):
+            ca = db_access("membrane/inside/concentrations/ca")
+            ca = (ca / 200e-3).get()
+            return [(x, 0, 1-x) for x in ca]
         def text_function(db_access):
             text = "{:6.2f} milliseconds".format(x.t)
             return text
-        return Animation(x.model, color_function, text_function,
+        return Animation(x.model, inside_ca, text_function,
                 skip=skip, resolution=(640*r, 480*r), camera_coordinates=x.camera_position,)
 
     def plot_voltages(self):
