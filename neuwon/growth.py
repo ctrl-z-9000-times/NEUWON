@@ -42,7 +42,8 @@ class GrowSomata:
             self.segments.extend(self.single(coordinates, self.diameter))
 
 class GrowSynapses:
-    def __init__(self, axons, dendrites, pre_gap_post, diameter, num_synapses):
+    def __init__(self, model, axons, dendrites, pre_gap_post, diameter, num_synapses):
+        self.model = model
         self.axons = list(axons)
         self.dendrites = list(dendrites)
         num_synapses = int(num_synapses)
@@ -70,12 +71,12 @@ class GrowSynapses:
                 self.presynaptic_segments.append(pre)
             else:
                 x = (1 - f_pre) * np.array(pre.coordinates) + f_pre * np.array(post.coordinates)
-                self.presynaptic_segments.append(Segment(x, diameter, pre))
+                self.presynaptic_segments.append(model.create_segment(pre, x, diameter)[0])
             if post_len == 0:
                 self.postsynaptic_segments.append(post)
             else:
                 x = (1 - f_post) * np.array(post.coordinates) + f_post * np.array(pre.coordinates)
-                self.postsynaptic_segments.append(Segment(x, diameter, post))
+                self.postsynaptic_segments.append(model.create_segment(post, x, diameter)[0])
             num_synapses -= 1
         self.presynaptic_segments = list(set(self.presynaptic_segments))
         self.segments = self.presynaptic_segments + self.postsynaptic_segments

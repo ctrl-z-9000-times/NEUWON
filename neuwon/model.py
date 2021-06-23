@@ -52,7 +52,8 @@ class Species:
         "ca": {
             "charge": 2,
             "transmembrane": True,
-            "reversal_potential": "goldman_hodgkin_katz",
+            "reversal_potential": "nerst",
+            # "reversal_potential": "goldman_hodgkin_katz", # TODO: Does not work...
             "inside_concentration": 70e-9,
             "outside_concentration": 2e-3,
             "inside_diffusivity": 1e-9,

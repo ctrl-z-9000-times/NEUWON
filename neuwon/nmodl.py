@@ -19,7 +19,7 @@ def eprint(*args, **kwargs): print(*args, file=sys.stderr, **kwargs)
 from neuwon.nmodl_parser import _NmodlParser, ANT
 
 # TODO: Initial state. Mostly works...  Need code to run a simulation until it
-# reaches a steady state, given the solved system.
+# reaches a steady state, given the advance method.
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
@@ -321,13 +321,15 @@ class NmodlMechanism(Reaction):
         membrane = self.pointers.get("membrane", None)
         inside   = self.pointers.get("inside",   None)
         outside  = self.pointers.get("outside",  None)
+        pointers = (membrane, inside, outside)
         preamble.append("    if "+index+" >= "+membrane.read_py+".shape[0]: return")
-        for ptr in (membrane, inside, outside):
+        for ptr in pointers:
             if ptr is None: continue
             preamble.append("    %s = %s[%s]"%(
                 _CodeGen.mangle2(ptr.name), ptr.read_py, ptr.index_py))
         for variable, ptr in sorted(self.pointers.items()):
             if not ptr.r: continue
+            if ptr in pointers: continue
             stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py, ptr.index_py)
             if ptr.name == "v": stmt += " * 1000" # From NEUWONs volts to NEURONs millivolts.
             preamble.append(stmt)
@@ -419,11 +421,14 @@ class _Parameters(dict):
             given_value, units = self[name]
             if name == "time_step": builtin_value *= 1000 # Convert from NEUWONs seconds to NEURONs milliseconds.
             if given_value is None: self[name] = (builtin_value, units)
-        for ptr in pointers.values():
+        for name, ptr in list(pointers.items()):
             if ptr.r:
                 try: value = database.access(ptr.read)
                 except KeyError: continue
-                if isinstance(value, float): self.update({ptr.name: value})
+                if isinstance(value, float):
+                    self.update({ptr.name: value})
+                    ptr.read = None
+                    if not ptr.mode: del pointers[name]
 
     def substitute(self, blocks):
         substitutions = []
@@ -945,7 +950,7 @@ class _cache:
         try:
             with open(cache_file, 'rb') as f: data = pickle.load(f)
         except Exception as err:
-            eprint("Error: loading nmodl from cache:", str(err))
+            eprint("Warning: nmodl cache read failed:", str(err))
             return False
         obj.__dict__.update(data)
         return True
@@ -960,6 +965,9 @@ class _cache:
             eprint("Warning: cache error", str(x))
 
 class _CodeGen:
+    # TODO: Consider making and documenting a convention regarding what gets mangled & how.
+    # -> mangle1 for the user's nmodl variables.
+    # -> mangle2 for NEUWON's internal variables.
     def mangle(x):      return "_" + x
     def demangle(x):    return x[1:]
     def mangle2(x):     return "_" + x + "_"

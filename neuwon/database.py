@@ -29,6 +29,8 @@ different and specialized things.
 #   Consider making two new components, which would be auto-magically updated:
 #   -> Attribute coordinates of entity.
 #   -> Function Nearest neighbor to convert coordinates to entity index.
+# >>> assert(len(grid) == 3 and all(x > 0 for x in grid))
+
 
 # TODO: Add a widget for getting the data as a fraction of its range, using the
 # optionally given "bounds". This would be really useful for making color maps
