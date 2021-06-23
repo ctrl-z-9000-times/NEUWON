@@ -33,7 +33,7 @@ NEURON {
         POINT_PROCESS AMPA5
         USEION na WRITE gna
         USEION k WRITE gk
-        POINTER C
+        USEION glu READ gluo
 }
 
 UNITS {
@@ -60,16 +60,16 @@ STATE {
         C2              : double glu bound
         D1              : single glu bound, desensitized
         D2              : double glu bound, desensitized
-        O               : open state 2
+        O               : open state
 }
 
 INITIAL {
-        C0=1
-        C1=0
-        C2=0
-        D1=0
-        D2=0
-        O=0
+        C0 = 1
+        C1 = 0
+        C2 = 0
+        D1 = 0
+        D2 = 0
+        O  = 0
 }
 
 BREAKPOINT {
@@ -79,11 +79,11 @@ BREAKPOINT {
 }
 
 KINETIC kstates {
-        rb = Rb * C 
-        ~ C0  <-> C1    (rb,Ru1)
-        ~ C1 <-> C2     (rb,Ru2)
-        ~ C1 <-> D1     (Rd,Rr)
-        ~ C2 <-> D2     (Rd,Rr)
-        ~ C2 <-> O      (Ro,Rc)
-        CONSERVE C0+C1+C2+D1+D2+O = 1
+        rb = Rb * gluo
+        ~ C0 <-> C1     (rb, Ru1)
+        ~ C1 <-> C2     (rb, Ru2)
+        ~ C1 <-> D1     (Rd, Rr)
+        ~ C2 <-> D2     (Rd, Rr)
+        ~ C2 <-> O      (Ro, Rc)
+        CONSERVE C0 + C1 + C2 + D1 + D2 + O = 1
 }
