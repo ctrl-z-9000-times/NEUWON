@@ -273,11 +273,11 @@ class Database:
         if component_name is not None:
             self.components[str(component_name)].check(self)
         else:
+            exceptions = []
             for c in self.components.values():
-                exceptions = []
                 try: c.check(self)
-                except Exception as x: exceptions.append(x)
-            if exceptions: raise AssertionError(",\n".join(str(x) for x in exceptions))
+                except Exception as x: exceptions.append(str(x))
+            if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
 
     def __repr__(self, is_str=False):
         f = str if is_str else repr
