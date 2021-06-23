@@ -707,10 +707,6 @@ class _AssignStatement:
         assert(len(backward_euler) == 1)
         self.rhs = backward_euler.pop() * 2 - init_state
 
-    def _solve_foward_euler(self):
-        dt = sympy.Symbol("time_step", real=True, positive=True)
-        self.rhs = sympy.Symbol(self.lhsn) + self.rhs * dt
-
 class _SolveStatement:
     def __init__(self, mechanism, AST):
         self.block = AST.block_name.get_node_name()
