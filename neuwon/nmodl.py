@@ -160,7 +160,7 @@ class NmodlMechanism(Reaction):
                     _Pointer.update(self, var_name, read="membrane/inside/concentrations/%s"%ion)
                 elif var_name == outside:
                     _Pointer.update(self, var_name, read="outside/concentrations/%s"%ion)
-                else: raise ValueError("Unrecognized ion READ: \"%s\"."%var_name)
+                else: raise ValueError("Unrecognized species READ: \"%s\"."%var_name)
             for y in x.writelist:
                 var_name = y.name.value.eval()
                 if var_name == current:
@@ -171,7 +171,7 @@ class NmodlMechanism(Reaction):
                     _Pointer.update(self, var_name, write="membrane/inside/release_rates/%s"%ion, accumulate=True)
                 elif var_name == outside:
                     _Pointer.update(self, var_name, write="outside/release_rates/%s"%ion, accumulate=True)
-                else: raise ValueError("Unrecognized ion WRITE: \"%s\"."%var_name)
+                else: raise ValueError("Unrecognized species WRITE: \"%s\"."%var_name)
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
@@ -196,6 +196,9 @@ class NmodlMechanism(Reaction):
         self.solved_blocks[block_name] = block = copy.deepcopy(block)
         for stmt in block:
             if isinstance(stmt, _AssignStatement) and stmt.derivative:
+                if stmt.lhsn in self.pointers and self.pointers[stmt.lhsn].accumulate:
+                    stmt.derivative = False # Main model will integrate, after summing derivatives across all reactions.
+                    continue
                 stmt.solve()
         return block
 
@@ -278,6 +281,7 @@ class NmodlMechanism(Reaction):
         return states
 
     def _initialize_database(self, database):
+        # TODO: The pointers should really be updated as soon as the states block is parsed.
         database.add_archetype(self.name(), doc=self.description)
         database.add_attribute(self.name() + "/insertions", dtype="membrane")
         for name in self.surface_area_parameters:
@@ -673,13 +677,14 @@ class _AssignStatement:
     def solve(self):
         """ Solve this differential equation in-place. """
         assert(self.derivative)
-        self.derivative = False
+        if False: print("SOLVE:   ", 'd/dt', self.lhsn, "=", self.rhs)
+        self._solve_sympy();
         # try:
-        self._solve_sympy(); return
         # except Exception as x: eprint("Warning Sympy solver failed: "+str(x))
-        try: self._solve_crank_nicholson(); return
-        except Exception as x: eprint("Warning Crank-Nicholson solver failed: "+str(x))
-        self._solve_foward_euler()
+        # try: self._solve_crank_nicholson(); return
+        # except Exception as x: eprint("Warning Crank-Nicholson solver failed: "+str(x))
+        self.derivative = False
+        if False: print("SOLUTION:", self.lhsn, '=', self.rhs)
 
     def _solve_sympy(self):
         from sympy import Symbol, Function, Eq

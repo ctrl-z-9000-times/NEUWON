@@ -17,6 +17,9 @@ from scipy.sparse.linalg import expm
 # complicated, but it should make the users code simpler and more intuitive.
 # Also, if I do this then I can get rid of a lot of nmodl shims...
 
+# TODO: How to write species derivatives? as concentrations or absolute amounts?
+#       Either way, my current code is broken BC of it.
+
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 
@@ -62,12 +65,12 @@ class Species:
             "charge": -1,
             "transmembrane": True,
             "reversal_potential": "nerst",
-            "inside_concentration":  10e-3,
+            "inside_concentration":   10e-3,
             "outside_concentration": 110e-3,
         },
         "glu": {
             "outside_diffusivity": 1e-9,
-            "outside_decay_period": 2e-3,
+            "outside_decay_period": .5e-3,
         },
     }
 
@@ -116,6 +119,9 @@ class Species:
         assert(self.outside_decay_period > 0.0)
         if self.use_shells: assert(self.inside_diffusivity > 0.0)
 
+    def __repr__(self):
+        return "neuwon.Species(%s)"%self.name
+
     def _initialize(self, database):
         db = database
         concentrations_doc = "Units: Molar"
@@ -144,7 +150,7 @@ class Species:
                     function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
             db.add_attribute("membrane/conductances/" + self.name,
-                    initial_value=0.0, doc=conductances_doc)
+                    initial_value=0.0, bounds=(0, np.inf), doc=conductances_doc)
             if isinstance(self.reversal_potential, float):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         self.reversal_potential, doc=reversal_potentials_doc)
@@ -409,7 +415,7 @@ class Model:
     def _initialize_database_electric(self, db, initial_voltage):
         db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
         db.add_attribute("membrane/axial_resistances", allow_invalid=True, doc="Units: ")
-        db.add_attribute("membrane/capacitances", doc="Units: Farads")
+        db.add_attribute("membrane/capacitances", doc="Units: Farads", bounds=(0, np.inf))
         db.add_attribute("membrane/conductances")
         db.add_attribute("membrane/driving_voltages")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
@@ -767,25 +773,32 @@ class Model:
             driving_voltages += g * reversal_potential
         driving_voltages /= conductances
         driving_voltages[:] = cp.nan_to_num(driving_voltages)
-        # Calculate the transmembrane currents.
-        diff_v   = driving_voltages - voltages
-        rc       = capacitances / conductances
-        alpha    = cp.exp(-dt / rc)
-        voltages += diff_v * (1.0 - alpha)
-        # Calculate the lateral currents throughout the neurons.
-        voltages[:] = access("membrane/diffusion").dot(voltages)
+        # Update voltages.
+        exponent    = -dt * conductances / capacitances
+        alpha       = cp.exp(exponent)
+        diff_v      = driving_voltages - voltages
+        irm         = access("membrane/diffusion")
+        voltages[:] = irm.dot(driving_voltages - diff_v * alpha)
+        integral_v  = dt * driving_voltages - diff_v * exponent * alpha
         # Calculate the transmembrane ion flows.
         for s in self.species.values():
             if not s.transmembrane: continue
-            if s.intra is None and s.extra is None: continue
-            integral_v = dt * (s.reversal_potential - driving_voltages)
-            integral_v += rc * diff_v * alpha
-            moles = s.conductances * integral_v / (s.charge * F)
-            if s.intra is not None:
-                s.intra.concentrations += moles / self.geometry.inside_volumes
-            if s.extra is not None:
-                s.extra.concentrations -= moles / self.geometry.outside_volumes
-        # Calculate the local release / removal of chemicals.
+            if s.inside_diffusivity == 0 and s.outside_diffusivity == 0: continue
+            assert s.charge != 0, s.name
+            reversal_potential = access("membrane/reversal_potentials/"+s.name)
+            g = access("membrane/conductances/"+s.name)
+            moles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
+            if s.inside_diffusivity != 0:
+                if s.use_shells:
+                    1/0
+                else:
+                    volumes        = access("membrane/inside/volumes")
+                    concentrations = access("membrane/inside/concentrations/"+s.name)
+                    concentrations += moles / volumes
+            if s.outside_diffusivity != 0:
+                volumes = access("outside/volumes")
+                s.outside.concentrations -= moles / self.geometry.outside_volumes
+        # Update chemical concentrations: release rates and diffusion.
         for s in self.species.values():
             if s.inside_diffusivity != 0:
                 x    = access("membrane/inside/concentrations/"+s.name)
