@@ -77,12 +77,17 @@ class Species:
             reversal_potential = "nerst",
             inside_concentration = 0.0,
             outside_concentration = 0.0,
-            inside_diffusivity = None,
-            outside_diffusivity = None,
+            # TODO: Consider reworking the API so that "diffusivity==0" is not a
+            # special case for "concentration is global constant". Instead add
+            # another argument flag for doing that. Zero diffusivity implys a
+            # purely local component, not a constant global; though it is a
+            # degenerate case.
+            inside_diffusivity = 0.0,
+            outside_diffusivity = 0.0,
             inside_decay_period = float("inf"),
             outside_decay_period = float("inf"),
             use_shells = False,
-            use_grid = None,):
+            outside_grid = None,):
         """
         If diffusivity is not given, then the concentration is constant.
         Argument reversal_potential is one of: number, "nerst", "goldman_hodgkin_katz"
@@ -94,23 +99,22 @@ class Species:
         except ValueError:
             self.reversal_potential = str(reversal_potential)
             assert(self.reversal_potential in ("nerst", "goldman_hodgkin_katz"))
-        self.inside_concentration  = float(inside_concentration)
-        self.outside_concentration = float(outside_concentration)
-        self.inside_diffusivity  = float(inside_diffusivity)  if inside_diffusivity is not None else None
-        self.outside_diffusivity = float(outside_diffusivity) if outside_diffusivity is not None else None
-        self.inside_decay_period  = float(inside_decay_period)
-        self.outside_decay_period = float(outside_decay_period)
-        self.use_shells = bool(use_shells)
-        self.use_grid = None if use_grid is None else tuple(float(x) for x in use_grid)
-        self.inside_archetype = "inside" if self.use_shells else "membrane/inside"
+        self.inside_concentration   = float(inside_concentration)
+        self.outside_concentration  = float(outside_concentration)
+        self.inside_diffusivity     = float(inside_diffusivity)
+        self.outside_diffusivity    = float(outside_diffusivity)
+        self.inside_decay_period    = float(inside_decay_period)
+        self.outside_decay_period   = float(outside_decay_period)
+        self.use_shells             = bool(use_shells)
+        self.inside_archetype       = "inside" if self.use_shells else "membrane/inside"
+        self.outside_grid           = tuple(float(x) for x in outside_grid) if outside_grid else None
         assert(self.inside_concentration  >= 0.0)
         assert(self.outside_concentration >= 0.0)
-        assert(self.inside_diffusivity  is None or self.inside_diffusivity >= 0)
-        assert(self.outside_diffusivity is None or self.outside_diffusivity >= 0)
+        assert(self.inside_diffusivity >= 0)
+        assert(self.outside_diffusivity >= 0)
         assert(self.inside_decay_period  > 0.0)
         assert(self.outside_decay_period > 0.0)
-        if self.use_shells: assert(self.inside_diffusivity is not None)
-        if self.use_grid: assert(len(self.use_grid) == 3 and all(x > 0 for x in self.use_grid))
+        if self.use_shells: assert(self.inside_diffusivity > 0.0)
 
     def _initialize(self, database):
         db = database
@@ -118,33 +122,33 @@ class Species:
         release_rates_doc = "Units: Molar / Second"
         reversal_potentials_doc = "Units:"
         conductances_doc = "Units: Siemens"
-        if self.inside_diffusivity is None:
+        if self.inside_diffusivity == 0.0:
             db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
                     self.inside_concentration, doc=concentrations_doc)
         else:
             db.add_attribute(self.inside_archetype+"/concentrations/" + self.name,
                     initial_value=self.inside_concentration, doc=concentrations_doc)
             db.add_attribute(self.inside_archetype+"/release_rates/" + self.name,
-                    initial_value=0, doc=release_rates_doc)
+                    initial_value=0.0, doc=release_rates_doc)
             db.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
                     function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
-        if self.outside_diffusivity is None:
+        if self.outside_diffusivity == 0.0:
             db.add_global_constant("outside/concentrations/" + self.name,
                     self.outside_concentration, doc=concentrations_doc)
         else:
             db.add_attribute("outside/concentrations/" + self.name,
                     initial_value=self.outside_concentration, doc=concentrations_doc)
             db.add_attribute("outside/release_rates/" + self.name,
-                    initial_value=0, doc=release_rates_doc)
+                    initial_value=0.0, doc=release_rates_doc)
             db.add_linear_system("outside/diffusions/" + self.name,
                     function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
             db.add_attribute("membrane/conductances/" + self.name,
-                    initial_value=0, doc=conductances_doc)
+                    initial_value=0.0, doc=conductances_doc)
             if isinstance(self.reversal_potential, float):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         self.reversal_potential, doc=reversal_potentials_doc)
-            elif (self.inside_diffusivity is None and self.outside_diffusivity is None
+            elif (self.inside_diffusivity == 0.0 and self.outside_diffusivity == 0.0
                     and self.reversal_potential == "nerst"):
                 x = self._nerst_potential(
                         db.access("T"), self.inside_concentration, self.outside_concentration)
@@ -154,28 +158,23 @@ class Species:
                 db.add_attribute("membrane/reversal_potentials/" + self.name,
                         doc=reversal_potentials_doc)
 
-    def _reversal_potential(self, database_access):
-        # TODO: Write the computed E-rev to this buffer...
-        # if self.charge == 0: return xp.zeros_like(inside_concentration) # Zero or NaN?
-        # if self.charge == 0: return xp.full_like(inside_concentration, np.nan)
-        x = database_access("membrane/reversal_potentials/" + self.name)
+    def _reversal_potential(self, access):
+        x = access("membrane/reversal_potentials/" + self.name)
         if isinstance(x, float): return x
-        T = database_access("T")
-        try:             inside = database_access("inside/concentrations/" + self.name)
-        except KeyError: inside = database_access("membrane/inside/concentrations/" + self.name)
-        else:
-            if isinstance(inside, Iterable):
-                index = database_access("membrane/inside")
-                inside = inside[index]
-        outside = database_access("outside/concentrations/" + self.name)
-        if isinstance(outside, Iterable):
-            index = database_access("membrane/outside")
-            outside = outside[index]
+        inside  = access(self.inside_archetype+"/concentrations/"+self.name)
+        outside = access("outside/concentrations/"+self.name)
+        if not isinstance(inside, float) and self.use_shells:
+            inside = inside[access("membrane/inside")]
+        if not isinstance(outside, float):
+            outside = outside[access("membrane/outside")]
+        T = access("T")
         if self.reversal_potential == "nerst":
-            return self._nerst_potential(T, inside, outside)
+            x[:] = self._nerst_potential(T, inside, outside)
         elif self.reversal_potential == "goldman_hodgkin_katz":
-            voltages = database_access("membrane/voltages")
-            return self._goldman_hodgkin_katz(T, inside, outside, voltages)
+            voltages = access("membrane/voltages")
+            x[:] = self._goldman_hodgkin_katz(T, inside, outside, voltages)
+        else: raise NotImplementedError(self.reversal_potential)
+        return x
 
     def _nerst_potential(self, T, inside_concentration, outside_concentration):
         xp = cp.get_array_module(inside_concentration)
@@ -194,28 +193,31 @@ class Species:
         else:
             return z / (math.exp(z) - 1)
 
-    def _inside_diffusion_coefficients(self, database_access):
-        dt           = database_access("time_step") / 2
+    def _inside_diffusion_coefficients(self, access):
+        dt      = access("time_step") / 2
+        parents = access("membrane/parents").get()
+        lengths = access("membrane/lengths").get()
+        xareas  = access("membrane/cross_sectional_areas").get()
+        volumes = access("membrane/inside/volumes").get()
+        if self.use_shells: raise NotImplementedError
         src = []; dst = []; coef = []
-        for location in range(len(geometry)):
-            if geometry.is_root(location):
-                continue
-            parent = geometry.parents[location]
-            l = geometry.lengths[location]
-            flux = self.inside_diffusivity * geometry.cross_sectional_areas[location] / l
+        for location in range(len(parents)):
+            parent = parents[location]
+            if parent == NULL: continue
+            flux = self.inside_diffusivity * xareas[location] / lengths[location]
             src.append(location)
             dst.append(parent)
-            coef.append(+dt * flux / geometry.inside_volumes[parent])
+            coef.append(+dt * flux / volumes[parent])
             src.append(location)
             dst.append(location)
-            coef.append(-dt * flux / geometry.inside_volumes[location])
+            coef.append(-dt * flux / volumes[location])
             src.append(parent)
             dst.append(location)
-            coef.append(+dt * flux / geometry.inside_volumes[location])
+            coef.append(+dt * flux / volumes[location])
             src.append(parent)
             dst.append(parent)
-            coef.append(-dt * flux / geometry.inside_volumes[parent])
-        for location in range(len(geometry)):
+            coef.append(-dt * flux / volumes[parent])
+        for location in range(len(parents)):
             src.append(location)
             dst.append(location)
             coef.append(-dt / self.inside_decay_period)
@@ -388,8 +390,10 @@ class Model:
         db.add_attribute("membrane/shells", dtype=np.uint8)
         db.add_attribute("inside/membrane", dtype="membrane")
         db.add_attribute("inside/shell_radius")
-        db.add_attribute("inside/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
-                Units: Liters""")
+        db.add_attribute("inside/volumes",
+                # bounds=(epsilon * (1e-6)**3, np.inf),
+                allow_invalid=True,
+                doc="""Units: Liters""")
         db.add_sparse_matrix("inside/neighbor_distances", "inside")
         db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
 
@@ -642,12 +646,14 @@ class Model:
         # Compute intracellular volumes.
         for idx in membrane_idx:
             p = parents[idx]
+            d = diams[idx]
+            l = lengths[idx]
             shape = shapes[idx]
             if shape == 0: # Sphere.
-                volumes[idx] = (4/3) * np.pi * (d/2) ** 3
+                volumes[idx] = 1000 * (4/3) * np.pi * (d/2) ** 3
             else:
                 if shape == 1: # Cylinder.
-                    volumes[idx] = np.pi * (d/2) ** 2 * lengths[idx]
+                    volumes[idx] = 1000 * np.pi * (d/2) ** 2 * l
                 elif shape == 2: # Frustum.
                     volumes[idx] = 1/0
         # Compute passive electric properties
@@ -750,27 +756,24 @@ class Model:
         driving_voltages    = access("membrane/driving_voltages")
         voltages            = access("membrane/voltages")
         capacitances        = access("membrane/capacitances")
-        # Accumulate the net conductances and driving voltages from the chemical data.
+        # Accumulate the net conductances and driving voltages from each ion species' data.
         conductances.fill(0.0) # Zero accumulator.
         driving_voltages.fill(0.0) # Zero accumulator.
         for s in self.species.values():
             if not s.transmembrane: continue
             reversal_potential = s._reversal_potential(access)
-            g = access("membrane/conductances/%s"%s.name)
+            g = access("membrane/conductances/"+s.name)
             conductances += g
             driving_voltages += g * reversal_potential
         driving_voltages /= conductances
         driving_voltages[:] = cp.nan_to_num(driving_voltages)
         # Calculate the transmembrane currents.
         diff_v   = driving_voltages - voltages
-        recip_rc = conductances / capacitances
-        alpha    = cp.exp(-dt * recip_rc)
+        rc       = capacitances / conductances
+        alpha    = cp.exp(-dt / rc)
         voltages += diff_v * (1.0 - alpha)
         # Calculate the lateral currents throughout the neurons.
         voltages[:] = access("membrane/diffusion").dot(voltages)
-
-        return
-
         # Calculate the transmembrane ion flows.
         for s in self.species.values():
             if not s.transmembrane: continue
@@ -784,21 +787,26 @@ class Model:
                 s.extra.concentrations -= moles / self.geometry.outside_volumes
         # Calculate the local release / removal of chemicals.
         for s in self.species.values():
-            for x in (s.intra, s.extra):
-                if x is None: continue
-                x.concentrations = cp.maximum(0, x.concentrations + x.release_rates * dt)
-                # Calculate the lateral diffusion throughout the space.
-                x.concentrations = x.irm.dot(x.concentrations)
+            if s.inside_diffusivity != 0:
+                x    = access("membrane/inside/concentrations/"+s.name)
+                rr   = access("membrane/inside/release_rates/"+s.name)
+                irm  = access("membrane/inside/diffusions/"+s.name)
+                x[:] = irm.dot(cp.maximum(0, x + rr * dt))
+            if s.outside_diffusivity != 0:
+                x    = access("outside/concentrations/"+s.name)
+                rr   = access("outside/release_rates/"+s.name)
+                irm  = access("outside/diffusions/"+s.name)
+                x[:] = irm.dot(cp.maximum(0, x + rr * dt))
 
     def _advance_reactions(self):
         access = self.db.access
         for name, species in self.species.items():
             if species.transmembrane:
-                access("membrane/conductances/%s"%name).fill(0.0)
-            if species.inside_diffusivity is not None:
-                access(species.inside_archetype + "/release_rates/%s"%name).fill(0.0)
-            if species.outside_diffusivity is not None:
-                access("outside/release_rates/%s"%name).fill(0.0)
+                access("membrane/conductances/"+name).fill(0.0)
+            if species.inside_diffusivity != 0.0:
+                access(species.inside_archetype + "/release_rates/"+name).fill(0.0)
+            if species.outside_diffusivity != 0.0:
+                access("outside/release_rates/"+name).fill(0.0)
         for name, r in self.reactions.items():
             try:
                 r.advance(access)
