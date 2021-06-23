@@ -26,11 +26,7 @@ COMMENT
         VA  ->  nt T            (k3)
 
    This reaction is the slowest and a constant number of transmitter per 
-   vesicule is considered (nt).  
-
- - Finally, T is hydrolyzed according to a first-order reaction
-
-        T  ->  ...              (kh)
+   vesicule is considered (nt).
 
 
    References:
@@ -44,24 +40,23 @@ COMMENT
    synaptic transmission.  In: Methods in Neuronal Modeling (2nd edition; 
    edited by Koch, C. and Segev, I.), MIT press, Cambridge, 1998, pp 1-25.
 
-  (electronic copy available at http://cns.iaf.cnrs-gif.fr)
+   (electronic copy available at http://cns.iaf.cnrs-gif.fr)
 
    For a more realistic model, see Yamada, WM & Zucker, RS. Time course
    of transmitter release calculated from simulations of a calcium
    diffusion model. Biophys. J. 61: 671-5682, 1992.
 
 
-  Written by A. Destexhe, Salk Institute, December 1993; modified 1996
+   Written by A. Destexhe, Salk Institute, December 1993; modified 1996
 
 -----------------------------------------------------------------------------
 ENDCOMMENT
 
 
-
 NEURON {
         SUFFIX rel
         USEION ca READ cai WRITE cai
-        RANGE T,FA,CA,Fmax,Ves,b,u,k1,k2,k3,nt,kh
+        USEION glu WRITE gluo
 }
 
 UNITS {
@@ -72,15 +67,14 @@ UNITS {
 
 PARAMETER {
 
-        Ves = 0.1       (mM)            : conc of vesicles
-        Fmax = 0.001    (mM)            : conc of fusion factor F
-        b = 1e16        (/mM4-ms)       : ca binding to F
+        Ves = 0.1e-3       (mM)            : conc of vesicles
+        Fmax = 0.001e-3    (mM)            : conc of fusion factor F
+        b = 1e-4        (/mM4-ms)       : ca binding to F
         u = 0.1         (/ms)           : ca unbinding 
-        k1 = 1000       (/mM-ms)        : F binding to vesicle
+        k1 = 1       (/mM-ms)        : F binding to vesicle
         k2 = 0.1        (/ms)           : F unbinding to vesicle
         k3 = 4          (/ms)           : exocytosis of T
         nt = 10000                      : nb of molec of T per vesicle
-        kh = 10         (/ms)           : cst for hydolysis of T
 }
 
 STATE {
@@ -94,7 +88,7 @@ INITIAL {
 }
 
 BREAKPOINT {
-        SOLVE state METHOD derivimplicit
+        SOLVE state METHOD cnexp
 }
 
 DERIVATIVE state {
@@ -105,5 +99,5 @@ DERIVATIVE state {
         cai'    = - bfc + 4 * u * FA 
         FA'     = bfc - u * FA - kfv + k2 * VA
         VA'     = kfv - (k2+k3) * VA
-        T'      = nt * k3 * VA - kh * T
+        gluo'   = nt * k3 * VA
 }
