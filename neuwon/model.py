@@ -78,22 +78,21 @@ class Species:
             charge = 0,
             transmembrane = False,
             reversal_potential = "nerst",
-            inside_concentration = 0.0,
+            inside_concentration  = 0.0,
             outside_concentration = 0.0,
-            # TODO: Consider reworking the API so that "diffusivity==0" is not a
-            # special case for "concentration is global constant". Instead add
-            # another argument flag for doing that. Zero diffusivity implys a
-            # purely local component, not a constant global; though it is a
-            # degenerate case.
-            inside_diffusivity = 0.0,
-            outside_diffusivity = 0.0,
-            inside_decay_period = float("inf"),
-            outside_decay_period = float("inf"),
+            inside_diffusivity    = None,
+            outside_diffusivity   = None,
+            inside_decay_period   = float("inf"),
+            outside_decay_period  = float("inf"),
             use_shells = False,
             outside_grid = None,):
         """
-        If diffusivity is not given, then the concentration is constant.
-        Argument reversal_potential is one of: number, "nerst", "goldman_hodgkin_katz"
+        Arguments
+        * inside_concentration:  initial value, units millimolar.
+        * outside_concentration: initial value, units millimolar.
+        * reversal_potential: is one of: number, "nerst", "goldman_hodgkin_katz"
+
+        If diffusivity is not given, then the concentration is a global constant.
         """
         self.name = str(name)
         self.charge = int(charge)
@@ -104,8 +103,10 @@ class Species:
             assert(self.reversal_potential in ("nerst", "goldman_hodgkin_katz"))
         self.inside_concentration   = float(inside_concentration)
         self.outside_concentration  = float(outside_concentration)
-        self.inside_diffusivity     = float(inside_diffusivity)
-        self.outside_diffusivity    = float(outside_diffusivity)
+        self.inside_global_const    = inside_diffusivity is None
+        self.outside_global_const   = outside_diffusivity is None
+        self.inside_diffusivity     = float(inside_diffusivity) if not self.inside_global_const else 0.0
+        self.outside_diffusivity    = float(outside_diffusivity) if not self.outside_global_const else 0.0
         self.inside_decay_period    = float(inside_decay_period)
         self.outside_decay_period   = float(outside_decay_period)
         self.use_shells             = bool(use_shells)
@@ -113,11 +114,14 @@ class Species:
         self.outside_grid           = tuple(float(x) for x in outside_grid) if outside_grid else None
         assert(self.inside_concentration  >= 0.0)
         assert(self.outside_concentration >= 0.0)
-        assert(self.inside_diffusivity >= 0)
-        assert(self.outside_diffusivity >= 0)
-        assert(self.inside_decay_period  > 0.0)
-        assert(self.outside_decay_period > 0.0)
+        assert(self.inside_diffusivity    >= 0)
+        assert(self.outside_diffusivity   >= 0)
+        assert(self.inside_decay_period   > 0.0)
+        assert(self.outside_decay_period  > 0.0)
         if self.use_shells: assert(self.inside_diffusivity > 0.0)
+        if self.inside_global_const:  assert self.inside_decay_period == np.inf
+        if self.inside_global_const:  assert not self.use_shells
+        if self.outside_global_const: assert self.outside_decay_period == np.inf
 
     def __repr__(self):
         return "neuwon.Species(%s)"%self.name
@@ -154,7 +158,7 @@ class Species:
             if isinstance(self.reversal_potential, float):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         self.reversal_potential, doc=reversal_potentials_doc)
-            elif (self.inside_diffusivity == 0.0 and self.outside_diffusivity == 0.0
+            elif (self.inside_global_const and self.outside_global_const
                     and self.reversal_potential == "nerst"):
                 x = self._nerst_potential(
                         db.access("T"), self.inside_concentration, self.outside_concentration)
@@ -271,12 +275,6 @@ class Reaction:
         Argument database is a function(name) -> value
 
         (Optional) Returns a new Reaction object to use in place of this one. """
-        pass
-
-    # TODO: Delete this method in favor of model.get_reaction().insert()
-    @classmethod
-    def new_instances(self, database, *args, **kwargs):
-        """ """
         pass
 
     @classmethod
