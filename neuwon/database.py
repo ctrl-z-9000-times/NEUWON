@@ -16,8 +16,6 @@ a hierarchical organization where Archetypes contain Components.
 different and specialized things.
 """
 
-# TODO: repr & str formatting
-
 import cupy
 import cupyx.scipy.sparse
 import numpy as np
@@ -387,7 +385,7 @@ class _Global_Constant(_Component):
         return self.value
 
     def __repr__(self):
-        return "%s = %s"%(self.name, str(self.value))
+        return "Constant  %s = %s"%(self.name, str(self.value))
 
 class _Function(_Component):
     def __init__(self, database, name, doc, function):
@@ -400,7 +398,7 @@ class _Function(_Component):
         return self.function
 
     def __repr__(self):
-        return "%s()"%(self.name)
+        return "Function  %s()"%(self.name)
 
 class _Attribute(_Component):
     def __init__(self, database, name, doc, dtype, shape, initial_value, allow_invalid, bounds):
@@ -449,12 +447,15 @@ class _Attribute(_Component):
         _Component.check_data(self, database, self.access(database), reference=self.reference)
 
     def __repr__(self):
-        s = "%s is %s attribute"%(self.name, str(self.dtype))
-        # TODO: There are a lot of flags to print here:
-        #       shape
-        #       dtype
-        #       initial_value
-        #       reference
+        s = "Attribute " + self.name + " "
+        if self.reference: s += "ref: " + self.reference.name
+        elif isinstance(self.dtype, np.dtype): s += self.dtype.name
+        elif isinstance(self.dtype, type): s += self.dtype.__name__
+        else: s += type(self.dtype).__name__
+        if self.shape != (1,): s += repr(list(self.shape))
+        if self.allow_invalid:
+            if self.reference: s += " (maybe NULL)"
+            else: s += " (maybe NaN)"
         return s
 
 class _Sparse_Matrix(_Component):
@@ -497,9 +498,18 @@ class _Sparse_Matrix(_Component):
         _Component.check_data(self, database, self.data.data, reference=self.reference)
 
     def __repr__(self):
+        s = "Matrix    " + self.name + " "
+        if self.reference: s += "ref: " + self.reference.name
+        elif isinstance(self.dtype, np.dtype): s += self.dtype.name
+        elif isinstance(self.dtype, type): s += self.dtype.__name__
+        else: s += type(self.dtype).__name__
+        if self.allow_invalid:
+            if self.reference: s += " (maybe NULL)"
+            else: s += " (maybe NaN)"
         try: nnz_per_row = self.data.nnz / self.data.shape[0]
         except ZeroDivisionError: nnz_per_row = 0
-        return "%s nnz/row: %g"%(self.name, nnz_per_row)
+        s += " nnz/row: %g"%nnz_per_row
+        return s
 
 class _KD_Tree(_Component):
     def __init__(self, database, name, doc, component):
@@ -524,7 +534,7 @@ class _KD_Tree(_Component):
         return self.tree
 
     def __repr__(self):
-        return "%s"%self.name
+        return "KD Tree   %s"%self.name
 
 class _LinearSystem(_Component):
     def __init__(self, database, name, doc, function, epsilon, allow_invalid):
@@ -555,12 +565,16 @@ class _LinearSystem(_Component):
         _Component.check_data(self, database, self.access(database).get().data)
 
     def __repr__(self):
-        s = "%s linear diff-eq"%self.name
+        s = "Linear    %s linear diff-eq"%self.name
         if self.data is None:
             s += ", invalid."
         else:
             s += ", nnz/row %g"%(self.data.nnz / self.data.shape[0])
         return s
+
+# TODO: str formatting
+#       Or maybe some other kind of introspection?
+#       Maybe just implement a GUI?
 
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:

@@ -58,6 +58,7 @@ class Experiment:
         print("Soma surface area:", sa, "m^2")
         sa += sum(x.read("membrane/surface_areas") for x in self.axon)
         print("Total surface area:", sa, "m^2")
+        if True: self.model.advance(); print(str(self.model))
         if True: self.model.advance(); print(repr(self.model))
 
     def generate_input(self):
