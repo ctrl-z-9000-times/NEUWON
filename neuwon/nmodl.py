@@ -688,7 +688,7 @@ class _AssignStatement:
         implicit_deriv  = self.rhs.subs(init_state, next_state)
         eq = sympy.Eq(next_state, init_state + implicit_deriv * dt / 2)
         backward_euler = sympy.solve(eq, next_state)
-        assert(len(backward_euler) == 1)
+        assert len(backward_euler) == 1, backward_euler
         self.rhs = backward_euler.pop() * 2 - init_state
 
 class _SolveStatement:

@@ -42,31 +42,31 @@ class Species:
             "charge": 1,
             "transmembrane": True,
             "reversal_potential": "nerst",
-            "inside_concentration":  15e-3,
-            "outside_concentration": 145e-3,
+            "inside_concentration":   15,
+            "outside_concentration": 145,
         },
         "k": {
             "charge": 1,
             "transmembrane": True,
             "reversal_potential": "nerst",
-            "inside_concentration": 150e-3,
-            "outside_concentration":   4e-3,
+            "inside_concentration": 150,
+            "outside_concentration":  4,
         },
         "ca": {
             "charge": 2,
             "transmembrane": True,
             "reversal_potential": "nerst",
             # "reversal_potential": "goldman_hodgkin_katz", # TODO: Does not work...
-            "inside_concentration": 70e-9,
-            "outside_concentration": 2e-3,
+            "inside_concentration": 70e-6,
+            "outside_concentration": 2,
             "inside_diffusivity": 1e-9,
         },
         "cl": {
             "charge": -1,
             "transmembrane": True,
             "reversal_potential": "nerst",
-            "inside_concentration":   10e-3,
-            "outside_concentration": 110e-3,
+            "inside_concentration":   10,
+            "outside_concentration": 110,
         },
         "glu": {
             "outside_diffusivity": 1e-9,
@@ -128,10 +128,10 @@ class Species:
 
     def _initialize(self, database):
         db = database
-        concentrations_doc = "Units: Molar"
-        release_rates_doc = "Units: Molar / Second"
+        concentrations_doc = "Units: millimolar"
+        release_rates_doc = "Units: millimolar / second"
         reversal_potentials_doc = "Units:"
-        conductances_doc = "Units: Siemens"
+        conductances_doc = "Units: siemens"
         if self.inside_diffusivity == 0.0:
             db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
                     self.inside_concentration, doc=concentrations_doc)
@@ -160,10 +160,11 @@ class Species:
                         self.reversal_potential, doc=reversal_potentials_doc)
             elif (self.inside_global_const and self.outside_global_const
                     and self.reversal_potential == "nerst"):
-                x = self._nerst_potential(
-                        db.access("T"), self.inside_concentration, self.outside_concentration)
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
-                        x, doc=reversal_potentials_doc)
+                        self._nerst_potential(db.access("T"),
+                                self.inside_concentration / 1000,
+                                self.outside_concentration / 1000),
+                        doc=reversal_potentials_doc)
             else:
                 db.add_attribute("membrane/reversal_potentials/" + self.name,
                         doc=reversal_potentials_doc)
@@ -171,8 +172,8 @@ class Species:
     def _reversal_potential(self, access):
         x = access("membrane/reversal_potentials/" + self.name)
         if isinstance(x, float): return x
-        inside  = access(self.inside_archetype+"/concentrations/"+self.name)
-        outside = access("outside/concentrations/"+self.name)
+        inside  = access(self.inside_archetype+"/concentrations/"+self.name) / 1000
+        outside = access("outside/concentrations/"+self.name) / 1000
         if not isinstance(inside, float) and self.use_shells:
             inside = inside[access("membrane/inside")]
         if not isinstance(outside, float):
