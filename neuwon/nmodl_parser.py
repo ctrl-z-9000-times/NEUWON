@@ -6,6 +6,7 @@ import nmodl.ast
 import nmodl.dsl
 import nmodl.symtab
 import sympy
+import os.path
 
 ANT = nmodl.ast.AstNodeType
 

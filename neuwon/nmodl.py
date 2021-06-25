@@ -11,26 +11,11 @@ import pickle
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Entity
 from neuwon.model import Reaction, Model, Segment
+from neuwon.nmodl_parser import _NmodlParser, ANT
 from scipy.linalg import expm
 import sys
 
 def eprint(*args, **kwargs): print(*args, file=sys.stderr, **kwargs)
-
-from neuwon.nmodl_parser import _NmodlParser, ANT
-
-# TODO: Initial state. Mostly works...  Need code to run a simulation until it
-# reaches a steady state, given the advance method.
-
-# TODO: support for arrays? - arrays should really be unrolled in an AST pass...
-
-# # Ensure that all output pointers are written to.
-# surface_area_parameters = sorted(self.surface_area_parameters)
-# for variable, pointer in self.pointers.items():
-#     if pointer.conductance and variable not in self.breakpoint_block.assigned:
-#         if variable in surface_area_parameters:
-#             idx = surface_area_parameters.index(variable)
-#             self.breakpoint_block.statements.append(
-#                     _AssignStatement(variable, variable, pointer=pointer))
 
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
@@ -991,7 +976,13 @@ class _CodeGen:
             eprint("locals():", repr(locals_))
             raise
 
-if __name__ == "__main__":
-    for name, (nmodl_file_path, kwargs) in sorted(library.items()):
-        print("ATTEMPTING:", name)
-        new_mechanism = NmodlMechanism(nmodl_file_path, **kwargs)
+# TODO: support for arrays? - arrays should really be unrolled in an AST pass...
+
+# TODO: Ensure that all output pointers are written to.
+# surface_area_parameters = sorted(self.surface_area_parameters)
+# for variable, pointer in self.pointers.items():
+#     if pointer.conductance and variable not in self.breakpoint_block.assigned:
+#         if variable in surface_area_parameters:
+#             idx = surface_area_parameters.index(variable)
+#             self.breakpoint_block.statements.append(
+#                     _AssignStatement(variable, variable, pointer=pointer))

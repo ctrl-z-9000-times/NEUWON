@@ -18,41 +18,6 @@ different and specialized things.
 
 # TODO: repr & str formatting
 
-# TODO: Consider reworking the sparse-matrix-write arguments to access so that
-# the user can do more things:
-#       1) Write rows.
-#       2) Add coordinates.
-#       3) Overwrite the matrix? Are scipy.sparse.CSR immutable?
-
-# TODO: Grid Archetypes
-#   Design the API:
-#   Consider making two new components, which would be auto-magically updated:
-#   -> Attribute coordinates of entity.
-#   -> Function Nearest neighbor to convert coordinates to entity index.
-# >>> assert(len(grid) == 3 and all(x > 0 for x in grid))
-
-
-# TODO: Add a widget for getting the data as a fraction of its range, using the
-# optionally given "bounds". This would be really useful for making color maps
-# of simulations. It could automatically scale my voltages into a nice viewable
-# [0-1] range ready to be rendered. If data does not have bounds then raise
-# exception.
-
-# TODO: Entity.read() should make an effort to follow references, in the
-# situation where the requested data is not associated with the same archetype.
-# This is a major quality-of-life improvement for working with the Entity API.
-# 
-# I want to make this example work:
-#       probe.read("hh/data/m")
-# 
-# Instead, Right now I have to do:
-#        hh_idx = np.nonzero(self.model.access("hh/insertions") == p.entity.index)[0][0]
-#        m = self.model.access("hh/data/m")[hh_idx]
-# 
-# This would not have to work in every conceivable situation, but 99% of the
-# time it just needs to follow a basic reference or search for an index, and it
-# should balk if the situation is ambiguous.
-
 import cupy
 import cupyx.scipy.sparse
 import numpy as np
@@ -280,6 +245,7 @@ class Database:
             if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
 
     def __repr__(self, is_str=False):
+        """ Brief summary of database contents. """
         f = str if is_str else repr
         s = ""
         case_insensitive = lambda kv_pair: kv_pair[0].lower()
@@ -296,6 +262,7 @@ class Database:
         return s
 
     def __str__(self):
+        """ Documentation string describing database contents. """
         return self.__repr__(is_str=True)
 
 class Entity:
@@ -482,7 +449,7 @@ class _Attribute(_Component):
         _Component.check_data(self, database, self.access(database), reference=self.reference)
 
     def __repr__(self):
-        s = "%s is an array"%self.name
+        s = "%s is %s attribute"%(self.name, str(self.dtype))
         # TODO: There are a lot of flags to print here:
         #       shape
         #       dtype
@@ -594,3 +561,37 @@ class _LinearSystem(_Component):
         else:
             s += ", nnz/row %g"%(self.data.nnz / self.data.shape[0])
         return s
+
+# TODO: Consider reworking the sparse-matrix-write arguments to access so that
+# the user can do more things:
+#       1) Write rows.
+#       2) Add coordinates.
+#       3) Overwrite the matrix? Are scipy.sparse.CSR immutable?
+
+# TODO: Grid Archetypes
+#   Design the API:
+#   Consider making two new components, which would be auto-magically updated:
+#   -> Attribute coordinates of entity.
+#   -> Function Nearest neighbor to convert coordinates to entity index.
+# >>> assert(len(grid) == 3 and all(x > 0 for x in grid))
+
+# TODO: Add a widget for getting the data as a fraction of its range, using the
+# optionally given "bounds". This would be really useful for making color maps
+# of simulations. It could automatically scale my voltages into a nice viewable
+# [0-1] range ready to be rendered. If data does not have bounds then raise
+# exception.
+
+# TODO: Entity.read() should make an effort to follow references, in the
+# situation where the requested data is not associated with the same archetype.
+# This is a major quality-of-life improvement for working with the Entity API.
+# 
+# I want to make this example work:
+#       probe.read("hh/data/m")
+# 
+# Instead, Right now I have to do:
+#        hh_idx = np.nonzero(self.model.access("hh/insertions") == p.entity.index)[0][0]
+#        m = self.model.access("hh/data/m")[hh_idx]
+# 
+# This would not have to work in every conceivable situation, but 99% of the
+# time it just needs to follow a basic reference or search for an index, and it
+# should balk if the situation is ambiguous.
