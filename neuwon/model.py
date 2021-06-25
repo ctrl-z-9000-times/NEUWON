@@ -889,12 +889,12 @@ class _InjectedCurrents:
         self.remaining = []
 
     def advance(self, database):
-        time_step = database.access("time_step") / 1000
+        time_step = database.access("time_step")
         capacitances = database.access("membrane/capacitances")
         voltages = database.access("membrane/voltages")
         for idx, (amps, location, t) in enumerate(
                 zip(self.currents, self.locations, self.remaining)):
-            dv = amps * min(time_step, t) / capacitances[location]
+            dv = amps * min(time_step, t)/1000 / capacitances[location]
             voltages[location] += dv
             self.remaining[idx] -= time_step
         keep = [t > 0 for t in self.remaining]

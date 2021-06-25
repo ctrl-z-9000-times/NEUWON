@@ -192,7 +192,7 @@ Simulated action potential propagating through a single long axon with Hodgkin-
 Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
 the action potential. The axon terminates after 1000 μm which slightly alters
 the dynamics near that point."""
-    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=5e-3,)
+    x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-3,)
     colors = 'k purple b g y r'.split()
     plt.figure("AP Propagation")
     soma_coords = x.soma[-1].coordinates
