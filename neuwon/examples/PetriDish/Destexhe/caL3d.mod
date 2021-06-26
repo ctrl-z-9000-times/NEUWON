@@ -23,7 +23,7 @@ EXPERIMENT
     TECHNIQUE     : slices, whole-cell
     RECORDING METHOD  : voltage-clamp
     TEMPERATURE   : 20-22
- 
+
 Reference:
    Destexhe, A., Mainen, Z.F. and Sejnowski, T.J. Synthesis of models for
    excitable membranes, synaptic transmission and neuromodulation using a 
@@ -46,7 +46,7 @@ UNITS {
     (pS) = (picosiemens)
     (um) = (micron)
     (mM) = (milli/liter)
-} 
+}
 
 PARAMETER {
     p    = 0.2e-6   (S/cm2)      : max permeability
@@ -75,12 +75,12 @@ BREAKPOINT {
     rates(v)
     SOLVE kstates METHOD cnexp
     gca = O * p
-} 
+}
 
 KINETIC kstates {
     ~ C <-> O   (a,b)
     CONSERVE C + O = 1
-}   
+}
 
 PROCEDURE rates(v(mV)) {
     tadj = q10 ^ ((celsius - temp)/10 (degC))

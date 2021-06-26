@@ -367,8 +367,8 @@ class _Archetype(_DocString):
         self.kd_trees = []
 
     def __repr__(self):
-        s = self.name
-        if self.size: s += "\n%d instances."%self.size
+        s = "Archetype " + self.name
+        if self.size: s += "  %d instances"%self.size
         return s
 
     def invalidate(self):
@@ -385,7 +385,7 @@ class _Global_Constant(_Component):
         return self.value
 
     def __repr__(self):
-        return "Constant  %s = %s"%(self.name, str(self.value))
+        return "Constant  %s  = %s"%(self.name, str(self.value))
 
 class _Function(_Component):
     def __init__(self, database, name, doc, function):
@@ -447,8 +447,8 @@ class _Attribute(_Component):
         _Component.check_data(self, database, self.access(database), reference=self.reference)
 
     def __repr__(self):
-        s = "Attribute " + self.name + " "
-        if self.reference: s += "ref: " + self.reference.name
+        s = "Attribute " + self.name + "  "
+        if self.reference: s += "ref:" + self.reference.name
         elif isinstance(self.dtype, np.dtype): s += self.dtype.name
         elif isinstance(self.dtype, type): s += self.dtype.__name__
         else: s += type(self.dtype).__name__
@@ -498,8 +498,8 @@ class _Sparse_Matrix(_Component):
         _Component.check_data(self, database, self.data.data, reference=self.reference)
 
     def __repr__(self):
-        s = "Matrix    " + self.name + " "
-        if self.reference: s += "ref: " + self.reference.name
+        s = "Matrix    " + self.name + "  "
+        if self.reference: s += "ref:" + self.reference.name
         elif isinstance(self.dtype, np.dtype): s += self.dtype.name
         elif isinstance(self.dtype, type): s += self.dtype.__name__
         else: s += type(self.dtype).__name__
@@ -534,7 +534,7 @@ class _KD_Tree(_Component):
         return self.tree
 
     def __repr__(self):
-        return "KD Tree   %s"%self.name
+        return "KD Tree   " + self.name
 
 class _LinearSystem(_Component):
     def __init__(self, database, name, doc, function, epsilon, allow_invalid):
@@ -565,11 +565,11 @@ class _LinearSystem(_Component):
         _Component.check_data(self, database, self.access(database).get().data)
 
     def __repr__(self):
-        s = "Linear    %s linear diff-eq"%self.name
+        s = "Linear    " + self.name + "  "
         if self.data is None:
-            s += ", invalid."
+            s += "invalid"
         else:
-            s += ", nnz/row %g"%(self.data.nnz / self.data.shape[0])
+            s += "nnz/row: %g"%(self.data.nnz / self.data.shape[0])
         return s
 
 # TODO: str formatting
