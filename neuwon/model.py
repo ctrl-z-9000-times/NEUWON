@@ -365,7 +365,6 @@ class Model:
         db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
                 0 - Sphere
                 1 - Cylinder
-                2 - Frustum
 
                 Note: only and all root segments are spheres. """)
         db.add_attribute("membrane/primary", dtype=np.bool, doc="""
@@ -482,7 +481,7 @@ class Model:
         Argument parents:
         Argument coordinates:
         Argument diameters:
-        Argument shape: either "cylinder", "frustum".
+        Argument shape: must be "cylinder".
         Argument shells: unimplemented.
         Argument maximum_segment_length
 
@@ -503,7 +502,6 @@ class Model:
         if not isinstance(diameters, Iterable):
             diameters = np.full(len(parents), diameters, dtype=Real)
         if   shape == "cylinder":   shape = np.full(len(parents), 1, dtype=np.uint8)
-        elif shape == "frustum":    shape = np.full(len(parents), 2, dtype=np.uint8)
         else: raise ValueError("Invalid argument 'shape'")
         shape[parents == NULL] = 0 # Shape of root is always sphere.
         # This method only deals with the "maximum_segment_length" argument and
@@ -631,8 +629,6 @@ class Model:
                 l = lengths[idx]
                 if shape == 1: # Cylinder.
                     s_areas[idx] = np.pi * d * l
-                elif shape == 2: # Frustum.
-                    s_areas[idx] = 1/0
                 # Account for the surface area on the tips of terminal/leaf segments.
                 if children.getrow(idx).getnnz() == 0:
                     s_areas[idx] += _area_circle(d)
@@ -646,8 +642,6 @@ class Model:
             else:
                 if shape == 1: # Cylinder.
                     x_areas[idx] = _area_circle(d)
-                elif shape == 2: # Frustum.
-                    x_areas[idx] = 1/0
         # Compute intracellular volumes.
         for idx in membrane_idx:
             p = parents[idx]
@@ -659,8 +653,6 @@ class Model:
             else:
                 if shape == 1: # Cylinder.
                     volumes[idx] = 1000 * np.pi * (d/2) ** 2 * l
-                elif shape == 2: # Frustum.
-                    volumes[idx] = 1/0
         # Compute passive electric properties
         Ra       = self.cytoplasmic_resistance
         r        = access("membrane/axial_resistances")
