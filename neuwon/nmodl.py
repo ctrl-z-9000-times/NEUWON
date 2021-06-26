@@ -127,35 +127,43 @@ class NmodlMechanism(Reaction):
 
     def _gather_IO(self, parser):
         """ Determine what external data the mechanism accesses. """
-        if "v" in self.breakpoint_block.arguments:
+        all_args = self.breakpoint_block.arguments + self.initial_block.arguments
+        if "v" in all_args:
             _Pointer.update(self, "v", read="membrane/voltages")
+        if "area" in all_args:
+            _Pointer.update(self, "area", read="membrane/surface_areas")
+        if "volume" in all_args:
+            _Pointer.update(self, "volume", read="membrane/inside/volumes")
         for x in parser.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
-            equilibrium = 'e' + ion
-            current = 'i' + ion
-            conductance = 'g' + ion
-            inside = ion + 'i'
-            outside = ion + 'o'
+            equilibrium = ('e' + ion,)
+            current     = ('i' + ion,)
+            conductance = ('g' + ion,)
+            inside  = (ion + 'i', ion + '_inside',)
+            outside = (ion + 'o', ion + '_outside',)
             for y in x.readlist:
                 var_name = y.name.value.eval()
-                if var_name == equilibrium:
+                if var_name in equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
-                elif var_name == inside:
+                elif var_name in inside:
                     _Pointer.update(self, var_name, read="membrane/inside/concentrations/%s"%ion)
-                elif var_name == outside:
+                elif var_name in outside:
                     _Pointer.update(self, var_name, read="outside/concentrations/%s"%ion)
                 else: raise ValueError("Unrecognized species READ: \"%s\"."%var_name)
             for y in x.writelist:
                 var_name = y.name.value.eval()
-                if var_name == current:
+                if var_name in current:
                     raise NotImplementedError(var_name)
-                elif var_name == conductance:
-                    _Pointer.update(self, var_name, write="membrane/conductances/%s"%ion, accumulate=True)
-                elif var_name == inside:
-                    _Pointer.update(self, var_name, write="membrane/inside/release_rates/%s"%ion, accumulate=True)
-                elif var_name == outside:
-                    _Pointer.update(self, var_name, write="outside/release_rates/%s"%ion, accumulate=True)
+                elif var_name in conductance:
+                    _Pointer.update(self, var_name,
+                            write="membrane/conductances/%s"%ion, accumulate=True)
+                elif var_name in inside:
+                    _Pointer.update(self, var_name,
+                            write="membrane/inside/delta_concentrations/%s"%ion, accumulate=True)
+                elif var_name in outside:
+                    _Pointer.update(self, var_name,
+                            write="outside/delta_concentrations/%s"%ion, accumulate=True)
                 else: raise ValueError("Unrecognized species WRITE: \"%s\"."%var_name)
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()

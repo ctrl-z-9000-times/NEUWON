@@ -17,13 +17,6 @@ from scipy.sparse.linalg import expm
 # complicated, but it should make the users code simpler and more intuitive.
 # Also, if I do this then I can get rid of a lot of nmodl shims...
 
-# TODO: How to write species derivatives? as concentrations or absolute amounts?
-#       Either way, my current code is broken BC of it.
-
-# TODO: Consider forcing the reaction to integrate species derivates? Would
-# probably be way more accurate than the forward euler which I'm currently
-# doing...
-
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 
@@ -115,14 +108,13 @@ class Species:
         self.outside_decay_period   = float(outside_decay_period)
         self.use_shells             = bool(use_shells)
         self.inside_archetype       = "inside" if self.use_shells else "membrane/inside"
-        self.outside_grid           = tuple(float(x) for x in outside_grid) if outside_grid else None
+        self.outside_grid           = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
         assert(self.inside_concentration  >= 0.0)
         assert(self.outside_concentration >= 0.0)
         assert(self.inside_diffusivity    >= 0)
         assert(self.outside_diffusivity   >= 0)
         assert(self.inside_decay_period   > 0.0)
         assert(self.outside_decay_period  > 0.0)
-        if self.use_shells: assert(self.inside_diffusivity > 0.0)
         if self.inside_global_const:  assert self.inside_decay_period == np.inf
         if self.inside_global_const:  assert not self.use_shells
         if self.outside_global_const: assert self.outside_decay_period == np.inf
@@ -133,27 +125,27 @@ class Species:
     def _initialize(self, database):
         db = database
         concentrations_doc = "Units: millimolar"
-        release_rates_doc = "Units: millimolar / second"
+        delta_concentrations_doc = "Units: millimolar / timestep"
         reversal_potentials_doc = "Units:"
         conductances_doc = "Units: siemens"
-        if self.inside_diffusivity == 0.0:
+        if self.inside_global_const:
             db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
                     self.inside_concentration, doc=concentrations_doc)
         else:
             db.add_attribute(self.inside_archetype+"/concentrations/" + self.name,
                     initial_value=self.inside_concentration, doc=concentrations_doc)
-            db.add_attribute(self.inside_archetype+"/release_rates/" + self.name,
-                    initial_value=0.0, doc=release_rates_doc)
+            db.add_attribute(self.inside_archetype+"/delta_concentrations/" + self.name,
+                    initial_value=0.0, doc=delta_concentrations_doc)
             db.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
                     function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
-        if self.outside_diffusivity == 0.0:
+        if self.outside_global_const:
             db.add_global_constant("outside/concentrations/" + self.name,
                     self.outside_concentration, doc=concentrations_doc)
         else:
             db.add_attribute("outside/concentrations/" + self.name,
                     initial_value=self.outside_concentration, doc=concentrations_doc)
-            db.add_attribute("outside/release_rates/" + self.name,
-                    initial_value=0.0, doc=release_rates_doc)
+            db.add_attribute("outside/delta_concentrations/" + self.name,
+                    initial_value=0.0, doc=delta_concentrations_doc)
             db.add_linear_system("outside/diffusions/" + self.name,
                     function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
@@ -777,9 +769,8 @@ class Model:
         integral_v  = dt * driving_voltages - diff_v * exponent * alpha
         # Calculate the transmembrane ion flows.
         for s in self.species.values():
-            if not s.transmembrane: continue
-            if s.inside_diffusivity == 0 and s.outside_diffusivity == 0: continue
-            assert s.charge != 0, s.name
+            if not (s.transmembrane and s.charge != 0): continue
+            if s.inside_global_const and s.outside_global_const: continue
             reversal_potential = access("membrane/reversal_potentials/"+s.name)
             g = access("membrane/conductances/"+s.name)
             moles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
@@ -793,18 +784,18 @@ class Model:
             if s.outside_diffusivity != 0:
                 volumes = access("outside/volumes")
                 s.outside.concentrations -= moles / self.geometry.outside_volumes
-        # Update chemical concentrations: release rates and diffusion.
+        # Update chemical concentrations with local changes and diffusion.
         for s in self.species.values():
-            if s.inside_diffusivity != 0:
+            if not s.inside_global_const:
                 x    = access("membrane/inside/concentrations/"+s.name)
-                rr   = access("membrane/inside/release_rates/"+s.name)
+                rr   = access("membrane/inside/delta_concentrations/"+s.name)
                 irm  = access("membrane/inside/diffusions/"+s.name)
-                x[:] = irm.dot(cp.maximum(0, x + rr * dt))
-            if s.outside_diffusivity != 0:
+                x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+            if not s.outside_global_const:
                 x    = access("outside/concentrations/"+s.name)
-                rr   = access("outside/release_rates/"+s.name)
+                rr   = access("outside/delta_concentrations/"+s.name)
                 irm  = access("outside/diffusions/"+s.name)
-                x[:] = irm.dot(cp.maximum(0, x + rr * dt))
+                x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
     def _advance_reactions(self):
         access = self.db.access
@@ -812,9 +803,9 @@ class Model:
             if species.transmembrane:
                 access("membrane/conductances/"+name).fill(0.0)
             if species.inside_diffusivity != 0.0:
-                access(species.inside_archetype + "/release_rates/"+name).fill(0.0)
+                access(species.inside_archetype + "/delta_concentrations/"+name).fill(0.0)
             if species.outside_diffusivity != 0.0:
-                access("outside/release_rates/"+name).fill(0.0)
+                access("outside/delta_concentrations/"+name).fill(0.0)
         for name, r in self.reactions.items():
             try:
                 r.advance(access)
