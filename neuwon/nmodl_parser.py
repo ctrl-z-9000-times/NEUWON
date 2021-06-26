@@ -11,7 +11,7 @@ import os.path
 ANT = nmodl.ast.AstNodeType
 
 class _NmodlParser:
-    """ Attributes: visitor, lookup, and symbols.
+    """ Attributes: filename, visitor, lookup, and symbols.
 
     Keep all references to the "nmodl" library separate from the main classes
     for clean & easy deletion. The nmodl library is implemented in C++ and as
@@ -53,6 +53,7 @@ class _NmodlParser:
         return (name, title, description)
 
     def gather_states(self):
+        """ Returns sorted list the names of the states. """
         return sorted(v.get_name() for v in
                 self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
 
@@ -63,6 +64,7 @@ class _NmodlParser:
         return units
 
     def gather_parameters(self):
+        """ Returns dictionary of name -> (value, units). """
         parameters = {}
         for assign_stmt in self.lookup(ANT.PARAM_ASSIGN):
             name  = str(self.visitor.lookup(assign_stmt, ANT.NAME)[0].get_node_name())
@@ -80,8 +82,8 @@ class _NmodlParser:
             return cls.parse_expression(AST.expression)
         if AST.is_integer():  return sympy.Integer(AST.eval())
         if AST.is_double():   return sympy.Float(AST.eval(), 18)
-        if AST.is_name():     return sympy.symbols(AST.get_node_name())
-        if AST.is_var_name(): return sympy.symbols(AST.name.get_node_name())
+        if AST.is_name():     return sympy.symbols(AST.get_node_name(), real=True)
+        if AST.is_var_name(): return sympy.symbols(AST.name.get_node_name(), real=True)
         if AST.is_unary_expression():
             op = AST.op.eval()
             if op == "-": return - cls.parse_expression(AST.expression)

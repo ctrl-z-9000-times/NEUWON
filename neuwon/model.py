@@ -20,6 +20,10 @@ from scipy.sparse.linalg import expm
 # TODO: How to write species derivatives? as concentrations or absolute amounts?
 #       Either way, my current code is broken BC of it.
 
+# TODO: Consider forcing the reaction to integrate species derivates? Would
+# probably be way more accurate than the forward euler which I'm currently
+# doing...
+
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 
