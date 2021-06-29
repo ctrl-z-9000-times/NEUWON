@@ -291,6 +291,10 @@ class Database:
             s += "* [%s](%s)\n"%(name, obj._markdown_link())
         return s
 
+    def browse_docs(self):
+        from subprocess import run, PIPE
+        grip = run(["grip", "--browser", "-"], input=bytes(str(self.model), encoding='utf8'))
+
 class Entity:
     """ A persistent handle on an entity.
 
@@ -315,15 +319,15 @@ class Entity:
 
     def read(self, component_name):
         """ """
-        archetype = self.database._get_archetype(component_name)
-        assert(archetype == self.archetype)
-        component = self.database.components[str(component_name)]
+        component_name = str(component_name)
+        assert(self.database._get_archetype(component_name) == self.archetype)
+        component = self.database.components[component_name]
         data = component.access(self.database)
         if isinstance(data, Iterable): data = data[self.index]
         if hasattr(data, "get"): data = data.get()
-        if getattr(component, "reference", False): data = int(data)
-        # TODO: Clean the data into a python type, if able. Otherwise numpy or
-        # cupy will wrap it in extra type info like "np.float64"...
+        if isinstance(component, _Attribute):
+            if component.reference: return int(data)
+            if component.shape == (1,): return float(data)
         return data
 
     def write(self, component, value):
@@ -523,7 +527,7 @@ class _Attribute(_Component):
     def __repr__(self):
         s = "Attribute " + self.name + "  "
         if self.reference: s += "ref:" + self.reference.name
-        else: s += self._dtype_name(self.dtype)
+        else: s += self._dtype_name()
         if self.shape != (1,): s += repr(list(self.shape))
         if self.allow_invalid:
             if self.reference: s += " (maybe NULL)"
