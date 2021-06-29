@@ -54,16 +54,16 @@ class Database:
                 return ark
         raise ValueError("Name must begin with an archetype name.")
 
-    def add_global_constant(self, name, value: float, doc="",
+    def add_global_constant(self, name, value: float, doc="", units=None,
                 allow_invalid=False, bounds=(None, None),):
         """ Add a singular floating-point value. """
-        _Global_Constant(self, name, doc, value, allow_invalid=allow_invalid, bounds=bounds,)
+        _Global_Constant(self, name, doc, units, value, allow_invalid=allow_invalid, bounds=bounds,)
 
     def add_function(self, name, function: Callable, doc=""):
         """ Add a callable function. """
         _Function(self, name, doc, function)
 
-    def add_attribute(self, name, doc="", dtype=Real, shape=(1,), initial_value=None,
+    def add_attribute(self, name, doc="", units=None, dtype=Real, shape=(1,), initial_value=None,
                 allow_invalid=False, bounds=(None, None),):
         """ Add a piece of data to an Archetype. Every Entity will be allocated
         one instance of this attribute.
@@ -86,10 +86,10 @@ class Database:
             Destroying entities can cause a recursive destruction of multiple other
             entities.
         """
-        _Attribute(self, name, doc, dtype=dtype, shape=shape, initial_value=initial_value,
+        _Attribute(self, name, doc, units, dtype=dtype, shape=shape, initial_value=initial_value,
                 allow_invalid=allow_invalid, bounds=bounds,)
 
-    def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="",
+    def add_sparse_matrix(self, name, column_archetype, dtype=Real, doc="", units=None,
                 allow_invalid=False, bounds=(None, None),):
         """ Add a sparse matrix which is indexed by Entities.
         This is useful for implementing any-to-any connections between entities.
@@ -100,7 +100,7 @@ class Database:
 
         Argument name: determines the archetype for the row.
         """
-        _Sparse_Matrix(self, name, doc, dtype=dtype, initial_value=0,
+        _Sparse_Matrix(self, name, doc, units=units, dtype=dtype, initial_value=0,
                 column_archetype=column_archetype, allow_invalid=allow_invalid, bounds=bounds,)
 
     def add_kd_tree(self, name, coordinates_attribute, doc=""):
@@ -118,7 +118,7 @@ class Database:
         The database computes the propagator matrix but does not apply it.
         The matrix is updated after any of the entity are created or destroyed.
         """
-        _LinearSystem(self, name, doc, function, epsilon=epsilon, allow_invalid=allow_invalid)
+        _Linear_System(self, name, doc, function, epsilon=epsilon, allow_invalid=allow_invalid)
 
     def create_entity(self, archetype_name, number_of_instances = 1, return_entity=True) -> list:
         """ Create instances of an archetype.
@@ -242,26 +242,54 @@ class Database:
                 except Exception as x: exceptions.append(str(x))
             if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
 
-    def __repr__(self, is_str=False):
+    def __repr__(self):
         """ Brief summary of database contents. """
-        f = str if is_str else repr
         s = ""
         case_insensitive = lambda kv_pair: kv_pair[0].lower()
-        for comp_name, comp in sorted(self.components.items(), key=case_insensitive):
+        components = sorted(self.components.items(), key=case_insensitive)
+        archetypes = sorted(self.archetypes.items(), key=case_insensitive)
+        for comp_name, comp in components:
             try: self._get_archetype(comp_name)
             except ValueError:
-                s += f(comp) + "\n"
-        for ark_name, ark in sorted(self.archetypes.items(), key=case_insensitive):
+                s += repr(comp) + "\n"
+        for ark_name, ark in archetypes:
             s += "=" * 80 + "\n"
-            s += f(ark) + "\n"
-            for comp_name, comp in sorted(self.components.items(), key=case_insensitive):
+            s += repr(ark) + "\n"
+            for comp_name, comp in components:
                 if not comp_name.startswith(ark_name): continue
-                s += f(comp) + "\n"
+                s += repr(comp) + "\n"
         return s
 
     def __str__(self):
-        """ Documentation string describing database contents. """
-        return self.__repr__(is_str=True)
+        """ Return documentation of the database schema in Markdown format. """
+        case_insensitive = lambda kv_pair: kv_pair[0].lower()
+        components = sorted(self.components.items(), key=case_insensitive)
+        archetypes = sorted(self.archetypes.items(), key=case_insensitive)
+        s  = "## Table of Contents\n"
+        s += "* [Components Without Archetypes](#components-without-archetypes)\n"
+        for name, obj in archetypes:
+            s += "* [Archetype: %s](%s)\n"%(name, obj._markdown_link())
+        s += "* [Index](#index)\n"
+        s += "---\n## Components Without Archetypes\n"
+        for name, obj in components:
+            try: self._get_archetype(name)
+            except ValueError:
+                s += str(obj) + "\n"
+        for ark_name, ark in archetypes:
+            s += str(ark) + "\n"
+            s += "Components:\n"
+            for comp_name, comp in components:
+                if not comp_name.startswith(ark_name): continue
+                s += "* [%s](%s)\n"%(comp_name, comp._markdown_link())
+            s += "\n"
+            for comp_name, comp in components:
+                if not comp_name.startswith(ark_name): continue
+                s += str(comp) + "\n"
+        s += "---\n"
+        s += "## Index\n"
+        for name, obj in sorted(archetypes + components):
+            s += "* [%s](%s)\n"%(name, obj._markdown_link())
+        return s
 
 class Entity:
     """ A persistent handle on an entity.
@@ -313,23 +341,29 @@ class _DocString:
     def _class_name(self):
         return type(self).__name__.replace("_", " ").strip()
 
+    def _markdown_header(self):
+        return "%s: %s"%(self._class_name(), self.name)
+
+    def _markdown_link(self):
+        name = "#" + self._markdown_header()
+        substitutions = (
+            (":", ""),
+            ("/", ""),
+            (" ", "-"),
+        )
+        for x in substitutions: name = name.replace(*x)
+        return name.lower()
+
     def __str__(self):
-        indent = "    "
-        s = "%s %s\n"%(self._class_name(), repr(self))
-        if self.doc: s += textwrap.indent(self.doc, indent) + "\n"
-        if getattr(self, "_check", False):
-            if isinstance(self._check, Iterable):
-                op, extreme_value = self._check
-                s += indent + "Value %s %s\n"%(op, extreme_value)
-            else:
-                s += indent + "Value is finite.\n"
-        return s
+        anchor = "<a name=\"%s\"></a>"%self.name
+        return "%s%s\n%s\n\n"%(self._markdown_header(), anchor, self.doc)
 
 class _Component(_DocString):
-    def __init__(self, database, name, doc, allow_invalid=True, bounds=(None, None)):
+    def __init__(self, database, name, doc, units=None, allow_invalid=True, bounds=(None, None)):
         _DocString.__init__(self, name, doc)
         assert(self.name not in database.components)
         database.components[self.name] = self
+        self.units = None if units is None else str(units)
         self.allow_invalid = bool(allow_invalid)
         self.bounds = tuple((x if x is None else float(x) for x in bounds))
         if None not in self.bounds: self.bounds = tuple(sorted(self.bounds))
@@ -342,7 +376,7 @@ class _Component(_DocString):
         """ Abstract method, optional """
 
     def check_data(self, database, data, reference=False):
-        """ Helper method to interpret the check flags and dtypes. """
+        """ Helper method to interpret the check flags (allow_invalid & bounds) and dtypes. """
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
             if reference: assert xp.all(xp.less(data, reference.size)), self.name + " is NULL"
@@ -355,6 +389,42 @@ class _Component(_DocString):
         if upper_bound is not None:
             assert xp.all(xp.greater_equal(upper_bound, data)), self.name + " greater than %g"%upper_bound
 
+    def _dtype_name(self):
+        if isinstance(self.dtype, np.dtype): x = self.dtype.name
+        elif isinstance(self.dtype, type): x = self.dtype.__name__
+        else: x = type(self.dtype).__name__
+        if hasattr(self, "shape") and self.shape != (1,):
+            x += repr(list(self.shape))
+        return x
+
+    def __str__(self):
+        s = "### %s"%_DocString.__str__(self)
+        if hasattr(self, "value"):
+            s += "Value: %g"%(self.value)
+            if self.units is not None: s += " " + self.units
+            s += "\n\n"
+        elif self.units is not None: s += "Units: %s\n\n"%self.units
+        ref = getattr(self, "reference", False)
+        if ref: s += "Reference to archetype [%s](%s).\n\n"%(ref.name, ref._markdown_link())
+        if hasattr(self, "dtype") and not ref:
+            s += "Data type: %s\n\n"%(self._dtype_name(),)
+        lower_bound, upper_bound = self.bounds
+        if lower_bound is not None and upper_bound is not None:
+            s += ""
+        elif lower_bound is not None:
+            s += ""
+        elif upper_bound is not None:
+            s += ""
+        if getattr(self, "initial_value", None) is not None and not ref:
+            s += "Initial Value: %g"%(self.initial_value)
+            if self.units is not None: s += " " + self.units
+            s += "\n\n"
+        if self.allow_invalid:
+            if ref:
+                s += "Value may be NULL.\n\n"
+            else: s += "Value may be NaN.\n\n"
+        return s
+
 class _Archetype(_DocString):
     def __init__(self, name, doc, grid):
         _DocString.__init__(self, name, doc)
@@ -366,18 +436,22 @@ class _Archetype(_DocString):
         self.linear_systems = []
         self.kd_trees = []
 
+    def invalidate(self):
+        for tree in self.kd_trees: tree.invalidate()
+        for sys in self.linear_systems: sys.invalidate()
+
     def __repr__(self):
         s = "Archetype " + self.name
         if self.size: s += "  %d instances"%self.size
         return s
 
-    def invalidate(self):
-        for tree in self.kd_trees: tree.invalidate()
-        for sys in self.linear_systems: sys.invalidate()
+    def __str__(self):
+        s = "---\n## %s"%_DocString.__str__(self)
+        return s
 
 class _Global_Constant(_Component):
-    def __init__(self, database, name, doc, value, allow_invalid, bounds):
-        _Component.__init__(self, database, name, doc, allow_invalid, bounds)
+    def __init__(self, database, name, doc, units, value, allow_invalid, bounds):
+        _Component.__init__(self, database, name, doc, units, allow_invalid, bounds)
         self.value = float(value)
         _Component.check_data(self, database, np.array([self.value]))
 
@@ -390,7 +464,7 @@ class _Global_Constant(_Component):
 class _Function(_Component):
     def __init__(self, database, name, doc, function):
         if not doc and function.__doc__: doc = function.__doc__
-        _Component.__init__(self, database, name, doc)
+        _Component.__init__(self, database, name, doc, allow_invalid=False)
         self.function = function
         assert isinstance(self.function, Callable), self.name
 
@@ -401,8 +475,8 @@ class _Function(_Component):
         return "Function  %s()"%(self.name)
 
 class _Attribute(_Component):
-    def __init__(self, database, name, doc, dtype, shape, initial_value, allow_invalid, bounds):
-        _Component.__init__(self, database, name, doc, allow_invalid, bounds)
+    def __init__(self, database, name, doc, units, dtype, shape, initial_value, allow_invalid, bounds):
+        _Component.__init__(self, database, name, doc, units, allow_invalid, bounds)
         self.archetype = ark = database._get_archetype(self.name)
         ark.attributes.append(self)
         if isinstance(dtype, str):
@@ -449,9 +523,7 @@ class _Attribute(_Component):
     def __repr__(self):
         s = "Attribute " + self.name + "  "
         if self.reference: s += "ref:" + self.reference.name
-        elif isinstance(self.dtype, np.dtype): s += self.dtype.name
-        elif isinstance(self.dtype, type): s += self.dtype.__name__
-        else: s += type(self.dtype).__name__
+        else: s += self._dtype_name(self.dtype)
         if self.shape != (1,): s += repr(list(self.shape))
         if self.allow_invalid:
             if self.reference: s += " (maybe NULL)"
@@ -459,8 +531,8 @@ class _Attribute(_Component):
         return s
 
 class _Sparse_Matrix(_Component):
-    def __init__(self, database, name, doc, dtype, initial_value, column_archetype, allow_invalid, bounds):
-        _Component.__init__(self, database, name, doc, allow_invalid, bounds)
+    def __init__(self, database, name, doc, units, dtype, initial_value, column_archetype, allow_invalid, bounds):
+        _Component.__init__(self, database, name, doc, units, allow_invalid, bounds)
         self.archetype = ark = database._get_archetype(self.name)
         ark.sparse_matrixes.append(self)
         self.column_archetype = database.archetypes[str(column_archetype)]
@@ -536,9 +608,9 @@ class _KD_Tree(_Component):
     def __repr__(self):
         return "KD Tree   " + self.name
 
-class _LinearSystem(_Component):
+class _Linear_System(_Component):
     def __init__(self, database, name, doc, function, epsilon, allow_invalid):
-        _Component.__init__(self, database, name, doc, allow_invalid)
+        _Component.__init__(self, database, name, doc, allow_invalid=allow_invalid)
         self.archetype = database._get_archetype(self.name)
         self.archetype.linear_systems.append(self)
         self.function   = function
@@ -572,9 +644,7 @@ class _LinearSystem(_Component):
             s += "nnz/row: %g"%(self.data.nnz / self.data.shape[0])
         return s
 
-# TODO: str formatting
-#       Or maybe some other kind of introspection?
-#       Maybe just implement a GUI?
+# TODO: Will eventually need a getter method to get component units.
 
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:

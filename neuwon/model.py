@@ -124,46 +124,42 @@ class Species:
 
     def _initialize(self, database):
         db = database
-        concentrations_doc = "Units: millimolar"
-        delta_concentrations_doc = "Units: millimolar / timestep"
-        reversal_potentials_doc = "Units:"
-        conductances_doc = "Units: siemens"
         if self.inside_global_const:
             db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
-                    self.inside_concentration, doc=concentrations_doc)
+                    self.inside_concentration, units="millimolar")
         else:
             db.add_attribute(self.inside_archetype+"/concentrations/" + self.name,
-                    initial_value=self.inside_concentration, doc=concentrations_doc)
+                    initial_value=self.inside_concentration, units="millimolar")
             db.add_attribute(self.inside_archetype+"/delta_concentrations/" + self.name,
-                    initial_value=0.0, doc=delta_concentrations_doc)
+                    initial_value=0.0, units="millimolar / timestep")
             db.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
                     function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.outside_global_const:
             db.add_global_constant("outside/concentrations/" + self.name,
-                    self.outside_concentration, doc=concentrations_doc)
+                    self.outside_concentration, units="millimolar")
         else:
             db.add_attribute("outside/concentrations/" + self.name,
-                    initial_value=self.outside_concentration, doc=concentrations_doc)
+                    initial_value=self.outside_concentration, units="millimolar")
             db.add_attribute("outside/delta_concentrations/" + self.name,
-                    initial_value=0.0, doc=delta_concentrations_doc)
+                    initial_value=0.0, units="millimolar / timestep")
             db.add_linear_system("outside/diffusions/" + self.name,
                     function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
         if self.transmembrane:
             db.add_attribute("membrane/conductances/" + self.name,
-                    initial_value=0.0, bounds=(0, np.inf), doc=conductances_doc)
+                    initial_value=0.0, bounds=(0, np.inf), units="Siemens")
             if isinstance(self.reversal_potential, float):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
-                        self.reversal_potential, doc=reversal_potentials_doc)
+                        self.reversal_potential, units="mV")
             elif (self.inside_global_const and self.outside_global_const
                     and self.reversal_potential == "nerst"):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         self._nerst_potential(db.access("T"),
                                 self.inside_concentration / 1000,
                                 self.outside_concentration / 1000),
-                        doc=reversal_potentials_doc)
+                        units="mV")
             else:
                 db.add_attribute("membrane/reversal_potentials/" + self.name,
-                        doc=reversal_potentials_doc)
+                        units="mV")
 
     def _reversal_potential(self, access):
         x = access("membrane/reversal_potentials/" + self.name)
@@ -327,9 +323,9 @@ class Model:
 
         # TODO: Rename "db" to the full "database", add method model.get_database().
         self.db = db = Database()
-        db.add_global_constant("time_step", float(time_step), doc="Units: Milliseconds")
+        db.add_global_constant("time_step", float(time_step), units="milliseconds")
         db.add_global_constant("celsius", float(celsius))
-        db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature in Kelvins.")
+        db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature", units="Kelvins")
         db.add_function("create_segment", self.create_segment)
         db.add_function("destroy_segment", self.destroy_segment)
         self._initialize_database_membrane(db)
@@ -355,30 +351,24 @@ class Model:
         db.add_attribute("membrane/parents", dtype="membrane", allow_invalid=True,
                 doc="Cell membranes are connected in a tree.")
         db.add_sparse_matrix("membrane/children", "membrane", dtype=np.bool, doc="")
-        db.add_attribute("membrane/coordinates", shape=(3,), doc="Units: ")
-        db.add_attribute("membrane/diameters", bounds=(0.0, np.inf), doc="""
-                Units: """)
+        db.add_attribute("membrane/coordinates", shape=(3,), units="μm")
+        db.add_attribute("membrane/diameters", bounds=(0.0, np.inf), units="μm")
         db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
                 0 - Sphere
                 1 - Cylinder
 
                 Note: only and all root segments are spheres. """)
         db.add_attribute("membrane/primary", dtype=np.bool, doc="""
-
                 Primary segments are straightforward extensions of the parent
                 branch. Non-primary segments are lateral branches off to the side of
                 the parent branch.  """)
-
-        db.add_attribute("membrane/lengths", doc="""
+        db.add_attribute("membrane/lengths", units="μm", doc="""
                 The distance between each node and its parent node.
-                Root node lengths are their radius.\n
-                Units: Meters""", initial_value=np.nan)
-        db.add_attribute("membrane/surface_areas", bounds=(epsilon * (1e-6)**2, np.inf), doc="""
-                Units: Meters ^ 2""", initial_value=np.nan)
-        db.add_attribute("membrane/cross_sectional_areas", doc="Units: Meters ^ 2",
+                Root node lengths are their radius.\n""")
+        db.add_attribute("membrane/surface_areas", bounds=(epsilon * (1e-6)**2, np.inf), units="μm²")
+        db.add_attribute("membrane/cross_sectional_areas", units="μm²",
                 bounds = (epsilon * (1e-6)**2, np.inf))
-        db.add_attribute("membrane/inside/volumes", bounds=(epsilon * (1e-6)**3, np.inf), doc="""
-                Units: Liters""")
+        db.add_attribute("membrane/inside/volumes", bounds=(epsilon * (1e-6)**3, np.inf), units="Liters")
 
     def _initialize_database_inside(self, db):
         db.add_archetype("inside", doc="Intracellular space.")
@@ -393,23 +383,23 @@ class Model:
         db.add_attribute("inside/volumes",
                 # bounds=(epsilon * (1e-6)**3, np.inf),
                 allow_invalid=True,
-                doc="""Units: Liters""")
+                units="Liters")
         db.add_sparse_matrix("inside/neighbor_distances", "inside")
         db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
 
     def _initialize_database_outside(self, db):
         db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/outside", dtype="outside", doc="")
-        db.add_attribute("outside/coordinates", shape=(3,), doc="Units: ")
+        db.add_attribute("outside/coordinates", shape=(3,), units="μm")
         db.add_kd_tree(  "outside/tree", "outside/coordinates")
-        db.add_attribute("outside/volumes", doc="Units: Litres")
+        db.add_attribute("outside/volumes", units="Liters")
         db.add_sparse_matrix("outside/neighbor_distances", "outside")
         db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
 
     def _initialize_database_electric(self, db, initial_voltage):
         db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
-        db.add_attribute("membrane/axial_resistances", allow_invalid=True, doc="Units: ")
-        db.add_attribute("membrane/capacitances", doc="Units: Farads", bounds=(0, np.inf))
+        db.add_attribute("membrane/axial_resistances", allow_invalid=True, units="")
+        db.add_attribute("membrane/capacitances", units="Farads", bounds=(0, np.inf))
         db.add_attribute("membrane/conductances")
         db.add_attribute("membrane/driving_voltages")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
