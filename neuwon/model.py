@@ -293,7 +293,37 @@ class Reaction:
         #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
     }
 
-class Model:
+class _Clock:
+    """ Clock and notification system mix-in for the model class. """
+    def __init__(self):
+        self._ticks = 0
+        self.db.add_function("clock", self._clock)
+        self.callbacks = []
+
+    def _clock(self):
+        """ Returns the model's internal clock time, in milliseconds. """
+        return self._ticks * self.db.access("time_step")
+
+    def add_callback(self, function):
+        assert isinstance(function, Callable)
+        self.callbacks.append(function)
+
+    def reset_clock(self):
+        self._ticks = 0
+        self._call_callbacks()
+
+    def _advance_clock(self):
+        self._ticks += 1
+        self._call_callbacks()
+
+    def _call_callbacks(self):
+        for i in reversed(range(len(self.callbacks))):
+            keep_alive = self.callbacks[i](self.db.access)
+            if not keep_alive:
+                self.callbacks[i] = self.callbacks[-1]
+                self.callbacks.pop()
+
+class Model(_Clock):
     def __init__(self, time_step,
             celsius = 37,
             fh_space = 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
@@ -319,11 +349,11 @@ class Model:
         self.species = {}
         self.reactions = {}
         self._injected_currents = _InjectedCurrents()
-        self.animations = set()
 
         # TODO: Rename "db" to the full "database", add method model.get_database().
         self.db = db = Database()
         db.add_global_constant("time_step", float(time_step), units="milliseconds")
+        _Clock.__init__(self)
         db.add_global_constant("celsius", float(celsius))
         db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature", units="Kelvins")
         db.add_function("create_segment", self.create_segment)
@@ -722,7 +752,7 @@ class Model:
         self._advance_species()
         self._advance_reactions()
         self._advance_species()
-        for x in self.animations: x._advance()
+        self._advance_clock()
 
     def _advance_lockstep(self):
         """ Naive integration strategy, for reference only. """
@@ -730,6 +760,7 @@ class Model:
         self._advance_species()
         self._advance_species()
         self._advance_reactions()
+        self._advance_clock()
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
@@ -951,7 +982,7 @@ class Animation:
         Argument skip: Don't render this many frames between every actual render.
         """
         self.model = model
-        model.animations.add(self)
+        model.add_callback(self._advance)
         self.color_function = color_function
         self.text_function = text_function
         self.render_args = render_args
@@ -960,6 +991,7 @@ class Animation:
         self.skip = int(skip)
         self.ticks = 0
         self.scale = scale
+        self.keep_alive = True
 
     def _advance(self):
         """
@@ -981,13 +1013,7 @@ class Animation:
                 draw = ImageDraw.Draw(img)
                 draw.text((5, 5), text, (0, 0, 0))
             img.save(self.frames[-1])
-
-    def start(self):
-        self.model.animations.add(self)
-
-    def pause(self):
-        if self in self.model.animations:
-            self.model.animations.remove(self)
+        return self.keep_alive
 
     def save(self, output_filename):
         """ Save into a GIF file that loops forever. """
@@ -998,12 +1024,7 @@ class Animation:
                 duration=int(round(dt * 1e3)), # Milliseconds per frame.
                 optimize=True, quality=0,
                 loop=0,) # Loop forever.
-
-    def stop(self, output_filename):
-        self.pause()
-        self.save(output_filename)
-        self.frames.clear()
-        self.ticks = 0
+        self.keep_alive = False
 
 @cp.fuse()
 def _area_circle(diameter):
