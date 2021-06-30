@@ -1,13 +1,13 @@
 """ Sanity tests with the Hodgkin-Huxley model
 
-The model is a single long axon with Hodgkin-Huxley channels to experiment with.
+The neuron consists of a soma and a single long axon with Hodgkin Huxley
+channels to experiment with.
 
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
 from neuwon.model import *
 import numpy as np
-import bisect
 import matplotlib.pyplot as plt
 import argparse
 
@@ -44,22 +44,30 @@ class Experiment:
         self.soma = m.create_segment(None, [0,0,0], self.soma_diameter)
         if self.length > 0:
             self.axon = m.create_segment(self.soma[-1],
-                    [0,0,self.length + self.soma_diameter],
-                    self.axon_diameter,
+                    [0,0,self.length], self.axon_diameter,
                     maximum_segment_length=self.length_step)
             self.tip = self.axon[-1]
         else:
             self.axon = []
             self.tip = self.soma[-1]
-        self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
-        m.get_reaction("hh").new_instances(m, self.soma + self.axon, scale=1)
+        self.segments = self.soma + self.axon
+        self.hh = m.get_reaction("hh").new_instances(m, self.segments, scale=1)
         self.model.advance()
         m.reset_clock()
-        self.charts = []
-        for p in self.probes:
-            x = TimeSeriesBuffer(p.entity, "membrane/voltages")
-            self.charts.append(x)
-            m.add_callback(x)
+        self.probes = []
+        self.v = []
+        self.m = []
+        for p in self.probe_locations:
+            idx = int(round(p * (len(self.segments)-1)))
+            segment = self.segments[idx]
+            hh_ent  = Entity(self.model.db, "hh", self.hh[idx])
+            self.probes.append(segment)
+            v_tracker = TimeSeriesBuffer(segment.entity, "membrane/voltages")
+            self.v.append(v_tracker)
+            self.model.add_callback(v_tracker)
+            m_tracker = TimeSeriesBuffer(hh_ent, "hh/data/m")
+            self.m.append(m_tracker)
+            self.model.add_callback(m_tracker)
         if True:
             print("Number of Locations:", len(self.model))
             sa = sum(x.read("membrane/surface_areas") for x in self.soma)
@@ -95,10 +103,7 @@ class Experiment:
         return 0
 
     def run_experiment(self):
-        self.time_stamps = []
-        self.v = [[] for _ in self.probes]
-        self.m = [[] for _ in self.probes]
-        for tick, inp in enumerate(self.input_current):
+        for inp in self.input_current:
             if inp:
                 self.soma[0].inject_current(self.stimulus, duration=1)
             if self.stagger:
@@ -106,95 +111,81 @@ class Experiment:
             else:
                 self.model._advance_lockstep()
             if False: self.model.check()
-            self.time_stamps.append((tick + 1) * self.time_step)
-            for idx, p in enumerate(self.probes):
-                self.v[idx].append(p.voltage() * 1e3)
-                hh_idx = np.nonzero(self.model.access("hh/insertions") == p.entity.index)[0][0]
-                self.m[idx].append(self.model.access("hh/data/m")[hh_idx])
 
 def analyze_accuracy():
-    caption = ""
     # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
     args = {
-        "axon_length": 4e-6,
-        "axon_diameter": 4e-6,
+        "axon_length": 0,
         "soma_diameter": 4e-6,
         "stimulus": 0.025e-9,
-        "length_step": 1e-6,
         "probes": [0],
     }
-    def make_label(x):
-        if x.stagger:
-            return "staggered, dt = %g ms"%(x.time_step)
-        else:
-            return "unstaggered, dt = %g ms"%(x.time_step)
 
-    x_1 = Experiment(time_step = 1e-3, **args)
+    gold = Experiment(time_step = 1e-3, **args)
+    gold_timestamps = gold.v[0].timestamps
 
     def measure_error(experiment):
-        error_v = []
-        error_m = []
-        for idx, t in enumerate(experiment.time_stamps):
-            v = experiment.v[0][idx]
-            m = experiment.m[0][idx]
-            loc = bisect.bisect_left(x_1.time_stamps, t, hi=len(x_1.time_stamps)-1)
-            error_v.append(abs(v - x_1.v[0][loc]))
-            error_m.append(abs(m - x_1.m[0][loc]))
+        v = experiment.v[0].interpolate(gold_timestamps)
+        m = experiment.m[0].interpolate(gold_timestamps)
+        error_v = np.abs(v - gold.v[0].timeseries)
+        error_m = np.abs(m - gold.m[0].timeseries)
         return (error_v, error_m)
 
-    def make_figure(stagger):
-        x_250 = Experiment(time_step = 300e-3, stagger=stagger, **args)
-        x_slow = Experiment(time_step = 150e-3, stagger=stagger, **args)
-        x_fast = Experiment(time_step =  75e-3, stagger=stagger, **args)
+    def make_label(x):
+        if x.stagger:   return "staggered, dt = %g ms"%(x.time_step)
+        else:           return "unstaggered, dt = %g ms"%(x.time_step)
 
-        x_250_error = measure_error(x_250)
-        x_fast_error = measure_error(x_fast)
-        x_slow_error = measure_error(x_slow)
+    def make_figure(stagger):
+        slow   = Experiment(time_step = 250e-3, stagger=stagger, **args)
+        medium = Experiment(time_step = 125e-3, stagger=stagger, **args)
+        fast   = Experiment(time_step =  62.5e-3, stagger=stagger, **args)
+
+        slow_error   = measure_error(slow)
+        medium_error = measure_error(medium)
+        fast_error   = measure_error(fast)
 
         plt.subplot(2,2,1)
-        plt.plot(x_250.time_stamps, x_250.v[0], 'r',
-                label=make_label(x_250))
-        plt.plot(x_slow.time_stamps, x_slow.v[0], 'g',
-                label=make_label(x_slow))
-        plt.plot(x_fast.time_stamps, x_fast.v[0], 'b',
-                label=make_label(x_fast))
-        plt.plot(x_1.time_stamps, x_1.v[0], 'k',
-                label=make_label(x_1))
+        plt.plot(slow.v[0].timestamps, slow.v[0].timeseries, 'r',
+                label=make_label(slow))
+        plt.plot(medium.v[0].timestamps, medium.v[0].timeseries, 'g',
+                label=make_label(medium))
+        plt.plot(fast.v[0].timestamps, fast.v[0].timeseries, 'b',
+                label=make_label(fast))
+        plt.plot(gold.v[0].timestamps, gold.v[0].timeseries, 'k',
+                label=make_label(gold))
+        gold.v[0].label_axes()
         plt.legend()
-        plt.xlabel('ms')
-        plt.ylabel('mV')
 
         plt.subplot(2,2,3)
-        plt.plot(x_250.time_stamps, x_250.m[0], 'r',
-                label=make_label(x_250))
-        plt.plot(x_slow.time_stamps, x_slow.m[0], 'g',
-                label=make_label(x_slow))
-        plt.plot(x_fast.time_stamps, x_fast.m[0], 'b',
-                label=make_label(x_fast))
-        plt.plot(x_1.time_stamps, x_1.m[0], 'k',
-                label=make_label(x_1))
+        plt.plot(slow.m[0].timestamps, slow.m[0].timeseries, 'r',
+                label=make_label(slow))
+        plt.plot(medium.m[0].timestamps, medium.m[0].timeseries, 'g',
+                label=make_label(medium))
+        plt.plot(fast.m[0].timestamps, fast.m[0].timeseries, 'b',
+                label=make_label(fast))
+        plt.plot(gold.m[0].timestamps, gold.m[0].timeseries, 'k',
+                label=make_label(gold))
         plt.legend()
-        plt.xlabel('ms')
-        plt.ylabel('m')
+        gold.m[0].label_axes()
 
         plt.subplot(2,2,2)
-        plt.plot(x_250.time_stamps, x_250_error[0], 'r',
-                label=make_label(x_250))
-        plt.plot(x_slow.time_stamps, x_slow_error[0], 'g',
-                label=make_label(x_slow))
-        plt.plot(x_fast.time_stamps, x_fast_error[0], 'b',
-                label=make_label(x_fast))
+        plt.plot(gold_timestamps, slow_error[0], 'r',
+                label=make_label(slow))
+        plt.plot(gold_timestamps, medium_error[0], 'g',
+                label=make_label(medium))
+        plt.plot(gold_timestamps, fast_error[0], 'b',
+                label=make_label(fast))
         plt.legend()
         plt.xlabel('ms')
-        plt.ylabel('|v error|')
+        plt.ylabel('|mV error|')
 
         plt.subplot(2,2,4)
-        plt.plot(x_250.time_stamps, x_250_error[1], 'r',
-                label=make_label(x_250))
-        plt.plot(x_slow.time_stamps, x_slow_error[1], 'g',
-                label=make_label(x_slow))
-        plt.plot(x_fast.time_stamps, x_fast_error[1], 'b',
-                label=make_label(x_fast))
+        plt.plot(gold_timestamps, slow_error[1], 'r',
+                label=make_label(slow))
+        plt.plot(gold_timestamps, medium_error[1], 'g',
+                label=make_label(medium))
+        plt.plot(gold_timestamps, fast_error[1], 'b',
+                label=make_label(fast))
         plt.legend()
         plt.xlabel('ms')
         plt.ylabel('|m error|')
@@ -213,17 +204,15 @@ dynamics near that point."""
     x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-3,)
     colors = 'k purple b g y r'.split()
     plt.figure("AP Propagation")
-    soma_coords = x.soma[-1].coordinates
-    for i, p in enumerate(x.probes):
+    soma_coords = x.soma[0].coordinates
+    for c, p, v_buf in zip(colors, x.probes, x.v):
         dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
-        c = x.charts[i]
-        plt.plot(c.timestamps, c.timeseries, colors[i],
+        plt.plot(v_buf.timestamps, v_buf.timeseries, c,
             label="Distance from soma: %g μm"%(dist*1e6))
+    v_buf.label_axes()
     plt.legend()
     plt.title("Action Potential Propagation")
-    plt.xlabel('ms')
     plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
-    plt.ylabel('mV')
 
 def analyze_length_step():
     x2 = Experiment(time_step=25e-3, length_step=10e-6)

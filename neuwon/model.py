@@ -297,7 +297,7 @@ class _Clock:
     """ Clock and notification system mix-in for the model class. """
     def __init__(self):
         self._ticks = 0
-        self.db.add_function("clock", self._clock)
+        self.db.add_function("clock", self._clock, units='ms')
         self.callbacks = []
 
     def _clock(self):
@@ -318,7 +318,10 @@ class _Clock:
 
     def _call_callbacks(self):
         for i in reversed(range(len(self.callbacks))):
-            keep_alive = self.callbacks[i](self.db.access)
+            try: keep_alive = self.callbacks[i](self.db.access)
+            except Exception:
+                eprint("Exception raised by "+repr(self.callbacks[i]))
+                raise
             if not keep_alive:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()
@@ -427,7 +430,7 @@ class Model(_Clock):
         db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
 
     def _initialize_database_electric(self, db, initial_voltage):
-        db.add_attribute("membrane/voltages", initial_value=float(initial_voltage))
+        db.add_attribute("membrane/voltages", initial_value=float(initial_voltage), units="mV")
         db.add_attribute("membrane/axial_resistances", allow_invalid=True, units="")
         db.add_attribute("membrane/capacitances", units="Farads", bounds=(0, np.inf))
         db.add_attribute("membrane/conductances")

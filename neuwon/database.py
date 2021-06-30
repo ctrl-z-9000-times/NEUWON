@@ -16,16 +16,18 @@ a hierarchical organization where Archetypes contain Components.
 different and specialized things.
 """
 
+from collections.abc import Callable, Iterable, Mapping
+import collections
 import cupy
 import cupyx.scipy.sparse
+import matplotlib
 import numpy as np
+import scipy.interpolate
 import scipy.sparse
 import scipy.sparse.linalg
 import scipy.spatial
 import textwrap
 import weakref
-import collections
-from collections.abc import Callable, Iterable, Mapping
 
 Real    = np.dtype('f8')
 epsilon = np.finfo(Real).eps
@@ -60,9 +62,9 @@ class Database:
         """ Add a singular floating-point value. """
         _Global_Constant(self, name, doc, units, value, allow_invalid=allow_invalid, bounds=bounds,)
 
-    def add_function(self, name, function: Callable, doc=""):
+    def add_function(self, name, function: Callable, doc="", units=None):
         """ Add a callable function. """
-        _Function(self, name, doc, function)
+        _Function(self, name, doc, units, function)
 
     def add_attribute(self, name, doc="", units=None, dtype=Real, shape=(1,), initial_value=None,
                 allow_invalid=False, bounds=(None, None),):
@@ -217,6 +219,11 @@ class Database:
         else:
             return self.components[str(component_name)].access(self)
 
+    def get_units(self, component_name):
+        return self.components[str(component_name)].units
+
+    # TODO: Consider renaming this to "get_initial_value" so that its name has a
+    # verb in it.
     def initial_value(self, component_name):
         """ """
         x = self.components[str(component_name)]
@@ -467,9 +474,9 @@ class _Global_Constant(_Component):
         return "Constant  %s  = %s"%(self.name, str(self.value))
 
 class _Function(_Component):
-    def __init__(self, database, name, doc, function):
+    def __init__(self, database, name, doc, units, function):
         if not doc and function.__doc__: doc = function.__doc__
-        _Component.__init__(self, database, name, doc, allow_invalid=False)
+        _Component.__init__(self, database, name, doc, units, allow_invalid=False)
         self.function = function
         assert isinstance(self.function, Callable), self.name
 
@@ -656,6 +663,7 @@ class TimeSeriesBuffer:
         self.component  = str(component)
         self.clock      = str(clock)
         assert isinstance(self.entity, Entity), self.entity
+        self.db         = entity.database
         self.timeseries = collections.deque(maxlen=None)
         self.timestamps = collections.deque(maxlen=None)
         self(self.entity.database.access) # Immediately record the first data point.
@@ -669,27 +677,44 @@ class TimeSeriesBuffer:
         self.timestamps.append(database_access(self.clock)())
         return True
 
-    # def axes(self, figure=None):
-    #     1/0
+    def label_axes(self, axes=None):
+        if axes is None: axes = matplotlib.pyplot.gca()
+        axes.set_ylabel(self.db.get_units(self.component))
+        axes.set_xlabel(self.db.get_units(self.clock))
+        return axes
 
-    # def plot(self, mpl_obj, *args, **kwargs):
-    #     import matplotlib
-    #     if isinstance(mpl_obj, matplotlib.axes.Axes):
-    #         self.axes = mpl_obj
-    #     elif isinstance(mpl_obj, matplotlib.figure.Figure):
-    #         self.axes = mpl_obj.axes()
-    #     elif not bool(mpl_obj):
-    #         self.fig = matplotlib.figure.Figure()
-    #         pad = .05
-    #         self.axes = self.fig.add_axes([pad,pad,1-2*pad,1-2*pad])
-    #     else: 1/0
-    #     self.axes.plot(self.timestamps, self.data, *args, **kwargs)
-    #     # plt.ylabel() # TODO: Get units from database
-    #     self.axes.set_xlabel('ms')
-    #     return self.axes
+    @property
+    def y(self):
+        """ Data samples """
+        return self.timeseries
+    @property
+    def x(self):
+        """ Timestamps """
+        return self.timestamps
 
+    def interpolate(self, timestamps):
+        """ Interpolate the value of the timeseries at the given timestamps.
+        This uses linear interpolation.
+        """
+        f = scipy.interpolate.interp1d(self.x, self.y)
+        min_t = self.timestamps[0]
+        max_t = self.timestamps[-1]
+        min_v = self.timeseries[0]
+        max_v = self.timeseries[-1]
+        results = np.empty(len(timestamps))
+        for i, t in enumerate(timestamps):
+            if   t < min_t: results[i] = min_v
+            elif t > max_t: results[i] = max_v
+            else: results[i] = f(t)
+        return results
 
-# TODO: Will eventually need a getter method to get component units. Also bounds.
+    def plot(self, show=True):
+        plt = matplotlib.pyplot
+        plt.figure(self.component)
+        plt.title("Time Series of: " + self.component)
+        self.label_axes()
+        plt.plot(self.x, self.y)
+        if show: plt.show()
 
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:

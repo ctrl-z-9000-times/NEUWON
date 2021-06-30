@@ -279,11 +279,12 @@ class NmodlMechanism(Reaction):
         database.add_attribute(self.name() + "/insertions", dtype="membrane")
         for name in self.surface_area_parameters:
             path = self.name() + "/data/" + name
-            database.add_attribute(path)
+            database.add_attribute(path, initial_value=np.nan,
+                    units=None) # TODO: Keep track of the units!
             _Pointer.update(self, name, read=path)
         for name in self.states:
             path = self.name() + "/data/" + name
-            database.add_attribute(path, initial_value=self.initial_state[name])
+            database.add_attribute(path, initial_value=self.initial_state[name], units=name)
             _Pointer.update(self, name, read=path, write=path)
 
     def _compile_breakpoint_block(self, database):
@@ -358,6 +359,7 @@ class NmodlMechanism(Reaction):
             param = database.access(self.name() + "/data/" + name)
             x = 10000 # Convert from NEUWONs m^2 to NEURONs cm^2.
             param[ent_idx] = value * scale * surface_areas * x
+        return ent_idx
 
     def advance(self, access):
         # for name, km in self.kinetic_models.items():
