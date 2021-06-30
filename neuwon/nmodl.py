@@ -692,6 +692,88 @@ class _AssignStatement:
         self.rhs = sympy.dsolve(eq, state, ics=ics).rhs.simplify()
         self.rhs = self.rhs.subs(Symbol(lhsn), Symbol(self.lhsn))
 
+    def _sympy_solve_ode(use_pade_approx=False):
+        """ Analytically integrate this derivative equation.
+
+        Optionally, the analytic result can be expanded in powers of dt,
+        and the (1,1) Pade approximant to the solution returned.
+        This approximate solution is correct to second order in dt.
+
+        Raises:
+            NotImplementedError: if the ODE is too hard, or if it fails to solve it.
+
+        Copyright (C) 2018-2019 Blue Brain Project. This method was part of the
+        NMODL library distributed under the terms of the GNU Lesser General Public License.
+        """
+        # Only try to solve ODEs that are not too hard.
+        ode_properties_require_all = {"separable"}
+        ode_properties_require_one_of = {
+            "1st_exact",
+            "1st_linear",
+            "almost_linear",
+            "nth_linear_constant_coeff_homogeneous",
+            "1st_exact_Integral",
+            "1st_linear_Integral",
+        }
+
+        x, dxdt = _sympify_diff_eq(diff_string, vars)
+        # set up differential equation d(x(t))/dt = ...
+        # where the function x_t = x(t) is substituted for the symbol x
+        # the dependent variable is a function of t
+        t = sp.Dummy("t", real=True, positive=True)
+        x_t = sp.Function("x(t)", real=True)(t)
+        diffeq = sp.Eq(x_t.diff(t), dxdt.subs({x: x_t}))
+
+        # for simple linear case write down solution in preferred form:
+        dt = sp.symbols(dt_var, real=True, positive=True)
+        solution = None
+        c1 = dxdt.diff(x).simplify()
+        if c1 == 0:
+            # constant equation:
+            # x' = c0
+            # x(t+dt) = x(t) + c0 * dt
+            solution = (x + dt * dxdt).simplify()
+        elif c1.diff(x) == 0:
+            # linear equation:
+            # x' = c0 + c1*x
+            # x(t+dt) = (-c0 + (c0 + c1*x(t))*exp(c1*dt))/c1
+            c0 = (dxdt - c1 * x).simplify()
+            solution = (-c0 / c1).simplify() + (c0 + c1 * x).simplify() * sp.exp(
+                c1 * dt
+            ) / c1
+        else:
+            # otherwise try to solve ODE with sympy:
+            # first classify ODE, if it is too hard then exit
+            ode_properties = set(sp.classify_ode(diffeq))
+            if not ode_properties_require_all <= ode_properties:
+                raise NotImplementedError("ODE too hard")
+            if len(ode_properties_require_one_of & ode_properties) == 0:
+                raise NotImplementedError("ODE too hard")
+            # try to find analytic solution, with initial condition x_t(t=0) = x
+            # (note dsolve can return a list of solutions, in which case this currently fails)
+            solution = sp.dsolve(diffeq, x_t, ics={x_t.subs({t: 0}): x})
+            # evaluate solution at x(dt), extract rhs of expression
+            solution = solution.subs({t: dt}).rhs.simplify()
+
+        if use_pade_approx:
+            # (1,1) order Pade approximant, correct to 2nd order in dt,
+            # constructed from the coefficients of 2nd order Taylor expansion
+            taylor_series = sp.Poly(sp.series(solution, dt, 0, 3).removeO(), dt)
+            _a0 = taylor_series.nth(0)
+            _a1 = taylor_series.nth(1)
+            _a2 = taylor_series.nth(2)
+            solution = (
+                (_a0 * _a1 + (_a1 * _a1 - _a0 * _a2) * dt) / (_a1 - _a2 * dt)
+            ).simplify()
+            # special case where above form gives 0/0 = NaN
+            if _a1 == 0 and _a2 == 0:
+                solution = _a0
+
+        # return result as C code in NEURON format:
+        #   - in the lhs x_0 refers to the state var at time (t+dt)
+        #   - in the rhs x_0 refers to the state var at time t
+        return f"{sp.ccode(x)} = {sp.ccode(solution.evalf())}"
+
     def _solve_crank_nicholson(self):
         dt              = sympy.Symbol("time_step", real=True, positive=True)
         init_state      = sympy.Symbol(self.lhsn)
