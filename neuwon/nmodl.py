@@ -189,9 +189,9 @@ class NmodlMechanism(Reaction):
         self.solved_blocks[block_name] = block = copy.deepcopy(block)
         for stmt in block:
             if isinstance(stmt, _AssignStatement) and stmt.derivative:
-                if stmt.lhsn in self.pointers and self.pointers[stmt.lhsn].accumulate:
-                    stmt.derivative = False # Main model will integrate, after summing derivatives across all reactions.
-                    continue
+                # if stmt.lhsn in self.pointers and self.pointers[stmt.lhsn].accumulate:
+                #     stmt.derivative = False # Main model will integrate, after summing derivatives across all reactions.
+                #     continue
                 stmt.solve()
         return block
 
@@ -672,10 +672,11 @@ class _AssignStatement:
         """ Solve this differential equation in-place. """
         assert(self.derivative)
         if False: print("SOLVE:   ", 'd/dt', self.lhsn, "=", self.rhs)
-        self._solve_sympy();
+        self._solve_sympy()
+        # self._solve_crank_nicholson()
         # try:
         # except Exception as x: eprint("Warning Sympy solver failed: "+str(x))
-        # try: self._solve_crank_nicholson(); return
+        # try: ; return
         # except Exception as x: eprint("Warning Crank-Nicholson solver failed: "+str(x))
         self.derivative = False
         if False: print("SOLUTION:", self.lhsn, '=', self.rhs)

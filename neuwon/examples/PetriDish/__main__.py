@@ -88,8 +88,8 @@ class PetriDish:
                 scale=1.0)
         rel.new_instances(m, list(self.glu_syn.presynaptic_segments),
                 scale=1.0)
-        # ampa5.new_instances(m, list(self.glu_syn.postsynaptic_segments),
-        #         scale=1.0)
+        ampa5.new_instances(m, list(self.glu_syn.postsynaptic_segments),
+                scale=1.0)
 
         self.model.check()
         if True: print(repr(self.model))

@@ -116,7 +116,7 @@ def analyze_accuracy():
     # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
     args = {
         "axon_length": 0,
-        "soma_diameter": 4e-6,
+        "soma_diameter": 5.7e-6,
         "stimulus": 0.025e-9,
         "probes": [0],
     }
@@ -215,6 +215,7 @@ dynamics near that point."""
     plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
 
 def analyze_length_step():
+    1/0 # TODO: Rewrite this to use the new TimeSeriesBuffer class.
     x2 = Experiment(time_step=25e-3, length_step=10e-6)
     x3 = Experiment(time_step=25e-3, length_step=20e-6)
     x4 = Experiment(time_step=25e-3, length_step=100e-6)
@@ -229,23 +230,6 @@ def analyze_length_step():
     plt.xlabel('ms')
     plt.ylabel('mV at axon tip (1000 μm from soma)')
 
-def analyze_axon_diameter():
-    x1 = Experiment(axon_diameter = .5e-6, stimulus=3e-9, time_step=25e-3)
-    x2 = Experiment(axon_diameter = 1e-6,  stimulus=3e-9, time_step=25e-3)
-    x3 = Experiment(axon_diameter = 2e-6,  stimulus=3e-9, time_step=25e-3)
-    x4 = Experiment(axon_diameter = 4e-6,  stimulus=3e-9, time_step=25e-3)
-    x5 = Experiment(axon_diameter = 8e-6,  stimulus=3e-9, time_step=25e-3)
-    plt.figure("Axon Diameter")
-    plt.plot(x1.time_stamps, x1.v[0], 'purple', label="Axon Diameter: %g μm"%(x1.axon_diameter*1e6))
-    plt.plot(x2.time_stamps, x2.v[0], 'b', label="Axon Diameter: %g μm"%(x2.axon_diameter*1e6))
-    plt.plot(x3.time_stamps, x3.v[0], 'g', label="Axon Diameter: %g μm"%(x3.axon_diameter*1e6))
-    plt.plot(x4.time_stamps, x4.v[0], 'y', label="Axon Diameter: %g μm"%(x4.axon_diameter*1e6))
-    plt.plot(x5.time_stamps, x5.v[0], 'r', label="Axon Diameter: %g μm"%(x5.axon_diameter*1e6))
-    plt.legend()
-    plt.title("Effect of axon diameter on AP propagation speed")
-    plt.xlabel('ms')
-    plt.ylabel('mV at axon tip (1000 μm from soma)')
-
 def animation():
     import animation
 
@@ -253,7 +237,6 @@ experiments_index = {
     "accuracy":     analyze_accuracy,
     "propagation":  analyze_propagation,
     "length":       analyze_length_step,
-    "diameter":     analyze_axon_diameter,
     "animation":    animation,
 }
 

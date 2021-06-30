@@ -668,7 +668,7 @@ class TimeSeriesBuffer:
         self.timestamps = collections.deque(maxlen=None)
         self(self.entity.database.access) # Immediately record the first data point.
 
-    def reset(self):
+    def clear(self):
         self.timeseries.clear()
         self.timestamps.clear()
 
