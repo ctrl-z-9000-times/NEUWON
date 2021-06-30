@@ -53,13 +53,30 @@ class Experiment:
             self.tip = self.soma[-1]
         self.probes = [self.axon[int(round(p * (len(self.axon)-1)))] for p in self.probe_locations]
         m.get_reaction("hh").new_instances(m, self.soma + self.axon, scale=1)
-        print("Number of Locations:", len(self.model))
-        sa = sum(x.read("membrane/surface_areas") for x in self.soma)
-        print("Soma surface area:", sa, "m^2")
-        sa += sum(x.read("membrane/surface_areas") for x in self.axon)
-        print("Total surface area:", sa, "m^2")
-        if True: self.model.advance(); print(str(self.model))
-        if True: self.model.advance(); print(repr(self.model))
+        self.model.advance()
+        m.reset_clock()
+        self.charts = []
+        for p in self.probes:
+            x = TimeSeriesBuffer(p.entity, "membrane/voltages")
+            self.charts.append(x)
+            m.add_callback(x)
+        if True:
+            print("Number of Locations:", len(self.model))
+            sa = sum(x.read("membrane/surface_areas") for x in self.soma)
+            print("Soma surface area:", sa, "m^2")
+            sa += sum(x.read("membrane/surface_areas") for x in self.axon)
+            print("Total surface area:", sa, "m^2")
+        if False:
+            print(str(self.model))
+            self.model.db.browse_docs()
+            1/0
+        if False: print(repr(self.model))
+        if False:
+            import tkinter
+            from neuwon.gui import PlotData
+            from threading import Thread
+            # Thread.run
+            m.data_plots.add(PlotData(self.tip.entity, 'membrane/voltages'))
 
     def generate_input(self):
         """ Subject the soma to three pulses of current injection. """
@@ -190,16 +207,17 @@ def analyze_accuracy():
 def analyze_propagation():
     caption = """
 Simulated action potential propagating through a single long axon with Hodgkin-
-Huxley type channels. A current injection at the soma of 0.2 nA for 1 ms causes
-the action potential. The axon terminates after 1000 μm which slightly alters
-the dynamics near that point."""
+Huxley channels. Current injections at the soma of 0.2 nA for 1 ms cause the
+action potentials. The axon terminates after 1000 μm which slightly alters the
+dynamics near that point."""
     x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-3,)
     colors = 'k purple b g y r'.split()
     plt.figure("AP Propagation")
     soma_coords = x.soma[-1].coordinates
     for i, p in enumerate(x.probes):
         dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
-        plt.plot(x.time_stamps, x.v[i], colors[i],
+        c = x.charts[i]
+        plt.plot(c.timestamps, c.timeseries, colors[i],
             label="Distance from soma: %g μm"%(dist*1e6))
     plt.legend()
     plt.title("Action Potential Propagation")

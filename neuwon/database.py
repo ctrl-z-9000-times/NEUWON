@@ -24,6 +24,7 @@ import scipy.sparse.linalg
 import scipy.spatial
 import textwrap
 import weakref
+import collections
 from collections.abc import Callable, Iterable, Mapping
 
 Real    = np.dtype('f8')
@@ -648,7 +649,47 @@ class _Linear_System(_Component):
             s += "nnz/row: %g"%(self.data.nnz / self.data.shape[0])
         return s
 
-# TODO: Will eventually need a getter method to get component units.
+class TimeSeriesBuffer:
+    def __init__(self, entity, component, clock="clock"):
+        if hasattr(entity, "entity"): entity = entity.entity
+        self.entity     = entity
+        self.component  = str(component)
+        self.clock      = str(clock)
+        assert isinstance(self.entity, Entity), self.entity
+        self.timeseries = collections.deque(maxlen=None)
+        self.timestamps = collections.deque(maxlen=None)
+        self(self.entity.database.access) # Immediately record the first data point.
+
+    def reset(self):
+        self.timeseries.clear()
+        self.timestamps.clear()
+
+    def __call__(self, database_access):
+        self.timeseries.append(self.entity.read(self.component))
+        self.timestamps.append(database_access(self.clock)())
+        return True
+
+    # def axes(self, figure=None):
+    #     1/0
+
+    # def plot(self, mpl_obj, *args, **kwargs):
+    #     import matplotlib
+    #     if isinstance(mpl_obj, matplotlib.axes.Axes):
+    #         self.axes = mpl_obj
+    #     elif isinstance(mpl_obj, matplotlib.figure.Figure):
+    #         self.axes = mpl_obj.axes()
+    #     elif not bool(mpl_obj):
+    #         self.fig = matplotlib.figure.Figure()
+    #         pad = .05
+    #         self.axes = self.fig.add_axes([pad,pad,1-2*pad,1-2*pad])
+    #     else: 1/0
+    #     self.axes.plot(self.timestamps, self.data, *args, **kwargs)
+    #     # plt.ylabel() # TODO: Get units from database
+    #     self.axes.set_xlabel('ms')
+    #     return self.axes
+
+
+# TODO: Will eventually need a getter method to get component units. Also bounds.
 
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:
