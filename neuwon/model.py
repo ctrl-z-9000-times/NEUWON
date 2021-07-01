@@ -12,11 +12,6 @@ from neuwon.database import *
 from PIL import Image, ImageFont, ImageDraw
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
-import sys
-
-# TODO: Consider moving this to database, not because it belongs there but
-# because everyone imports the DB.
-def eprint(*args, **kwargs): print(*args, file=sys.stderr, **kwargs)
 
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.

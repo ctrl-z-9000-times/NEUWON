@@ -26,6 +26,7 @@ import scipy.interpolate
 import scipy.sparse
 import scipy.sparse.linalg
 import scipy.spatial
+import sys
 import textwrap
 import weakref
 
@@ -33,6 +34,8 @@ Real    = np.dtype('f8')
 epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
+
+def eprint(*args, **kwargs): print(*args, file=sys.stderr, **kwargs)
 
 class Database:
     def __init__(self):
@@ -450,7 +453,7 @@ class _Archetype(_DocString):
 
     def invalidate(self):
         for tree in self.kd_trees: tree.invalidate()
-        for sys in self.linear_systems: sys.invalidate()
+        for lin_sys in self.linear_systems: lin_sys.invalidate()
 
     def __repr__(self):
         s = "Archetype " + self.name

@@ -9,13 +9,10 @@ import copy
 from zlib import crc32
 import pickle
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import Real, Entity
+from neuwon.database import Real, Entity, eprint
 from neuwon.model import Reaction, Model, Segment
 from neuwon.nmodl_parser import _NmodlParser, ANT
 from scipy.linalg import expm
-import sys
-
-def eprint(*args, **kwargs): print(*args, file=sys.stderr, **kwargs)
 
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
