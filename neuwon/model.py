@@ -16,7 +16,7 @@ from scipy.sparse.linalg import expm
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
 # Also, if I do this then I can get rid of a lot of nmodl shims...
-# TODO: voltage to mV, dist to microns.
+# TODO: dist to microns.
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
@@ -76,8 +76,9 @@ class Species:
             charge = 0,
             transmembrane = False,
             reversal_potential = "nerst",
-            # TODO: Consider allowing concentration=None, which would make
-            # concentration undefined and not give it a database entry.
+            # TODO: Consider allowing concentration=None, which would undefined
+            # the concentration and remove the database entry. This way it does
+            # not clutter up the DB schema documentation w/ unused junk.
             inside_concentration  = 0.0,
             outside_concentration = 0.0,
             inside_diffusivity    = None,
@@ -185,14 +186,14 @@ class Species:
     def _nerst_potential(self, T, inside_concentration, outside_concentration):
         xp = cp.get_array_module(inside_concentration)
         ratio = xp.divide(outside_concentration, inside_concentration)
-        return xp.nan_to_num(R * T / F / self.charge * xp.log(ratio))
+        return xp.nan_to_num(1e3 * R * T / F / self.charge * xp.log(ratio))
 
     def _goldman_hodgkin_katz(self, T, inside_concentration, outside_concentration, voltages):
         xp = cp.get_array_module(inside_concentration)
         inside_concentration  = inside_concentration * 1e-3  # Convert from millimolar to molar
         outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
         z = (self.charge * F / (R * T)) * voltages
-        return (self.charge * F) * (inside_concentration * self._efun(-z) - outside_concentration * self._efun(z))
+        return (1e3 * self.charge * F) * (inside_concentration * self._efun(-z) - outside_concentration * self._efun(z))
 
     @cp.fuse()
     def _efun(z):
@@ -345,7 +346,7 @@ class Model(_Clock):
             outside_tortuosity=1.55,
             cytoplasmic_resistance = 1,
             membrane_capacitance = 1e-2,
-            initial_voltage = -70e-3,):
+            initial_voltage = -70,):
         """
         Argument cytoplasmic_resistance
 
@@ -444,7 +445,7 @@ class Model(_Clock):
         db.add_attribute("membrane/axial_resistances", allow_invalid=True, units="")
         db.add_attribute("membrane/capacitances", units="Farads", bounds=(0, np.inf))
         db.add_attribute("membrane/conductances")
-        db.add_attribute("membrane/driving_voltages")
+        db.add_attribute("membrane/driving_voltages", units="mV")
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
                 epsilon=epsilon * 1e-3,) # Epsilon millivolts.
 
@@ -807,17 +808,17 @@ class Model(_Clock):
             if s.inside_global_const and s.outside_global_const: continue
             reversal_potential = access("membrane/reversal_potentials/"+s.name)
             g = access("membrane/conductances/"+s.name)
-            moles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
+            millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
             if s.inside_diffusivity != 0:
                 if s.use_shells:
                     1/0
                 else:
                     volumes        = access("membrane/inside/volumes")
                     concentrations = access("membrane/inside/concentrations/"+s.name)
-                    concentrations += moles / volumes
+                    concentrations += millimoles / volumes
             if s.outside_diffusivity != 0:
                 volumes = access("outside/volumes")
-                s.outside.concentrations -= moles / self.geometry.outside_volumes
+                s.outside.concentrations -= millimoles / self.geometry.outside_volumes
         # Update chemical concentrations with local changes and diffusion.
         for s in self.species.values():
             if not s.inside_global_const:
@@ -916,7 +917,7 @@ class _InjectedCurrents:
         voltages = database.access("membrane/voltages")
         for idx, (amps, location, t) in enumerate(
                 zip(self.currents, self.locations, self.remaining)):
-            dv = amps * min(time_step, t)/1000 / capacitances[location]
+            dv = amps * min(time_step, t) / capacitances[location]
             voltages[location] += dv
             self.remaining[idx] -= time_step
         keep = [t > 0 for t in self.remaining]

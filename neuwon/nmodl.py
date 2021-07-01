@@ -325,7 +325,6 @@ class NmodlMechanism(Reaction):
             if not ptr.r: continue
             if ptr in pointers: continue
             stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py, ptr.index_py)
-            if ptr.name == "v": stmt += " * 1000" # From NEUWONs volts to NEURONs millivolts.
             preamble.append(stmt)
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)
