@@ -16,6 +16,7 @@ from scipy.sparse.linalg import expm
 # TODO: Consider switching to use NEURON's units? It makes my code a bit more
 # complicated, but it should make the users code simpler and more intuitive.
 # Also, if I do this then I can get rid of a lot of nmodl shims...
+# TODO: voltage to mV, dist to microns.
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
@@ -75,6 +76,8 @@ class Species:
             charge = 0,
             transmembrane = False,
             reversal_potential = "nerst",
+            # TODO: Consider allowing concentration=None, which would make
+            # concentration undefined and not give it a database entry.
             inside_concentration  = 0.0,
             outside_concentration = 0.0,
             inside_diffusivity    = None,
@@ -345,7 +348,6 @@ class Model(_Clock):
             initial_voltage = -70e-3,):
         """
         Argument cytoplasmic_resistance
-                Units:
 
         Argument outside_volume_fraction
 
@@ -353,8 +355,9 @@ class Model(_Clock):
 
         Argument max_outside_radius
 
-        Argument membrane_capacitance
-                Units: Farads / Meter^2
+        Argument membrane_capacitance, units: Farads / Meter^2
+
+        Argument initial_voltage, units: millivolts
         """
         self.species = {}
         self.reactions = {}

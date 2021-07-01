@@ -276,8 +276,7 @@ class NmodlMechanism(Reaction):
         database.add_attribute(self.name() + "/insertions", dtype="membrane")
         for name in self.surface_area_parameters:
             path = self.name() + "/data/" + name
-            database.add_attribute(path, initial_value=np.nan,
-                    units=None) # TODO: Keep track of the units!
+            database.add_attribute(path, units=None) # TODO: Keep track of the units!
             _Pointer.update(self, name, read=path)
         for name in self.states:
             path = self.name() + "/data/" + name
