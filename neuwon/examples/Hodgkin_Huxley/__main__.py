@@ -52,8 +52,6 @@ class Experiment:
             self.tip = self.soma[-1]
         self.segments = self.soma + self.axon
         self.hh = m.get_reaction("hh").new_instances(m, self.segments, scale=1)
-        self.model.advance()
-        m.reset_clock()
         self.probes = []
         self.v = []
         self.m = []
