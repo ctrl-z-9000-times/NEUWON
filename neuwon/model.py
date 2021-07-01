@@ -154,8 +154,8 @@ class Species:
                     and self.reversal_potential == "nerst"):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
                         self._nerst_potential(db.access("T"),
-                                self.inside_concentration / 1000,
-                                self.outside_concentration / 1000),
+                                self.inside_concentration,
+                                self.outside_concentration),
                         units="mV")
             else:
                 db.add_attribute("membrane/reversal_potentials/" + self.name,
@@ -164,8 +164,8 @@ class Species:
     def _reversal_potential(self, access):
         x = access("membrane/reversal_potentials/" + self.name)
         if isinstance(x, float): return x
-        inside  = access(self.inside_archetype+"/concentrations/"+self.name) / 1000
-        outside = access("outside/concentrations/"+self.name) / 1000
+        inside  = access(self.inside_archetype+"/concentrations/"+self.name)
+        outside = access("outside/concentrations/"+self.name)
         if not isinstance(inside, float) and self.use_shells:
             inside = inside[access("membrane/inside")]
         if not isinstance(outside, float):
@@ -186,6 +186,8 @@ class Species:
 
     def _goldman_hodgkin_katz(self, T, inside_concentration, outside_concentration, voltages):
         xp = cp.get_array_module(inside_concentration)
+        inside_concentration  = inside_concentration * 1e-3  # Convert from millimolar to molar
+        outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
         z = (self.charge * F / (R * T)) * voltages
         return (self.charge * F) * (inside_concentration * self._efun(-z) - outside_concentration * self._efun(z))
 
