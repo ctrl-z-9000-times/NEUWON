@@ -660,15 +660,16 @@ class _Linear_System(_Component):
         return s
 
 class TimeSeriesBuffer:
-    def __init__(self, entity, component, clock="clock"):
+    def __init__(self, entity, component, clock="clock", max_length=None):
         if hasattr(entity, "entity"): entity = entity.entity
         self.entity     = entity
         self.component  = str(component)
         self.clock      = str(clock)
         assert isinstance(self.entity, Entity), self.entity
         self.db         = entity.database
-        self.timeseries = collections.deque(maxlen=None)
-        self.timestamps = collections.deque(maxlen=None)
+        self.max_length = float(np.inf if max_length is None else max_length)
+        self.timeseries = collections.deque()
+        self.timestamps = collections.deque()
         self(self.entity.database.access) # Immediately record the first data point.
 
     def clear(self):
@@ -678,6 +679,9 @@ class TimeSeriesBuffer:
     def __call__(self, database_access):
         self.timeseries.append(self.entity.read(self.component))
         self.timestamps.append(database_access(self.clock)())
+        while self.timestamps[-1] - self.timestamps[0] > self.max_length:
+            self.timeseries.popleft()
+            self.timestamps.popleft()
         return True
 
     def label_axes(self, axes=None):
