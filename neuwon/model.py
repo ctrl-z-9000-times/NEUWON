@@ -21,6 +21,8 @@ from scipy.sparse.linalg import expm
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 
+_ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
+
 class Species:
     """ """
 
@@ -207,7 +209,7 @@ class Species:
             return z / (math.exp(z) - 1)
 
     def _inside_diffusion_coefficients(self, access):
-        dt      = access("time_step") / 1000 / 2
+        dt      = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
         parents = access("membrane/parents").get()
         lengths = access("membrane/lengths").get()
         xareas  = access("membrane/cross_sectional_areas").get()
@@ -239,7 +241,7 @@ class Species:
     def _outside_diffusion_coefficients(self, access):
         extracellular_tortuosity = 1.4 # TODO: FIXME: put this one back in the db?
         D = self.outside_diffusivity / extracellular_tortuosity ** 2
-        dt          = access("time_step") / 1000 / 2
+        dt          = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
         decay       = -dt / self.outside_decay_period
         recip_vol   = (1.0 / access("outside/volumes")).get()
         area        = access("outside/neighbor_border_areas")
@@ -767,7 +769,6 @@ class Model(_Clock):
         For more information see: The NEURON Book, 2003.
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
-        self._injected_currents.advance(self.db)
         self._advance_species()
         self._advance_reactions()
         self._advance_species()
@@ -775,7 +776,6 @@ class Model(_Clock):
 
     def _advance_lockstep(self):
         """ Naive integration strategy, for reference only. """
-        self._injected_currents.advance(self.db)
         self._advance_species()
         self._advance_species()
         self._advance_reactions()
@@ -783,8 +783,9 @@ class Model(_Clock):
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
+        self._injected_currents.advance(self.db)
         access = self.db.access
-        dt     = access("time_step") / 1000 / 2
+        dt     = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
         conductances        = access("membrane/conductances")
         driving_voltages    = access("membrane/driving_voltages")
         voltages            = access("membrane/voltages")
@@ -806,7 +807,7 @@ class Model(_Clock):
         diff_v      = driving_voltages - voltages
         irm         = access("membrane/diffusion")
         voltages[:] = irm.dot(driving_voltages - diff_v * alpha)
-        integral_v  = dt * driving_voltages - diff_v * exponent * alpha
+        integral_v  = dt * driving_voltages - exponent * diff_v * alpha
         # Calculate the transmembrane ion flows.
         for s in self.species.values():
             if not (s.transmembrane and s.charge != 0): continue
@@ -917,7 +918,7 @@ class _InjectedCurrents:
         self.remaining = []
 
     def advance(self, database):
-        time_step = database.access("time_step")
+        time_step = database.access("time_step") / _ITERATIONS_PER_TIMESTEP
         capacitances = database.access("membrane/capacitances")
         voltages = database.access("membrane/voltages")
         for idx, (amps, location, t) in enumerate(
@@ -1071,7 +1072,7 @@ def _electric_coefficients(access):
     Compute the coefficients of the derivative function:
     dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
     """
-    dt           = access("time_step") / 1000 / 2
+    dt           = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
     parents      = access("membrane/parents").get()
     resistances  = access("membrane/axial_resistances").get()
     capacitances = access("membrane/capacitances").get()

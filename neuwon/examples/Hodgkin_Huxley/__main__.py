@@ -134,9 +134,9 @@ def analyze_accuracy():
         else:           return "unstaggered, dt = %g ms"%(x.time_step)
 
     def make_figure(stagger):
-        slow   = Experiment(time_step = 250e-3, stagger=stagger, **args)
-        medium = Experiment(time_step = 125e-3, stagger=stagger, **args)
-        fast   = Experiment(time_step =  62.5e-3, stagger=stagger, **args)
+        slow   = Experiment(time_step = 200e-3, stagger=stagger, **args)
+        medium = Experiment(time_step = 100e-3, stagger=stagger, **args)
+        fast   = Experiment(time_step =  50e-3, stagger=stagger, **args)
 
         slow_error   = measure_error(slow)
         medium_error = measure_error(medium)
