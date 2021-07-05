@@ -527,7 +527,11 @@ class _Attribute(_Component):
         alloc = (int(round(heuristic)),)
         # Special case to squeeze off the trailing dimension.
         if self.shape != (1,): alloc = alloc + self.shape
-        return cupy.empty(alloc, dtype=self.dtype)
+        try:
+            return cupy.empty(alloc, dtype=self.dtype)
+        except Exception:
+            eprint("ERROR on GPU: allocating %s for %s"%(repr(alloc), self.name))
+            raise
 
     def access(self, database):
         return self.data[:self.archetype.size]
@@ -722,6 +726,9 @@ class TimeSeriesBuffer:
         self.label_axes()
         plt.plot(self.x, self.y)
         if show: plt.show()
+
+# TODO: Consider making an explicit "ConnectivityMatrix" component type instead
+# of sparse boolean matirx, which does not store the 1's.
 
 # TODO: Consider reworking the sparse-matrix-write arguments to access so that
 # the user can do more things:

@@ -687,15 +687,14 @@ class _AssignStatement:
         self.rhs = sympy.dsolve(eq, state, ics=ics).rhs.simplify()
         self.rhs = self.rhs.subs(Symbol(lhsn), Symbol(self.lhsn))
 
-    def _sympy_solve_ode(use_pade_approx=False):
+    def _sympy_solve_ode(self, use_pade_approx=False):
         """ Analytically integrate this derivative equation.
 
         Optionally, the analytic result can be expanded in powers of dt,
         and the (1,1) Pade approximant to the solution returned.
         This approximate solution is correct to second order in dt.
 
-        Raises:
-            NotImplementedError: if the ODE is too hard, or if it fails to solve it.
+        Raises an exception if the ODE is too hard or if sympy fails to solve it.
 
         Copyright (C) 2018-2019 Blue Brain Project. This method was part of the
         NMODL library distributed under the terms of the GNU Lesser General Public License.
@@ -712,24 +711,24 @@ class _AssignStatement:
         }
 
         x, dxdt = _sympify_diff_eq(diff_string, vars)
-        # set up differential equation d(x(t))/dt = ...
-        # where the function x_t = x(t) is substituted for the symbol x
-        # the dependent variable is a function of t
+        # Set up differential equation d(x(t))/dt = ...
+        # Where the function x_t = x(t) is substituted for the symbol x.
+        # The dependent variable is a function of t.
         t = sp.Dummy("t", real=True, positive=True)
         x_t = sp.Function("x(t)", real=True)(t)
         diffeq = sp.Eq(x_t.diff(t), dxdt.subs({x: x_t}))
 
-        # for simple linear case write down solution in preferred form:
+        # For simple linear case write down solution in preferred form:
         dt = sp.symbols(dt_var, real=True, positive=True)
         solution = None
         c1 = dxdt.diff(x).simplify()
         if c1 == 0:
-            # constant equation:
+            # Constant equation:
             # x' = c0
             # x(t+dt) = x(t) + c0 * dt
             solution = (x + dt * dxdt).simplify()
         elif c1.diff(x) == 0:
-            # linear equation:
+            # Linear equation:
             # x' = c0 + c1*x
             # x(t+dt) = (-c0 + (c0 + c1*x(t))*exp(c1*dt))/c1
             c0 = (dxdt - c1 * x).simplify()
@@ -737,8 +736,8 @@ class _AssignStatement:
                 c1 * dt
             ) / c1
         else:
-            # otherwise try to solve ODE with sympy:
-            # first classify ODE, if it is too hard then exit
+            # Otherwise try to solve ODE with sympy:
+            # First classify ODE, if it is too hard then exit.
             ode_properties = set(sp.classify_ode(diffeq))
             if not ode_properties_require_all <= ode_properties:
                 raise NotImplementedError("ODE too hard")
@@ -752,7 +751,7 @@ class _AssignStatement:
 
         if use_pade_approx:
             # (1,1) order Pade approximant, correct to 2nd order in dt,
-            # constructed from the coefficients of 2nd order Taylor expansion
+            # constructed from the coefficients of 2nd order Taylor expansion.
             taylor_series = sp.Poly(sp.series(solution, dt, 0, 3).removeO(), dt)
             _a0 = taylor_series.nth(0)
             _a1 = taylor_series.nth(1)
@@ -760,7 +759,7 @@ class _AssignStatement:
             solution = (
                 (_a0 * _a1 + (_a1 * _a1 - _a0 * _a2) * dt) / (_a1 - _a2 * dt)
             ).simplify()
-            # special case where above form gives 0/0 = NaN
+            # Special case where above form gives 0/0 = NaN.
             if _a1 == 0 and _a2 == 0:
                 solution = _a0
 

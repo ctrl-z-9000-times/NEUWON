@@ -183,18 +183,22 @@ class Species:
         else: raise NotImplementedError(self.reversal_potential)
         return x
 
-    def _nerst_potential(self, T, inside_concentration, outside_concentration):
+    @staticmethod
+    def _nerst_potential(charge, T, inside_concentration, outside_concentration):
         xp = cp.get_array_module(inside_concentration)
         ratio = xp.divide(outside_concentration, inside_concentration)
-        return xp.nan_to_num(1e3 * R * T / F / self.charge * xp.log(ratio))
+        return xp.nan_to_num(1e3 * R * T / F / charge * xp.log(ratio))
 
-    def _goldman_hodgkin_katz(self, T, inside_concentration, outside_concentration, voltages):
+    @staticmethod
+    def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
         xp = cp.get_array_module(inside_concentration)
         inside_concentration  = inside_concentration * 1e-3  # Convert from millimolar to molar
         outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
-        z = (self.charge * F / (R * T)) * voltages
-        return (1e3 * self.charge * F) * (inside_concentration * self._efun(-z) - outside_concentration * self._efun(z))
+        z = (charge * F / (R * T)) * voltages
+        return ((1e3 * charge * F) *
+                (inside_concentration * Species._efun(-z) - outside_concentration * Species._efun(z)))
 
+    @staticmethod
     @cp.fuse()
     def _efun(z):
         if abs(z) < 1e-4:
@@ -345,6 +349,7 @@ class Model(_Clock):
             outside_volume_fraction=.20,
             outside_tortuosity=1.55,
             cytoplasmic_resistance = 1,
+            # TODO: Consider switching membrane_capacitance to use NEURON's units: uf/cm^2
             membrane_capacitance = 1e-2,
             initial_voltage = -70,):
         """
@@ -366,6 +371,7 @@ class Model(_Clock):
 
         # TODO: Rename "db" to the full "database", add method model.get_database().
         self.db = db = Database()
+        # TODO: Consider renaming "time_step" to "dt" because that's what NEURON calls it.
         db.add_global_constant("time_step", float(time_step), units="milliseconds")
         _Clock.__init__(self)
         db.add_global_constant("celsius", float(celsius))
@@ -396,7 +402,7 @@ class Model(_Clock):
                 doc="Cell membranes are connected in a tree.")
         db.add_sparse_matrix("membrane/children", "membrane", dtype=np.bool, doc="")
         db.add_attribute("membrane/coordinates", shape=(3,), units="μm")
-        db.add_attribute("membrane/diameters", bounds=(0.0, np.inf), units="μm")
+        db.add_attribute("membrane/diameters", bounds=(0.0, None), units="μm")
         db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
                 0 - Sphere
                 1 - Cylinder
@@ -409,10 +415,10 @@ class Model(_Clock):
         db.add_attribute("membrane/lengths", units="μm", doc="""
                 The distance between each node and its parent node.
                 Root node lengths are their radius.\n""")
-        db.add_attribute("membrane/surface_areas", bounds=(epsilon * (1e-6)**2, np.inf), units="μm²")
+        db.add_attribute("membrane/surface_areas", bounds=(epsilon, None), units="μm²")
         db.add_attribute("membrane/cross_sectional_areas", units="μm²",
-                bounds = (epsilon * (1e-6)**2, np.inf))
-        db.add_attribute("membrane/inside/volumes", bounds=(epsilon * (1e-6)**3, np.inf), units="Liters")
+                bounds = (epsilon, None))
+        db.add_attribute("membrane/inside/volumes", bounds=(epsilon * (1e-6)**3, None), units="Liters")
 
     def _initialize_database_inside(self, db):
         db.add_archetype("inside", doc="Intracellular space.")
@@ -423,9 +429,9 @@ class Model(_Clock):
                 """)
         db.add_attribute("membrane/shells", dtype=np.uint8)
         db.add_attribute("inside/membrane", dtype="membrane")
-        db.add_attribute("inside/shell_radius")
+        db.add_attribute("inside/shell_radius", units="μm")
         db.add_attribute("inside/volumes",
-                # bounds=(epsilon * (1e-6)**3, np.inf),
+                # bounds=(epsilon * (1e-6)**3, None),
                 allow_invalid=True,
                 units="Liters")
         db.add_sparse_matrix("inside/neighbor_distances", "inside")
@@ -443,11 +449,10 @@ class Model(_Clock):
     def _initialize_database_electric(self, db, initial_voltage):
         db.add_attribute("membrane/voltages", initial_value=float(initial_voltage), units="mV")
         db.add_attribute("membrane/axial_resistances", allow_invalid=True, units="")
-        db.add_attribute("membrane/capacitances", units="Farads", bounds=(0, np.inf))
-        db.add_attribute("membrane/conductances")
+        db.add_attribute("membrane/capacitances", units="Farads", bounds=(0, None))
+        db.add_attribute("membrane/conductances", units="Siemens", bounds=(0, None))
         db.add_attribute("membrane/driving_voltages", units="mV")
-        db.add_linear_system("membrane/diffusion", function=_electric_coefficients,
-                epsilon=epsilon * 1e-3,) # Epsilon millivolts.
+        db.add_linear_system("membrane/diffusion", function=_electric_coefficients, epsilon=epsilon)
 
     def __len__(self):
         return self.db.num_entity("membrane")
