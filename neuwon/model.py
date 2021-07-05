@@ -157,7 +157,7 @@ class Species:
             elif (self.inside_global_const and self.outside_global_const
                     and self.reversal_potential == "nerst"):
                 db.add_global_constant("membrane/reversal_potentials/" + self.name,
-                        self._nerst_potential(db.access("T"),
+                        self._nerst_potential(self.charge, db.access("T"),
                                 self.inside_concentration,
                                 self.outside_concentration),
                         units="mV")
@@ -176,10 +176,10 @@ class Species:
             outside = outside[access("membrane/outside")]
         T = access("T")
         if self.reversal_potential == "nerst":
-            x[:] = self._nerst_potential(T, inside, outside)
+            x[:] = self._nerst_potential(self.charge, T, inside, outside)
         elif self.reversal_potential == "goldman_hodgkin_katz":
             voltages = access("membrane/voltages")
-            x[:] = self._goldman_hodgkin_katz(T, inside, outside, voltages)
+            x[:] = self._goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
         else: raise NotImplementedError(self.reversal_potential)
         return x
 
