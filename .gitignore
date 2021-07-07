@@ -2,3 +2,4 @@
 neuwon.egg-info
 dist/
 build/
+.nmodl_cache
