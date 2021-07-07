@@ -6,7 +6,7 @@ the NEURON simulator. It is accurate, efficient, and easy to use.
 
 ## Examples
 
-[todo: show off the images. 3d animations, AP-waveforms]
+![](neuwon/examples/Hodgkin_Huxley/Staggered_Time_Steps.png)
 
 ## Usage
 
