@@ -304,7 +304,7 @@ class Database:
 
     def browse_docs(self):
         from subprocess import run, PIPE
-        grip = run(["grip", "--browser", "-"], input=bytes(str(self.model), encoding='utf8'))
+        grip = run(["grip", "--browser", "-"], input=bytes(str(self), encoding='utf8'))
 
 class Entity:
     """ A persistent handle on an entity.
@@ -726,6 +726,9 @@ class TimeSeriesBuffer:
         self.label_axes()
         plt.plot(self.x, self.y)
         if show: plt.show()
+
+# TODO: Make a prototype entity class which is code-generated and exec'd into a
+# real class at run time. And then cached by archetype.
 
 # TODO: Consider making an explicit "ConnectivityMatrix" component type instead
 # of sparse boolean matirx, which does not store the 1's.

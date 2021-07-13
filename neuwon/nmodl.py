@@ -710,6 +710,8 @@ class _AssignStatement:
             "1st_linear_Integral",
         }
 
+        x = sympy.Symbol(self.lhsn)
+        dxdt = self.rhs
         x, dxdt = _sympify_diff_eq(diff_string, vars)
         # Set up differential equation d(x(t))/dt = ...
         # Where the function x_t = x(t) is substituted for the symbol x.
@@ -719,7 +721,7 @@ class _AssignStatement:
         diffeq = sp.Eq(x_t.diff(t), dxdt.subs({x: x_t}))
 
         # For simple linear case write down solution in preferred form:
-        dt = sp.symbols(dt_var, real=True, positive=True)
+        dt = sp.symbols("time_step", real=True, positive=True)
         solution = None
         c1 = dxdt.diff(x).simplify()
         if c1 == 0:
@@ -739,34 +741,33 @@ class _AssignStatement:
             # Otherwise try to solve ODE with sympy:
             # First classify ODE, if it is too hard then exit.
             ode_properties = set(sp.classify_ode(diffeq))
-            if not ode_properties_require_all <= ode_properties:
-                raise NotImplementedError("ODE too hard")
-            if len(ode_properties_require_one_of & ode_properties) == 0:
-                raise NotImplementedError("ODE too hard")
-            # try to find analytic solution, with initial condition x_t(t=0) = x
+            assert ode_properties.issuperset(ode_properties_require_all), "ODE too hard"
+            assert ode_properties.intersection(ode_properties_require_one_of), "ODE too hard"
+            # Try to find analytic solution, with initial condition x_t(t=0) = x
             # (note dsolve can return a list of solutions, in which case this currently fails)
             solution = sp.dsolve(diffeq, x_t, ics={x_t.subs({t: 0}): x})
             # evaluate solution at x(dt), extract rhs of expression
             solution = solution.subs({t: dt}).rhs.simplify()
 
-        if use_pade_approx:
-            # (1,1) order Pade approximant, correct to 2nd order in dt,
-            # constructed from the coefficients of 2nd order Taylor expansion.
-            taylor_series = sp.Poly(sp.series(solution, dt, 0, 3).removeO(), dt)
-            _a0 = taylor_series.nth(0)
-            _a1 = taylor_series.nth(1)
-            _a2 = taylor_series.nth(2)
-            solution = (
-                (_a0 * _a1 + (_a1 * _a1 - _a0 * _a2) * dt) / (_a1 - _a2 * dt)
-            ).simplify()
-            # Special case where above form gives 0/0 = NaN.
-            if _a1 == 0 and _a2 == 0:
-                solution = _a0
+    def pade_approx(self):
+        """
+        (1,1) order Pade approximant, correct to 2nd order in dt,
+        constructed from the coefficients of 2nd order Taylor expansion.
 
-        # return result as C code in NEURON format:
-        #   - in the lhs x_0 refers to the state var at time (t+dt)
-        #   - in the rhs x_0 refers to the state var at time t
-        return f"{sp.ccode(x)} = {sp.ccode(solution.evalf())}"
+        Copyright (C) 2018-2019 Blue Brain Project. This method was part of the
+        NMODL library distributed under the terms of the GNU Lesser General Public License.
+        """
+        1/0 # unimplemtned
+        taylor_series = sp.Poly(sp.series(solution, dt, 0, 3).removeO(), dt)
+        _a0 = taylor_series.nth(0)
+        _a1 = taylor_series.nth(1)
+        _a2 = taylor_series.nth(2)
+        solution = (
+            (_a0 * _a1 + (_a1 * _a1 - _a0 * _a2) * dt) / (_a1 - _a2 * dt)
+        ).simplify()
+        # Special case where above form gives 0/0 = NaN.
+        if _a1 == 0 and _a2 == 0:
+            solution = _a0
 
     def _solve_crank_nicholson(self):
         dt              = sympy.Symbol("time_step", real=True, positive=True)
