@@ -23,6 +23,73 @@ R = 8.31446261815324 # Universal gas constant
 
 _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
 
+
+# I might move this out of the database, as it seems to be very ... specific for
+# my current project.
+class TimeSeriesBuffer:
+    def __init__(self, entity, component, clock_function, max_length=None):
+        if hasattr(entity, "entity"): entity = entity.entity
+        self.entity = entity
+        assert isinstance(self.entity, Entity), self.entity
+        self.component = str(component)
+        self.clock_function = clock_function
+        assert isinstance(self.clock_function, Callable)
+        self.max_length = float(np.inf if max_length is None else max_length)
+        self.timeseries = collections.deque()
+        self.timestamps = collections.deque()
+
+    def clear(self):
+        self.timeseries.clear()
+        self.timestamps.clear()
+
+    def __call__(self, database_access):
+        self.timeseries.append(self.entity.read(self.component))
+        self.timestamps.append(database_access(self.clock)())
+        while self.timestamps[-1] - self.timestamps[0] > self.max_length:
+            self.timeseries.popleft()
+            self.timestamps.popleft()
+        return True
+
+    def label_axes(self, axes=None):
+        if axes is None: axes = matplotlib.pyplot.gca()
+        axes.set_ylabel(self.db.get_units(self.component))
+        axes.set_xlabel(self.db.get_units(self.clock))
+        return axes
+
+    @property
+    def y(self):
+        """ Data samples """
+        return self.timeseries
+    @property
+    def x(self):
+        """ Timestamps """
+        return self.timestamps
+
+    def interpolate(self, timestamps):
+        """ Interpolate the value of the timeseries at the given timestamps.
+        This uses linear interpolation.
+        """
+        f = scipy.interpolate.interp1d(self.x, self.y)
+        min_t = self.timestamps[0]
+        max_t = self.timestamps[-1]
+        min_v = self.timeseries[0]
+        max_v = self.timeseries[-1]
+        results = np.empty(len(timestamps))
+        for i, t in enumerate(timestamps):
+            if   t < min_t: results[i] = min_v
+            elif t > max_t: results[i] = max_v
+            else: results[i] = f(t)
+        return results
+
+    def plot(self, show=True):
+        plt = matplotlib.pyplot
+        plt.figure(self.component)
+        plt.title("Time Series of: " + self.component)
+        self.label_axes()
+        plt.plot(self.x, self.y)
+        if show: plt.show()
+
+
 class Species:
     """ """
 
@@ -457,7 +524,7 @@ class Model(_Clock):
         db.add_linear_system("membrane/diffusion", function=_electric_coefficients, epsilon=epsilon)
 
     def __len__(self):
-        return self.db.num_entity("membrane")
+        return len(self.db.get_entity("membrane"))
 
     def __str__(self):
         return str(self.db)

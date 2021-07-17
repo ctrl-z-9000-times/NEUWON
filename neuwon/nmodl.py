@@ -240,7 +240,7 @@ class NmodlMechanism(Reaction):
         }
         self.initial_block.gather_arguments(self)
         for arg in self.initial_block.arguments:
-            try: globals_[arg] = database.initial_value(self.pointers[arg].read)
+            try: globals_[arg] = database.get_initial_value(self.pointers[arg].read)
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {x: 0 for x in self.states}
         initial_python = self.initial_block.to_python(INITIAL_BLOCK=True)
