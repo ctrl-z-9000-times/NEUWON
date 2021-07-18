@@ -1,4 +1,4 @@
-from database import *
+from neuwon.database import *
 
 def test_OOP_API():
     class InstanceClass:

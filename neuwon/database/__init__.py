@@ -1,5 +1,7 @@
 """ A database for neural simulations. """
 
+# TODO: Rename ClassType to MyClassFactor and rename the instance type to MyClass name.
+
 # TODO: Add a widget for getting the data as a fraction of its range, using the
 # optionally given "bounds". Use-case: making color maps. It could
 # automatically scale my voltages into the viewable range [0-1] ready to be
@@ -15,27 +17,12 @@
 # This could be part of a more general purpose "list" attribute.
 
 
-# IDEAS FOR GET DATA API
-# np_arr = my_attr.get()
-# my_attr.get(gpu=True)
-# my_attr.get(gpu=MyGpuToken)
-# my_attr.get(cpu=True)
-# my_attr.get(cpu=True)
-
-# .get_gpu()
-# .get_cpu()
-
-# component.get(**kwargs)
-#     gpu             | bool or gpu-related-token
-#     cpu/host        | bool
-
-
-
 
 from collections.abc import Callable, Iterable, Mapping
 import collections
 import cupy
 import cupyx.scipy.sparse
+import itertools
 import numpy as np
 import scipy.interpolate
 import scipy.sparse
@@ -56,28 +43,45 @@ def eprint(*args, **kwargs):
 
 class Database:
     def __init__(self):
-        self.class_types = {}
+        self.class_types = dict()
 
-    def add_class(self, name, instance_class=None):
+    def add_class(self, name, instance_class=None) -> 'ClassType':
         return ClassType(self, name, instance_class=instance_class)
 
-    def get_class(self, name):
+    def get_class(self, name) -> 'ClassType':
         if isinstance(name, ClassType): return name
         return self.class_types[str(name)]
 
-    def get_component(self, name):
+    def get_all_classes(self) -> tuple:
+        return tuple(self.class_types.values())
+
+    def get_component(self, name) -> '_Component':
         cls, component = str(name).split('.', maxsplit=1)
         return self.get_class(cls).get_component(component)
 
+    def get_all_components(self) -> tuple:
+        return tuple(itertool.chain.from_iterable(
+                x.components.values() for x in self.class_types.values()))
+
+    def to_host(self) -> 'Database':
+        for cls in self.class_types.values():
+            for comp in cls.components.values():
+                comp.to_host()
+        return self
+
     def check(self, name=None):
         if name is None:
-            exceptions = []
-            for c in self.components.values():
-                try: c.check(self)
-                except Exception as x: exceptions.append(str(x))
-            if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
+            components = self.get_all_components()
         else:
-            self.get_component(component_name).check(self)
+            try:
+                components = self.get_class(name).get_all_components()
+            except KeyError:
+                components = [self.get_component(component_name)]
+        exceptions = []
+        for c in components:
+            try: c.check(self)
+            except Exception as x: exceptions.append(str(x))
+        if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
 
     def __repr__(self):
         """ Table summarizing contents. """
@@ -168,7 +172,7 @@ class ClassType(_DocString):
             if not doc: doc = type(self).__name__
         _DocString.__init__(self, name, doc)
         if type(self) == ClassType:
-            self.__class__ = type(self.name, (type(self),), {})
+            self.__class__ = type(self.name + "Factory", (type(self),), {})
         assert isinstance(database, Database)
         self.database = database
         assert self.name not in self.database.class_types
@@ -182,14 +186,16 @@ class ClassType(_DocString):
         else:
             inherit = (Instance,)
         self.instance_class = type(
-                self.name + "Instance",
+                self.name,
                 inherit, {
                 "__slots__": (),
-                "_cls": self,
-        })
+                "_cls": self,})
 
     def get_component(self, name):
         return self.components[str(name)]
+
+    def get_all_components(self) -> tuple:
+        return tuple(self.components.values())
 
     def add_attribute(self, name, dtype=Real):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
@@ -282,6 +288,10 @@ class ClassType(_DocString):
                 updated_entities.append(entity)
         self.entities = updated_entities
 
+    def check(self, name=None):
+        if name is None: self.db.check(self)
+        else: self.get_component(name).check()
+
     def invalidate(self):
         for x in self.components.values(): x.invalidate()
 
@@ -334,6 +344,14 @@ class _Component(_DocString):
     def get_initial_value(self, component_name):
         """ Abstract method, optional """
         return getattr(self, "initial_value", None)
+
+    def to_host(self) -> '_Component':
+        """ Abstract method, optional """
+        return self
+
+    def to_device(self, device_id=None) -> '_Component':
+        """ Abstract method, optional """
+        return self
 
     def check(self, database):
         """ Abstract method, optional """
@@ -428,10 +446,7 @@ class Attribute(_Component):
         self.data = self._alloc(len(self.cls))
         self._append(0)
         setattr(self.cls.instance_class, self.name, property(
-            self._getter,
-            self._setter,
-            doc=self.doc,
-        ))
+                self._getter, self._setter, doc=self.doc,))
 
     def _getter(self, instance):
         value = self.data[instance._idx]
@@ -470,7 +485,16 @@ class Attribute(_Component):
             raise
 
     def get(self):
+        """ Returns either "numpy.ndarray" or "cupy.ndarray" """
         return self.data[:len(self.cls)]
+
+    def to_host(self) -> 'Attribute':
+        1/0
+        return self
+
+    def to_device(self, device_id=None) -> 'Attribute':
+        1/0
+        return self
 
     def check(self, database):
         _Component._check_data(self, database, self.get(), reference=self.reference)
@@ -511,6 +535,10 @@ class ClassAttribute(_Component):
         return "Constant  %s  = %s"%(self.name, str(self.data))
 
 class Sparse_Matrix(_Component):
+    # TODO: Consider adding more write methods:
+    #       1) Write rows. (done)
+    #       2) Insert coordinates.
+    #       3) Overwrite the matrix?
     def __init__(self, class_type, name, column_class, dtype=Real, doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """
@@ -545,6 +573,7 @@ class Sparse_Matrix(_Component):
         self.write_row(instance._idx, columns, data)
 
     def to_fmt(self, fmt):
+        """ Argument fmt is one of: "csr", "lil". """
         if self.fmt != fmt:
             if   fmt == 'lil': self.to_lil()
             elif fmt == 'csr': self.to_csr()
@@ -554,14 +583,24 @@ class Sparse_Matrix(_Component):
 
     def to_lil(self):
         self.data = scipy.sparse.lil_matrix(self.data, shape=self.data.shape)
+        return self
 
     def to_csr(self):
         self.data = scipy.sparse.csr_matrix(self.data, shape=self.data.shape)
+        return self
+
+    def to_host(self) -> 'Sparse_Matrix':
+        1/0
+        return self
+
+    def to_device(self, device_id=None) -> 'Sparse_Matrix':
+        1/0
+        return self
 
     def _append(self, old_size):
         self.data.resize((len(self.cls), len(self.column_class)))
 
-    def access(self, sparse_matrix_write=None):
+    def get(self):
         return self.data
 
     def write_row(self, row, columns, values):
@@ -573,11 +612,6 @@ class Sparse_Matrix(_Component):
         order = np.argsort(columns)
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))
-
-    # TODO: Consider adding more write methods:
-    #       1) Write rows. (done)
-    #       2) Insert coordinates.
-    #       3) Overwrite the matrix?
 
     def check(self, database):
         _Component._check_data(self, database, self.data.data, reference=self.reference)
