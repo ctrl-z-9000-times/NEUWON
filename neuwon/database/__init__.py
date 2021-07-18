@@ -29,11 +29,6 @@
 #     gpu             | bool or gpu-related-token
 #     cpu/host        | bool
 
-# Sparse matrix can have extra options to reformat the matrix (if its not already
-# in target fmt): format="csr|csc|lil"
-# Or, the Sparse_Matrix class could have extra public methods for reformatting.
-
-
 
 
 
@@ -67,6 +62,7 @@ class Database:
         return ClassType(self, name, instance_class=instance_class)
 
     def get_class(self, name):
+        if isinstance(name, ClassType): return name
         return self.class_types[str(name)]
 
     def get_component(self, name):
@@ -139,8 +135,12 @@ class Database:
 
 class _DocString:
     def __init__(self, name, doc):
-        self.name = str(name)
+        self._name = str(name)
         self.doc = textwrap.dedent(str(doc)).strip()
+
+    @property
+    def name(self):
+        return self._name
 
     def _class_name(self):
         return type(self).__name__.replace("_", " ").strip()
@@ -164,9 +164,11 @@ class _DocString:
 
 class ClassType(_DocString):
     def __init__(self, database, name, doc="", instance_class=None):
-        if doc == "" and type(self) != ClassType:
-            doc = type(self).__name__
+        if type(self) != ClassType:
+            if not doc: doc = type(self).__name__
         _DocString.__init__(self, name, doc)
+        if type(self) == ClassType:
+            self.__class__ = type(self.name, (type(self),), {})
         assert isinstance(database, Database)
         self.database = database
         assert self.name not in self.database.class_types
@@ -197,9 +199,9 @@ class ClassType(_DocString):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
         return ClassAttribute(self, name, value)
 
-    def add_sparse_matrix(self, name):
+    def add_sparse_matrix(self, name, column_class):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return Sparse_Matrix(self, name)
+        return Sparse_Matrix(self, name, column_class)
 
     def __call__(self, **kwargs):
         """ Construct a new instance of this class.
@@ -219,11 +221,11 @@ class ClassType(_DocString):
         obj = self.instance_class(old_size)
         for x in self.components.values():
             if isinstance(x, Attribute):
-                x._append(old_size, new_size)
+                x._append(old_size)
             elif isinstance(x, ClassAttribute):
                 1/0
             elif isinstance(x, Sparse_Matrix):
-                x._append(old_size, new_size)
+                x._append(old_size)
             else: raise NotImplementedError
         for attribute, value in kwargs.items():
             obj.attribute = value
@@ -410,7 +412,7 @@ class Attribute(_Component):
         destroyed. Destroying entities can cause a chain reaction of destruction.
         """
         _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
-        if isinstance(dtype, str):
+        if isinstance(dtype, str) or isinstance(dtype, ClassType):
             self.dtype = Pointer
             self.initial_value = NULL
             self.reference = self.cls.database.get_class(dtype)
@@ -424,7 +426,7 @@ class Attribute(_Component):
         else:
             self.shape = (int(round(shape)),)
         self.data = self._alloc(len(self.cls))
-        self._append(0, len(self.cls))
+        self._append(0)
         setattr(self.cls.instance_class, self.name, property(
             self._getter,
             self._setter,
@@ -443,8 +445,9 @@ class Attribute(_Component):
                 value = value._idx
         self.data[instance._idx] = value
 
-    def _append(self, old_size, new_size):
+    def _append(self, old_size):
         """ Prepare space for new instances at the end of the array. """
+        new_size = len(self.cls)
         if len(self.data) < new_size:
             new_data = self._alloc(new_size)
             new_data[:old_size] = self.data[:old_size]
@@ -521,43 +524,60 @@ class Sparse_Matrix(_Component):
         Argument name: determines the archetype for the row.
         """
         _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
-        self.archetype = ark = database._get_archetype(self.name)
-        ark.sparse_matrixes.append(self)
-        self.column_archetype = database.archetypes[str(column_archetype)]
-        self.column_archetype.sparse_matrixes.append(self)
-        if isinstance(dtype, str):
-            self.dtype = Pointer
-            self.initial_value = NULL
-            self.reference = database.archetypes[str(dtype)]
-            self.reference.referenced_by.append(self)
+        if isinstance(column_class, ClassType):
+            self.column_class = column_class
         else:
-            self.dtype = dtype
-            self.initial_value = initial_value
-            self.reference = False
-        self.data = scipy.sparse.csr_matrix((ark.size, self.column_archetype.size), dtype=self.dtype)
+            self.column_class = self.cls.database.get_class(column_class)
+        self.dtype = dtype
+        self.data = scipy.sparse.csr_matrix((len(self.cls), len(self.column_class)), dtype=self.dtype)
+        self.fmt = 'csr'
+        setattr(self.cls.instance_class, self.name, property(
+                self._getter, self._setter, doc=self.doc))
 
-    def _append(self, old_size, new_size):
-        self.data.resize((new_size, self.column_archetype.size))
+    def _getter(self, instance):
+        if self.fmt == 'lil':
+            vec = self.data[instance._idx]
+            return (vec.rows, vec.data)
+        else: raise NotImplementedError
+
+    def _setter(self, instance, value):
+        columns, data = value
+        self.write_row(instance._idx, columns, data)
+
+    def to_fmt(self, fmt):
+        if self.fmt != fmt:
+            if   fmt == 'lil': self.to_lil()
+            elif fmt == 'csr': self.to_csr()
+            else: raise ValueError(fmt)
+            self.fmt = fmt
+        return self
+
+    def to_lil(self):
+        self.data = scipy.sparse.lil_matrix(self.data, shape=self.data.shape)
+
+    def to_csr(self):
+        self.data = scipy.sparse.csr_matrix(self.data, shape=self.data.shape)
+
+    def _append(self, old_size):
+        self.data.resize((len(self.cls), len(self.column_class)))
 
     def access(self, sparse_matrix_write=None):
         return self.data
 
-    def sparse_matrix_write(self, rows, columns, data):
-        lil = scipy.sparse.lil_matrix(self.data)
-        for r, c, d in zip(rows, columns, data):
-            r = int(r)
-            lil.rows[r].clear()
-            lil.data[r].clear()
-            cols_data = [int(x) for x in c]
-            order = np.argsort(cols_data)
-            lil.rows[r].extend(np.take(cols_data, order))
-            lil.data[r].extend(np.take(list(d), order))
-        self.data = scipy.sparse.csr_matrix(lil, shape=self.data.shape)
+    def write_row(self, row, columns, values):
+        self.to_fmt('lil')
+        r = int(row)
+        self.data.rows[r].clear()
+        self.data.data[r].clear()
+        columns = [x._idx if isinstance(x, Instance) else int(x) for x in columns]
+        order = np.argsort(columns)
+        self.data.rows[r].extend(np.take(columns, order))
+        self.data.data[r].extend(np.take(values, order))
 
     # TODO: Consider adding more write methods:
     #       1) Write rows. (done)
     #       2) Insert coordinates.
-    #       3) Overwrite the matrix.
+    #       3) Overwrite the matrix?
 
     def check(self, database):
         _Component._check_data(self, database, self.data.data, reference=self.reference)
