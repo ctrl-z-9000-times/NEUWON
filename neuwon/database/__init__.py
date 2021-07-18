@@ -2,6 +2,10 @@
 
 # TODO: Rename ClassType to MyClassFactor and rename the instance type to MyClass name.
 
+# TODO: Refactor the markdown support into a separate module? sub-module.
+
+################################################################################
+
 # TODO: Add a widget for getting the data as a fraction of its range, using the
 # optionally given "bounds". Use-case: making color maps. It could
 # automatically scale my voltages into the viewable range [0-1] ready to be
@@ -101,42 +105,6 @@ class Database:
                 s += repr(comp) + "\n"
         return s
 
-    def __str__(self):
-        """ Markdown format documentation. """
-        case_insensitive = lambda kv_pair: kv_pair[0].lower()
-        components = sorted(self.components.items(), key=case_insensitive)
-        archetypes = sorted(self.archetypes.items(), key=case_insensitive)
-        s  = "## Table of Contents\n"
-        s += "* [Components Without Archetypes](#components-without-archetypes)\n"
-        for name, obj in archetypes:
-            s += "* [Archetype: %s](%s)\n"%(name, obj._markdown_link())
-        s += "* [Index](#index)\n"
-        s += "---\n## Components Without Archetypes\n"
-        for name, obj in components:
-            try: self._get_archetype(name)
-            except ValueError:
-                s += str(obj) + "\n"
-        for ark_name, ark in archetypes:
-            s += str(ark) + "\n"
-            s += "Components:\n"
-            for comp_name, comp in components:
-                if not comp_name.startswith(ark_name): continue
-                s += "* [%s](%s)\n"%(comp_name, comp._markdown_link())
-            s += "\n"
-            for comp_name, comp in components:
-                if not comp_name.startswith(ark_name): continue
-                s += str(comp) + "\n"
-        s += "---\n"
-        s += "## Index\n"
-        for name, obj in sorted(archetypes + components):
-            s += "* [%s](%s)\n"%(name, obj._markdown_link())
-        return s
-
-    # TODO: This is gui code. I think it should live elsewhere...
-    def browse_docs(self):
-        from subprocess import run, PIPE
-        grip = run(["grip", "--browser", "-"], input=bytes(str(self), encoding='utf8'))
-
 class _DocString:
     def __init__(self, name, doc):
         self._name = str(name)
@@ -220,7 +188,6 @@ class ClassType(_DocString):
                 >>> obj.x = 3
                 >>> obj.y = 4
         """
-        self.invalidate()
         old_size  = self.size
         new_size  = old_size + 1
         self.size = new_size
@@ -247,7 +214,6 @@ class ClassType(_DocString):
         # simplify the spiders web of lists of references.
         if not instances: return
         ark = self.archetypes[str(archetype_name)]
-        ark.invalidate()
         alive = {ark: np.ones(ark.size, dtype=np.bool)}
         alive[ark][instances] = False
         # Find all dangling references to dead instance of this archetype.
@@ -260,7 +226,6 @@ class ClassType(_DocString):
             if isinstance(ref, _Attribute):
                 if ark not in alive:
                     alive[ark] = np.ones(ark.size, dtype=np.bool)
-                    ark.invalidate()
                 alive[ark][np.logical_not(target_alive[ref.data])] = False
                 stack.extend(ark.referenced_by)
             elif isinstance(ref, _Sparse_Matrix):
@@ -291,9 +256,6 @@ class ClassType(_DocString):
     def check(self, name=None):
         if name is None: self.db.check(self)
         else: self.get_component(name).check()
-
-    def invalidate(self):
-        for x in self.components.values(): x.invalidate()
 
     def __len__(self):
         return self.size
@@ -354,9 +316,6 @@ class _Component(_DocString):
         return self
 
     def check(self, database):
-        """ Abstract method, optional """
-
-    def invalidate(self):
         """ Abstract method, optional """
 
     def _check_data(self, database, data, reference=False):
@@ -445,8 +404,8 @@ class Attribute(_Component):
             self.shape = (int(round(shape)),)
         self.data = self._alloc(len(self.cls))
         self._append(0)
-        setattr(self.cls.instance_class, self.name, property(
-                self._getter, self._setter, doc=self.doc,))
+        setattr(self.cls.instance_class, self.name,
+                property(self._getter, self._setter, doc=self.doc,))
 
     def _getter(self, instance):
         value = self.data[instance._idx]
@@ -510,14 +469,14 @@ class Attribute(_Component):
         return s
 
 class ClassAttribute(_Component):
-    def __init__(self, class_type, name, value, doc="", units=None,
+    def __init__(self, class_type, name, initial_value, doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """ Add a singular floating-point value. """
         _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
-        self.data = float(value)
+        self.initial_value = float(initial_value)
+        self.data = self.initial_value
         setattr(self.cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc))
-        self.check()
 
     def _getter(self, instance):
         return self.data
@@ -527,6 +486,9 @@ class ClassAttribute(_Component):
 
     def get(self):
         return self.data
+
+    def set(self, value):
+        self.data = value
 
     def check(self):
         _Component._check_data(self, self.cls, np.array([self.data]))
@@ -559,8 +521,8 @@ class Sparse_Matrix(_Component):
         self.dtype = dtype
         self.data = scipy.sparse.csr_matrix((len(self.cls), len(self.column_class)), dtype=self.dtype)
         self.fmt = 'csr'
-        setattr(self.cls.instance_class, self.name, property(
-                self._getter, self._setter, doc=self.doc))
+        setattr(self.cls.instance_class, self.name,
+                property(self._getter, self._setter, doc=self.doc))
 
     def _getter(self, instance):
         if self.fmt == 'lil':
@@ -603,6 +565,9 @@ class Sparse_Matrix(_Component):
     def get(self):
         return self.data
 
+    def set(self, new_matrix):
+        raise NotImplementedError
+
     def write_row(self, row, columns, values):
         self.to_fmt('lil')
         r = int(row)
@@ -628,76 +593,4 @@ class Sparse_Matrix(_Component):
         try: nnz_per_row = self.data.nnz / self.data.shape[0]
         except ZeroDivisionError: nnz_per_row = 0
         s += " nnz/row: %g"%nnz_per_row
-        return s
-
-class KD_Tree(_Component):
-    def __init__(self, entity, name, coordinates_attribute, doc=""):
-        _Component.__init__(self, entity, name, doc)
-        self.component = database.components[str(coordinates_attribute)]
-        assert(isinstance(self.component, _Attribute))
-        assert(not self.component.reference)
-        archetype = database._get_archetype(self.name)
-        archetype.kd_trees.append(self)
-        assert archetype == self.component.archetype, "KD-Tree and its coordinates must have the same archetype."
-        self.tree = None
-        self.invalidate()
-
-    def invalidate(self):
-        self.up_to_date = False
-
-    def access(self, database):
-        if not self.up_to_date:
-            data = self.component.access(database).get()
-            self.tree = scipy.spatial.cKDTree(data)
-            self.up_to_date = True
-        return self.tree
-
-    def __repr__(self):
-        return "KD Tree   " + self.name
-
-class Linear_System(_Component):
-    def __init__(self, class_type, name, function, epsilon, doc="", allow_invalid=False,):
-        """ Add a system of linear & time-invariant differential equations.
-
-        Argument function(database_access) -> coefficients
-
-        For equations of the form: dX/dt = C * X
-        Where X is a component, of the same archetype as this linear system.
-        Where C is a matrix of coefficients, returned by the argument "function".
-
-        The database computes the propagator matrix but does not apply it.
-        The matrix is updated after any of the entity are created or destroyed.
-        """
-        _Component.__init__(self, class_type, name, doc, allow_invalid=allow_invalid)
-        self.function   = function
-        self.epsilon    = float(epsilon)
-        self.data       = None
-
-    def invalidate(self):
-        self.data = None
-
-    def get(self):
-        if self.data is None: self._compute()
-        return self.data
-
-    def _compute(self):
-        coef = self.function(self.cls.database)
-        coef = scipy.sparse.csc_matrix(coef, shape=(self.archetype.size, self.archetype.size))
-        # Note: always use double precision floating point for building the impulse response matrix.
-        # TODO: Detect if the user returns f32 and auto-convert it to f64.
-        matrix = scipy.sparse.linalg.expm(coef)
-        # Prune the impulse response matrix.
-        matrix.data[np.abs(matrix.data) < self.epsilon] = 0
-        matrix.eliminate_zeros()
-        self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
-
-    def check(self):
-        _Component._check_data(self, database, self.get().get().data)
-
-    def __repr__(self):
-        s = "Linear    " + self.name + "  "
-        if self.data is None:
-            s += "invalid"
-        else:
-            s += "nnz/row: %g"%(self.data.nnz / self.data.shape[0])
         return s
