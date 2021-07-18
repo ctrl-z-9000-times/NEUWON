@@ -83,7 +83,7 @@ class Database:
                 components = [self.get_component(component_name)]
         exceptions = []
         for c in components:
-            try: c.check(self)
+            try: c.check()
             except Exception as x: exceptions.append(str(x))
         if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
 
@@ -315,10 +315,10 @@ class _Component(_DocString):
         """ Abstract method, optional """
         return self
 
-    def check(self, database):
+    def check(self):
         """ Abstract method, optional """
 
-    def _check_data(self, database, data, reference=False):
+    def _check_data(self, data, reference=False):
         """ Helper method to interpret the check flags (allow_invalid & bounds) and dtypes. """
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
@@ -455,8 +455,8 @@ class Attribute(_Component):
         1/0
         return self
 
-    def check(self, database):
-        _Component._check_data(self, database, self.get(), reference=self.reference)
+    def check(self):
+        _Component._check_data(self, self.get(), reference=self.reference)
 
     def __repr__(self):
         s = "Attribute " + self.name + "  "
@@ -491,7 +491,7 @@ class ClassAttribute(_Component):
         self.data = value
 
     def check(self):
-        _Component._check_data(self, self.cls, np.array([self.data]))
+        _Component._check_data(self, np.array([self.data]))
 
     def __repr__(self):
         return "Constant  %s  = %s"%(self.name, str(self.data))
@@ -578,8 +578,8 @@ class Sparse_Matrix(_Component):
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))
 
-    def check(self, database):
-        _Component._check_data(self, database, self.data.data, reference=self.reference)
+    def check(self):
+        _Component._check_data(self, self.data.data, reference=self.reference)
 
     def __repr__(self):
         s = "Matrix    " + self.name + "  "
