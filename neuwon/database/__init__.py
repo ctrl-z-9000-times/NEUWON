@@ -143,9 +143,12 @@ class ClassType(_DocString):
     def get_all_components(self) -> tuple:
         return tuple(self.components.values())
 
-    def add_attribute(self, name, dtype=Real):
+    def get_all_instances(self) -> list:
+        return [self.instance_class(idx) for idx in range(self.size)]
+
+    def add_attribute(self, name, initial_value=None, dtype=Real):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return Attribute(self, name, dtype=dtype)
+        return Attribute(self, name, initial_value=initial_value, dtype=dtype)
 
     def add_class_attribute(self, name, value):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
@@ -179,7 +182,7 @@ class ClassType(_DocString):
                 x._append(old_size)
             else: raise NotImplementedError
         for attribute, value in kwargs.items():
-            obj.attribute = value
+            setattr(obj, attribute, value)
         return obj
 
     def destroy(self):
@@ -371,16 +374,16 @@ class Attribute(_Component):
         if len(self.data) < new_size:
             new_data = self._alloc(new_size)
             new_data[:old_size] = self.data[:old_size]
+            if self.initial_value is not None:
+                new_data[old_size:].fill(self.initial_value)
             self.data = new_data
-        if self.initial_value is not None:
-            self.data[old_size: new_size].fill(self.initial_value)
 
-    def _alloc(self, minimum_size):
+    def _alloc(self, size):
         """ Returns an empty array. """
         # TODO: IIRC CuPy can not deal with numpy structured arrays...
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
-        alloc = (int(round(2 * minimum_size)),)
+        alloc = (2 * size,)
         # Special case to squeeze off the empty trailing dimension (1).
         if self.shape != (1,): alloc = alloc + self.shape
         try:
@@ -408,7 +411,6 @@ class Attribute(_Component):
         s = "Attribute " + self.name + "  "
         if self.reference: s += "ref:" + self.reference.name
         else: s += self._dtype_name()
-        if self.shape != (1,): s += repr(list(self.shape))
         if self.allow_invalid:
             if self.reference: s += " (maybe NULL)"
             else: s += " (maybe NaN)"
@@ -530,9 +532,7 @@ class Sparse_Matrix(_Component):
     def __repr__(self):
         s = "Matrix    " + self.name + "  "
         if self.reference: s += "ref:" + self.reference.name
-        elif isinstance(self.dtype, np.dtype): s += self.dtype.name
-        elif isinstance(self.dtype, type): s += self.dtype.__name__
-        else: s += type(self.dtype).__name__
+        s += self._dtype_name()
         if self.allow_invalid:
             if self.reference: s += " (maybe NULL)"
             else: s += " (maybe NaN)"
