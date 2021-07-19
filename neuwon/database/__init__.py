@@ -1,24 +1,10 @@
 """ A database for neural simulations. """
 
-# TODO: Refactor the markdown support into a separate module? sub-module.
-
-################################################################################
-
-# TODO: Add a widget for getting the data as a fraction of its range, using the
-# optionally given "bounds". Use-case: making color maps. It could
-# automatically scale my voltages into the viewable range [0-1] ready to be
-# rendered. If data does not have bounds then raise exception.
-
-# TODO: Grids of objects
-#   -> Subclass of ?
-#   -> Entity creates & controls to coordinates array.
-#   -> Function: Nearest neighbor to convert coordinates to entity index.
+# TODO: Add ability to sort entities (API stubbs only)
 
 # TODO: Consider making a "ConnectivityMatrix" subclass, instead of using
 # sparse boolean matrix, to avoid storing the 1's.
 # This could be part of a more general purpose "list" attribute.
-
-
 
 from collections.abc import Callable, Iterable, Mapping
 import collections
@@ -62,7 +48,7 @@ class Database:
         return self.get_class(cls).get_component(component)
 
     def get_all_components(self) -> tuple:
-        return tuple(itertool.chain.from_iterable(
+        return tuple(itertools.chain.from_iterable(
                 x.components.values() for x in self.class_types.values()))
 
     def to_host(self) -> 'Database':
@@ -126,6 +112,7 @@ class ClassType(_DocString):
         self.size = 0
         self.components = dict()
         self.referenced_by = list()
+        self.referenced_by_sparse_matrix_columns = list()
         self.instances = weakref.WeakSet()
         if instance_class is not None:
             inherit = (instance_class, Instance,)
@@ -146,17 +133,17 @@ class ClassType(_DocString):
     def get_all_instances(self) -> list:
         return [self.instance_class(idx) for idx in range(self.size)]
 
-    def add_attribute(self, name, initial_value=None, dtype=Real):
+    def add_attribute(self, name, initial_value=None, dtype=Real, doc=""):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return Attribute(self, name, initial_value=initial_value, dtype=dtype)
+        return Attribute(self, name, initial_value=initial_value, dtype=dtype, doc=doc,)
 
     def add_class_attribute(self, name, value):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
         return ClassAttribute(self, name, value)
 
-    def add_sparse_matrix(self, name, column_class):
+    def add_sparse_matrix(self, name, column_class, doc=""):
         # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return Sparse_Matrix(self, name, column_class)
+        return Sparse_Matrix(self, name, column_class, doc=doc,)
 
     def __call__(self, **kwargs):
         """ Construct a new instance of this class.
@@ -172,15 +159,13 @@ class ClassType(_DocString):
         old_size  = self.size
         new_size  = old_size + 1
         self.size = new_size
-        obj = self.instance_class(old_size)
         for x in self.components.values():
-            if isinstance(x, Attribute):
-                x._append(old_size)
-            elif isinstance(x, ClassAttribute):
-                1/0
-            elif isinstance(x, Sparse_Matrix):
-                x._append(old_size)
+            if isinstance(x, Attribute): x._append(old_size, new_size)
+            elif isinstance(x, ClassAttribute): pass
+            elif isinstance(x, Sparse_Matrix): x._resize()
             else: raise NotImplementedError
+        for x in self.referenced_by_sparse_matrix_columns: x._resize()
+        obj = self.instance_class(old_size)
         for attribute, value in kwargs.items():
             setattr(obj, attribute, value)
         return obj
@@ -264,7 +249,7 @@ class _Component(_DocString):
         _DocString.__init__(self, name, doc)
         assert isinstance(class_type, ClassType)
         assert(self.name not in class_type.components)
-        self.cls = class_type
+        self.cls = class_type # TODO: Consider renaming this to _cls for consistency?
         self.cls.components[self.name] = self
         self.units = None if units is None else str(units)
         self.allow_invalid = bool(allow_invalid)
@@ -351,13 +336,14 @@ class Attribute(_Component):
             self.shape = tuple(int(round(x)) for x in shape)
         else:
             self.shape = (int(round(shape)),)
-        self.data = self._alloc(len(self.cls))
-        self._append(0)
+        self.mem = 'host'
+        self.data = []
         setattr(self.cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc,))
 
     def _getter(self, instance):
         value = self.data[instance._idx]
+        if hasattr(value, 'get'): value = value.get()
         if self.reference:
             value = self.reference.instance_class(value)
         return value
@@ -368,9 +354,8 @@ class Attribute(_Component):
                 value = value._idx
         self.data[instance._idx] = value
 
-    def _append(self, old_size):
+    def _append(self, old_size, new_size):
         """ Prepare space for new instances at the end of the array. """
-        new_size = len(self.cls)
         if len(self.data) < new_size:
             new_data = self._alloc(new_size)
             new_data[:old_size] = self.data[:old_size]
@@ -383,29 +368,35 @@ class Attribute(_Component):
         # TODO: IIRC CuPy can not deal with numpy structured arrays...
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
-        alloc = (2 * size,)
+        shape = (2 * size,)
         # Special case to squeeze off the empty trailing dimension (1).
-        if self.shape != (1,): alloc = alloc + self.shape
-        try:
-            return cupy.empty(alloc, dtype=self.dtype)
-        except Exception:
-            eprint("ERROR on GPU: allocating %s for %s"%(repr(alloc), self.name))
-            raise
+        if self.shape != (1,): shape = shape + self.shape
+        if self.mem == 'host':
+            return np.empty(shape, dtype=self.dtype)
+        elif self.mem == 'cuda':
+            return cupy.empty(shape, dtype=self.dtype)
+        else: raise NotImplementedError
 
     def get(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
         return self.data[:len(self.cls)]
 
     def to_host(self) -> 'Attribute':
-        1/0
+        if self.mem == 'host': pass
+        elif self.mem == 'cuda': self.data = self.data.get()
+        else: raise NotImplementedError
+        self.mem = 'host'
         return self
 
     def to_device(self, device_id=None) -> 'Attribute':
-        1/0
+        if self.mem == 'host': self.data = cupy.array(self.data)
+        elif self.mem == 'cuda': pass
+        else: raise NotImplementedError
+        self.mem = 'cuda'
         return self
 
     def check(self):
-        _Component._check_data(self, self.get(), reference=self.reference)
+        self._check_data(self.get(), reference=self.reference)
 
     def __repr__(self):
         s = "Attribute " + self.name + "  "
@@ -439,7 +430,7 @@ class ClassAttribute(_Component):
         self.data = value
 
     def check(self):
-        _Component._check_data(self, np.array([self.data]))
+        self._check_data(np.array([self.data]))
 
     def __repr__(self):
         return "Constant  %s  = %s"%(self.name, str(self.data))
@@ -466,6 +457,8 @@ class Sparse_Matrix(_Component):
             self.column_class = column_class
         else:
             self.column_class = self.cls.database.get_class(column_class)
+        if self.column_class != self.cls:
+            self.column_class.referenced_by_sparse_matrix_columns.append(self)
         self.dtype = dtype
         self.data = scipy.sparse.csr_matrix((len(self.cls), len(self.column_class)), dtype=self.dtype)
         self.fmt = 'csr'
@@ -486,17 +479,24 @@ class Sparse_Matrix(_Component):
         """ Argument fmt is one of: "csr", "lil". """
         if self.fmt != fmt:
             if   fmt == 'lil': self.to_lil()
+            if   fmt == 'coo': self.to_coo()
             elif fmt == 'csr': self.to_csr()
             else: raise ValueError(fmt)
-            self.fmt = fmt
         return self
 
     def to_lil(self):
         self.data = scipy.sparse.lil_matrix(self.data, shape=self.data.shape)
+        self.fmt = "lil"
+        return self
+
+    def to_coo(self):
+        self.data = scipy.sparse.coo_matrix(self.data, shape=self.data.shape)
+        self.fmt = "coo"
         return self
 
     def to_csr(self):
         self.data = scipy.sparse.csr_matrix(self.data, shape=self.data.shape)
+        self.fmt = "csr"
         return self
 
     def to_host(self) -> 'Sparse_Matrix':
@@ -507,14 +507,20 @@ class Sparse_Matrix(_Component):
         1/0
         return self
 
-    def _append(self, old_size):
-        self.data.resize((len(self.cls), len(self.column_class)))
+    @property
+    def shape(self):
+        return (len(self.cls), len(self.column_class))
+
+    def _resize(self):
+        self.data.resize(self.shape)
 
     def get(self):
         return self.data
 
     def set(self, new_matrix):
-        raise NotImplementedError
+        assert new_matrix.shape == self.shape
+        self.data = new_matrix
+        self.to_csr()
 
     def write_row(self, row, columns, values):
         self.to_fmt('lil')
@@ -527,7 +533,7 @@ class Sparse_Matrix(_Component):
         self.data.data[r].extend(np.take(values, order))
 
     def check(self):
-        _Component._check_data(self, self.data.data, reference=self.reference)
+        self._check_data(self.data.data)
 
     def __repr__(self):
         s = "Matrix    " + self.name + "  "
