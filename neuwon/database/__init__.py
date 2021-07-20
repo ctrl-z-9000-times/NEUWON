@@ -133,6 +133,9 @@ class ClassType(_DocString):
     def get_all_instances(self) -> list:
         return [self.instance_class(idx) for idx in range(self.size)]
 
+    def get_database(self):
+        return self.database
+
     def add_attribute(self, name, initial_value=None, dtype=Real, shape=(1,),
                 doc="", units=None, allow_invalid=False, valid_range=(None, None),):
         return Attribute(self, name, initial_value=initial_value, dtype=dtype, shape=shape,
@@ -271,6 +274,12 @@ class _Component(_DocString):
     def get_initial_value(self, component_name):
         """ Abstract method, optional """
         return getattr(self, "initial_value", None)
+
+    def get_class(self):
+        return self._cls
+
+    def get_database(self):
+        return self.cls.database
 
     def to_host(self) -> '_Component':
         """ Abstract method, optional """
