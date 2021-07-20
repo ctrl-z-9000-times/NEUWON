@@ -23,11 +23,10 @@ default_parameters = {
     'fatigue_rate':   0.033,
     'a0': 3.,
     's0': 0.3,
-    'theta_rate': 0.2, # Not specified.
-    'gain_rate': 0.2, # Not specified.
+    'theta_rate': 0.001, # Not specified.
+    'gain_rate':  0.001, # Not specified.
     'psi_sat': 30.,
-    # 'learning_rate': 0.001,
-    'learning_rate': 0.01,
+    'learning_rate': 0.001,
     'learning_desensitization_rate': 0.1,  # Not specified.
 }
 
@@ -60,8 +59,8 @@ class Model:
         self.reset()
 
     def reset(self):
-        self.theta = 1
-        self.gain = 100
+        self.theta = 0
+        self.gain = 1
         self.GridCell.get_component("r_act").get().fill(0)
         self.GridCell.get_component("r_inact").get().fill(0)
         self.GridCell.get_component("avg_psi").get().fill(0)
@@ -158,20 +157,18 @@ class Environment:
 
 class Experiment:
     def __init__(self):
-        # self.env = Environment(size = 200)
-        self.env = Environment(size = 100)
+        self.env = Environment(size = 200)
         self.model = Model(default_parameters)
 
     def main(self):
         parser = argparse.ArgumentParser()
         parser.add_argument('--steps', type=int, default = 1000 * 1000,)
         args = parser.parse_args()
-        x = Experiment()
-        x.measure_receptive_fields(args.steps)
-        x.analyze_grid_properties()
-        x.find_alignment_points()
-        x.select_exemplar_cells(20)
-        x.plot()
+        self.measure_receptive_fields(args.steps)
+        self.analyze_grid_properties()
+        self.find_alignment_points()
+        self.select_exemplar_cells(20)
+        self.plot()
 
     def run_for(self, steps):
         print("Running for %d steps ..."%steps)
@@ -191,8 +188,8 @@ class Experiment:
         self.gc_rfs  = [np.zeros((env_sz, env_sz)) for idx in range(num_gc)]
         for _ in range(steps):
             self.env.move()
-            position = tuple(int(q) for q in self.env.position)
             self.model.advance(self.env.position)
+            position = tuple(int(q) for q in self.env.position)
             for rf_idx, enc_idx in enumerate(enc_samples):
                 self.enc_rfs[rf_idx][position] = self.model.pc_sdr.dense[enc_idx]
             gc_activity = self.model.GridCell.get_component("psi").get()
@@ -246,18 +243,18 @@ class Experiment:
         if num < 1: num = int(round(len(self.gridness) * num))
         gc_samples = np.argsort(self.gridness)[ -num : ]
         self.gridness_all = self.gridness[:] # Save all gridness scores for histogram.
-        gc_samples   = sorted(gc_samples, key=lambda x: self.gridness[x])
+        gc_samples = sorted(gc_samples, key=lambda x: self.gridness[x])
         # Get the selected data.
-        self.gc_rfs       = [ self.gc_rfs[idx]    for idx in gc_samples ]
-        self.xcor         = [ self.xcor[idx]      for idx in gc_samples ]
-        self.gridness     = [ self.gridness[idx]  for idx in gc_samples ]
-        self.alignment    = [ self.alignment[idx] for idx in gc_samples ]
+        self.gc_rfs       = [self.gc_rfs[idx]    for idx in gc_samples]
+        self.xcor         = [self.xcor[idx]      for idx in gc_samples]
+        self.gridness     = [self.gridness[idx]  for idx in gc_samples]
+        self.alignment    = [self.alignment[idx] for idx in gc_samples]
         self.score = np.mean(self.gridness)
         print("Score:", self.score)
         return self.score
 
     def plot(self):
-        if False:
+        if True:
             # Show how the agent traversed the environment.
             self.env.plot_course(show=False)
 
@@ -270,7 +267,7 @@ class Experiment:
               plt.subplot(nrows, ncols, subplot_idx + 1)
               plt.imshow(rf, interpolation='nearest')
 
-        if False:
+        if True:
             # Show Histogram of gridness scores.
             plt.figure("Histogram of Gridness Scores")
             plt.hist( self.gridness_all, bins=28, range=[-.3, 1.1] )
@@ -295,7 +292,7 @@ class Experiment:
               plt.title("Gridness score %g"%self.gridness[subplot_idx])
               plt.imshow(X, interpolation='nearest')
 
-        if False:
+        if True:
             # Show locations of the first 3 maxima of each x-correlation.
             alignment_flat = [];
             for pts in self.alignment: alignment_flat.extend(pts)
@@ -310,7 +307,6 @@ class Experiment:
                     plt.scatter( x_coords, y_coords, scales )
 
         plt.show()
-
 
 if __name__ == "__main__":
     Experiment().main()
