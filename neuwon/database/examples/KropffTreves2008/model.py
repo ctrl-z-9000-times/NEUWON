@@ -37,12 +37,12 @@ class Model:
 
         self.PlaceCell.add_attribute("r", doc="Firing rate")
         self.PlaceCell.add_sparse_matrix("J", self.GridCell, doc="Synapse weights")
-        self.PlaceCell.add_attribute("avg_r")
+        self.PlaceCell.add_attribute("avg_r", 0)
 
         self.GridCell.add_attribute("psi", doc="Firing rate")
-        self.GridCell.add_attribute("avg_psi")
-        self.GridCell.add_attribute("r_act")
-        self.GridCell.add_attribute("r_inact")
+        self.GridCell.add_attribute("avg_psi", 0)
+        self.GridCell.add_attribute("r_act", 0)
+        self.GridCell.add_attribute("r_inact", 0)
 
         self.place_cells = [self.PlaceCell() for _ in range(self.num_place_cells)]
         self.grid_cells = [self.GridCell() for _ in range(self.num_grid_cells)]
@@ -62,11 +62,12 @@ class Model:
         self.PlaceCell.get_component("avg_r").get().fill(0)
 
     def advance(self, coordinates, learn=True):
+        # Set the place cell activity based on the postitional coordinates.
         coordinates = np.array((int(round(x)) for x in coordinates))
         self.pc_encoder.encode((coordinates, self.place_cell_radius), self.pc_sdr)
-        r = self.PlaceCell.get_component("r").get()
-        r[:] = self.pc_sdr.dense
+        self.PlaceCell.get_component("r").set(self.pc_sdr.dense)
         # Compute the feed forward synaptic activity.
+        r = self.PlaceCell.get_component("r").get()
         J = self.PlaceCell.get_component("J").get()
         r_ = r.reshape((1, len(r)))
         h  = (r_ * J).T.squeeze()

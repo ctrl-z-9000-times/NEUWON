@@ -26,17 +26,19 @@ class Experiment:
         self.gc_rfs = [np.zeros((env_sz, env_sz)) for idx in range(self.num_gc)]
 
     def run(self, steps):
+        measure_period = 5 * self.env.size ** 2
         for step in range(steps):
             if step and step % 10000 == 0: print("Step %d / %d"%(step, steps))
             self.env.move()
             self.model.advance(self.env.position)
-            # Measure each cells receptive field at this location.
-            position = tuple(int(q) for q in self.env.position)
-            for rf_idx, pc_idx in enumerate(self.pc_samples):
-                self.pc_rfs[rf_idx][position] = self.model.pc_sdr.dense[pc_idx]
-            gc_activity = self.model.GridCell.get_component("psi").get()
-            for gc_idx in range(self.num_gc):
-                self.gc_rfs[gc_idx][position] = gc_activity[gc_idx] / self.model.psi_sat
+            if step > steps - measure_period:
+                # Measure each cells receptive field at this location.
+                position = tuple(int(q) for q in self.env.position)
+                for rf_idx, pc_idx in enumerate(self.pc_samples):
+                    self.pc_rfs[rf_idx][position] = self.model.pc_sdr.dense[pc_idx]
+                gc_activity = self.model.GridCell.get_component("psi").get()
+                for gc_idx in range(self.num_gc):
+                    self.gc_rfs[gc_idx][position] = gc_activity[gc_idx] / self.model.psi_sat
 
     def analyze_grid_properties(self):
         self.xcor      = []
