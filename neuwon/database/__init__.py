@@ -44,16 +44,16 @@ class Database:
         return tuple(self.class_types.values())
 
     def get_component(self, name) -> '_Component':
-        cls, component = str(name).split('.', maxsplit=1)
-        return self.get_class(cls).get_component(component)
+        _cls, component = str(name).split('.', maxsplit=1)
+        return self.get_class(_cls).get_component(component)
 
     def get_all_components(self) -> tuple:
         return tuple(itertools.chain.from_iterable(
                 x.components.values() for x in self.class_types.values()))
 
     def to_host(self) -> 'Database':
-        for cls in self.class_types.values():
-            for comp in cls.components.values():
+        for _cls in self.class_types.values():
+            for comp in _cls.components.values():
                 comp.to_host()
         return self
 
@@ -255,8 +255,8 @@ class _Component(_DocString):
         _DocString.__init__(self, name, doc)
         assert isinstance(class_type, ClassType)
         assert(self.name not in class_type.components)
-        self.cls = class_type # TODO: Consider renaming this to _cls for consistency?
-        self.cls.components[self.name] = self
+        self._cls = class_type
+        self._cls.components[self.name] = self
         self.units = None if units is None else str(units)
         self.allow_invalid = bool(allow_invalid)
         min_, max_ = valid_range
@@ -279,7 +279,7 @@ class _Component(_DocString):
         return self._cls
 
     def get_database(self):
-        return self.cls.database
+        return self._cls.database
 
     def to_host(self) -> '_Component':
         """ Abstract method, optional """
@@ -338,7 +338,7 @@ class Attribute(_Component):
         if isinstance(dtype, str) or isinstance(dtype, ClassType):
             self.dtype = Pointer
             self.initial_value = NULL
-            self.reference = self.cls.database.get_class(dtype)
+            self.reference = self._cls.database.get_class(dtype)
             self.reference.referenced_by.append(self)
         else:
             self.dtype = dtype
@@ -350,8 +350,8 @@ class Attribute(_Component):
             self.shape = (int(round(shape)),)
         self.mem = 'host'
         self.data = self._alloc(0)
-        self._append(0, len(self.cls))
-        setattr(self.cls.instance_class, self.name,
+        self._append(0, len(self._cls))
+        setattr(self._cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc,))
 
     def _getter(self, instance):
@@ -392,7 +392,7 @@ class Attribute(_Component):
 
     def get(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
-        return self.data[:len(self.cls)]
+        return self.data[:len(self._cls)]
 
     def to_host(self) -> 'Attribute':
         if self.mem == 'host': pass
@@ -430,7 +430,7 @@ class ClassAttribute(_Component):
         _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
         self.initial_value = float(initial_value)
         self.data = self.initial_value
-        setattr(self.cls.instance_class, self.name,
+        setattr(self._cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc))
 
     def _getter(self, instance):
@@ -472,13 +472,13 @@ class Sparse_Matrix(_Component):
         if isinstance(column, ClassType):
             self.column = column
         else:
-            self.column = self.cls.database.get_class(column)
-        if self.column != self.cls:
+            self.column = self._cls.database.get_class(column)
+        if self.column != self._cls:
             self.column.referenced_by_sparse_matrix_columns.append(self)
         self.dtype = dtype
-        self.data = scipy.sparse.csr_matrix((len(self.cls), len(self.column)), dtype=self.dtype)
+        self.data = scipy.sparse.csr_matrix((len(self._cls), len(self.column)), dtype=self.dtype)
         self.fmt = 'csr'
-        setattr(self.cls.instance_class, self.name,
+        setattr(self._cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc))
 
     def _getter(self, instance):
@@ -525,7 +525,7 @@ class Sparse_Matrix(_Component):
 
     @property
     def shape(self):
-        return (len(self.cls), len(self.column))
+        return (len(self._cls), len(self.column))
 
     def _resize(self):
         self.data.resize(self.shape)
