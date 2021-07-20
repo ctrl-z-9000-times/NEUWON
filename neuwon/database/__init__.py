@@ -43,7 +43,7 @@ class Database:
     def get_all_classes(self) -> tuple:
         return tuple(self.class_types.values())
 
-    def get_component(self, name) -> '_Component':
+    def get_component(self, name) -> '_DataComponent':
         _cls, component = str(name).split('.', maxsplit=1)
         return self.get_class(_cls).get_component(component)
 
@@ -97,6 +97,9 @@ class _DocString:
     @property
     def name(self):
         return self._name
+
+    def get_name(self): return self.name
+    def get_doc(self): return self.doc
 
 class ClassType(_DocString):
     def __init__(self, database, name, doc="", instance_class=None):
@@ -232,10 +235,8 @@ class ClassType(_DocString):
     def __len__(self):
         return self.size
 
-    # def __repr__(self):
-    #     s = "Entity".ljust(10) + self.name
-    #     if len(self): s += "  %d instances"%len(self)
-    #     return s
+    def __repr__(self):
+        return "%s:%"%(type(self).__name__, str(len(self)))
 
 class Instance:
     __slots__ = ("_idx", "__weakref__")
@@ -248,52 +249,79 @@ class Instance:
     def __repr__(self):
         return "%s:%d"%(type(self).__name__, self._idx)
 
-class _Component(_DocString):
+class _DataComponent(_DocString):
     """ Abstract class for all data components. """
-    def __init__(self, class_type, name, doc, units=None,
-                allow_invalid=True, valid_range=(None, None)):
+    def __init__(self, class_type, name,
+                doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
         _DocString.__init__(self, name, doc)
-        assert isinstance(class_type, ClassType)
-        assert(self.name not in class_type.components)
+        assert self.name not in class_type.components
         self._cls = class_type
         self._cls.components[self.name] = self
+        if shape is None: pass
+        elif isinstance(shape, Iterable):
+            self.shape = tuple(int(round(x)) for x in shape)
+        else:
+            self.shape = (int(round(shape)),)
+        if isinstance(dtype, str) or isinstance(dtype, ClassType):
+            self.dtype = Pointer
+            self.initial_value = NULL
+            self.reference = self._cls.database.get_class(dtype)
+            self.reference.referenced_by.append(self)
+        else:
+            self.dtype = np.dtype(dtype)
+            self.initial_value = self.dtype.type(initial_value)
+            self.reference = False
         self.units = None if units is None else str(units)
         self.allow_invalid = bool(allow_invalid)
-        min_, max_ = valid_range
-        if min_ is None: min_ = -float('inf')
-        if max_ is None: max_ = +float('inf')
-        self.valid_range = tuple(sorted((min_, max_)))
+        self.valid_range = tuple(valid_range)
+        if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
+        assert len(self.valid_range) == 2
+        self.mem = 'host'
 
     def get(self):
         """ Abstract method, required. """
         raise NotImplementedError
+    def set(self):
+        """ Abstract method, required. """
+        raise NotImplementedError
 
-    def get_units(self, component_name):
-        return self.units
+    def get_units(self):            return self.units
+    def get_dtype(self):            return self.dtype
+    def get_shape(self):            return self.shape
+    def get_initial_value(self):    return self.initial_value
+    def get_class(self):            return self._cls
+    def get_database(self):         return self._cls.database
 
-    def get_initial_value(self, component_name):
-        """ Abstract method, optional """
-        return getattr(self, "initial_value", None)
+    def get_memory_space(self):
+        """
+        Returns the current location of the data component:
 
-    def get_class(self):
-        return self._cls
+        Returns "host" when located in python's memory space.
+        Returns "cuda" when located in CUDA's memory space.
+        """
+        return self.mem
 
-    def get_database(self):
-        return self._cls.database
-
-    def to_host(self) -> '_Component':
+    def to_host(self) -> 'self':
         """ Abstract method, optional """
         return self
 
-    def to_device(self, device_id=None) -> '_Component':
+    def to_device(self, device_id=None) -> 'self':
         """ Abstract method, optional """
         return self
 
     def check(self):
-        """ Abstract method, optional """
-
-    def _check_data(self, data, reference=False):
-        """ Helper method to interpret the check flags (allow_invalid & bounds) and dtypes. """
+        """
+        Check data for values which are:
+            NaN
+            NULL
+            Out of bounds
+        """
+        data = self.get()
+        if isinstance(self, ClassAttribute):
+            data = np.array([self.data])
+        elif isinstance(self, Sparse_Matrix):
+            data = data.data
+        reference = getattr(self, 'reference', False)
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
             if reference: assert xp.all(xp.less(data, reference.size)), self.name + " is NULL"
@@ -306,15 +334,17 @@ class _Component(_DocString):
         if upper_bound is not None:
             assert xp.all(xp.greater_equal(upper_bound, data)), self.name + " greater than %g"%upper_bound
 
-    def _dtype_name(self):
-        if isinstance(self.dtype, np.dtype): x = self.dtype.name
-        elif isinstance(self.dtype, type): x = self.dtype.__name__
-        else: x = type(self.dtype).__name__
-        if hasattr(self, "shape") and self.shape != (1,):
-            x += repr(list(self.shape))
-        return x
+    def _type_info(self):
+        s = ""
+        if self.reference: s += "ref:" + self.reference.name
+        else: s += self.dtype.name
+        if self.shape != (1,): s += repr(list(self.shape))
+        return s
 
-class Attribute(_Component):
+    def __repr__(self):
+        return "%s: %s.%s %s"%(type(self).__name__, self._cls.name, self.name, self._type_info())
+
+class Attribute(_DataComponent):
     def __init__(self, class_type, name,
                 doc="",
                 units=None,
@@ -334,20 +364,10 @@ class Attribute(_Component):
         with NULL references. Otherwise the entity containing the reference is
         destroyed. Destroying entities can cause a chain reaction of destruction.
         """
-        _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
-        if isinstance(dtype, str) or isinstance(dtype, ClassType):
-            self.dtype = Pointer
-            self.initial_value = NULL
-            self.reference = self._cls.database.get_class(dtype)
-            self.reference.referenced_by.append(self)
-        else:
-            self.dtype = dtype
-            self.initial_value = initial_value
-            self.reference = False
-        if isinstance(shape, Iterable):
-            self.shape = tuple(int(round(x)) for x in shape)
-        else:
-            self.shape = (int(round(shape)),)
+        _DataComponent.__init__(self, class_type, name,
+            doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
+            allow_invalid=allow_invalid, valid_range=valid_range)
+
         self.mem = 'host'
         self.data = self._alloc(0)
         self._append(0, len(self._cls))
@@ -408,50 +428,32 @@ class Attribute(_Component):
         self.mem = 'cuda'
         return self
 
-    def check(self):
-        self._check_data(self.get(), reference=self.reference)
-
-    def __repr__(self):
-        s = "Attribute " + self.name + "  "
-        if self.reference: s += "ref:" + self.reference.name
-        else: s += self._dtype_name()
-        if self.allow_invalid:
-            if self.reference: s += " (maybe NULL)"
-            else: s += " (maybe NaN)"
-        return s
-
-class ClassAttribute(_Component):
+class ClassAttribute(_DataComponent):
     def __init__(self, class_type, name, initial_value,
                 dtype=Real, shape=(1,),
                 doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """ Add a singular floating-point value. """
-        # TODO: Use the dtype & shape arguments!
-        _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
-        self.initial_value = float(initial_value)
+        _DataComponent.__init__(self, class_type, name,
+                dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
+                allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self.initial_value
         setattr(self._cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc))
 
     def _getter(self, instance):
-        return self.data
+        return self.get()
 
     def _setter(self, instance, value):
-        self.data = float(value)
+        self.set(value)
 
     def get(self):
         return self.data
 
     def set(self, value):
-        self.data = value
+        self.data = self.dtype.type(value)
 
-    def check(self):
-        self._check_data(np.array([self.data]))
-
-    def __repr__(self):
-        return "Constant  %s  = %s"%(self.name, str(self.data))
-
-class Sparse_Matrix(_Component):
+class Sparse_Matrix(_DataComponent):
     # TODO: Consider adding more write methods:
     #       1) Write rows. (done)
     #       2) Insert coordinates.
@@ -459,16 +461,16 @@ class Sparse_Matrix(_Component):
     def __init__(self, class_type, name, column, dtype=Real, doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """
-        Add a sparse matrix which is indexed by Entities. This is useful for
+        Add a sparse matrix that is indexed by Entities. This is useful for
         implementing any-to-any connections between entities.
 
         Sparse matrices may contain references but they will not trigger a
         recursive destruction of entities. Instead, references to destroyed
         entities are simply removed from the sparse matrix.
-
-        Argument name: determines the archetype for the row.
         """
-        _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
+        _DataComponent.__init__(self, class_type, name,
+                dtype=dtype, shape=None, doc=doc, units=units, initial_value=0,
+                allow_invalid=allow_invalid, valid_range=valid_range)
         if isinstance(column, ClassType):
             self.column = column
         else:
@@ -516,11 +518,28 @@ class Sparse_Matrix(_Component):
         return self
 
     def to_host(self) -> 'Sparse_Matrix':
-        1/0
+        if self.mem == 'host': pass
+        elif self.mem == 'cuda':
+            if self.fmt == 'csr':
+                self.data = scipy.sparse.csr_matrix(self.data.get())
+            elif self.fmt == 'coo':
+                self.data = scipy.sparse.coo_matrix(self.data.get())
+            else: raise NotImplementedError
+            self.mem = 'host'
+        else: raise NotImplementedError
         return self
 
     def to_device(self, device_id=None) -> 'Sparse_Matrix':
-        1/0
+        if self.mem == 'host':
+            if self.fmt == 'lil': self.fmt = 'csr'
+            if self.fmt == 'csr':
+                self.data = cupyx.scipy.sparse.csr_matrix(self.data.get())
+            elif self.fmt == 'coo':
+                self.data = cupyx.scipy.sparse.coo_matrix(self.data.get())
+            else: raise NotImplementedError
+            self.mem = 'cuda'
+        elif self.mem == 'cuda': pass
+        else: raise NotImplementedError
         return self
 
     @property
@@ -548,16 +567,8 @@ class Sparse_Matrix(_Component):
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))
 
-    def check(self):
-        self._check_data(self.data.data)
-
     def __repr__(self):
-        s = "Matrix    " + self.name + "  "
-        if self.reference: s += "ref:" + self.reference.name
-        s += self._dtype_name()
-        if self.allow_invalid:
-            if self.reference: s += " (maybe NULL)"
-            else: s += " (maybe NaN)"
+        s = _DataComponent.__repr__(self)
         try: nnz_per_row = self.data.nnz / self.data.shape[0]
         except ZeroDivisionError: nnz_per_row = 0
         s += " nnz/row: %g"%nnz_per_row
