@@ -47,7 +47,9 @@ class Model:
         self.place_cells = [self.PlaceCell() for _ in range(self.num_place_cells)]
         self.grid_cells = [self.GridCell() for _ in range(self.num_grid_cells)]
         J = self.PlaceCell.get_component("J")
-        J.set(np.random.uniform(0.0, 0.1, size=J.shape))
+        initial_weights = np.random.uniform(0.0, 0.1, size=J.shape)
+        # initial_weights *= SDR(J.shape).randomize(.5).dense
+        J.set(initial_weights)
 
         self.reset()
 

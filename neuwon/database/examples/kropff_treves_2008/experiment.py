@@ -142,11 +142,3 @@ class Experiment:
                 plt.scatter( x_coords, y_coords, scales )
 
         plt.show()
-
-def _test():
-    x = Experiment(50)
-    x.run(1000)
-    x.model.db.check()
-    x.analyze_grid_properties()
-    x.find_alignment_points()
-    x.select_exemplar_cells(.20)
