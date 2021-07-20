@@ -36,6 +36,3 @@ def test_OOP_API():
     if False:
         help(Foo)
         help(x)
-
-if __name__ == "__main__":
-    test_OOP_API()
