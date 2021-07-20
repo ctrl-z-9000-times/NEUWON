@@ -7,39 +7,42 @@ import random
 
 default_parameters = {
     'num_place_cells': 201,
-    'place_cell_radius': 4,
+    'place_cell_radius': 4, # Not specified by authors.
+    'place_cell_num_active': 9, # Not specified by authors.
     'num_grid_cells': 100,
     'stability_rate': 0.1,
     'fatigue_rate':   0.033,
     'a0': 3.,
     's0': 0.3,
-    'theta_rate': 0.001, # Not specified.
-    'gain_rate':  0.001, # Not specified.
+    'theta_rate': 0.001, # Not specified by authors.
+    'gain_rate':  0.001, # Not specified by authors.
     'psi_sat': 30.,
     'learning_rate': 0.001,
-    'learning_desensitization_rate': 0.1,  # Not specified.
+    'learning_desensitization_rate': 0.1,  # Not specified by authors.
 }
 
 class Model:
-    def __init__(self, parameters):
-        for key, value in parameters.items():
-            setattr(self, key, value)
+    def __init__(self, parameters=default_parameters):
+        # Assign the parameters to 'self' as attributes.
+        # For example: >>> parameters = {'x': 3}
+        # Becomes:     >>> self.x = 3
+        for key, value in parameters.items(): setattr(self, key, value)
 
         self.db = Database()
         self.GridCell = self.db.add_class("GridCell")
         self.PlaceCell = self.db.add_class("PlaceCell")
 
-        self.pc_encoder = CoordinateEncoder(9, parameters['num_place_cells'])
+        self.pc_encoder = CoordinateEncoder(self.place_cell_num_active, self.num_place_cells)
         self.pc_sdr = SDR(self.pc_encoder.n)
 
         self.PlaceCell.add_attribute("r", doc="Firing rate")
         self.PlaceCell.add_sparse_matrix("J", self.GridCell, doc="Synapse weights")
-        self.PlaceCell.add_attribute("avg_r", initial_value=0)
+        self.PlaceCell.add_attribute("avg_r")
 
         self.GridCell.add_attribute("psi", doc="Firing rate")
-        self.GridCell.add_attribute("avg_psi", initial_value=0)
-        self.GridCell.add_attribute("r_act", initial_value=0)
-        self.GridCell.add_attribute("r_inact", initial_value=0)
+        self.GridCell.add_attribute("avg_psi")
+        self.GridCell.add_attribute("r_act")
+        self.GridCell.add_attribute("r_inact")
 
         self.place_cells = [self.PlaceCell() for _ in range(self.num_place_cells)]
         self.grid_cells = [self.GridCell() for _ in range(self.num_grid_cells)]

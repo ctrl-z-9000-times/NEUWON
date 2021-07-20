@@ -3,7 +3,7 @@ from htm import SDR, Metrics
 from htm.encoders.coordinate import CoordinateEncoder
 from neuwon.database import *
 from .environment import Environment
-from .model import Model
+from .model import *
 from scipy.ndimage.filters import maximum_filter
 import argparse
 import cv2
