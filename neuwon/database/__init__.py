@@ -133,17 +133,20 @@ class ClassType(_DocString):
     def get_all_instances(self) -> list:
         return [self.instance_class(idx) for idx in range(self.size)]
 
-    def add_attribute(self, name, initial_value=None, dtype=Real, doc=""):
-        # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return Attribute(self, name, initial_value=initial_value, dtype=dtype, doc=doc,)
+    def add_attribute(self, name, initial_value=None, dtype=Real, shape=(1,),
+                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+        return Attribute(self, name, initial_value=initial_value, dtype=dtype, shape=shape,
+                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_class_attribute(self, name, value):
-        # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return ClassAttribute(self, name, value)
+    def add_class_attribute(self, name, initial_value, dtype=Real, shape=(1,),
+                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+        return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
+                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_sparse_matrix(self, name, column_class, doc=""):
-        # TODO: Copy the kwargs & docs from the class definitions back up to here. allow duplication.
-        return Sparse_Matrix(self, name, column_class, doc=doc,)
+    def add_sparse_matrix(self, name, column, dtype=Real,
+                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+        return Sparse_Matrix(self, name, column, dtype=dtype,
+                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def __call__(self, **kwargs):
         """ Construct a new instance of this class.
@@ -337,7 +340,8 @@ class Attribute(_Component):
         else:
             self.shape = (int(round(shape)),)
         self.mem = 'host'
-        self.data = []
+        self.data = self._alloc(0)
+        self._append(0, len(self.cls))
         setattr(self.cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc,))
 
@@ -408,9 +412,12 @@ class Attribute(_Component):
         return s
 
 class ClassAttribute(_Component):
-    def __init__(self, class_type, name, initial_value, doc="", units=None,
+    def __init__(self, class_type, name, initial_value,
+                dtype=Real, shape=(1,),
+                doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """ Add a singular floating-point value. """
+        # TODO: Use the dtype & shape arguments!
         _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
         self.initial_value = float(initial_value)
         self.data = self.initial_value
@@ -440,7 +447,7 @@ class Sparse_Matrix(_Component):
     #       1) Write rows. (done)
     #       2) Insert coordinates.
     #       3) Overwrite the matrix?
-    def __init__(self, class_type, name, column_class, dtype=Real, doc="", units=None,
+    def __init__(self, class_type, name, column, dtype=Real, doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """
         Add a sparse matrix which is indexed by Entities. This is useful for
@@ -453,14 +460,14 @@ class Sparse_Matrix(_Component):
         Argument name: determines the archetype for the row.
         """
         _Component.__init__(self, class_type, name, doc, units, allow_invalid, valid_range)
-        if isinstance(column_class, ClassType):
-            self.column_class = column_class
+        if isinstance(column, ClassType):
+            self.column = column
         else:
-            self.column_class = self.cls.database.get_class(column_class)
-        if self.column_class != self.cls:
-            self.column_class.referenced_by_sparse_matrix_columns.append(self)
+            self.column = self.cls.database.get_class(column)
+        if self.column != self.cls:
+            self.column.referenced_by_sparse_matrix_columns.append(self)
         self.dtype = dtype
-        self.data = scipy.sparse.csr_matrix((len(self.cls), len(self.column_class)), dtype=self.dtype)
+        self.data = scipy.sparse.csr_matrix((len(self.cls), len(self.column)), dtype=self.dtype)
         self.fmt = 'csr'
         setattr(self.cls.instance_class, self.name,
                 property(self._getter, self._setter, doc=self.doc))
@@ -478,9 +485,9 @@ class Sparse_Matrix(_Component):
     def to_fmt(self, fmt):
         """ Argument fmt is one of: "csr", "lil". """
         if self.fmt != fmt:
-            if   fmt == 'lil': self.to_lil()
-            if   fmt == 'coo': self.to_coo()
-            elif fmt == 'csr': self.to_csr()
+            if   fmt == 'csr': self.to_csr()
+            elif fmt == 'coo': self.to_coo()
+            elif fmt == 'lil': self.to_lil()
             else: raise ValueError(fmt)
         return self
 
@@ -509,7 +516,7 @@ class Sparse_Matrix(_Component):
 
     @property
     def shape(self):
-        return (len(self.cls), len(self.column_class))
+        return (len(self.cls), len(self.column))
 
     def _resize(self):
         self.data.resize(self.shape)
@@ -546,3 +553,7 @@ class Sparse_Matrix(_Component):
         except ZeroDivisionError: nnz_per_row = 0
         s += " nnz/row: %g"%nnz_per_row
         return s
+
+ClassType.add_attribute.__doc__ = Attribute.__init__.__doc__
+ClassType.add_class_attribute.__doc__ = ClassAttribute.__init__.__doc__
+ClassType.add_sparse_matrix.__doc__ = Sparse_Matrix.__init__.__doc__
