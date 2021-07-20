@@ -1,6 +1,6 @@
-from .experiment import Experiment
+from neuwon.database.examples.KropffTreves2008.experiment import Experiment
 
-def test_experiment():
+def test():
     x = Experiment(20)
     x.run(100)
     x.model.db.check()
