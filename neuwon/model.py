@@ -23,6 +23,9 @@ R = 8.31446261815324 # Universal gas constant
 
 _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
 
+def eprint(*args, **kwargs):
+    """ Prints to standard error (sys.stderr). """
+    print(*args, file=sys.stderr, **kwargs)
 
 # I might move this out of the database, as it seems to be very ... specific for
 # my current project.
