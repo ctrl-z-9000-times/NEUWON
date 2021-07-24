@@ -48,7 +48,7 @@ class Database:
         cls_name, _, attr_name = str(name).partition('.')
         _cls = self.class_types[cls_name]
         attr = _cls.components[attr_name]
-        return attr_name.get_data()
+        return attr.get_data()
 
     def get_class(self, name):
         _cls = self.get(name)
@@ -351,11 +351,9 @@ class _DataComponent(_DocString):
             NULL
             Out of bounds
         """
-        data = self.get()
-        if isinstance(self, ClassAttribute):
-            data = np.array([self.data])
-        elif isinstance(self, Sparse_Matrix):
-            data = data.data
+        data = self.get_data()
+        if isinstance(self, ClassAttribute):  data = np.array([data])
+        elif isinstance(self, Sparse_Matrix): data = data.data
         reference = getattr(self, 'reference', False)
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:

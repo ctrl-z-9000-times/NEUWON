@@ -36,7 +36,7 @@ class Experiment:
                 position = tuple(int(q) for q in self.env.position)
                 for rf_idx, pc_idx in enumerate(self.pc_samples):
                     self.pc_rfs[rf_idx][position] = self.model.pc_sdr.dense[pc_idx]
-                gc_activity = self.model.GridCell.get_component("psi").get()
+                gc_activity = self.model.db.get_data("GridCell.psi")
                 for gc_idx in range(self.num_gc):
                     self.gc_rfs[gc_idx][position] = gc_activity[gc_idx] / self.model.psi_sat
 

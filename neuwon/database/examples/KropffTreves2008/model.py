@@ -46,40 +46,40 @@ class Model:
 
         self.place_cells = [self.PlaceCell() for _ in range(self.num_place_cells)]
         self.grid_cells = [self.GridCell() for _ in range(self.num_grid_cells)]
-        J = self.PlaceCell.get_component("J")
+        J = self.db.get("PlaceCell.J")
         initial_weights = np.random.uniform(0.0, 0.1, size=J.shape)
         # initial_weights *= SDR(J.shape).randomize(.5).dense
-        J.set(initial_weights)
+        J.set_data(initial_weights)
 
         self.reset()
 
     def reset(self):
         self.theta = 0
         self.gain = 1
-        self.GridCell.get_component("r_act").get().fill(0)
-        self.GridCell.get_component("r_inact").get().fill(0)
-        self.GridCell.get_component("avg_psi").get().fill(0)
-        self.PlaceCell.get_component("avg_r").get().fill(0)
+        self.db.get_data("GridCell.r_act").fill(0)
+        self.db.get_data("GridCell.r_inact").fill(0)
+        self.db.get_data("GridCell.avg_psi").fill(0)
+        self.db.get_data("PlaceCell.avg_r").fill(0)
 
     def advance(self, coordinates, learn=True):
         # Set the place cell activity based on the postitional coordinates.
         coordinates = np.array((int(round(x)) for x in coordinates))
         self.pc_encoder.encode((coordinates, self.place_cell_radius), self.pc_sdr)
-        self.PlaceCell.get_component("r").set(self.pc_sdr.dense)
+        self.PlaceCell.get("r").set_data(self.pc_sdr.dense)
         # Compute the feed forward synaptic activity.
-        r = self.PlaceCell.get_component("r").get()
-        J = self.PlaceCell.get_component("J").get()
+        r = self.PlaceCell.get_data("r")
+        J = self.PlaceCell.get_data("J")
         r_ = r.reshape((1, len(r)))
         h  = (r_ * J).T.squeeze()
         h *= (1 / len(self.PlaceCell))
         # Apply stability and fatigue dynamics.
-        r_act   = self.GridCell.get_component("r_act").get()
-        r_inact = self.GridCell.get_component("r_inact").get()
+        r_act   = self.GridCell.get_data("r_act")
+        r_inact = self.GridCell.get_data("r_inact")
         h -= r_inact
         r_act   += self.stability_rate * (h - r_act)
         r_inact += self.fatigue_rate * h
         # Apply activation function.
-        psi = self.GridCell.get_component("psi").get()
+        psi = self.GridCell.get_data("psi")
         psi[:] = (self.psi_sat * (2 / math.pi)
                 * np.arctan(self.gain * np.maximum(0, r_act - self.theta)))
         # Update theta & gain to control the mean activity and sparsity.
@@ -93,9 +93,9 @@ class Model:
         self.gain  += self.gain_rate * (s - self.s0)
         # Hebbian learning.
         if not learn: return
-        avg_r   = self.PlaceCell.get_component("avg_r").get()
-        avg_psi = self.GridCell.get_component("avg_psi").get()
-        J = self.PlaceCell.get_component("J").to_coo().get()
+        avg_r   = self.PlaceCell.get_data("avg_r")
+        avg_psi = self.GridCell.get_data("avg_psi")
+        J = self.PlaceCell.get("J").to_coo().get_data()
         J.data += self.learning_rate * (r[J.row] * psi[J.col] - avg_r[J.row] * avg_psi[J.col])
         # Update moving averages of cell activity.
         avg_r   *= 1 - self.learning_desensitization_rate
