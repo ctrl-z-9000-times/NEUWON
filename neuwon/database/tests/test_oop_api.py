@@ -33,6 +33,9 @@ def test_OOP_API():
     x.connections = ([y], [2.])
     print((x.connections))
 
+    Foo.add_list_attribute("friends", dtype=Foo)
+    x.friends.append(y)
+
     if False:
         help(Foo)
         help(x)

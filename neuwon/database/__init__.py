@@ -506,7 +506,7 @@ class ListAttribute(_DataComponent):
             new_data = self._alloc(new_size)
             new_data[:old_size] = self.data[:old_size]
             self.data = new_data
-        for idx in range(old_size, new_data): self.data[idx] = []
+        for idx in range(old_size, new_size): self.data[idx] = []
 
     def _alloc(self, size):
         """ Returns an empty array. """
@@ -543,7 +543,7 @@ class ListAttribute(_DataComponent):
         return self
 
     def _getter(self, instance):
-        return self.data
+        return self.data[instance._idx]
 
     def _setter(self, instance, value):
         1/0 # TODO!
