@@ -35,16 +35,28 @@ class Database:
     def add_class(self, name, instance_class=None) -> 'ClassType':
         return ClassType(self, name, instance_class=instance_class)
 
-    def get_class(self, name) -> 'ClassType':
+    def get(self, name) -> 'ClassType' or '_DataComponent':
         if isinstance(name, ClassType): return name
-        return self.class_types[str(name)]
+        if isinstance(name, _DataComponent): return name
+        _cls, _, attr = str(name).partition('.')
+        if attr:
+            return self.class_types[_cls].components[attr]
+        else:
+            return self.class_types[_cls]
+
+    def get_data(self, name):
+        cls_name, _, attr_name = str(name).partition('.')
+        _cls = self.class_types[cls_name]
+        attr = _cls.components[attr_name]
+        return attr_name.get_data()
+
+    def get_class(self, name):
+        _cls = self.get(name)
+        if isinstance(_cls, _DataComponent): _cls = _cls.get_class()
+        return _cls
 
     def get_all_classes(self) -> tuple:
         return tuple(self.class_types.values())
-
-    def get_component(self, name) -> '_DataComponent':
-        _cls, component = str(name).split('.', maxsplit=1)
-        return self.get_class(_cls).get_component(component)
 
     def get_all_components(self) -> tuple:
         return tuple(itertools.chain.from_iterable(
@@ -66,10 +78,11 @@ class Database:
         if name is None:
             components = self.get_all_components()
         else:
-            try:
-                components = self.get_class(name).get_all_components()
-            except KeyError:
-                components = [self.get_component(component_name)]
+            x = self.get(name)
+            if isinstance(x, ClassType):
+                components = x.get_all_components()
+            else:
+                components = [x]
         exceptions = []
         for c in components:
             try: c.check()
@@ -132,8 +145,11 @@ class ClassType(_DocString):
                 "__slots__": (),
                 "_cls": self,})
 
-    def get_component(self, name):
+    def get(self, name):
         return self.components[str(name)]
+
+    def get_data(self, name):
+        return self.components[str(name)].get_data()
 
     def get_all_components(self) -> tuple:
         return tuple(self.components.values())
@@ -240,7 +256,7 @@ class ClassType(_DocString):
 
     def check(self, name=None):
         if name is None: self.db.check(self)
-        else: self.get_component(name).check()
+        else: self.get(name).check()
 
     def __len__(self):
         return self.size
@@ -297,10 +313,10 @@ class _DataComponent(_DocString):
         """ Set the instance's data value. """
         raise NotImplementedError
 
-    def get(self):
+    def get_data(self):
         """ Returns all data for this component. """
         raise NotImplementedError
-    def set(self, value):
+    def set_data(self, value):
         """ Replace the entire data component with a new set of values. """
         raise NotImplementedError
 
@@ -420,11 +436,11 @@ class Attribute(_DataComponent):
             return cupy.empty(shape, dtype=self.dtype)
         else: raise NotImplementedError
 
-    def get(self):
+    def get_data(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
         return self.data[:len(self._cls)]
 
-    def set(self, value):
+    def set_data(self, value):
         assert len(value) == len(self.get_class())
         if self.mem == "host":
             self.data = np.array(value, dtype=self.dtype)
@@ -463,15 +479,15 @@ class ClassAttribute(_DataComponent):
         self.data = self.initial_value
 
     def _getter(self, instance):
-        return self.get()
+        return self.get_data()
 
     def _setter(self, instance, value):
-        self.set(value)
+        self.set_data(value)
 
-    def get(self):
+    def get_data(self):
         return self.data
 
-    def set(self, value):
+    def set_data(self, value):
         self.data = self.dtype.type(value)
 
 class ListAttribute(_DataComponent):
@@ -534,10 +550,10 @@ class ListAttribute(_DataComponent):
     def _setter(self, instance, value):
         1/0 # TODO!
 
-    def get(self):
+    def get_data(self):
         return self.data[:len(self._cls)]
 
-    def set(self, value):
+    def set_data(self, value):
         1/0 # TODO!
 
     def get_connectivity_matrix(self):
@@ -636,10 +652,10 @@ class Sparse_Matrix(_DataComponent):
     def _resize(self):
         self.data.resize(self.shape)
 
-    def get(self):
+    def get_data(self):
         return self.data
 
-    def set(self, new_matrix):
+    def set_data(self, new_matrix):
         assert new_matrix.shape == self.shape
         self.data = new_matrix
         self.fmt = "unknown"
@@ -662,7 +678,7 @@ class Sparse_Matrix(_DataComponent):
         s += " nnz/row: %g"%nnz_per_row
         return s
 
-ClassType.add_attribute.__doc__ = Attribute.__init__.__doc__
-ClassType.add_class_attribute.__doc__ = ClassAttribute.__init__.__doc__
-ClassType.add_list_attribute.__doc__ = ListAttribute.__init__.__doc__
-ClassType.add_sparse_matrix.__doc__ = Sparse_Matrix.__init__.__doc__
+ClassType.add_attribute.__doc__         = Attribute.__init__.__doc__
+ClassType.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
+ClassType.add_list_attribute.__doc__    = ListAttribute.__init__.__doc__
+ClassType.add_sparse_matrix.__doc__     = Sparse_Matrix.__init__.__doc__
