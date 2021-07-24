@@ -1,14 +1,5 @@
 """ A database for neural simulations. """
 
-# TODO: Add ability to sort entities (API stubbs only)
-
-# TODO: Consider making a "ConnectivityMatrix" subclass, instead of using
-# sparse boolean matrix, to avoid storing the 1's.
-# This could be part of a more general purpose "list" attribute.
-
-# TODO: Consider renaming ClassType.get_component to just "get"
-#       Also rename the database version of that method too.
-
 from collections.abc import Callable, Iterable, Mapping
 import collections
 import cupy
@@ -36,24 +27,32 @@ class Database:
         return ClassType(self, name, instance_class=instance_class)
 
     def get(self, name) -> 'ClassType' or '_DataComponent':
-        if isinstance(name, ClassType): return name
-        if isinstance(name, _DataComponent): return name
+        if isinstance(name, ClassType):
+            assert name.get_database() is self
+            return name
+        if isinstance(name, _DataComponent):
+            assert name.get_database() is self
+            return name
         _cls, _, attr = str(name).partition('.')
-        if attr:
-            return self.class_types[_cls].components[attr]
-        else:
-            return self.class_types[_cls]
-
-    def get_data(self, name):
-        cls_name, _, attr_name = str(name).partition('.')
-        _cls = self.class_types[cls_name]
-        attr = _cls.components[attr_name]
-        return attr.get_data()
+        obj = self.class_types[_cls]
+        if attr: obj = obj.components[attr]
+        return obj
 
     def get_class(self, name):
         _cls = self.get(name)
         if isinstance(_cls, _DataComponent): _cls = _cls.get_class()
         return _cls
+
+    def get_component(self, name):
+        component = self.get(name)
+        assert isinstance(component, _DataComponent)
+        return component
+
+    def get_data(self, name):
+        return self.get_component(name).get_data()
+
+    def set_data(self, name, value):
+        self.get_component(name).set_data(value)
 
     def get_all_classes(self) -> tuple:
         return tuple(self.class_types.values())
@@ -73,6 +72,31 @@ class Database:
             for x in _cls.components.values():
                 x.to_device()
         return self
+
+    def sort(self):
+        """
+        NOTES:
+
+        When classes use pointers to other classes as sort-keys then they create
+        a dependency in their sorting-order, which the database will need to
+        deal with. The database looks at each classes sorting function and
+        determines its dependencies (pointers which it uses as sort keys) and
+        makes a DAG of the dependencies. Then it flattens the DAG into a
+        topologically sorted order to sort the data in.
+
+        EXAMPLE OF SORT ORDER DEPENDENCIES:
+              1) Sort cells by their assigned CPU thread,
+              2) Sort sections by cell & topologically,
+              3) Sort segment by section & index on section,
+              4) Sort ion channels by segment.
+
+        Be efficiency by updating pointers in a single batch.
+
+        If users want to topological sort their data then they need to make an
+        attribute to hold the topologically sorted order, and then use that
+        attribute as a sort_key.
+        """
+        raise NotImplementedError
 
     def check(self, name=None):
         if name is None:
@@ -120,7 +144,7 @@ class _DocString:
     def get_doc(self): return self.doc
 
 class ClassType(_DocString):
-    def __init__(self, database, name, doc="", instance_class=None):
+    def __init__(self, database, name, doc="", instance_class=None, sort_key=tuple()):
         if type(self) != ClassType:
             if not doc: doc = type(self).__name__
         _DocString.__init__(self, name, doc)
@@ -144,6 +168,8 @@ class ClassType(_DocString):
                 inherit, {
                 "__slots__": (),
                 "_cls": self,})
+        self.sort_key = tuple(self.database.get_component(x) for x in
+                (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
 
     def get(self, name):
         return self.components[str(name)]
