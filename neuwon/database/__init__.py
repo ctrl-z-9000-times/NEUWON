@@ -19,7 +19,6 @@ import scipy.interpolate
 import scipy.sparse
 import scipy.sparse.linalg
 import scipy.spatial
-import sys
 import textwrap
 import weakref
 
@@ -27,10 +26,7 @@ Real    = np.dtype('f8')
 epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
-
-def eprint(*args, **kwargs):
-    """ Prints to standard error (sys.stderr). """
-    print(*args, file=sys.stderr, **kwargs)
+Instance = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming conflicts :(
 
 class Database:
     def __init__(self):
@@ -156,6 +152,11 @@ class ClassType(_DocString):
     def add_class_attribute(self, name, initial_value, dtype=Real, shape=(1,),
                 doc="", units=None, allow_invalid=False, valid_range=(None, None),):
         return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
+                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
+
+    def add_list_attribute(self, name, dtype=Real, shape=(1,),
+                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+        return ListAttribute(self, name, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_sparse_matrix(self, name, column, dtype=Real,
@@ -286,12 +287,21 @@ class _DataComponent(_DocString):
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2
         self.mem = 'host'
+        setattr(self._cls.instance_class, self.name,
+                property(self._getter, self._setter, doc=self.doc,))
+
+    def _getter(self, instance):
+        """ Get the instance's data value. """
+        raise NotImplementedError
+    def _setter(self, instance, value):
+        """ Set the instance's data value. """
+        raise NotImplementedError
 
     def get(self):
-        """ Abstract method, required. """
+        """ Returns all data for this component. """
         raise NotImplementedError
     def set(self, value):
-        """ Abstract method, required. """
+        """ Replace the entire data component with a new set of values. """
         raise NotImplementedError
 
     def get_units(self):            return self.units
@@ -354,16 +364,11 @@ class _DataComponent(_DocString):
         return "%s: %s.%s %s"%(type(self).__name__, self._cls.name, self.name, self._type_info())
 
 class Attribute(_DataComponent):
-    def __init__(self, class_type, name,
-                doc="",
-                units=None,
-                dtype=Real,
-                shape=(1,),
-                initial_value=None,
-                allow_invalid=False,
-                valid_range=(None, None),):
+    """ """
+    def __init__(self, class_type, name, initial_value=None, dtype=Real, shape=(1,),
+                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
         """
-        Add an instance variable to a class definiton.
+        Add an instance variable to a class type.
 
         Argument dtype is one of:
             * An instance of numpy.dtype
@@ -376,12 +381,8 @@ class Attribute(_DataComponent):
         _DataComponent.__init__(self, class_type, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
-
-        self.mem = 'host'
         self.data = self._alloc(0)
         self._append(0, len(self._cls))
-        setattr(self._cls.instance_class, self.name,
-                property(self._getter, self._setter, doc=self.doc,))
 
     def _getter(self, instance):
         value = self.data[instance._idx]
@@ -411,8 +412,8 @@ class Attribute(_DataComponent):
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
         shape = (2 * size,)
-        # Special case to squeeze off the empty trailing dimension (1).
-        if self.shape != (1,): shape = shape + self.shape
+        if self.shape != (1,): # Don't append empty trailing dimension.
+            shape += self.shape
         if self.mem == 'host':
             return np.empty(shape, dtype=self.dtype)
         elif self.mem == 'cuda':
@@ -447,17 +448,19 @@ class Attribute(_DataComponent):
         return self
 
 class ClassAttribute(_DataComponent):
+    """ """
     def __init__(self, class_type, name, initial_value,
                 dtype=Real, shape=(1,),
                 doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
-        """ Add a singular floating-point value. """
+        """ Add a class variable to a class type.
+
+        All instance of the class will use a single shared value for this attribute.
+        """
         _DataComponent.__init__(self, class_type, name,
                 dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self.initial_value
-        setattr(self._cls.instance_class, self.name,
-                property(self._getter, self._setter, doc=self.doc))
 
     def _getter(self, instance):
         return self.get()
@@ -471,7 +474,84 @@ class ClassAttribute(_DataComponent):
     def set(self, value):
         self.data = self.dtype.type(value)
 
+class ListAttribute(_DataComponent):
+    """ """
+    def __init__(self, class_type, name, dtype=Real, shape=(1,),
+                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+        """ Special case for Attributes holding lists. """
+        _DataComponent.__init__(self, class_type, name, initial_value=tuple(),
+                dtype=dtype, shape=shape, doc=doc, units=units,
+                allow_invalid=allow_invalid, valid_range=valid_range)
+        self.fmt = 'list'
+        self.data = self._alloc(len(self._cls))
+        self._append(0, len(self._cls))
+
+    def _append(self, old_size, new_size):
+        """ Prepare space for new instances at the end of the array. """
+        if len(self.data) < new_size:
+            new_data = self._alloc(new_size)
+            new_data[:old_size] = self.data[:old_size]
+            self.data = new_data
+        for idx in range(old_size, new_data): self.data[idx] = []
+
+    def _alloc(self, size):
+        """ Returns an empty array. """
+        shape = (2 * size,)
+        if self.shape != (1,): # Don't append empty trailing dimension.
+            shape += self.shape
+        if self.mem == 'host':
+            return np.empty(shape, dtype=object)
+        elif self.mem == 'cuda':
+            return cupy.empty(shape, dtype=self.dtype)
+        else: raise NotImplementedError(self.mem)
+
+    def to_list(self):
+        if self.fmt == 'list': pass
+        elif self.fmt == 'array':
+            1/0
+            self.fmt = 'list'
+        else: raise NotImplementedError(self.fmt)
+        return self
+
+    def to_array(self):
+        if self.fmt == 'list':
+            1/0
+            self.fmt = 'array'
+        elif self.fmt == 'array': pass
+        else: raise NotImplementedError(self.fmt)
+        return self
+
+    def to_host(self):
+         # TODO!
+        return self
+    def to_device(self):
+         # TODO!
+        return self
+
+    def _getter(self, instance):
+        return self.data
+
+    def _setter(self, instance, value):
+        1/0 # TODO!
+
+    def get(self):
+        return self.data[:len(self._cls)]
+
+    def set(self, value):
+        1/0 # TODO!
+
+    def get_connectivity_matrix(self):
+        """
+        For lists containing pointers. Copies & returns this component as a real
+        sparse matrix class, including the data buffer of 1's.
+
+        Return a CSR matrix.
+        """
+        data = self.to_array()
+        return 1/0
+
 class Sparse_Matrix(_DataComponent):
+    """ """
     # TODO: Consider adding more write methods:
     #       1) Write rows. (done)
     #       2) Insert coordinates.
@@ -499,8 +579,6 @@ class Sparse_Matrix(_DataComponent):
         self.data = scipy.sparse.csr_matrix((len(self._cls), len(self.column)), dtype=self.dtype)
         self.fmt = 'csr'
         self.sparse_module = scipy.sparse
-        setattr(self._cls.instance_class, self.name,
-                property(self._getter, self._setter, doc=self.doc))
 
     def _getter(self, instance):
         if self.fmt == 'lil':
@@ -586,4 +664,5 @@ class Sparse_Matrix(_DataComponent):
 
 ClassType.add_attribute.__doc__ = Attribute.__init__.__doc__
 ClassType.add_class_attribute.__doc__ = ClassAttribute.__init__.__doc__
+ClassType.add_list_attribute.__doc__ = ListAttribute.__init__.__doc__
 ClassType.add_sparse_matrix.__doc__ = Sparse_Matrix.__init__.__doc__
