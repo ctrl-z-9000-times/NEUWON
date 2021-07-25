@@ -218,7 +218,7 @@ class ClassType(_DocString):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def __call__(self, **kwargs):
+    def __call__(self, *args, **kwargs):
         """ Construct a new instance of this class.
 
         Keyword arguments are assignments to the instance.
@@ -238,7 +238,7 @@ class ClassType(_DocString):
             elif isinstance(x, Sparse_Matrix): x._resize()
             else: raise NotImplementedError
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
-        obj = self.instance_class(old_size, **kwargs)
+        obj = self.instance_class(old_size, *args, **kwargs)
         return obj
 
     def destroy(self):
