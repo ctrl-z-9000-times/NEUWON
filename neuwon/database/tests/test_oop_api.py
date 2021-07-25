@@ -1,16 +1,17 @@
 from neuwon.database import *
 
+class Foo:
+    """ Equivalent OOP class definition. """
+    def __init__(self):
+        self.bar = 4
+
 def test_OOP_API():
-    class InstanceClass:
+    class Foo(Instance):
         def my_helper_method(self):
             self.bar
 
-    class Foo:
-        def __init__(self):
-            self.bar = 4
-
     db = Database()
-    Foo = db.add_class("Foo", instance_class=InstanceClass)
+    Foo = db.add_class("Foo", instance_class=Foo)
     Foo.add_attribute("bar")
 
     x = Foo()
@@ -18,6 +19,7 @@ def test_OOP_API():
     assert x.bar == 4
 
     x.my_helper_method()
+
     Foo.add_attribute("ptr", dtype="Foo")
     y = Foo()
     x.ptr = y

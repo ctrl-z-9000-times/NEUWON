@@ -7,3 +7,9 @@ def test():
     x.analyze_grid_properties()
     x.find_alignment_points()
     x.select_exemplar_cells(.20)
+
+# TODO: Make two versions of the same database and verify that they operate
+# independently.
+
+# def test_multi_model():
+#     pass

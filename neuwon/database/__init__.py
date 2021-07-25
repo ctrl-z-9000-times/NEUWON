@@ -17,13 +17,28 @@ Real    = np.dtype('f8')
 epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
-Instance = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming conflicts :(
+Instance_ = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming conflicts :(
+
+class Instance:
+    __slots__ = ("_idx", "__weakref__")
+
+    _cls = None # Will be overridden by a subclass.
+
+    def __init__(self, index, **kwargs):
+        self._idx = int(index)
+        self._cls.instances.add(self)
+        assert self._idx in range(len(self._cls))
+        for attribute, value in kwargs.items():
+            setattr(self, attribute, value)
+
+    def __repr__(self):
+        return "%s:%d"%(type(self).__name__, self._idx)
 
 class Database:
     def __init__(self):
         self.class_types = dict()
 
-    def add_class(self, name, instance_class=None) -> 'ClassType':
+    def add_class(self, name, instance_class=Instance) -> 'ClassType':
         return ClassType(self, name, instance_class=instance_class)
 
     def get(self, name) -> 'ClassType' or '_DataComponent':
@@ -144,7 +159,7 @@ class _DocString:
     def get_doc(self): return self.doc
 
 class ClassType(_DocString):
-    def __init__(self, database, name, doc="", instance_class=None, sort_key=tuple()):
+    def __init__(self, database, name, doc="", instance_class=Instance, sort_key=tuple()):
         if type(self) != ClassType:
             if not doc: doc = type(self).__name__
         _DocString.__init__(self, name, doc)
@@ -159,15 +174,12 @@ class ClassType(_DocString):
         self.referenced_by = list()
         self.referenced_by_sparse_matrix_columns = list()
         self.instances = weakref.WeakSet()
-        if instance_class is not None:
-            inherit = (instance_class, Instance,)
-        else:
-            inherit = (Instance,)
-        self.instance_class = type(
-                self.name,
-                inherit, {
+        print(instance_class)
+        assert issubclass(instance_class, Instance)
+        # Make a new subclass to override the "_cls" class attribute.
+        self.instance_class = type(self.name, (instance_class,), {
                 "__slots__": (),
-                "_cls": self,})
+                "_cls": self, })
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
 
@@ -226,9 +238,7 @@ class ClassType(_DocString):
             elif isinstance(x, Sparse_Matrix): x._resize()
             else: raise NotImplementedError
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
-        obj = self.instance_class(old_size)
-        for attribute, value in kwargs.items():
-            setattr(obj, attribute, value)
+        obj = self.instance_class(old_size, **kwargs)
         return obj
 
     def destroy(self):
@@ -289,17 +299,6 @@ class ClassType(_DocString):
 
     def __repr__(self):
         return "%s:%"%(type(self).__name__, str(len(self)))
-
-class Instance:
-    __slots__ = ("_idx", "__weakref__")
-
-    def __init__(self, index):
-        self._idx = int(index)
-        self._cls.instances.add(self)
-        assert self._idx in range(len(self._cls))
-
-    def __repr__(self):
-        return "%s:%d"%(type(self).__name__, self._idx)
 
 class _DataComponent(_DocString):
     """ Abstract class for all data components. """
