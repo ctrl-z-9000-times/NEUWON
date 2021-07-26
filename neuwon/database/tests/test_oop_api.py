@@ -1,4 +1,5 @@
 from neuwon.database import *
+import pytest
 
 class Foo:
     """ Equivalent OOP class definition. """
@@ -41,3 +42,48 @@ def test_OOP_API():
     if False:
         help(Foo)
         help(x)
+
+
+def test_custom_classes():
+
+    class _Section(Instance):
+        @staticmethod
+        def _initialize_db(db):
+            db.get_class("Section").add_list_attribute("segments", dtype="Segment")
+
+        def __init__(self, index, nsegs=None):
+            # How can the programmer tell if this was called to create a handle
+            # to an existing object or to create a new object? SOLUTION: I
+            # could just not call their init when I'm not creating a new
+            # object? I could steal this function and call Instance.__init__
+            # instead?
+            Instance.__init__(self, index)
+            if nsegs is None: return
+            for i in range(nsegs):
+                self.segments.append(Segment(section=self))
+
+        @property
+        def nsegs(self):
+            return len(self.segments)
+
+    class _Segment(Instance):
+        @staticmethod
+        def _initialize_db(db):
+            db.get_class("Segment").add_attribute("section", dtype="Section", allow_invalid=True)
+
+        def get_location(self):
+            if self.section is None: return None
+            index = self.section.segments.index(self)
+            return (index + .5) / self.section.nsegs
+
+    db = Database()
+    Section = ClassType(db, "Section", _Section)
+    Segment = ClassType(db, "Segment", _Segment)
+    _Section._initialize_db(db)
+    _Segment._initialize_db(db)
+
+    my_secs = [Section(n) for n in range(20)]
+    absdif = lambda a,b: abs(a-b)
+    assert my_secs[3].segments[0].get_location() == pytest.approx(1/6)
+    assert my_secs[3].segments[1].get_location() == pytest.approx(3/6)
+    assert my_secs[3].segments[2].get_location() == pytest.approx(5/6)

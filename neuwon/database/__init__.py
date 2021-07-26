@@ -21,10 +21,18 @@ Instance_ = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming confl
 
 class Instance:
     __slots__ = ("_idx", "__weakref__")
-
     _cls = None # Will be overridden by a subclass.
 
     def __init__(self, index, **kwargs):
+        """
+        Keyword arguments are assignments to the instance.
+            For example:
+                >>> obj = MyClass(x=3, y=4)
+            Is equivalient to:
+                >>> obj = MyClass()
+                >>> obj.x = 3
+                >>> obj.y = 4
+        """
         self._idx = int(index)
         self._cls.instances.add(self)
         assert self._idx in range(len(self._cls))
@@ -159,12 +167,10 @@ class _DocString:
     def get_doc(self): return self.doc
 
 class ClassType(_DocString):
-    def __init__(self, database, name, doc="", instance_class=Instance, sort_key=tuple()):
-        if type(self) != ClassType:
-            if not doc: doc = type(self).__name__
+    def __init__(self, database, name, instance_class=Instance, sort_key=tuple(), doc="",):
+        if type(self) != ClassType and not doc: doc = self.__doc__
         _DocString.__init__(self, name, doc)
-        if type(self) == ClassType:
-            self.__class__ = type(self.name + "Factory", (type(self),), {})
+        self.__class__ = type(self.name + "Factory", (type(self),), {})
         assert isinstance(database, Database)
         self.database = database
         assert self.name not in self.database.class_types
@@ -176,7 +182,9 @@ class ClassType(_DocString):
         self.instances = weakref.WeakSet()
         print(instance_class)
         assert issubclass(instance_class, Instance)
-        # Make a new subclass to override the "_cls" class attribute.
+        assert instance_class._cls is None
+        # Make a new subclass to override the "__init__" method and the "_cls" class attribute.
+        self.user_init = instance_class.__init__
         self.instance_class = type(self.name, (instance_class,), {
                 "__slots__": (),
                 "_cls": self, })
@@ -219,16 +227,7 @@ class ClassType(_DocString):
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def __call__(self, *args, **kwargs):
-        """ Construct a new instance of this class.
-
-        Keyword arguments are assignments to the instance.
-            For example:
-                >>> obj = MyClass(x=3, y=4)
-            Is equivalient to:
-                >>> obj = MyClass()
-                >>> obj.x = 3
-                >>> obj.y = 4
-        """
+        # TODO: Insert the user's __init__ documentation here (using the Factory subclass).
         old_size  = self.size
         new_size  = old_size + 1
         self.size = new_size
@@ -236,6 +235,7 @@ class ClassType(_DocString):
             if isinstance(x, Attribute): x._append(old_size, new_size)
             elif isinstance(x, ClassAttribute): pass
             elif isinstance(x, Sparse_Matrix): x._resize()
+            elif isinstance(x, ListAttribute): x._append(old_size, new_size)
             else: raise NotImplementedError
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
         obj = self.instance_class(old_size, *args, **kwargs)
@@ -301,7 +301,7 @@ class ClassType(_DocString):
         return "%s:%"%(type(self).__name__, str(len(self)))
 
 class _DataComponent(_DocString):
-    """ Abstract class for all data components. """
+    """ Abstract class for all types of data storage. """
     def __init__(self, class_type, name,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
         _DocString.__init__(self, name, doc)
