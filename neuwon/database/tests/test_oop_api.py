@@ -7,7 +7,7 @@ class Foo:
         self.bar = 4
 
 def test_OOP_API():
-    class Foo(Instance):
+    class Foo(DB_Object):
         def my_helper_method(self):
             self.bar
 
@@ -46,7 +46,7 @@ def test_OOP_API():
 
 def test_custom_classes():
 
-    class _Section(Instance):
+    class _Section(DB_Object):
         @staticmethod
         def _initialize_db(db):
             db.get_class("Section").add_list_attribute("segments", dtype="Segment")
@@ -57,7 +57,7 @@ def test_custom_classes():
             # could just not call their init when I'm not creating a new
             # object? I could steal this function and call Instance.__init__
             # instead?
-            Instance.__init__(self, index)
+            DB_Object.__init__(self, index)
             if nsegs is None: return
             for i in range(nsegs):
                 self.segments.append(Segment(section=self))
@@ -66,7 +66,7 @@ def test_custom_classes():
         def nsegs(self):
             return len(self.segments)
 
-    class _Segment(Instance):
+    class _Segment(DB_Object):
         @staticmethod
         def _initialize_db(db):
             db.get_class("Segment").add_attribute("section", dtype="Section", allow_invalid=True)
@@ -77,8 +77,8 @@ def test_custom_classes():
             return (index + .5) / self.section.nsegs
 
     db = Database()
-    Section = ClassType(db, "Section", _Section)
-    Segment = ClassType(db, "Segment", _Segment)
+    Section = db.add_class("Section", _Section)
+    Segment = db.add_class("Segment", _Segment)
     _Section._initialize_db(db)
     _Segment._initialize_db(db)
 

@@ -19,7 +19,7 @@ Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
 Instance_ = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming conflicts :(
 
-class Instance:
+class DB_Object:
     __slots__ = ("_idx", "__weakref__")
     _cls = None # Will be overridden by a subclass.
 
@@ -46,11 +46,11 @@ class Database:
     def __init__(self):
         self.class_types = dict()
 
-    def add_class(self, name, instance_class=Instance) -> 'ClassType':
-        return ClassType(self, name, instance_class=instance_class)
+    def add_class(self, name, instance_class=DB_Object) -> 'DB_Class':
+        return DB_Class(self, name, instance_class=instance_class)
 
-    def get(self, name) -> 'ClassType' or '_DataComponent':
-        if isinstance(name, ClassType):
+    def get(self, name) -> 'DB_Class' or '_DataComponent':
+        if isinstance(name, DB_Class):
             assert name.get_database() is self
             return name
         if isinstance(name, _DataComponent):
@@ -126,7 +126,7 @@ class Database:
             components = self.get_all_components()
         else:
             x = self.get(name)
-            if isinstance(x, ClassType):
+            if isinstance(x, DB_Class):
                 components = x.get_all_components()
             else:
                 components = [x]
@@ -166,9 +166,9 @@ class _DocString:
     def get_name(self): return self.name
     def get_doc(self): return self.doc
 
-class ClassType(_DocString):
-    def __init__(self, database, name, instance_class=Instance, sort_key=tuple(), doc="",):
-        if type(self) != ClassType and not doc: doc = self.__doc__
+class DB_Class(_DocString):
+    def __init__(self, database, name, instance_class=DB_Object, sort_key=tuple(), doc="",):
+        if type(self) != DB_Class and not doc: doc = self.__doc__
         _DocString.__init__(self, name, doc)
         self.__class__ = type(self.name + "Factory", (type(self),), {})
         assert isinstance(database, Database)
@@ -181,7 +181,7 @@ class ClassType(_DocString):
         self.referenced_by_sparse_matrix_columns = list()
         self.instances = weakref.WeakSet()
         print(instance_class)
-        assert issubclass(instance_class, Instance)
+        assert issubclass(instance_class, DB_Object)
         assert instance_class._cls is None
         # Make a new subclass to override the "__init__" method and the "_cls" class attribute.
         self.user_init = instance_class.__init__
@@ -313,7 +313,7 @@ class _DataComponent(_DocString):
             self.shape = tuple(int(round(x)) for x in shape)
         else:
             self.shape = (int(round(shape)),)
-        if isinstance(dtype, str) or isinstance(dtype, ClassType):
+        if isinstance(dtype, str) or isinstance(dtype, DB_Class):
             self.dtype = Pointer
             self.initial_value = NULL
             self.reference = self._cls.database.get_class(dtype)
@@ -608,7 +608,7 @@ class Sparse_Matrix(_DataComponent):
         _DataComponent.__init__(self, class_type, name,
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0,
                 allow_invalid=allow_invalid, valid_range=valid_range)
-        if isinstance(column, ClassType):
+        if isinstance(column, DB_Class):
             self.column = column
         else:
             self.column = self._cls.database.get_class(column)
@@ -689,7 +689,7 @@ class Sparse_Matrix(_DataComponent):
         r = int(row)
         self.data.rows[r].clear()
         self.data.data[r].clear()
-        columns = [x._idx if isinstance(x, Instance) else int(x) for x in columns]
+        columns = [x._idx if isinstance(x, DB_Object) else int(x) for x in columns]
         order = np.argsort(columns)
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))
@@ -701,7 +701,7 @@ class Sparse_Matrix(_DataComponent):
         s += " nnz/row: %g"%nnz_per_row
         return s
 
-ClassType.add_attribute.__doc__         = Attribute.__init__.__doc__
-ClassType.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
-ClassType.add_list_attribute.__doc__    = ListAttribute.__init__.__doc__
-ClassType.add_sparse_matrix.__doc__     = Sparse_Matrix.__init__.__doc__
+DB_Class.add_attribute.__doc__         = Attribute.__init__.__doc__
+DB_Class.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
+DB_Class.add_list_attribute.__doc__    = ListAttribute.__init__.__doc__
+DB_Class.add_sparse_matrix.__doc__     = Sparse_Matrix.__init__.__doc__
