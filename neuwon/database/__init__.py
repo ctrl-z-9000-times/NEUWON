@@ -41,8 +41,8 @@ class Database:
     def __init__(self):
         self.class_types = dict()
 
-    def add_class(self, name, instance_class=DB_Object) -> 'DB_Class':
-        return DB_Class(self, name, instance_class=instance_class)
+    def add_class(self, name, instance_type=DB_Object) -> 'DB_Class':
+        return DB_Class(self, name, instance_type=instance_type)
 
     def get(self, name) -> 'DB_Class' or '_DataComponent':
         if isinstance(name, DB_Class):
@@ -162,7 +162,7 @@ class _DocString:
     def get_doc(self): return self.doc
 
 class DB_Class(_DocString):
-    def __init__(self, database, name, instance_class=DB_Object, sort_key=tuple(), doc="",):
+    def __init__(self, database, name, instance_type=DB_Object, sort_key=tuple(), doc="",):
         _DocString.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -174,11 +174,11 @@ class DB_Class(_DocString):
         self.referenced_by_sparse_matrix_columns = list()
         self.instances = weakref.WeakSet()
         # Make a new subclass to represent instances which are part of *this* database.
-        parents = (instance_class,)
-        if not issubclass(instance_class, DB_Object): parents += (DB_Object,)
+        parents = (instance_type,)
+        if not issubclass(instance_type, DB_Object): parents += (DB_Object,)
         __slots__ = ("_idx",)
-        if not hasattr(instance_class, "__weakref__"): __slots__ += ("__weakref__",)
-        self.instance_class = type(self.name, parents, {
+        if not hasattr(instance_type, "__weakref__"): __slots__ += ("__weakref__",)
+        self.instance_type = type(self.name, parents, {
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
                 "_cls": self, })
@@ -206,7 +206,7 @@ class DB_Class(_DocString):
         type(new_obj).__bases__[0].__init__(new_obj, *args, **kwargs)
 
     def get_instance_type(self) -> DB_Object:
-        return self.instance_class
+        return self.instance_type
 
     def get(self, name):
         return self.components[str(name)]
@@ -218,7 +218,7 @@ class DB_Class(_DocString):
         return tuple(self.components.values())
 
     def get_all_instances(self) -> list:
-        return [self.instance_class(_idx=idx) for idx in range(self.size)]
+        return [self.instance_type(_idx=idx) for idx in range(self.size)]
 
     def get_database(self):
         return self.database
@@ -330,7 +330,7 @@ class _DataComponent(_DocString):
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2
         self.mem = 'host'
-        setattr(self._cls.instance_class, self.name,
+        setattr(self._cls.instance_type, self.name,
                 property(self._getter, self._setter, doc=self.doc,))
 
     def _getter(self, instance):
@@ -429,12 +429,12 @@ class Attribute(_DataComponent):
         value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
-            value = self.reference.instance_class(_idx=value)
+            value = self.reference.instance_type(_idx=value)
         return value
 
     def _setter(self, instance, value):
         if self.reference:
-            if isinstance(value, self.reference.instance_class):
+            if isinstance(value, self.reference.instance_type):
                 value = value._idx
         self.data[instance._idx] = value
 

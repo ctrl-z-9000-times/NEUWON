@@ -12,7 +12,7 @@ def test_OOP_API():
             self.bar
 
     db = Database()
-    Foo = db.add_class("Foo", instance_class=Foo)
+    Foo = db.add_class("Foo", instance_type=Foo)
     Foo.add_attribute("bar")
     FooFactory = Foo.get_instance_type()
 
