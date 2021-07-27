@@ -20,27 +20,22 @@ NULL    = np.iinfo(Pointer).max
 Instance_ = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming conflicts :(
 
 class DB_Object:
-    __slots__ = ("_idx", "__weakref__")
-    _cls = None # Will be overridden by a subclass.
+    __slots__ = ()
 
-    def __init__(self, index, **kwargs):
+    def __init__(self, **kwargs):
         """
-        Keyword arguments are assignments to the instance.
-            For example:
+        Keyword arguments are assigned to the new instance, for example:
                 >>> obj = MyClass(x=3, y=4)
             Is equivalient to:
                 >>> obj = MyClass()
                 >>> obj.x = 3
                 >>> obj.y = 4
         """
-        self._idx = int(index)
-        self._cls.instances.add(self)
-        assert self._idx in range(len(self._cls))
         for attribute, value in kwargs.items():
             setattr(self, attribute, value)
 
     def __repr__(self):
-        return "%s:%d"%(type(self).__name__, self._idx)
+        return "<%s:%d>"%(self._cls.name, self._idx)
 
 class Database:
     def __init__(self):
@@ -168,9 +163,7 @@ class _DocString:
 
 class DB_Class(_DocString):
     def __init__(self, database, name, instance_class=DB_Object, sort_key=tuple(), doc="",):
-        if type(self) != DB_Class and not doc: doc = self.__doc__
         _DocString.__init__(self, name, doc)
-        self.__class__ = type(self.name + "Factory", (type(self),), {})
         assert isinstance(database, Database)
         self.database = database
         assert self.name not in self.database.class_types
@@ -180,16 +173,40 @@ class DB_Class(_DocString):
         self.referenced_by = list()
         self.referenced_by_sparse_matrix_columns = list()
         self.instances = weakref.WeakSet()
-        print(instance_class)
-        assert issubclass(instance_class, DB_Object)
-        assert instance_class._cls is None
-        # Make a new subclass to override the "__init__" method and the "_cls" class attribute.
-        self.user_init = instance_class.__init__
-        self.instance_class = type(self.name, (instance_class,), {
-                "__slots__": (),
+        # Make a new subclass to represent instances which are part of *this* database.
+        parents = (instance_class,)
+        if not issubclass(instance_class, DB_Object): parents += (DB_Object,)
+        __slots__ = ("_idx",)
+        if not hasattr(instance_class, "__weakref__"): __slots__ += ("__weakref__",)
+        self.instance_class = type(self.name, parents, {
+                "__slots__": __slots__,
+                "__init__": self._instance__init__,
                 "_cls": self, })
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
+
+    @staticmethod
+    def _instance__init__(new_obj, *args, _idx=None, **kwargs):
+        self = new_obj._cls
+        self.instances.add(new_obj)
+        if _idx is not None:
+            new_obj._idx = _idx
+            return
+        old_size  = self.size
+        new_size  = old_size + 1
+        self.size = new_size
+        for x in self.components.values():
+            if isinstance(x, Attribute): x._append(old_size, new_size)
+            elif isinstance(x, ClassAttribute): pass
+            elif isinstance(x, Sparse_Matrix): x._resize()
+            elif isinstance(x, ListAttribute): x._append(old_size, new_size)
+            else: raise NotImplementedError
+        for x in self.referenced_by_sparse_matrix_columns: x._resize()
+        new_obj._idx = old_size
+        type(new_obj).__bases__[0].__init__(new_obj, *args, **kwargs)
+
+    def get_instance_type(self) -> DB_Object:
+        return self.instance_class
 
     def get(self, name):
         return self.components[str(name)]
@@ -201,7 +218,7 @@ class DB_Class(_DocString):
         return tuple(self.components.values())
 
     def get_all_instances(self) -> list:
-        return [self.instance_class(idx) for idx in range(self.size)]
+        return [self.instance_class(_idx=idx) for idx in range(self.size)]
 
     def get_database(self):
         return self.database
@@ -225,21 +242,6 @@ class DB_Class(_DocString):
                 doc="", units=None, allow_invalid=False, valid_range=(None, None),):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
-
-    def __call__(self, *args, **kwargs):
-        # TODO: Insert the user's __init__ documentation here (using the Factory subclass).
-        old_size  = self.size
-        new_size  = old_size + 1
-        self.size = new_size
-        for x in self.components.values():
-            if isinstance(x, Attribute): x._append(old_size, new_size)
-            elif isinstance(x, ClassAttribute): pass
-            elif isinstance(x, Sparse_Matrix): x._resize()
-            elif isinstance(x, ListAttribute): x._append(old_size, new_size)
-            else: raise NotImplementedError
-        for x in self.referenced_by_sparse_matrix_columns: x._resize()
-        obj = self.instance_class(old_size, *args, **kwargs)
-        return obj
 
     def destroy(self):
         # TODO: The "allow_invalid" flag should control whether destroying
@@ -298,7 +300,7 @@ class DB_Class(_DocString):
         return self.size
 
     def __repr__(self):
-        return "%s:%"%(type(self).__name__, str(len(self)))
+        return "<DB_Class '%s'>"%(self.name)
 
 class _DataComponent(_DocString):
     """ Abstract class for all types of data storage. """
@@ -400,7 +402,7 @@ class _DataComponent(_DocString):
         return s
 
     def __repr__(self):
-        return "%s: %s.%s %s"%(type(self).__name__, self._cls.name, self.name, self._type_info())
+        return "<%s: %s.%s %s>"%(type(self).__name__, self._cls.name, self.name, self._type_info())
 
 class Attribute(_DataComponent):
     """ """
@@ -427,7 +429,7 @@ class Attribute(_DataComponent):
         value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
-            value = self.reference.instance_class(value)
+            value = self.reference.instance_class(_idx=value)
         return value
 
     def _setter(self, instance, value):
@@ -695,6 +697,7 @@ class Sparse_Matrix(_DataComponent):
         self.data.data[r].extend(np.take(values, order))
 
     def __repr__(self):
+        # TODO: Override _type_info instead of __repr__?
         s = _DataComponent.__repr__(self)
         try: nnz_per_row = self.data.nnz / self.data.shape[0]
         except ZeroDivisionError: nnz_per_row = 0

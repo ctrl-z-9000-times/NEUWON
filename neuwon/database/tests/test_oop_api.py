@@ -14,15 +14,16 @@ def test_OOP_API():
     db = Database()
     Foo = db.add_class("Foo", instance_class=Foo)
     Foo.add_attribute("bar")
+    FooFactory = Foo.get_instance_type()
 
-    x = Foo()
+    x = FooFactory()
     x.bar = 4
     assert x.bar == 4
 
     x.my_helper_method()
 
     Foo.add_attribute("ptr", dtype="Foo")
-    y = Foo()
+    y = FooFactory()
     x.ptr = y
     x.ptr.bar = 5
     assert y.bar == 5
@@ -46,19 +47,8 @@ def test_OOP_API():
 
 def test_custom_classes():
 
-    class _Section(DB_Object):
-        @staticmethod
-        def _initialize_db(db):
-            db.get_class("Section").add_list_attribute("segments", dtype="Segment")
-
-        def __init__(self, index, nsegs=None):
-            # How can the programmer tell if this was called to create a handle
-            # to an existing object or to create a new object? SOLUTION: I
-            # could just not call their init when I'm not creating a new
-            # object? I could steal this function and call Instance.__init__
-            # instead?
-            DB_Object.__init__(self, index)
-            if nsegs is None: return
+    class _Section_obj:
+        def __init__(self, nsegs):
             for i in range(nsegs):
                 self.segments.append(Segment(section=self))
 
@@ -66,24 +56,24 @@ def test_custom_classes():
         def nsegs(self):
             return len(self.segments)
 
-    class _Segment(DB_Object):
-        @staticmethod
-        def _initialize_db(db):
-            db.get_class("Segment").add_attribute("section", dtype="Section", allow_invalid=True)
-
+    class _Segment_obj(DB_Object):
+        __slots__ = ()
         def get_location(self):
             if self.section is None: return None
             index = self.section.segments.index(self)
             return (index + .5) / self.section.nsegs
 
-    db = Database()
-    Section = db.add_class("Section", _Section)
-    Segment = db.add_class("Segment", _Segment)
-    _Section._initialize_db(db)
-    _Segment._initialize_db(db)
+    _db = Database()
+    _Section_cls = _db.add_class("Section", _Section_obj)
+    _Segment_cls = _db.add_class("Segment", _Segment_obj)
+    _Section_cls.add_list_attribute("segments", dtype="Segment")
+    _Segment_cls.add_attribute("section", dtype="Section", allow_invalid=True)
+    Section = _Section_cls.get_instance_type()
+    Segment = _Segment_cls.get_instance_type()
 
     my_secs = [Section(n) for n in range(20)]
     absdif = lambda a,b: abs(a-b)
+    assert my_secs[7].nsegs == 7
     assert my_secs[3].segments[0].get_location() == pytest.approx(1/6)
     assert my_secs[3].segments[1].get_location() == pytest.approx(3/6)
     assert my_secs[3].segments[2].get_location() == pytest.approx(5/6)

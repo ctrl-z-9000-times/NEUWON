@@ -44,8 +44,10 @@ class Model:
         self.GridCell.add_attribute("r_act", 0)
         self.GridCell.add_attribute("r_inact", 0)
 
-        self.place_cells = [self.PlaceCell() for _ in range(self.num_place_cells)]
-        self.grid_cells = [self.GridCell() for _ in range(self.num_grid_cells)]
+        PC = self.PlaceCell.get_instance_type()
+        GC = self.GridCell.get_instance_type()
+        self.place_cells = [PC() for _ in range(self.num_place_cells)]
+        self.grid_cells = [GC() for _ in range(self.num_grid_cells)]
         J = self.db.get("PlaceCell.J")
         initial_weights = np.random.uniform(0.0, 0.1, size=J.shape)
         # initial_weights *= SDR(J.shape).randomize(.5).dense
@@ -62,7 +64,7 @@ class Model:
         self.db.get_data("PlaceCell.avg_r").fill(0)
 
     def advance(self, coordinates, learn=True):
-        # Set the place cell activity based on the postitional coordinates.
+        # Set the place cell activity based on the positional coordinates.
         coordinates = np.array((int(round(x)) for x in coordinates))
         self.pc_encoder.encode((coordinates, self.place_cell_radius), self.pc_sdr)
         self.PlaceCell.get("r").set_data(self.pc_sdr.dense)

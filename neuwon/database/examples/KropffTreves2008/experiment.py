@@ -1,4 +1,3 @@
-#!/usr/bin/python
 from .environment import Environment
 from .model import Model
 from scipy.ndimage.filters import maximum_filter
@@ -22,6 +21,7 @@ class Experiment:
         self.num_gc = len(self.model.grid_cells)
         env_sz = self.env.size
         self.pc_samples = random.sample(range(self.num_pc), self.num_pc_samples)
+        # Sampling buffers for measuring receptive fields.
         self.pc_rfs = [np.zeros((env_sz, env_sz)) for idx in range(self.num_pc_samples)]
         self.gc_rfs = [np.zeros((env_sz, env_sz)) for idx in range(self.num_gc)]
 

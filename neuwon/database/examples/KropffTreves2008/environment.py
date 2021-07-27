@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import random
 
 class Environment:
-    """ The environment is a 2D square, in first quadrant with corner at origin. """
+    """ The environment is a 2D circle, in first quadrant with corner at origin. """
     def __init__(self, size):
         self.size     = size
         self.position = (size/2, size/2)
