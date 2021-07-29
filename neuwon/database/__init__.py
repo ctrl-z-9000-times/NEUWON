@@ -181,6 +181,7 @@ class DB_Class(_DocString):
         self.instance_type = type(self.name, parents, {
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
+                "__index__": lambda instance: instance._idx,
                 "_cls": self, })
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
@@ -203,7 +204,7 @@ class DB_Class(_DocString):
             else: raise NotImplementedError
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
         new_obj._idx = old_size
-        type(new_obj).__bases__[0].__init__(new_obj, *args, **kwargs)
+        super(type(new_obj), new_obj).__init__(*args, **kwargs)
 
     def get_instance_type(self) -> DB_Object:
         return self.instance_type
@@ -242,6 +243,9 @@ class DB_Class(_DocString):
                 doc="", units=None, allow_invalid=False, valid_range=(None, None),):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
+
+    def add_connectivity_matrix(self, name, column, doc=""):
+        return Connectivity_Matrix(self, name, column, doc=doc)
 
     def destroy(self):
         # TODO: The "allow_invalid" flag should control whether destroying
@@ -322,7 +326,10 @@ class _DataComponent(_DocString):
             self.reference.referenced_by.append(self)
         else:
             self.dtype = np.dtype(dtype)
-            self.initial_value = self.dtype.type(initial_value)
+            if initial_value is None:
+                self.initial_value = None
+            else:
+                self.initial_value = self.dtype.type(initial_value)
             self.reference = False
         self.units = None if units is None else str(units)
         self.allow_invalid = bool(allow_invalid)
@@ -703,6 +710,37 @@ class Sparse_Matrix(_DataComponent):
         except ZeroDivisionError: nnz_per_row = 0
         s += " nnz/row: %g"%nnz_per_row
         return s
+
+class Connectivity_Matrix(Sparse_Matrix):
+    def __init__(self, class_type, name, column, doc=""):
+        super().__init__(class_type, name, column, doc=doc, dtype=bool,)
+
+    def _getter(self, instance):
+        connected_list = self.to_lil().data.rows[instance]
+        for idx, value in enumerate(connected_list):
+            if not isinstance(value, DB_Object):
+                connected_list[idx] = self.column.instance_type(_idx=value)
+        return connected_list
+
+    def _setter(self, instance, value):
+        self.to_lil().data.rows[instance] = list(value)
+
+    def to_csr(self):
+        if self.fmt == "lil":
+            rows = self.data.rows
+            data = self.data.data
+            for row in rows:
+                for idx, value in enumerate(row):
+                    if isinstance(value, DB_Object):
+                        row[idx] = value._idx
+            for idx in range(len(rows)):
+                if len(rows[idx]) != len(data[idx]):
+                    data[idx] = [True] * len(rows[idx])
+            self.data = self.sparse_module.csr_matrix(self.data)
+            self.fmt = "csr"
+        elif self.fmt == "csr": pass
+        else: raise NotImplementedError(self.fmt)
+        return self
 
 DB_Class.add_attribute.__doc__         = Attribute.__init__.__doc__
 DB_Class.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
