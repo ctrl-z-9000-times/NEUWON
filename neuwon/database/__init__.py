@@ -17,7 +17,6 @@ Real    = np.dtype('f8')
 epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
-Instance_ = np.dtype([('cls', np.dtype('u4')), ('idx', Pointer)]) # Naming conflicts :(
 
 class DB_Object:
     __slots__ = ()
@@ -232,11 +231,6 @@ class DB_Class(_DocString):
     def add_class_attribute(self, name, initial_value, dtype=Real, shape=(1,),
                 doc="", units=None, allow_invalid=False, valid_range=(None, None),):
         return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
-                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
-
-    def add_list_attribute(self, name, dtype=Real, shape=(1,),
-                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
-        return ListAttribute(self, name, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_sparse_matrix(self, name, column, dtype=Real,
@@ -522,92 +516,6 @@ class ClassAttribute(_DataComponent):
     def set_data(self, value):
         self.data = self.dtype.type(value)
 
-class ListAttribute(_DataComponent):
-    """ """
-    def __init__(self, class_type, name, dtype=Real, shape=(1,),
-                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
-        """ Special case for Attributes holding lists. """
-        _DataComponent.__init__(self, class_type, name, initial_value=tuple(),
-                dtype=dtype, shape=shape, doc=doc, units=units,
-                allow_invalid=allow_invalid, valid_range=valid_range)
-        self.fmt = 'list'
-        self.data = self._alloc(len(self._cls))
-        self._append(0, len(self._cls))
-
-    def _append(self, old_size, new_size):
-        """ Prepare space for new instances at the end of the array. """
-        if len(self.data) < new_size:
-            new_data = self._alloc(new_size)
-            new_data[:old_size] = self.data[:old_size]
-            self.data = new_data
-        for idx in range(old_size, new_size): self.data[idx] = []
-
-    def _alloc(self, size):
-        """ Returns an empty array. """
-        shape = (2 * size,)
-        if self.shape != (1,): # Don't append empty trailing dimension.
-            shape += self.shape
-        if self.mem == 'host':
-            if self.fmt == 'list':
-                return np.empty(shape, dtype=object)
-            elif self.fmt == 'array':
-                return np.empty(shape, dtype=self.dtype)
-        elif self.mem == 'cuda':
-            return cupy.empty(shape, dtype=self.dtype)
-        else: raise NotImplementedError(self.mem)
-
-    def to_list(self):
-        if self.fmt == 'list': pass
-        elif self.fmt == 'array':
-            1/0
-            self.fmt = 'list'
-        else: raise NotImplementedError(self.fmt)
-        return self
-
-    def to_array(self):
-        if self.fmt == 'list':
-            # sizes = self.data
-            # arr = 
-            self.fmt = 'array'
-        elif self.fmt == 'array': pass
-        else: raise NotImplementedError(self.fmt)
-        return self
-
-    def to_csr(self):
-        """
-        For lists containing pointers. Copies & returns this component as a real
-        sparse matrix class, including the data buffer of 1's.
-
-        Return a CSR matrix.
-        """
-        if self.fmt == 'list':
-            self.to_array()
-        if self.fmt == 'array':
-            1/0
-        elif self.fmt == 'csr': pass
-        else: raise NotImplementedError(self.fmt)
-        return self
-
-    def _getter(self, instance):
-        return self.data[instance._idx]
-
-    def _setter(self, instance, value):
-        self.to_list().data[instance._idx] = list(value)
-
-    def get_data(self):
-        return self.data[:len(self._cls)]
-
-    def set_data(self, value):
-        1/0 # TODO!
-
-    def set_list(self, instance, value: list):
-        if isinstance(instance, DB_Object):
-            instance = instance._idx
-        else:
-            instance = int(instance)
-        # self.to_list().data[]
-        1/0 # TODO!
-
 class Sparse_Matrix(_DataComponent):
     """ """
     # TODO: Consider adding more write methods:
@@ -726,7 +634,7 @@ class Connectivity_Matrix(Sparse_Matrix):
         super().__init__(class_type, name, column, doc=doc, dtype=bool,)
 
     def _getter(self, instance):
-        connected_list = self.to_lil().data.rows[instance]
+        connected_list = self.to_lil().data.rows[instance.__index__()]
         for idx, value in enumerate(connected_list):
             if not isinstance(value, DB_Object):
                 connected_list[idx] = self.column.instance_type(_idx=value)
@@ -754,5 +662,5 @@ class Connectivity_Matrix(Sparse_Matrix):
 
 DB_Class.add_attribute.__doc__         = Attribute.__init__.__doc__
 DB_Class.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
-DB_Class.add_list_attribute.__doc__    = ListAttribute.__init__.__doc__
 DB_Class.add_sparse_matrix.__doc__     = Sparse_Matrix.__init__.__doc__
+DB_Class.add_connectivity_matrix.__doc__ = Connectivity_Matrix.__init__.__doc__

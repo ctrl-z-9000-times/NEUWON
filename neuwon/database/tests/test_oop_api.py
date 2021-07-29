@@ -37,7 +37,7 @@ def test_OOP_API():
     x.connections = ([y], [2.])
     print((x.connections))
 
-    Foo.add_list_attribute("friends", dtype=Foo)
+    Foo.add_connectivity_matrix("friends", Foo)
     x.friends.append(y)
 
     if False:
@@ -66,7 +66,7 @@ def test_custom_classes():
     _db = Database()
     _Section_cls = _db.add_class("Section", _Section_obj)
     _Segment_cls = _db.add_class("Segment", _Segment_obj)
-    _Section_cls.add_list_attribute("segments", dtype="Segment")
+    _Section_cls.add_connectivity_matrix("segments", "Segment")
     _Segment_cls.add_attribute("section", dtype="Section", allow_invalid=True)
     Section = _Section_cls.get_instance_type()
     Segment = _Segment_cls.get_instance_type()
