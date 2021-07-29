@@ -548,7 +548,10 @@ class ListAttribute(_DataComponent):
         if self.shape != (1,): # Don't append empty trailing dimension.
             shape += self.shape
         if self.mem == 'host':
-            return np.empty(shape, dtype=object)
+            if self.fmt == 'list':
+                return np.empty(shape, dtype=object)
+            elif self.fmt == 'array':
+                return np.empty(shape, dtype=self.dtype)
         elif self.mem == 'cuda':
             return cupy.empty(shape, dtype=self.dtype)
         else: raise NotImplementedError(self.mem)
@@ -563,24 +566,33 @@ class ListAttribute(_DataComponent):
 
     def to_array(self):
         if self.fmt == 'list':
-            1/0
+            # sizes = self.data
+            # arr = 
             self.fmt = 'array'
         elif self.fmt == 'array': pass
         else: raise NotImplementedError(self.fmt)
         return self
 
-    def to_host(self):
-         # TODO!
-        return self
-    def to_device(self):
-         # TODO!
+    def to_csr(self):
+        """
+        For lists containing pointers. Copies & returns this component as a real
+        sparse matrix class, including the data buffer of 1's.
+
+        Return a CSR matrix.
+        """
+        if self.fmt == 'list':
+            self.to_array()
+        if self.fmt == 'array':
+            1/0
+        elif self.fmt == 'csr': pass
+        else: raise NotImplementedError(self.fmt)
         return self
 
     def _getter(self, instance):
         return self.data[instance._idx]
 
     def _setter(self, instance, value):
-        1/0 # TODO!
+        self.to_list().data[instance._idx] = list(value)
 
     def get_data(self):
         return self.data[:len(self._cls)]
@@ -588,15 +600,13 @@ class ListAttribute(_DataComponent):
     def set_data(self, value):
         1/0 # TODO!
 
-    def get_connectivity_matrix(self):
-        """
-        For lists containing pointers. Copies & returns this component as a real
-        sparse matrix class, including the data buffer of 1's.
-
-        Return a CSR matrix.
-        """
-        data = self.to_array()
-        return 1/0
+    def set_list(self, instance, value: list):
+        if isinstance(instance, DB_Object):
+            instance = instance._idx
+        else:
+            instance = int(instance)
+        # self.to_list().data[]
+        1/0 # TODO!
 
 class Sparse_Matrix(_DataComponent):
     """ """
