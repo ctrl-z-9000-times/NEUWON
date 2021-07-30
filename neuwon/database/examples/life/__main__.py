@@ -1,35 +1,45 @@
-from .model import GameOfLife
+from neuwon.database.examples.life.model import GameOfLife
 import argparse
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
 import numpy as np
+import pygame
+from pygame.locals import *
+pygame.init()
 
 parser = argparse.ArgumentParser("""Conway's Game of Life.""")
 parser.add_argument('--size', type=int, default = 200,)
-parser.add_argument('--sparsity', type=float, default = .1,)
-parser.add_argument('--steps', type=int, default = 1000,)
+parser.add_argument('--sparsity', type=float, default = .33,)
 parser.add_argument('--fps', type=int, default = 24,)
-parser.add_argument('-o', '--out', type=str, default = "movie.gif",)
 args = parser.parse_args()
 
 model = GameOfLife((args.size, args.size))
 model.randomize(args.sparsity)
 t = 0
 
-fig = plt.figure(figsize=(8, 8), dpi=180, constrained_layout=True)
-ax = fig.subplots()
-imgs = []
-def save_frame():
-    im = ax.imshow(1 - model.get_bitmap(), cmap='gray')
-    im.axes.get_xaxis().set_visible(False)
-    im.axes.get_yaxis().set_visible(False)
-    imgs.append([im])
+sqr_sz = 5
+size = [sqr_sz*args.size] * 2
+screen = pygame.display.set_mode(size, pygame.HWSURFACE | pygame.DOUBLEBUF)
+BLACK = (  0,   0,   0)
+WHITE = (255, 255, 255)
+pygame.display.set_caption("Conway's Game of Life")
+clock = pygame.time.Clock()
 
-for i in range(args.fps // 2): save_frame()
+while True:
+    pygame.display.update()
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            pygame.quit()
+            break
 
-for _ in range(args.steps):
-    model.advance(); t += 1
-    save_frame()
+    if t > args.fps / 2:
+        model.advance()
+    t += 1
 
-ani = animation.ArtistAnimation(fig, imgs, interval=1000/args.fps, blit=True)
-ani.save(args.out)
+    screen.fill(WHITE)
+    a = model.db.get_data("Cell.alive")
+    c = model.db.get_data("Cell.coordinates")
+    for idx in np.nonzero(a)[0]:
+        x, y = c[idx]
+        pygame.draw.rect(screen, BLACK, [x*sqr_sz, y*sqr_sz, sqr_sz, sqr_sz])
+
+    pygame.display.flip()
+    clock.tick(args.fps)
