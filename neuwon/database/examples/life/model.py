@@ -1,5 +1,6 @@
-from database import Database
+from neuwon.database import Database
 import numpy as np
+import numba
 
 class GameOfLife:
 
@@ -9,40 +10,60 @@ class GameOfLife:
             cell_data = database.add_class("Cell", cls)
             cell_data.add_attribute("coordinates", shape=(2,), dtype=np.int32)
             cell_data.add_attribute("alive", False, dtype=np.bool)
-            cell_data.add_list_attribute("neighbors", dtype="Cell")
+            cell_data.add_connectivity_matrix("neighbors", "Cell")
             return cell_data.get_instance_type()
 
-    def __init__(self, size=(100,100)):
+    def __init__(self, shape):
         self.db = Database()
-        self.Cell = Game.Cell._add_to_database(self.db)
-        grid = np.empty(size, dtype=object)
-        for x in range(size[0]):
-            for y in range(size[1]):
-                grid[x,y] = self.Cell(coordinates=(x,y))
-        for x in range(size[0]):
-            for y in range(size[1]):
-                cell = grid[x,y]
+        self.Cell = self.Cell._add_to_database(self.db)
+        self.shape = shape
+        self.grid = np.empty(self.shape, dtype=object)
+        for x in range(self.shape[0]):
+            for y in range(self.shape[1]):
+                self.grid[x,y] = self.Cell(coordinates=(x,y))
+        for x in range(self.shape[0]):
+            for y in range(self.shape[1]):
+                cell = self.grid[x,y]
                 for x_offset in [-1, 0, 1]:
                     for y_offset in [-1, 0, 1]:
                         nx = x - x_offset
                         ny = y - y_offset
                         if nx < 0: nx = 0
                         if ny < 0: ny = 0
-                        if nx >= size[0]: nx = size[0] - 1
-                        if ny >= size[1]: ny = size[1] - 1
-                        neighbor = grid[nx, ny]
-                        cell != neighbor:
+                        if nx >= self.shape[0]: nx = self.shape[0] - 1
+                        if ny >= self.shape[1]: ny = self.shape[1] - 1
+                        neighbor = self.grid[nx, ny]
+                        if cell != neighbor:
                             cell.neighbors.append(neighbor)
-        self.db.get("Cell.neighbors").to_array()
+        self.db.get("Cell.neighbors").to_csr()
+
+    def randomize(self, alive_fraction):
+        a = self.db.get_data("Cell.alive")
+        a.fill(False)
+        a[np.random.uniform(size=a.shape) < alive_fraction] = True
+
+    def get_bitmap(self):
+        out = np.zeros(self.shape)
+        a = self.db.get_data("Cell.alive")
+        c = self.db.get_data("Cell.coordinates")
+        for idx in np.nonzero(a)[0]:
+            x, y = c[idx]
+            out[x, y] = True
+        return out.reshape(self.shape)
 
     def advance(self):
         a = self.db.get_data("Cell.alive")
         n = self.db.get_data("Cell.neighbors")
-        c = n * a.reshape((-1, 1))
-        for idx in range(len(a)):
-            if a:
-                if c != 2 and c != 3:
-                    a[idx] = False
-            else:
-                if c == 3:
-                    a[idx] = True
+        c = n * np.array(a, dtype=np.int32)
+        _advance(a, c)
+
+@numba.njit(parallel=True)
+def _advance(a, c):
+    for idx in numba.prange(len(a)):
+        ci = c[idx]
+        if a[idx]:
+            if ci not in range(2, 4):
+                a[idx] = False
+        else:
+            if ci == 3:
+                a[idx] = True
