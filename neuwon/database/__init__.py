@@ -472,7 +472,7 @@ class Attribute(_DataComponent):
             self.data = np.array(value, dtype=self.dtype)
         elif self.mem == "cuda":
             self.data = cupy.array(value, self.dtype)
-        else: raise NotImplementedError
+        else: raise NotImplementedError(self.mem)
         if self.shape != (1,): assert self.data.shape[1:] == self.shape
 
     def to_host(self) -> 'Attribute':
@@ -521,7 +521,8 @@ class Sparse_Matrix(_DataComponent):
     # TODO: Consider adding more write methods:
     #       1) Write rows. (done)
     #       2) Insert coordinates.
-    #       3) Overwrite the matrix?
+    #               Notes: first convert format to either lil or coo
+    #       3) Overwrite the matrix. (done)
     def __init__(self, class_type, name, column, dtype=Real, doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """
@@ -601,11 +602,38 @@ class Sparse_Matrix(_DataComponent):
 
     def _resize(self):
         self.data.resize(self.shape)
+        return
+
+        # TODO: Implement fast append.
+
+        # Currently every time the user creates an instance, this reallocates
+        # the entire sparse matrix! Terrible for performance.
+
+        # The solution is to manually allocate the data backing the matrix to
+        # have extra space at the end ofr fast append.
+
+        # Do this by making an extra large (x2) zero'd matrix and keeping it as storage.
+
+        # Then make a zero'd matrix of the desired size and overwriute its datya
+        # with slices of the large matrix.
+
+        # And how exactly this works is different for every format, and probably
+        # also for each memory space.
+
+        self.memory_buffer = None
+        if self.fmt == 'lil':
+            1/0
+        elif self.fmt == 'coo':
+            1/0
+        elif self.fmt == 'csr':
+            1/0
+        else: raise NotImplementedError(self.fmt)
 
     def get_data(self):
         return self.data
 
     def set_data(self, new_matrix):
+        1/0 # This method is broken.
         assert new_matrix.shape == self.shape
         self.data = new_matrix
         self.fmt = "unknown"
