@@ -427,7 +427,7 @@ class Attribute(_DataComponent):
         self._append(0, len(self._cls))
 
     def _getter(self, instance):
-        value = self.data[instance._idx]
+        value = self.data[instance.__index__()]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
             value = self.reference.instance_type(_idx=value)
@@ -437,7 +437,7 @@ class Attribute(_DataComponent):
         if self.reference:
             if isinstance(value, self.reference.instance_type):
                 value = value._idx
-        self.data[instance._idx] = value
+        self.data[instance.__index__()] = value
 
     def _append(self, old_size, new_size):
         """ Prepare space for new instances at the end of the array. """
@@ -548,13 +548,13 @@ class Sparse_Matrix(_DataComponent):
 
     def _getter(self, instance):
         if self.fmt == 'lil':
-            vec = self.data[instance._idx]
+            vec = self.data[instance.__index__()]
             return (vec.rows, vec.data)
         else: raise NotImplementedError
 
     def _setter(self, instance, value):
         columns, data = value
-        self.write_row(instance._idx, columns, data)
+        self.write_row(instance.__index__(), columns, data)
 
     def to_lil(self):
         if self.fmt != "lil":
