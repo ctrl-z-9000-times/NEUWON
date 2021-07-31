@@ -200,7 +200,7 @@ class DB_Class(_DocString):
             elif isinstance(x, ClassAttribute): pass
             elif isinstance(x, Sparse_Matrix): x._resize()
             elif isinstance(x, ListAttribute): x._append(old_size, new_size)
-            else: raise NotImplementedError
+            else: raise NotImplementedError(type(x))
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
         new_obj._idx = old_size
         super(type(new_obj), new_obj).__init__(*args, **kwargs)
@@ -633,7 +633,6 @@ class Sparse_Matrix(_DataComponent):
         return self.data
 
     def set_data(self, new_matrix):
-        1/0 # This method is broken.
         assert new_matrix.shape == self.shape
         self.data = new_matrix
         self.fmt = "unknown"
@@ -663,8 +662,8 @@ class Connectivity_Matrix(Sparse_Matrix):
 
     def _getter(self, instance):
         connected_list = self.to_lil().data.rows[instance.__index__()]
-        for idx, value in enumerate(connected_list):
-            if not isinstance(value, DB_Object):
+        if connected_list and not isinstance(connected_list[0], DB_Object):
+            for idx, value in enumerate(connected_list):
                 connected_list[idx] = self.column.instance_type(_idx=value)
         return connected_list
 
