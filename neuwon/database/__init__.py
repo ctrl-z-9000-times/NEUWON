@@ -6,10 +6,7 @@ import cupy
 import cupyx.scipy.sparse
 import itertools
 import numpy as np
-import scipy.interpolate
 import scipy.sparse
-import scipy.sparse.linalg
-import scipy.spatial
 import textwrap
 import weakref
 
@@ -180,7 +177,13 @@ class DB_Class(_DocString):
         self.instance_type = type(self.name, parents, {
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
+
+                # I feel like this is a mistake here...
+                #   This is convenient for me,
+                #   This exposes private info to the user!
+                #       This shows up in pydoc!
                 "__index__": lambda instance: instance._idx,
+                
                 "_cls": self, })
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
@@ -242,6 +245,11 @@ class DB_Class(_DocString):
         return Connectivity_Matrix(self, name, column, doc=doc)
 
     def destroy(self):
+        """
+        Sparse matrices may contain references but they will not trigger a
+        recursive destruction of entities. Instead, references to destroyed
+        entities are simply removed from the sparse matrix.
+        """
         # TODO: The "allow_invalid" flag should control whether destroying
         # referenced entities causes recursive destruction of more entities.
 
@@ -305,6 +313,7 @@ class _DataComponent(_DocString):
     def __init__(self, class_type, name,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
         _DocString.__init__(self, name, doc)
+        assert isinstance(class_type, DB_Class)
         assert self.name not in class_type.components
         self._cls = class_type
         self._cls.components[self.name] = self
@@ -371,6 +380,13 @@ class _DataComponent(_DocString):
     def to_device(self) -> 'self':
         """ Abstract method, optional """
         return self
+
+    def free(self):
+        """ Abstract method, optional.
+
+        Release the memory used by this data component. The next time the data
+        is accessed it will be reallocated and set to the default value.
+        """
 
     def check(self):
         """
@@ -523,18 +539,17 @@ class Sparse_Matrix(_DataComponent):
     #       2) Insert coordinates.
     #               Notes: first convert format to either lil or coo
     #       3) Overwrite the matrix. (done)
+
+    # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
+
     def __init__(self, class_type, name, column, dtype=Real, doc="", units=None,
                 allow_invalid=False, valid_range=(None, None),):
         """
         Add a sparse matrix that is indexed by Entities. This is useful for
         implementing any-to-any connections between entities.
-
-        Sparse matrices may contain references but they will not trigger a
-        recursive destruction of entities. Instead, references to destroyed
-        entities are simply removed from the sparse matrix.
         """
         _DataComponent.__init__(self, class_type, name,
-                dtype=dtype, shape=None, doc=doc, units=units, initial_value=0,
+                dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         if isinstance(column, DB_Class):
             self.column = column
@@ -543,15 +558,21 @@ class Sparse_Matrix(_DataComponent):
         if self.column != self._cls:
             self.column.referenced_by_sparse_matrix_columns.append(self)
         self.dtype = dtype
-        self.data = scipy.sparse.csr_matrix((len(self._cls), len(self.column)), dtype=self.dtype)
-        self.fmt = 'csr'
-        self.sparse_module = scipy.sparse
+        # self.alloc = None
+        self.fmt = 'lil'
+        self.data = scipy.sparse.lil_matrix((len(self._cls), len(self.column)), dtype=self.dtype)
+
+    @property
+    def _sparse_module(self):
+        if self.mem == 'host': return scipy.sparse
+        elif self.mem == 'cuda': return cupyx.scipy.sparse
+        else: raise NotImplementedError(self.mem)
 
     def _getter(self, instance):
         if self.fmt == 'lil':
             vec = self.data[instance.__index__()]
             return (vec.rows, vec.data)
-        else: raise NotImplementedError
+        else: raise NotImplementedError(self.fmt)
 
     def _setter(self, instance, value):
         columns, data = value
@@ -559,19 +580,19 @@ class Sparse_Matrix(_DataComponent):
 
     def to_lil(self):
         if self.fmt != "lil":
-            self.data = self.sparse_module.lil_matrix(self.data)
+            self.data = self._sparse_module.lil_matrix(self.data)
             self.fmt = "lil"
         return self
 
     def to_coo(self):
         if self.fmt != "coo":
-            self.data = self.sparse_module.coo_matrix(self.data)
+            self.data = self._sparse_module.coo_matrix(self.data)
             self.fmt = "coo"
         return self
 
     def to_csr(self):
         if self.fmt != "csr":
-            self.data = self.sparse_module.csr_matrix(self.data)
+            self.data = self._sparse_module.csr_matrix(self.data)
             self.fmt = "csr"
         return self
 
@@ -579,7 +600,7 @@ class Sparse_Matrix(_DataComponent):
         if self.mem == 'host': pass
         elif self.mem == 'cuda':
             self.data = self.data.get()
-            self.sparse_module = scipy.sparse
+            self._sparse_module = scipy.sparse
             self.mem = 'host'
         else: raise NotImplementedError
         return self
@@ -587,9 +608,9 @@ class Sparse_Matrix(_DataComponent):
     def to_device(self):
         if self.mem == 'host':
             if self.fmt == 'lil': self.fmt = 'csr'
-            self.sparse_module = cupyx.scipy.sparse
-            if self.fmt == 'csr': self.data = self.sparse_module.csr_matrix(self.data)
-            elif self.fmt == 'coo': self.data = self.sparse_module.coo_matrix(self.data)
+            self._sparse_module = cupyx.scipy.sparse
+            if self.fmt == 'csr': self.data = self._sparse_module.csr_matrix(self.data)
+            elif self.fmt == 'coo': self.data = self._sparse_module.coo_matrix(self.data)
             else: raise NotImplementedError
             self.mem = 'cuda'
         elif self.mem == 'cuda': pass
@@ -681,7 +702,7 @@ class Connectivity_Matrix(Sparse_Matrix):
             for idx in range(len(rows)):
                 if len(rows[idx]) != len(data[idx]):
                     data[idx] = [True] * len(rows[idx])
-            self.data = self.sparse_module.csr_matrix(self.data)
+            self.data = self._sparse_module.csr_matrix(self.data)
             self.fmt = "csr"
         elif self.fmt == "csr": pass
         else: raise NotImplementedError(self.fmt)

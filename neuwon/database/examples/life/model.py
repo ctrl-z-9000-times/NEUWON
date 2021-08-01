@@ -42,18 +42,10 @@ class GameOfLife:
         a.fill(False)
         a[np.random.uniform(size=a.shape) < alive_fraction] = True
 
-    def get_bitmap(self):
-        out = np.zeros(self.shape)
-        a = self.db.get_data("Cell.alive")
-        c = self.db.get_data("Cell.coordinates")
-        for idx in np.nonzero(a)[0]:
-            x, y = c[idx]
-            out[x, y] = True
-        return out.reshape(self.shape)
-
     def advance(self):
         a = self.db.get_data("Cell.alive")
         n = self.db.get_data("Cell.neighbors")
+        # C is the number of living neighbors for each cell.
         c = n * np.array(a, dtype=np.int32)
         _advance(a, c)
 
