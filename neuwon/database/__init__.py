@@ -451,8 +451,8 @@ class Attribute(_DataComponent):
 
     def _setter(self, instance, value):
         if self.reference:
-            if isinstance(value, self.reference.instance_type):
-                value = value._idx
+            assert isinstance(value, self.reference.instance_type)
+            value = value._idx
         self.data[instance.__index__()] = value
 
     def _append(self, old_size, new_size):
@@ -476,33 +476,34 @@ class Attribute(_DataComponent):
             return np.empty(shape, dtype=self.dtype)
         elif self.mem == 'cuda':
             return cupy.empty(shape, dtype=self.dtype)
-        else: raise NotImplementedError
+        else: raise NotImplementedError(self.mem)
 
     def get_data(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
         return self.data[:len(self._cls)]
 
     def set_data(self, value):
-        assert len(value) == len(self.get_class())
-        if self.mem == "host":
-            self.data = np.array(value, dtype=self.dtype)
-        elif self.mem == "cuda":
-            self.data = cupy.array(value, self.dtype)
-        else: raise NotImplementedError(self.mem)
-        if self.shape != (1,): assert self.data.shape[1:] == self.shape
+        size = len(self._cls)
+        assert len(value) == size
+        self.data = self._alloc(size)
+        self.data[:size] = value
+        if self.initial_value is not None:
+            self.data[size:].fill(self.initial_value)
 
     def to_host(self) -> 'Attribute':
         if self.mem == 'host': pass
-        elif self.mem == 'cuda': self.data = self.data.get()
-        else: raise NotImplementedError
-        self.mem = 'host'
+        elif self.mem == 'cuda':
+            self.data = self.data.get()
+            self.mem = 'host'
+        else: raise NotImplementedError(self.mem)
         return self
 
     def to_device(self) -> 'Attribute':
-        if self.mem == 'host': self.data = cupy.array(self.data)
+        if self.mem == 'host':
+            self.data = cupy.array(self.data)
+            self.mem = 'cuda'
         elif self.mem == 'cuda': pass
-        else: raise NotImplementedError
-        self.mem = 'cuda'
+        else: raise NotImplementedError(self.mem)
         return self
 
 class ClassAttribute(_DataComponent):
@@ -521,10 +522,12 @@ class ClassAttribute(_DataComponent):
         self.data = self.initial_value
 
     def _getter(self, instance):
-        return self.get_data()
+        if self.reference: 1/0 # todo?
+        return self.data
 
     def _setter(self, instance, value):
-        self.set_data(value)
+        if self.reference: 1/0 # todo?
+        self.data = self.dtype.type(value)
 
     def get_data(self):
         return self.data
@@ -551,22 +554,25 @@ class Sparse_Matrix(_DataComponent):
         _DataComponent.__init__(self, class_type, name,
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
                 allow_invalid=allow_invalid, valid_range=valid_range)
-        if isinstance(column, DB_Class):
-            self.column = column
-        else:
-            self.column = self._cls.database.get_class(column)
+        self.column = self._cls.database.get_class(column)
         if self.column != self._cls:
             self.column.referenced_by_sparse_matrix_columns.append(self)
-        self.dtype = dtype
         # self.alloc = None
         self.fmt = 'lil'
-        self.data = scipy.sparse.lil_matrix((len(self._cls), len(self.column)), dtype=self.dtype)
+        self.data = self._matrix_class((len(self._cls), len(self.column)), dtype=self.dtype)
 
     @property
     def _sparse_module(self):
-        if self.mem == 'host': return scipy.sparse
+        if   self.mem == 'host': return scipy.sparse
         elif self.mem == 'cuda': return cupyx.scipy.sparse
         else: raise NotImplementedError(self.mem)
+
+    @property
+    def _matrix_class(self):
+        if   self.fmt == 'lil': return self._sparse_module.lil_matrix
+        elif self.fmt == 'coo': return self._sparse_module.coo_matrix
+        elif self.fmt == 'csr': return self._sparse_module.csr_matrix
+        else: raise NotImplementedError(self.fmt)
 
     def _getter(self, instance):
         if self.fmt == 'lil':
@@ -580,41 +586,39 @@ class Sparse_Matrix(_DataComponent):
 
     def to_lil(self):
         if self.fmt != "lil":
-            self.data = self._sparse_module.lil_matrix(self.data)
             self.fmt = "lil"
+            self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
     def to_coo(self):
         if self.fmt != "coo":
-            self.data = self._sparse_module.coo_matrix(self.data)
             self.fmt = "coo"
+            self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
     def to_csr(self):
         if self.fmt != "csr":
-            self.data = self._sparse_module.csr_matrix(self.data)
             self.fmt = "csr"
+            self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
     def to_host(self):
         if self.mem == 'host': pass
         elif self.mem == 'cuda':
             self.data = self.data.get()
-            self._sparse_module = scipy.sparse
             self.mem = 'host'
-        else: raise NotImplementedError
+        else: raise NotImplementedError(self.mem)
         return self
 
     def to_device(self):
         if self.mem == 'host':
-            if self.fmt == 'lil': self.fmt = 'csr'
-            self._sparse_module = cupyx.scipy.sparse
-            if self.fmt == 'csr': self.data = self._sparse_module.csr_matrix(self.data)
-            elif self.fmt == 'coo': self.data = self._sparse_module.coo_matrix(self.data)
-            else: raise NotImplementedError
             self.mem = 'cuda'
+            if self.fmt == 'lil': self.fmt = 'csr'
+            if self.fmt == 'csr': self.data = self._matrix_class(self.data, dtype=self.dtype)
+            elif self.fmt == 'coo': self.data = self._matrix_class(self.data, dtype=self.dtype)
+            else: raise NotImplementedError(self.fmt)
         elif self.mem == 'cuda': pass
-        else: raise NotImplementedError
+        else: raise NotImplementedError(self.mem)
         return self
 
     @property
@@ -655,9 +659,7 @@ class Sparse_Matrix(_DataComponent):
 
     def set_data(self, new_matrix):
         assert new_matrix.shape == self.shape
-        self.data = new_matrix
-        self.fmt = "unknown"
-        self.to_csr()
+        self.data = self._matrix_class(new_matrix, dtype=self.dtype)
 
     def write_row(self, row, columns, values):
         self.to_lil()
