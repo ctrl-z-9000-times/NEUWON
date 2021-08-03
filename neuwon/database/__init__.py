@@ -22,7 +22,7 @@ class DB_Object:
         """
         Keyword arguments are assigned to the new instance, for example:
                 >>> obj = MyClass(x=3, y=4)
-            Is equivalient to:
+            Is equivalent to:
                 >>> obj = MyClass()
                 >>> obj.x = 3
                 >>> obj.y = 4
