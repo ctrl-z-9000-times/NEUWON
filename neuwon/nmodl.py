@@ -14,6 +14,10 @@ from neuwon.model import Reaction, Model, Segment
 from neuwon.nmodl_parser import _NmodlParser, ANT
 from scipy.linalg import expm
 
+def eprint(*args, **kwargs):
+    """ Prints to standard error (sys.stderr). """
+    print(*args, file=sys.stderr, **kwargs)
+
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
         """

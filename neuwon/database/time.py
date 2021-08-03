@@ -48,8 +48,7 @@ class Clock:
         for i in reversed(range(len(self.callbacks))):
             try: keep_alive = self.callbacks[i](self.db.access)
             except Exception:
-                eprint("Exception raised by "+repr(self.callbacks[i]))
-                raise
+                raise RuntimeError("in callback "+repr(self.callbacks[i]))
             if not keep_alive:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()

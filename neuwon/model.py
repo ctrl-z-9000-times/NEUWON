@@ -574,11 +574,8 @@ class Model(_Clock):
             if species.outside_diffusivity != 0.0:
                 access("outside/delta_concentrations/"+name).fill(0.0)
         for name, r in self.reactions.items():
-            try:
-                r.advance(access)
-            except Exception:
-                eprint("Error in reaction: " + name)
-                raise
+            try: r.advance(access)
+            except Exception: raise RuntimeError("in reaction " + name)
 
     def render_frame(self, membrane_colors,
             output_filename, resolution,

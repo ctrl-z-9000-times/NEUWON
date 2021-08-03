@@ -1,8 +1,4 @@
 
-def eprint(*args, **kwargs):
-    """ Prints to standard error (sys.stderr). """
-    print(*args, file=sys.stderr, **kwargs)
-
 class KD_Tree(_Component):
     def __init__(self, entity, name, coordinates_attribute, doc=""):
         _Component.__init__(self, entity, name, doc)
