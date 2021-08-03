@@ -24,6 +24,7 @@ class GameOfLife:
         for x in range(self.shape[0]):
             for y in range(self.shape[1]):
                 cell = self.grid[x,y]
+                neighbors = []
                 for x_offset in [-1, 0, 1]:
                     for y_offset in [-1, 0, 1]:
                         nx = x - x_offset
@@ -34,13 +35,17 @@ class GameOfLife:
                         if ny >= self.shape[1]: ny = self.shape[1] - 1
                         neighbor = self.grid[nx, ny]
                         if cell != neighbor:
-                            cell.neighbors.append(neighbor)
+                            neighbors.append(neighbor)
+                cell.neighbors = neighbors
         self.db.get("Cell.neighbors").to_csr()
 
     def randomize(self, alive_fraction):
         a = self.db.get_data("Cell.alive")
         a.fill(False)
         a[np.random.uniform(size=a.shape) < alive_fraction] = True
+
+    def get_num_alive(self):
+        return sum(self.db.get_data("Cell.alive"))
 
     def advance(self):
         a = self.db.get_data("Cell.alive")

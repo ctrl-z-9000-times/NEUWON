@@ -564,9 +564,9 @@ class Sparse_Matrix(_DataComponent):
         self.column = self._cls.database.get_class(column)
         if self.column != self._cls:
             self.column.referenced_by_sparse_matrix_columns.append(self)
-        # self.alloc = None
         self.fmt = 'lil'
         self.data = self._matrix_class((len(self._cls), len(self.column)), dtype=self.dtype)
+        self._host_lil_mem = None
 
     @property
     def _sparse_module(self):
@@ -607,12 +607,14 @@ class Sparse_Matrix(_DataComponent):
     def to_coo(self):
         if self.fmt != "coo":
             self.fmt = "coo"
+            self._host_lil_mem = None
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
     def to_csr(self):
         if self.fmt != "csr":
             self.fmt = "csr"
+            self._host_lil_mem = None
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
@@ -627,6 +629,7 @@ class Sparse_Matrix(_DataComponent):
     def to_device(self):
         if self.mem == 'host':
             self.mem = 'cuda'
+            self._host_lil_mem = None
             if self.fmt == 'lil': self.fmt = 'csr'
             if self.fmt == 'csr': self.data = self._matrix_class(self.data, dtype=self.dtype)
             elif self.fmt == 'coo': self.data = self._matrix_class(self.data, dtype=self.dtype)
@@ -640,32 +643,25 @@ class Sparse_Matrix(_DataComponent):
         return (len(self._cls), len(self.column))
 
     def _resize(self):
-        self.data.resize(self.shape)
-        return
+        old_shape = self.data.shape
+        new_shape = self.shape
+        if old_shape == new_shape: return
 
-        # TODO: Implement fast append.
-
-        # Currently every time the user creates an instance, this reallocates
-        # the entire sparse matrix! Terrible for performance.
-
-        # The solution is to manually allocate the data backing the matrix to
-        # have extra space at the end ofr fast append.
-
-        # Do this by making an extra large (x2) zero'd matrix and keeping it as storage.
-
-        # Then make a zero'd matrix of the desired size and overwriute its datya
-        # with slices of the large matrix.
-
-        # And how exactly this works is different for every format, and probably
-        # also for each memory space.
-
-        self.memory_buffer = None
+        if self.fmt == 'csr': self.to_lil()
         if self.fmt == 'lil':
-            1/0
+            if self._host_lil_mem is None or self._host_lil_mem.shape[0] < new_shape[0]:
+                # Allocate an extra large sparse matrix.
+                alloc_shape = tuple(2 * x for x in new_shape)
+                self._host_lil_mem = self._matrix_class(alloc_shape, dtype=self.dtype)
+                # Copy the sparse matrix data into the new matrix's internal buffer.
+                self._host_lil_mem.rows[:old_shape[0]] = self.data.rows
+                self._host_lil_mem.data[:old_shape[0]] = self.data.data
+            # Set data to a sub-slice of the memory buffer.
+            self.data._shape = new_shape # I am a trespasser.
+            self.data.rows = self._host_lil_mem.rows[:new_shape[0]]
+            self.data.data = self._host_lil_mem.data[:new_shape[0]]
         elif self.fmt == 'coo':
-            1/0
-        elif self.fmt == 'csr':
-            1/0
+            self.data.resize(self.shape)
         else: raise NotImplementedError(self.fmt)
 
     def get_data(self):

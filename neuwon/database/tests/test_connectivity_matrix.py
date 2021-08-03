@@ -8,16 +8,16 @@ def test_connectivity_matrix():
     Foo = db.add_class("Foo")
     Foo.add_connectivity_matrix("f", Foo)
 
-    num = 10000
+    num = 1000
     Foo = Foo.get_instance_type()
     all_foo = [Foo() for _ in range(num)]
     for q in all_foo:
-        q.f = random.sample(all_foo, 4)
+        q.f = random.sample(all_foo, 2)
 
     # Do a random walk through the graph, using the OOP API.
     cursor = start = random.choice(all_foo)
     path_history = []
-    for _ in range(10):
+    for _ in range(20):
         cursor = random.choice(cursor.f)
         path_history.append(cursor)
 
