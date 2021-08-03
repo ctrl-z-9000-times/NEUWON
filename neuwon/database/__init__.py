@@ -33,11 +33,6 @@ class DB_Object:
     def __repr__(self):
         return "<%s:%d>"%(self._cls.name, self._idx)
 
-class _HashWrapper:
-    def __init__(self, db_object): self.db_object = db_object
-    def __hash__(self): return id(self.db_object)
-    def __eq__(self, other): return self.db_object == other.db_object
-
 class Database:
     def __init__(self):
         self.class_types = dict()
@@ -175,7 +170,7 @@ class DB_Class(_DocString):
         self.components = dict()
         self.referenced_by = list()
         self.referenced_by_sparse_matrix_columns = list()
-        self.instances = weakref.WeakSet()
+        self.instances = weakref.WeakValueDictionary()
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
         # Make a new subclass to represent instances which are part of *this* database.
@@ -198,7 +193,7 @@ class DB_Class(_DocString):
     @staticmethod
     def _instance__init__(new_obj, *args, _idx=None, **kwargs):
         self = new_obj._cls
-        self.instances.add(_HashWrapper(new_obj))
+        self.instances[id(new_obj)] = new_obj
         if _idx is not None:
             new_obj._idx = _idx
             return
