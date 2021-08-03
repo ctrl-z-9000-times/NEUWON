@@ -1,21 +1,29 @@
-from neuwon.database import *
+import neuwon.database
 import collections
 import scipy.interpolate
-import matplotlib.pyplot as plt
+import matplotlib.pyplot
 
 class Clock:
     """ Clock and notification system. """
-    def __init__(self, dt):
+    def __init__(self, dt, units=None):
         self.dt = float(dt)
         self.ticks = 0
+        self.units = None if units is None else str(units)
         self.callbacks = []
 
     def clock(self):
         """ Returns the current time. """
         return self.ticks * self.dt
 
+    def time(self):
+        """ Returns the current time. """
+        return self.ticks * self.dt
+
     def __call__(self):
+        """ Returns the current time. """
         return self.clock()
+
+    def get_units(self): return self.units
 
     def register_callback(self, function):
         """
@@ -48,16 +56,14 @@ class Clock:
 
 class TimeSeriesBuffer:
     def __init__(self, db_object, component, clock, max_length=None):
-        """
-        Argument clock is a function returning the current time, in the form:
-                clock() -> float
-        """
+        """ """
         self.db_object = db_object
-        assert isinstance(self.db_object, DB_Object)
+        assert isinstance(self.db_object, neuwon.database.DB_Object)
         self.component = str(component)
         getattr(self.db_object, self.component)
+        assert isinstance(clock, Clock)
         self.clock = clock
-        assert isinstance(self.clock, Callable)
+        self.clock.register_callback(self._sample_data)
         self.max_length = float(np.inf if max_length is None else max_length)
         self.timeseries = collections.deque()
         self.timestamps = collections.deque()
@@ -66,7 +72,7 @@ class TimeSeriesBuffer:
         self.timeseries.clear()
         self.timestamps.clear()
 
-    def __call__(self):
+    def _sample_data(self):
         self.timeseries.append(getattr(self.db_object, self.component))
         self.timestamps.append(self.clock())
         while self.timestamps[-1] - self.timestamps[0] > self.max_length:
@@ -101,14 +107,15 @@ class TimeSeriesBuffer:
         return results
 
     def plot(self, show=True):
+        plt = matplotlib.pyplot
         plt.figure(self.component)
         plt.title("Time Series of: " + self.component)
-        # self.label_axes()
+        self.label_axes()
         plt.plot(self.x, self.y)
         if show: plt.show()
 
-    # def label_axes(self, axes=None):
-    #     if axes is None: axes = matplotlib.pyplot.gca()
-    #     axes.set_ylabel(self.db.get_units(self.component))
-    #     axes.set_xlabel(self.db.get_units(self.clock))
-    #     return axes
+    def label_axes(self, axes=None):
+        if axes is None: axes = matplotlib.pyplot.gca()
+        axes.set_ylabel(self.db.get_units(self.component))
+        axes.set_xlabel(self.clock.get_units(self.clock))
+        return axes

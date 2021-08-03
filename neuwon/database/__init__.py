@@ -188,6 +188,9 @@ class DB_Class(_DocString):
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
 
+    # TODO: I should have a method for creating instance in bulk. Returns an
+    # array of indexes.
+
     @staticmethod
     def _instance__init__(new_obj, *args, _idx=None, **kwargs):
         self = new_obj._cls
