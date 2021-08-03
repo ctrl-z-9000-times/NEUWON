@@ -361,30 +361,6 @@ class Model(_Clock):
         assert(self.outside_tortuosity >= 1.0)
         assert(1.0 >= self.outside_volume_fraction >= 0.0)
 
-    def _initialize_database_membrane(self, db):
-        db.add_archetype("membrane", doc=""" """)
-        db.add_attribute("membrane/parents", dtype="membrane", allow_invalid=True,
-                doc="Cell membranes are connected in a tree.")
-        db.add_sparse_matrix("membrane/children", "membrane", dtype=np.bool, doc="")
-        db.add_attribute("membrane/coordinates", shape=(3,), units="μm")
-        db.add_attribute("membrane/diameters", bounds=(0.0, None), units="μm")
-        db.add_attribute("membrane/shapes", dtype=np.uint8, doc="""
-                0 - Sphere
-                1 - Cylinder
-
-                Note: only and all root segments are spheres. """)
-        db.add_attribute("membrane/primary", dtype=np.bool, doc="""
-                Primary segments are straightforward extensions of the parent
-                branch. Non-primary segments are lateral branches off to the side of
-                the parent branch.  """)
-        db.add_attribute("membrane/lengths", units="μm", doc="""
-                The distance between each node and its parent node.
-                Root node lengths are their radius.\n""")
-        db.add_attribute("membrane/surface_areas", bounds=(epsilon, None), units="μm²")
-        db.add_attribute("membrane/cross_sectional_areas", units="μm²",
-                bounds = (epsilon, None))
-        db.add_attribute("membrane/inside/volumes", bounds=(epsilon * (1e-6)**3, None), units="Liters")
-
     def _initialize_database_inside(self, db):
         db.add_archetype("inside", doc="Intracellular space.")
         db.add_attribute("membrane/inside", dtype="inside", doc="""
@@ -410,14 +386,6 @@ class Model(_Clock):
         db.add_attribute("outside/volumes", units="Liters")
         db.add_sparse_matrix("outside/neighbor_distances", "outside")
         db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
-
-    def _initialize_database_electric(self, db, initial_voltage):
-        db.add_attribute("membrane/voltages", initial_value=float(initial_voltage), units="mV")
-        db.add_attribute("membrane/axial_resistances", allow_invalid=True, units="")
-        db.add_attribute("membrane/capacitances", units="Farads", bounds=(0, None))
-        db.add_attribute("membrane/conductances", units="Siemens", bounds=(0, None))
-        db.add_attribute("membrane/driving_voltages", units="mV")
-        db.add_linear_system("membrane/diffusion", function=_electric_coefficients, epsilon=epsilon)
 
     def __len__(self):
         return len(self.db.get_entity("membrane"))
@@ -475,207 +443,6 @@ class Model(_Clock):
     def get_reaction(self, reaction_name):
         return self.reactions[str(reaction_name)]
 
-    def create_segment(self, parents, coordinates, diameters,
-                shape="cylinder", shells=0, maximum_segment_length=np.inf):
-        """
-        Argument parents:
-        Argument coordinates:
-        Argument diameters:
-        Argument shape: must be "cylinder".
-        Argument shells: unimplemented.
-        Argument maximum_segment_length
-
-        Returns a list of Segments.
-        """
-        if not isinstance(parents, Iterable):
-            parents     = [parents]
-            coordinates = [coordinates]
-        parents_clean = np.empty(len(parents), dtype=Pointer)
-        for idx, p in enumerate(parents):
-            if p is None:
-                parents_clean[idx] = NULL
-            elif isinstance(p, Segment):
-                parents_clean[idx] = p.entity.index
-            else:
-                parents_clean[idx] = p
-        parents = parents_clean
-        if not isinstance(diameters, Iterable):
-            diameters = np.full(len(parents), diameters, dtype=Real)
-        if   shape == "cylinder":   shape = np.full(len(parents), 1, dtype=np.uint8)
-        else: raise ValueError("Invalid argument 'shape'")
-        shape[parents == NULL] = 0 # Shape of root is always sphere.
-        # This method only deals with the "maximum_segment_length" argument and
-        # delegates the remaining work to the method: "_create_segment_batch".
-        maximum_segment_length = float(maximum_segment_length)
-        assert(maximum_segment_length > 0)
-        if maximum_segment_length == np.inf:
-            tips = self._create_segment_batch(parents, coordinates, diameters,
-                    shapes=shape, shells=shells,)
-            return [Segment(self, x) for x in tips]
-        # Accept defeat... Batching operations is too complicated.
-        tips = []
-        old_coords = self.db.access("membrane/coordinates").get()
-        old_diams = self.db.access("membrane/diameters").get()
-        for p, c, d in zip(parents, coordinates, diameters):
-            if p == NULL:
-                tips.append(self._create_segment_batch([p], [c], [d], shapes=shape, shells=shells,))
-                continue
-            length = np.linalg.norm(np.subtract(old_coords[p], c))
-            divisions = np.maximum(1, int(np.ceil(length / maximum_segment_length)))
-            x = np.linspace(0.0, 1.0, num=divisions + 1)[1:].reshape(-1, 1)
-            _x = np.subtract(1.0, x)
-            seg_coords = c * x + old_coords[p] * _x
-            if shape == 1:
-                seg_diams = np.full(divisions, d)
-            elif shape == 2:
-                seg_diams = d * x + old_diams[p] * _x
-            cursor = p
-            for i in range(divisions):
-                cursor = self._create_segment_batch([cursor],
-                    seg_coords[i], seg_diams[i], shapes=shape, shells=shells,)[0]
-                tips.append(cursor)
-        return [Segment(self, x) for x in tips]
-
-    def _create_segment_batch(self, parents, coordinates, diameters, shapes, shells):
-        num_new_segs = len(parents)
-        m_idx = self.db.create_entity("membrane", num_new_segs, return_entity=False)
-        i_idx = self.db.create_entity("inside", num_new_segs * (shells + 1), return_entity=False)
-        o_idx = self.db.create_entity("outside", num_new_segs, return_entity=False)
-        access = self.db.access
-        access("membrane/inside")[m_idx]      = i_idx[slice(None,None,shells + 1)]
-        access("inside/membrane")[i_idx]      = cp.repeat(m_idx, shells + 1)
-        access("membrane/outside")[m_idx]     = o_idx
-        access("membrane/parents")[m_idx]     = parents
-        access("membrane/coordinates")[m_idx] = coordinates
-        access("membrane/diameters")[m_idx]   = diameters
-        access("membrane/shapes")[m_idx]      = shapes
-        access("membrane/shells")[m_idx]      = shells
-        children = access("membrane/children")
-        write_rows = []
-        write_cols = []
-        for p, c in zip(parents, m_idx):
-            if p != NULL:
-                siblings = list(children[p].indices)
-                siblings.append(c)
-                write_rows.append(p)
-                write_cols.append(siblings)
-        data = [np.full(len(x), True) for x in write_cols]
-        access("membrane/children", sparse_matrix_write=(write_rows, write_cols, data))
-        primary    = access("membrane/primary")
-        all_parent = access("membrane/parents").get()
-        children   = access("membrane/children")
-        for p, m in zip(parents, m_idx):
-            if p == NULL: # Root.
-                primary[m] = False # Shape of root is always sphere, value does not matter.
-            elif all_parent[p] == NULL: # Parent is root.
-                primary[m] = False # Spheres have no primary branches off of a them.
-            else:
-                # Set the first child added to a segment as the primary extension,
-                # and all subsequent children as secondary branches.
-                primary[m] = (children[p].getnnz() == 1)
-        self._initialize_membrane_geometry(m_idx)
-        self._initialize_membrane_geometry([p for p in parents if p != NULL])
-
-        # shell_radius = [1.0] # TODO
-        # access("inside/shell_radius")[i_idx] = cp.tile(shell_radius, m_idx)
-        # 
-
-        # TODO: Consider moving the extracellular tracking point to over the
-        # center of the cylinder, instead of the tip. Using the tip only really
-        # makes sense for synapses. Also sphere are special case.
-        access("outside/coordinates")[m_idx] = coordinates
-        self._initialize_outside(o_idx)
-        return m_idx
-
-    def _initialize_membrane_geometry(self, membrane_idx):
-        access   = self.db.access
-        parents  = access("membrane/parents")
-        children = access("membrane/children")
-        coords   = access("membrane/coordinates")
-        diams    = access("membrane/diameters")
-        shapes   = access("membrane/shapes")
-        primary  = access("membrane/primary")
-        lengths  = access("membrane/lengths")
-        s_areas  = access("membrane/surface_areas")
-        x_areas  = access("membrane/cross_sectional_areas")
-        volumes  = access("membrane/inside/volumes")
-        # Compute lengths.
-        for idx in membrane_idx:
-            p = parents[idx]
-            if shapes[idx] == 0: # Root sphere.
-                lengths[idx] = 0.5 * diams[idx] # Spheres have no defined length, so use the radius.
-            else:
-                distance = np.linalg.norm(coords[idx] - coords[p])
-                # Subtract the parent's radius from the secondary nodes length,
-                # to avoid excessive overlap between segments.
-                if not primary[idx]:
-                    parent_radius = diams[p] / 2.0
-                    if distance < parent_radius + epsilon * 1e-6:
-                        # This segment is entirely enveloped within its parent. In
-                        # this corner case allow the segment to protrude directly
-                        # from the center of the parent instead of the surface.
-                        pass
-                    else:
-                        distance -= parent_radius
-                lengths[idx] = distance
-        # Compute surface areas.
-        for idx in membrane_idx:
-            p = parents[idx]
-            d = diams[idx]
-            shape = shapes[idx]
-            if shape == 0: # Sphere.
-                s_areas[idx] = np.pi * (d ** 2)
-            else:
-                l = lengths[idx]
-                if shape == 1: # Cylinder.
-                    s_areas[idx] = np.pi * d * l
-                # Account for the surface area on the tips of terminal/leaf segments.
-                if children.getrow(idx).getnnz() == 0:
-                    s_areas[idx] += _area_circle(d)
-        # Compute cross-sectional areas.
-        for idx in membrane_idx:
-            p = parents[idx]
-            d = diams[idx]
-            shape = shapes[idx]
-            if shape == 0: # Sphere.
-                x_areas[idx] = _area_circle(d)
-            else:
-                if shape == 1: # Cylinder.
-                    x_areas[idx] = _area_circle(d)
-        # Compute intracellular volumes.
-        for idx in membrane_idx:
-            p = parents[idx]
-            d = diams[idx]
-            l = lengths[idx]
-            shape = shapes[idx]
-            if shape == 0: # Sphere.
-                volumes[idx] = 1000 * (4/3) * np.pi * (d/2) ** 3
-            else:
-                if shape == 1: # Cylinder.
-                    volumes[idx] = 1000 * np.pi * (d/2) ** 2 * l
-        # Compute passive electric properties
-        Ra       = self.cytoplasmic_resistance
-        r        = access("membrane/axial_resistances")
-        Cm       = self.membrane_capacitance
-        c        = access("membrane/capacitances")
-        # Compute axial membrane resistance.
-        # TODO: This formula only works for cylinders.
-        r[membrane_idx] = Ra * lengths[membrane_idx] / x_areas[membrane_idx]
-        # Compute membrane capacitance.
-        c[membrane_idx] = Cm * s_areas[membrane_idx]
-
-        # TODO: Currently, diffusion from non-primary branches omits the section
-        # of diffusive material between the parents surface and center.
-        # Model the parents side of intracellular volume as a frustum to diffuse through.
-        # Implementation:
-        # -> Directly include this frustum into the resistance calculations.
-        # -> For chemical diffusion: make a new attribute for the geometry terms
-        #    in the diffusion equation, and include the new frustum in the new attribute.
-
-        outside_volumes = access("outside/volumes")
-        fh_space = self.fh_space * s_areas[membrane_idx] * 1000
-        outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
-
     def _initialize_outside(self, locations):
         self._initialize_outside_inner(locations)
         touched = set()
@@ -704,10 +471,6 @@ class Model(_Clock):
                 sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_dist))
         self.db.access("outside/neighbor_border_areas",
                 sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_area))
-
-    def destroy_segment(self, segments):
-        """ """
-        1/0
 
     def nearest_neighbors(self, coordinates, k, maximum_distance=np.inf):
         coordinates = np.array(coordinates, dtype=Real)
@@ -904,57 +667,6 @@ class _InjectedCurrents:
         self.locations.append(location)
         self.remaining.append(duration)
 
-class Segment:
-    """ This class is returned by model.create_segment() """
-    def __init__(self, model, membrane_index):
-        self.model = model
-        self.entity = Entity(model.db, "membrane", membrane_index)
-
-    def __eq__(self, other):
-        return (type(self) == type(other) and
-                self.model == other.model and
-                self.index == other.index)
-
-    def __hash__(self):
-        # TODO: This is a terrible design, BC the entity index is not immutable.
-        return self.index
-
-    @property
-    def index(self):
-        return self.entity.index
-
-    @property
-    def parent(self):
-        parent = self.entity.read("membrane/parents")
-        if parent != NULL:  return Segment(self.model, parent)
-        else:               return None
-
-    @property
-    def children(self):
-        children = self.entity.read("membrane/children")
-        return [Segment(self.model, c) for c in children.indices]
-
-    @property
-    def coordinates(self):
-        return self.entity.read("membrane/coordinates")
-
-    @property
-    def diameter(self):
-        return self.entity.read("membrane/diameters")
-
-    def read(self, component):
-        return self.entity.read(component)
-
-    def write(self, component, value):
-        return self.entity.write(component, value)
-
-    # TODO: Consider renaming this to "get_voltage" so that its name contains a verb.
-    def voltage(self):
-        return self.entity.read("membrane/voltages")
-
-    def inject_current(self, current, duration=1e-3):
-        self.model._injected_currents.inject_current(self.entity.index, current, duration)
-
 class Animation:
     def __init__(self, model, color_function, text_function = None,
             skip = 0,
@@ -1028,33 +740,3 @@ def _surface_area_frustum(radius_1, radius_2, length):
 
 def _volume_of_frustum(radius_1, radius_2, length):
     return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
-
-def _electric_coefficients(access):
-    """
-    Model the electric currents over the membrane surface.
-    Compute the coefficients of the derivative function:
-    dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
-    """
-    dt           = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
-    parents      = access("membrane/parents").get()
-    resistances  = access("membrane/axial_resistances").get()
-    capacitances = access("membrane/capacitances").get()
-    src = []; dst = []; coef = []
-    for child, parent in enumerate(parents):
-        if parent == NULL: continue
-        r        = resistances[child]
-        c_parent = capacitances[parent]
-        c_child  = capacitances[child]
-        src.append(child)
-        dst.append(parent)
-        coef.append(+dt / (r * c_parent))
-        src.append(child)
-        dst.append(child)
-        coef.append(-dt / (r * c_child))
-        src.append(parent)
-        dst.append(child)
-        coef.append(+dt / (r * c_child))
-        src.append(parent)
-        dst.append(parent)
-        coef.append(-dt / (r * c_parent))
-    return (coef, (dst, src))
