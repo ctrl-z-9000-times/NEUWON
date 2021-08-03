@@ -33,6 +33,11 @@ class DB_Object:
     def __repr__(self):
         return "<%s:%d>"%(self._cls.name, self._idx)
 
+class _HashWrapper:
+    def __init__(self, db_object): self.db_object = db_object
+    def __hash__(self): return id(self.db_object)
+    def __eq__(self, other): return self.db_object == other.db_object
+
 class Database:
     def __init__(self):
         self.class_types = dict()
@@ -171,18 +176,21 @@ class DB_Class(_DocString):
         self.referenced_by = list()
         self.referenced_by_sparse_matrix_columns = list()
         self.instances = weakref.WeakSet()
+        self.sort_key = tuple(self.database.get_component(x) for x in
+                (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
         # Make a new subclass to represent instances which are part of *this* database.
         parents = (instance_type,)
         if not issubclass(instance_type, DB_Object): parents += (DB_Object,)
         __slots__ = ("_idx",)
         if not hasattr(instance_type, "__weakref__"): __slots__ += ("__weakref__",)
         self.instance_type = type(self.name, parents, {
+                "_cls": self,
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
                 "get_unstable_index": self._get_unstable_index,
-                "_cls": self, })
-        self.sort_key = tuple(self.database.get_component(x) for x in
-                (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
+                "__eq__": lambda s, o: ((type(s) is type(o)) and (s._idx == o._idx))
+                })
+        self.instance_type.__init__.__doc__ = instance_type.__init__.__doc__
 
     # TODO: I should have a method for creating instances in bulk. Returns an
     # array of indexes.
@@ -190,7 +198,7 @@ class DB_Class(_DocString):
     @staticmethod
     def _instance__init__(new_obj, *args, _idx=None, **kwargs):
         self = new_obj._cls
-        self.instances.add(new_obj)
+        self.instances.add(_HashWrapper(new_obj))
         if _idx is not None:
             new_obj._idx = _idx
             return
@@ -581,8 +589,12 @@ class Sparse_Matrix(_DataComponent):
     def _getter(self, instance):
         if self.fmt == 'coo': self.to_lil()
         if self.fmt == 'lil':
-            vec = self.data[instance._idx]
-            return (vec.rows, vec.data)
+            lil_mat = self.data
+            instance_type = self.column.instance_type
+            cols = [instance_type(_idx=x) for x in lil_mat.rows[instance._idx]]
+            data = list(lil_mat.data[instance._idx])
+            if self.reference: 1/0 # Implement maybe?
+            return (cols, data)
         elif self.fmt == 'csr':
             help(self.data)
         else: raise NotImplementedError(self.fmt)
@@ -691,31 +703,10 @@ class Connectivity_Matrix(Sparse_Matrix):
         super().__init__(class_type, name, column, doc=doc, dtype=bool,)
 
     def _getter(self, instance):
-        connected_list = self.to_lil().data.rows[instance._idx]
-        if connected_list and not isinstance(connected_list[0], DB_Object):
-            for idx, value in enumerate(connected_list):
-                connected_list[idx] = self.column.instance_type(_idx=value)
-        return connected_list
+        return super()._getter(instance)[0]
 
-    def _setter(self, instance, value):
-        self.to_lil().data.rows[instance] = list(value)
-
-    def to_csr(self):
-        if self.fmt == "lil":
-            rows = self.data.rows
-            data = self.data.data
-            for row in rows:
-                for idx, value in enumerate(row):
-                    if isinstance(value, DB_Object):
-                        row[idx] = value._idx
-            for idx in range(len(rows)):
-                if len(rows[idx]) != len(data[idx]):
-                    data[idx] = [True] * len(rows[idx])
-            self.data = self._sparse_module.csr_matrix(self.data)
-            self.fmt = "csr"
-        elif self.fmt == "csr": pass
-        else: raise NotImplementedError(self.fmt)
-        return self
+    def _setter(self, instance, values):
+        super()._setter(instance, (values, [True] * len(values)))
 
 DB_Class.add_attribute.__doc__         = Attribute.__init__.__doc__
 DB_Class.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__

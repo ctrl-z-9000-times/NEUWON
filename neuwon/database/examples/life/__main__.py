@@ -5,7 +5,7 @@ import pygame
 from pygame.locals import *
 
 parser = argparse.ArgumentParser("""Conway's Game of Life.""")
-parser.add_argument('--size', type=int, default = 200,)
+parser.add_argument('--size', type=int, default = 100,)
 parser.add_argument('--sparsity', type=float, default = .33,)
 parser.add_argument('--fps', type=int, default = 24,)
 args = parser.parse_args()

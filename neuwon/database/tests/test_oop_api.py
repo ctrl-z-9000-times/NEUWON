@@ -49,8 +49,7 @@ def test_custom_classes():
 
     class _Section_obj:
         def __init__(self, nsegs):
-            for i in range(nsegs):
-                self.segments.append(Segment(section=self))
+            self.segments = [Segment(section=self) for _ in range(nsegs)]
 
         @property
         def nsegs(self):
