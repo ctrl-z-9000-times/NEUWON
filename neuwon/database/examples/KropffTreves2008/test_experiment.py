@@ -8,8 +8,14 @@ def test():
     x.find_alignment_points()
     x.select_exemplar_cells(.20)
 
-# TODO: Make two versions of the same database and verify that they operate
-# independently.
-
-# def test_multi_model():
-#     pass
+def test_multiple_model():
+    x = Experiment(20)
+    y = Experiment(19)
+    x.run(1)
+    y.run(2)
+    z = Experiment(21)
+    y.run(3)
+    z.run(10)
+    x.model.db.check()
+    y.model.db.check()
+    z.model.db.check()
