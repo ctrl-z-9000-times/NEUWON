@@ -116,6 +116,6 @@ class TimeSeriesBuffer:
 
     def label_axes(self, axes=None):
         if axes is None: axes = matplotlib.pyplot.gca()
-        axes.set_ylabel(self.db.get_units(self.component))
+        axes.set_ylabel(self.db_object._cls.get_database().get_units(self.component))
         axes.set_xlabel(self.clock.get_units(self.clock))
         return axes

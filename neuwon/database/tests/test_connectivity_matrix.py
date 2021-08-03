@@ -24,8 +24,8 @@ def test_connectivity_matrix():
     # Use the connectivity matrix to check that the cursor's path was a valid
     # path through the graph.
     possible = np.zeros(num)
-    possible[start] = 1
+    possible[start.get_unstable_index()] = 1
     x = db.get("Foo.f").to_csr().get_data()
     for cursor in path_history:
         possible = possible * x
-        assert possible[cursor] > 0
+        assert possible[cursor.get_unstable_index()] > 0

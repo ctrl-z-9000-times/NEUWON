@@ -88,6 +88,8 @@ class Database:
         return self
 
     def sort(self):
+        """ """
+        1/0
         """
         NOTES:
 
@@ -177,18 +179,12 @@ class DB_Class(_DocString):
         self.instance_type = type(self.name, parents, {
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
-
-                # I feel like this is a mistake here...
-                #   This is convenient for me,
-                #   This exposes private info to the user!
-                #       This shows up in pydoc!
-                "__index__": lambda instance: instance._idx,
-                
+                "get_unstable_index": self._get_unstable_index,
                 "_cls": self, })
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
 
-    # TODO: I should have a method for creating instance in bulk. Returns an
+    # TODO: I should have a method for creating instances in bulk. Returns an
     # array of indexes.
 
     @staticmethod
@@ -210,6 +206,11 @@ class DB_Class(_DocString):
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
         new_obj._idx = old_size
         super(type(new_obj), new_obj).__init__(*args, **kwargs)
+
+    @staticmethod
+    def _get_unstable_index(db_object):
+        """ TODO: Explain how / when this index changes. """
+        return db_object._idx
 
     def get_instance_type(self) -> DB_Object:
         return self.instance_type
@@ -446,7 +447,7 @@ class Attribute(_DataComponent):
         self._append(0, len(self._cls))
 
     def _getter(self, instance):
-        value = self.data[instance.__index__()]
+        value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
             value = self.reference.instance_type(_idx=value)
@@ -456,7 +457,7 @@ class Attribute(_DataComponent):
         if self.reference:
             assert isinstance(value, self.reference.instance_type)
             value = value._idx
-        self.data[instance.__index__()] = value
+        self.data[instance._idx] = value
 
     def _append(self, old_size, new_size):
         """ Prepare space for new instances at the end of the array. """
@@ -578,14 +579,17 @@ class Sparse_Matrix(_DataComponent):
         else: raise NotImplementedError(self.fmt)
 
     def _getter(self, instance):
+        if self.fmt == 'coo': self.to_lil()
         if self.fmt == 'lil':
-            vec = self.data[instance.__index__()]
+            vec = self.data[instance._idx]
             return (vec.rows, vec.data)
+        elif self.fmt == 'csr':
+            help(self.data)
         else: raise NotImplementedError(self.fmt)
 
     def _setter(self, instance, value):
         columns, data = value
-        self.write_row(instance.__index__(), columns, data)
+        self.write_row(instance._idx, columns, data)
 
     def to_lil(self):
         if self.fmt != "lil":
@@ -687,7 +691,7 @@ class Connectivity_Matrix(Sparse_Matrix):
         super().__init__(class_type, name, column, doc=doc, dtype=bool,)
 
     def _getter(self, instance):
-        connected_list = self.to_lil().data.rows[instance.__index__()]
+        connected_list = self.to_lil().data.rows[instance._idx]
         if connected_list and not isinstance(connected_list[0], DB_Object):
             for idx, value in enumerate(connected_list):
                 connected_list[idx] = self.column.instance_type(_idx=value)
