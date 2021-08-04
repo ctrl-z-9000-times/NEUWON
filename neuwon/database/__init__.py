@@ -15,35 +15,6 @@ epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
 
-class _DB_Object:
-    __slots__ = ()
-
-    def __init__(self, **kwargs):
-        """
-        Keyword arguments are assigned to the new instance, for example:
-                >>> obj = MyClass(x=3, y=4)
-            Is equivalent to:
-                >>> obj = MyClass()
-                >>> obj.x = 3
-                >>> obj.y = 4
-        """
-        for attribute, value in kwargs.items():
-            setattr(self, attribute, value)
-
-    def get_unstable_index(self):
-        """ TODO: Explain how / when this index changes. """
-        return self._idx
-
-    def get_database_class(self):
-        """ """
-        return self._cls
-
-    def __eq__(self, other):
-        return ((type(self) is type(other)) and (self._idx == other._idx))
-
-    def __repr__(self):
-        return "<%s:%d>"%(self._cls.name, self._idx)
-
 class Database:
     def __init__(self):
         self.class_types = dict()
@@ -158,23 +129,44 @@ class Database:
                 s += repr(comp) + "\n"
         return s
 
-class _DocString:
+class _Documentation:
     def __init__(self, name, doc):
-        self._name = str(name)
+        self.name = str(name)
         self.doc = textwrap.dedent(str(doc)).strip()
-
-    @property
-    def name(self):
-        return self._name
 
     def get_name(self): return self.name
     def get_doc(self): return self.doc
 
-class DB_Class(_DocString):
+class _DB_Object:
+    """ Super class for the user facing object-oriented API.
+
+    Programmers may override these methods.
+    """
+    __slots__ = ()
+
+    def __init__(self, **kwargs):
+        """
+        Keyword arguments are assigned to the new instance, for example:
+                >>> obj = MyClass(x=3, y=4)
+            Is equivalent to:
+                >>> obj = MyClass()
+                >>> obj.x = 3
+                >>> obj.y = 4
+        """
+        for attribute, value in kwargs.items():
+            setattr(self, attribute, value)
+
+    def __eq__(self, other):
+        return ((type(self) is type(other)) and (self._idx == other._idx))
+
+    def __repr__(self):
+        return "<%s:%d>"%(self._cls.name, self._idx)
+
+class DB_Class(_Documentation):
     def __init__(self, database, name, instance_type=None, sort_key=tuple(), doc="",):
         # TODO: Rename instance_type argument into "instance_methods_mixin"?
         #       The variable name "instance_type" currently has two meanings (the arg mixin & the full class)
-        _DocString.__init__(self, name, doc)
+        _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
         assert self.name not in self.database.class_types
@@ -197,6 +189,8 @@ class DB_Class(_DocString):
                 "_cls": self,
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
+                "get_unstable_index": self._get_unstable_index,
+                "get_database_class": self._get_database_class,
                 })
         self.instance_type.__init__.__doc__ = instance_type.__init__.__doc__ # This modifies a shared object, which is probably a bug.
 
@@ -222,6 +216,16 @@ class DB_Class(_DocString):
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
         new_obj._idx = old_size
         super(type(new_obj), new_obj).__init__(*args, **kwargs)
+
+    @staticmethod
+    def _get_unstable_index(db_object):
+        """ TODO: Explain how / when this index changes. """
+        return db_object._idx
+
+    @staticmethod
+    def _get_database_class(db_object):
+        """ """
+        return db_object._cls
 
     def get_instance_type(self) -> _DB_Object:
         return self.instance_type
@@ -323,11 +327,11 @@ class DB_Class(_DocString):
     def __repr__(self):
         return "<DB_Class '%s'>"%(self.name)
 
-class _DataComponent(_DocString):
+class _DataComponent(_Documentation):
     """ Abstract class for all types of data storage. """
     def __init__(self, class_type, name,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
-        _DocString.__init__(self, name, doc)
+        _Documentation.__init__(self, name, doc)
         assert isinstance(class_type, DB_Class)
         assert self.name not in class_type.components
         self._cls = class_type
