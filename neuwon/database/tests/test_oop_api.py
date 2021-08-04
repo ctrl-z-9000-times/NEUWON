@@ -7,12 +7,12 @@ class Foo:
         self.bar = 4
 
 def test_OOP_API():
-    class Foo:
+    class FooBaseClass:
         def my_helper_method(self):
             self.bar
 
     db = Database()
-    Foo = db.add_class("Foo", instance_type=Foo)
+    Foo = db.add_class("Foo", FooBaseClass)
     Foo.add_attribute("bar")
     FooFactory = Foo.get_instance_type()
 
@@ -47,7 +47,7 @@ def test_OOP_API():
 
 def test_custom_classes():
 
-    class _Section_obj:
+    class _SectionBaseClass:
         def __init__(self, nsegs):
             self.segments = [Segment(section=self) for _ in range(nsegs)]
 
@@ -55,7 +55,7 @@ def test_custom_classes():
         def nsegs(self):
             return len(self.segments)
 
-    class _Segment_obj:
+    class _SegmentBaseClass:
         __slots__ = ()
         def get_location(self):
             if self.section is None: return None
@@ -63,8 +63,8 @@ def test_custom_classes():
             return (index + .5) / self.section.nsegs
 
     _db = Database()
-    _Section_cls = _db.add_class("Section", _Section_obj)
-    _Segment_cls = _db.add_class("Segment", _Segment_obj)
+    _Section_cls = _db.add_class("Section", _SectionBaseClass)
+    _Segment_cls = _db.add_class("Segment", _SegmentBaseClass)
     _Section_cls.add_connectivity_matrix("segments", "Segment")
     _Segment_cls.add_attribute("section", dtype="Section", allow_invalid=True)
     Section = _Section_cls.get_instance_type()

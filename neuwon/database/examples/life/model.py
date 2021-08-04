@@ -4,7 +4,7 @@ import numba
 
 class GameOfLife:
 
-    class Cell:
+    class _CellBaseClass:
         @classmethod
         def _add_to_database(cls, database):
             cell_data = database.add_class("Cell", cls)
@@ -15,7 +15,7 @@ class GameOfLife:
 
     def __init__(self, shape):
         self.db = Database()
-        self.Cell = self.Cell._add_to_database(self.db)
+        self.Cell = self._CellBaseClass._add_to_database(self.db)
         self.shape = shape
         self.grid = np.empty(self.shape, dtype=object)
         for x in range(self.shape[0]):

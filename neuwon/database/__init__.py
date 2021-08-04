@@ -19,8 +19,8 @@ class Database:
     def __init__(self):
         self.class_types = dict()
 
-    def add_class(self, name, instance_type=None) -> 'DB_Class':
-        return DB_Class(self, name, instance_type=instance_type)
+    def add_class(self, name, base_class=None) -> 'DB_Class':
+        return DB_Class(self, name, base_class=base_class)
 
     def get(self, name) -> 'DB_Class' or '_DataComponent':
         if isinstance(name, DB_Class):
@@ -163,9 +163,9 @@ class _DB_Object:
         return "<%s:%d>"%(self._cls.name, self._idx)
 
 class DB_Class(_Documentation):
-    def __init__(self, database, name, instance_type=None, sort_key=tuple(), doc="",):
-        # TODO: Rename instance_type argument into "instance_methods_mixin"?
-        #       The variable name "instance_type" currently has two meanings (the arg mixin & the full class)
+    """ """
+    def __init__(self, database, name, base_class=None, sort_key=tuple(), doc="",):
+        """ """
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -179,23 +179,19 @@ class DB_Class(_Documentation):
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
         # Make a new subclass to represent instances which are part of *this* database.
-        if instance_type is not None:
-            parents = (instance_type, _DB_Object,)
-        else:
-            parents = (_DB_Object,)
+        bases = (_DB_Object,)
+        if base_class is not None: bases = (base_class,) + bases
         __slots__ = ("_idx",)
-        if not hasattr(instance_type, "__weakref__"): __slots__ += ("__weakref__",)
-        self.instance_type = type(self.name, parents, {
+        if not hasattr(base_class, "__weakref__"): __slots__ += ("__weakref__",)
+        self.instance_type = type(self.name, bases, {
                 "_cls": self,
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
                 "get_unstable_index": self._get_unstable_index,
                 "get_database_class": self._get_database_class,
-                })
-        self.instance_type.__init__.__doc__ = instance_type.__init__.__doc__ # This modifies a shared object, which is probably a bug.
-
-    # TODO: I should have a method for creating instances in bulk. Returns an
-    # array of indexes.
+                "__module__": bases[0].__module__,
+        })
+        self.instance_type.__init__.__doc__ = base_class.__init__.__doc__ # This modifies a shared object, which is probably a bug.
 
     @staticmethod
     def _instance__init__(new_obj, *args, _idx=None, **kwargs):
