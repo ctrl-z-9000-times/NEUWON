@@ -30,6 +30,17 @@ class DB_Object:
         for attribute, value in kwargs.items():
             setattr(self, attribute, value)
 
+    def get_unstable_index(self):
+        """ TODO: Explain how / when this index changes. """
+        return self._idx
+
+    def get_database_class(self):
+        """ """
+        return self._cls
+
+    def __eq__(self, other):
+        return ((type(self) is type(other)) and (self._idx == other._idx))
+
     def __repr__(self):
         return "<%s:%d>"%(self._cls.name, self._idx)
 
@@ -182,10 +193,8 @@ class DB_Class(_DocString):
                 "_cls": self,
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
-                "get_unstable_index": self._get_unstable_index,
-                "__eq__": lambda s, o: ((type(s) is type(o)) and (s._idx == o._idx))
                 })
-        self.instance_type.__init__.__doc__ = instance_type.__init__.__doc__
+        self.instance_type.__init__.__doc__ = instance_type.__init__.__doc__ # This modifies a shared object, which is probably a bug.
 
     # TODO: I should have a method for creating instances in bulk. Returns an
     # array of indexes.
@@ -209,11 +218,6 @@ class DB_Class(_DocString):
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
         new_obj._idx = old_size
         super(type(new_obj), new_obj).__init__(*args, **kwargs)
-
-    @staticmethod
-    def _get_unstable_index(db_object):
-        """ TODO: Explain how / when this index changes. """
-        return db_object._idx
 
     def get_instance_type(self) -> DB_Object:
         return self.instance_type
