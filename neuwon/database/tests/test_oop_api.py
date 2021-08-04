@@ -7,7 +7,7 @@ class Foo:
         self.bar = 4
 
 def test_OOP_API():
-    class Foo(DB_Object):
+    class Foo:
         def my_helper_method(self):
             self.bar
 
@@ -55,7 +55,7 @@ def test_custom_classes():
         def nsegs(self):
             return len(self.segments)
 
-    class _Segment_obj(DB_Object):
+    class _Segment_obj:
         __slots__ = ()
         def get_location(self):
             if self.section is None: return None

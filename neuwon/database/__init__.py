@@ -15,7 +15,7 @@ epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
 
-class DB_Object:
+class _DB_Object:
     __slots__ = ()
 
     def __init__(self, **kwargs):
@@ -48,7 +48,7 @@ class Database:
     def __init__(self):
         self.class_types = dict()
 
-    def add_class(self, name, instance_type=DB_Object) -> 'DB_Class':
+    def add_class(self, name, instance_type=None) -> 'DB_Class':
         return DB_Class(self, name, instance_type=instance_type)
 
     def get(self, name) -> 'DB_Class' or '_DataComponent':
@@ -171,7 +171,9 @@ class _DocString:
     def get_doc(self): return self.doc
 
 class DB_Class(_DocString):
-    def __init__(self, database, name, instance_type=DB_Object, sort_key=tuple(), doc="",):
+    def __init__(self, database, name, instance_type=None, sort_key=tuple(), doc="",):
+        # TODO: Rename instance_type argument into "instance_methods_mixin"?
+        #       The variable name "instance_type" currently has two meanings (the arg mixin & the full class)
         _DocString.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -185,8 +187,10 @@ class DB_Class(_DocString):
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
         # Make a new subclass to represent instances which are part of *this* database.
-        parents = (instance_type,)
-        if not issubclass(instance_type, DB_Object): parents += (DB_Object,)
+        if instance_type is not None:
+            parents = (instance_type, _DB_Object,)
+        else:
+            parents = (_DB_Object,)
         __slots__ = ("_idx",)
         if not hasattr(instance_type, "__weakref__"): __slots__ += ("__weakref__",)
         self.instance_type = type(self.name, parents, {
@@ -219,7 +223,7 @@ class DB_Class(_DocString):
         new_obj._idx = old_size
         super(type(new_obj), new_obj).__init__(*args, **kwargs)
 
-    def get_instance_type(self) -> DB_Object:
+    def get_instance_type(self) -> _DB_Object:
         return self.instance_type
 
     def get(self, name):
@@ -680,7 +684,7 @@ class Sparse_Matrix(_DataComponent):
         r = int(row)
         self.data.rows[r].clear()
         self.data.data[r].clear()
-        columns = [x._idx if isinstance(x, DB_Object) else int(x) for x in columns]
+        columns = [x._idx if isinstance(x, _DB_Object) else int(x) for x in columns]
         order = np.argsort(columns)
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))

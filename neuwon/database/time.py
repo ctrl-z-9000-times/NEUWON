@@ -57,7 +57,7 @@ class TimeSeriesBuffer:
     def __init__(self, db_object, component, clock, max_length=None):
         """ """
         self.db_object = db_object
-        assert isinstance(self.db_object, neuwon.database.DB_Object)
+        assert isinstance(self.db_object, neuwon.database._DB_Object)
         self.component = str(component)
         getattr(self.db_object, self.component)
         assert isinstance(clock, Clock)
