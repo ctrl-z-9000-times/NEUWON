@@ -1,4 +1,6 @@
 """ A database for neural simulations. """
+# [TODO-DOC: Summary]
+# [TODO-DOC: Example Usage]
 
 from collections.abc import Callable, Iterable, Mapping
 import collections
@@ -23,6 +25,7 @@ class Database:
         return DB_Class(self, name, base_class=base_class)
 
     def get(self, name) -> 'DB_Class' or '_DataComponent':
+        """ """ # TODO-DOC
         if isinstance(name, DB_Class):
             assert name.get_database() is self
             return name
@@ -58,12 +61,14 @@ class Database:
                 x.components.values() for x in self.class_types.values()))
 
     def to_host(self) -> 'Database':
+        """ """ # TODO-DOC
         for _cls in self.class_types.values():
             for comp in _cls.components.values():
                 comp.to_host()
         return self
 
     def to_device(self):
+        """ """ # TODO-DOC
         for _cls in self.class_types.values():
             for x in _cls.components.values():
                 x.to_device()
@@ -97,6 +102,7 @@ class Database:
         raise NotImplementedError
 
     def check(self, name=None):
+        """ """ # TODO-DOC
         if name is None:
             components = self.get_all_components()
         else:
@@ -134,8 +140,8 @@ class _Documentation:
         self.name = str(name)
         self.doc = textwrap.dedent(str(doc)).strip()
 
-    def get_name(self): return self.name
-    def get_doc(self): return self.doc
+    def get_name(self) -> str: return self.name
+    def get_doc(self) -> str:  return self.doc
 
 class _DB_Object:
     """ Super class for the user facing object-oriented API.
@@ -163,9 +169,9 @@ class _DB_Object:
         return "<%s:%d>"%(self._cls.name, self._idx)
 
 class DB_Class(_Documentation):
-    """ """
+    """ """ # TODO-DOC
     def __init__(self, database, name, base_class=None, sort_key=tuple(), doc="",):
-        """ """
+        """ Create a new class which is managed by the database. """ # TODO-DOC
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -220,25 +226,36 @@ class DB_Class(_Documentation):
 
     @staticmethod
     def _get_database_class(db_object):
-        """ """
+        """ """ # TODO-DOC
         return db_object._cls
 
     def get_instance_type(self) -> _DB_Object:
+        """ """ # TODO-DOC
         return self.instance_type
 
-    def get(self, name):
+    def get(self, name: str):
+        """ Get a data component. """ # TODO-DOC
         return self.components[str(name)]
 
     def get_data(self, name):
+        """ """ # TODO-DOC
         return self.components[str(name)].get_data()
 
     def get_all_components(self) -> tuple:
+        """
+        Returns a tuple containing all data components that are attached to this
+        class.
+        """
         return tuple(self.components.values())
 
     def get_all_instances(self) -> list:
+        """
+        Returns a list containing every instance of this class which currently
+        exists.
+        """
         return [self.instance_type(_idx=idx) for idx in range(self.size)]
 
-    def get_database(self):
+    def get_database(self) -> Database:
         return self.database
 
     def add_attribute(self, name, initial_value=None, dtype=Real, shape=(1,),
@@ -261,6 +278,12 @@ class DB_Class(_Documentation):
 
     def destroy(self):
         """
+        TODO: Explain how this determines which objects to destroy.
+
+        If the dangling references are allow to be NULL then they are replaced
+        with NULL references. Otherwise the entity containing the reference is
+        destroyed. Destroying entities can cause a chain reaction of destruction.
+
         Sparse matrices may contain references but they will not trigger a
         recursive destruction of entities. Instead, references to destroyed
         entities are simply removed from the sparse matrix.
@@ -314,10 +337,12 @@ class DB_Class(_Documentation):
         self.entities = updated_entities
 
     def check(self, name=None):
+        """ """ # TODO-DOC
         if name is None: self.db.check(self)
         else: self.get(name).check()
 
     def __len__(self):
+        """ Returns how many instances of this class currently exist. """
         return self.size
 
     def __repr__(self):
@@ -367,17 +392,17 @@ class _DataComponent(_Documentation):
 
     def get_data(self):
         """ Returns all data for this component. """
-        raise NotImplementedError
+        raise NotImplementedError(type(self))
     def set_data(self, value):
-        """ Replace the entire data component with a new set of values. """
-        raise NotImplementedError
+        """ Replace this entire data component with a new set of values. """
+        raise NotImplementedError(type(self))
 
-    def get_units(self):            return self.units
-    def get_dtype(self):            return self.dtype
-    def get_shape(self):            return self.shape
-    def get_initial_value(self):    return self.initial_value
-    def get_class(self):            return self._cls
-    def get_database(self):         return self._cls.database
+    def get_units(self) -> str:         return self.units
+    def get_dtype(self) -> np.dtype:    return self.dtype
+    def get_shape(self) -> tuple:       return self.shape
+    def get_initial_value(self):        return self.initial_value
+    def get_class(self) -> DB_Class:    return self._cls
+    def get_database(self) -> Database: return self._cls.database
 
     def get_memory_space(self):
         """
@@ -389,19 +414,21 @@ class _DataComponent(_Documentation):
         return self.mem
 
     def to_host(self) -> 'self':
-        """ Abstract method, optional """
+        """ Move the data to the CPU and into this python process's memory space. """
+        # Abstract method, optional.
         return self
 
     def to_device(self) -> 'self':
-        """ Abstract method, optional """
+        """ Move the data to the target device's memory space. """
+        # Abstract method, optional.
         return self
 
     def free(self):
-        """ Abstract method, optional.
-
+        """
         Release the memory used by this data component. The next time the data
         is accessed it will be reallocated and set to the default value.
         """
+        # Abstract method, optional.
 
     def check(self):
         """
@@ -446,10 +473,6 @@ class Attribute(_DataComponent):
         Argument dtype is one of:
             * An instance of numpy.dtype
             * The name of a class, to make pointers to instances of that class.
-
-        If the dangling references are allow to be NULL then they are replaced
-        with NULL references. Otherwise the entity containing the reference is
-        destroyed. Destroying entities can cause a chain reaction of destruction.
         """
         _DataComponent.__init__(self, class_type, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
@@ -505,7 +528,7 @@ class Attribute(_DataComponent):
         if self.initial_value is not None:
             self.data[size:].fill(self.initial_value)
 
-    def to_host(self) -> 'Attribute':
+    def to_host(self) -> 'self':
         if self.mem == 'host': pass
         elif self.mem == 'cuda':
             self.data = self.data.get()
@@ -513,7 +536,7 @@ class Attribute(_DataComponent):
         else: raise NotImplementedError(self.mem)
         return self
 
-    def to_device(self) -> 'Attribute':
+    def to_device(self) -> 'self':
         if self.mem == 'host':
             self.data = cupy.array(self.data)
             self.mem = 'cuda'
@@ -551,7 +574,8 @@ class ClassAttribute(_DataComponent):
         self.data = self.dtype.type(value)
 
 class Sparse_Matrix(_DataComponent):
-    """ """
+    """ """ # TODO-DOC
+
     # TODO: Consider adding more write methods:
     #       1) Write rows. (done)
     #       2) Insert coordinates.
@@ -606,27 +630,27 @@ class Sparse_Matrix(_DataComponent):
         columns, data = value
         self.write_row(instance._idx, columns, data)
 
-    def to_lil(self):
+    def to_lil(self) -> 'self':
         if self.fmt != "lil":
             self.fmt = "lil"
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
-    def to_coo(self):
+    def to_coo(self) -> 'self':
         if self.fmt != "coo":
             self.fmt = "coo"
             self._host_lil_mem = None
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
-    def to_csr(self):
+    def to_csr(self) -> 'self':
         if self.fmt != "csr":
             self.fmt = "csr"
             self._host_lil_mem = None
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
-    def to_host(self):
+    def to_host(self) -> 'self':
         if self.mem == 'host': pass
         elif self.mem == 'cuda':
             self.data = self.data.get()
@@ -634,7 +658,7 @@ class Sparse_Matrix(_DataComponent):
         else: raise NotImplementedError(self.mem)
         return self
 
-    def to_device(self):
+    def to_device(self) -> 'self':
         if self.mem == 'host':
             self.mem = 'cuda'
             self._host_lil_mem = None
@@ -648,6 +672,7 @@ class Sparse_Matrix(_DataComponent):
 
     @property
     def shape(self):
+        """ """ # TODO-DOC
         return (len(self._cls), len(self.column))
 
     def _resize(self):
@@ -689,16 +714,17 @@ class Sparse_Matrix(_DataComponent):
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))
 
-    def __repr__(self):
-        # TODO: Override _type_info instead of __repr__?
-        s = _DataComponent.__repr__(self)
+    def _type_info(self):
+        s = super()._type_info()
         try: nnz_per_row = self.data.nnz / self.data.shape[0]
         except ZeroDivisionError: nnz_per_row = 0
         s += " nnz/row: %g"%nnz_per_row
         return s
 
 class Connectivity_Matrix(Sparse_Matrix):
+    """ """ # TODO-DOC
     def __init__(self, class_type, name, column, doc=""):
+        """ """ # TODO-DOC
         super().__init__(class_type, name, column, doc=doc, dtype=bool,)
 
     def _getter(self, instance):
@@ -707,6 +733,7 @@ class Connectivity_Matrix(Sparse_Matrix):
     def _setter(self, instance, values):
         super()._setter(instance, (values, [True] * len(values)))
 
+Database.add_class.__doc__             = DB_Class.__init__.__doc__
 DB_Class.add_attribute.__doc__         = Attribute.__init__.__doc__
 DB_Class.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
 DB_Class.add_sparse_matrix.__doc__     = Sparse_Matrix.__init__.__doc__
