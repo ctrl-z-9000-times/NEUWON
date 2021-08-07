@@ -1,29 +1,4 @@
 
-class KD_Tree(_Component):
-    def __init__(self, entity, name, coordinates_attribute, doc=""):
-        _Component.__init__(self, entity, name, doc)
-        self.component = database.components[str(coordinates_attribute)]
-        assert(isinstance(self.component, _Attribute))
-        assert(not self.component.reference)
-        archetype = database._get_archetype(self.name)
-        archetype.kd_trees.append(self)
-        assert archetype == self.component.archetype, "KD-Tree and its coordinates must have the same archetype."
-        self.tree = None
-        self.invalidate()
-
-    def invalidate(self):
-        self.up_to_date = False
-
-    def access(self, database):
-        if not self.up_to_date:
-            data = self.component.access(database).get()
-            self.tree = scipy.spatial.cKDTree(data)
-            self.up_to_date = True
-        return self.tree
-
-    def __repr__(self):
-        return "KD Tree   " + self.name
-
 class Linear_System(_Component):
     def __init__(self, class_type, name, function, epsilon, doc="", allow_invalid=False,):
         """ Add a system of linear & time-invariant differential equations.
