@@ -1,7 +1,8 @@
-import neuwon.database
 import collections
-import scipy.interpolate
 import matplotlib.pyplot
+import neuwon.database
+import scipy.interpolate
+import weakref
 
 class Clock:
     """ Clock and notification system. """
@@ -62,7 +63,7 @@ class TimeSeriesBuffer:
         getattr(self.db_object, self.component)
         assert isinstance(clock, Clock)
         self.clock = clock
-        self.clock.register_callback(self._sample_data)
+        self.clock.register_callback(weakref.WeakMethod(self._sample_data))
         self.max_length = float(np.inf if max_length is None else max_length)
         self.timeseries = collections.deque()
         self.timestamps = collections.deque()
