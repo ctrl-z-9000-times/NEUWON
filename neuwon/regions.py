@@ -11,6 +11,10 @@ import numpy as np
 #       Do a 3D projection of a 2D image to a uniform height?
 #       Or accept a stack of images and interpolate an arbitrary 3D volume?
 
+# IDEA: Reject points at random to effect the relative density in different areas.
+#       Use the hash of the floating point coordinates as the source of randomness
+#       so that it is stable.
+
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
 

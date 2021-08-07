@@ -1,6 +1,4 @@
 """ A database for neural simulations. """
-# [TODO-DOC: Summary]
-# [TODO-DOC: Example Usage]
 
 from collections.abc import Callable, Iterable, Mapping
 import collections
@@ -200,12 +198,9 @@ class DB_Class(_Documentation):
         self.instance_type.__init__.__doc__ = base_class.__init__.__doc__ # This modifies a shared object, which is probably a bug.
 
     @staticmethod
-    def _instance__init__(new_obj, *args, _idx=None, **kwargs):
+    def _instance__init__(new_obj, *args, **kwargs):
         self = new_obj._cls
         self.instances[id(new_obj)] = new_obj
-        if _idx is not None:
-            new_obj._idx = _idx
-            return
         old_size  = self.size
         new_size  = old_size + 1
         self.size = new_size
@@ -233,6 +228,16 @@ class DB_Class(_Documentation):
         """ """ # TODO-DOC
         return self.instance_type
 
+    def index_to_object(self, unstable_index: int) -> _DB_Object:
+        """ """ # TODO-DOC
+        idx = int(unstable_index)
+        if idx == NULL: return None
+        assert 0 <= idx < len(self)
+        cls = self.instance_type
+        obj = cls.__new__(cls)
+        obj._idx = idx
+        return obj
+
     def get(self, name: str):
         """ Get a data component. """ # TODO-DOC
         return self.components[str(name)]
@@ -253,7 +258,7 @@ class DB_Class(_Documentation):
         Returns a list containing every instance of this class which currently
         exists.
         """
-        return [self.instance_type(_idx=idx) for idx in range(self.size)]
+        return [self.index_to_object(idx) for idx in range(self.size)]
 
     def get_database(self) -> Database:
         return self.database
@@ -484,13 +489,16 @@ class Attribute(_DataComponent):
         value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
-            value = self.reference.instance_type(_idx=value)
+            return self.reference.index_to_object(value)
         return value
 
     def _setter(self, instance, value):
         if self.reference:
-            assert isinstance(value, self.reference.instance_type)
-            value = value._idx
+            if value is None:
+                value = NULL
+            else:
+                assert isinstance(value, self.reference.instance_type)
+                value = value._idx
         self.data[instance._idx] = value
 
     def _append(self, old_size, new_size):
@@ -617,8 +625,8 @@ class Sparse_Matrix(_DataComponent):
         if self.fmt == 'coo': self.to_lil()
         if self.fmt == 'lil':
             lil_mat = self.data
-            instance_type = self.column.instance_type
-            cols = [instance_type(_idx=x) for x in lil_mat.rows[instance._idx]]
+            index_to_object = self.column.index_to_object
+            cols = [index_to_object(x) for x in lil_mat.rows[instance._idx]]
             data = list(lil_mat.data[instance._idx])
             if self.reference: 1/0 # Implement maybe?
             return (cols, data)
@@ -670,6 +678,8 @@ class Sparse_Matrix(_DataComponent):
         else: raise NotImplementedError(self.mem)
         return self
 
+    # TODO: Why does this define a shape property? this is public facing... This
+    # also confuses with get_shape() which is inherited.
     @property
     def shape(self):
         """ """ # TODO-DOC

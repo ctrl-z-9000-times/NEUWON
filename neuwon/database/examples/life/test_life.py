@@ -17,7 +17,10 @@ def test_by_num_alive():
     for _ in range(3): model.advance()
     assert (.20 < sparsity() < .33)
     for _ in range(500): model.advance()
-    assert (.01 < sparsity() < .05)
+    assert (.01 < sparsity() < .10)
+    for _ in range(2000): model.advance()
+    assert (.01 < sparsity() < .06)
+
 
 # def test_pickle():
 #     import pickle
