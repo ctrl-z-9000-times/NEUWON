@@ -9,7 +9,8 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import *
-from neuwon.utils import *
+from neuwon.database.time import Clock
+import neuwon.segment
 from PIL import Image, ImageFont, ImageDraw
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
@@ -85,12 +86,12 @@ class Model:
         """
         self.species = {}
         self.reactions = {}
-        self.clock = Clock(units="ms")
+        self.clock = Clock(time_step, units="ms")
         self.database = db = Database()
-        db.add_global_constant("time_step", float(time_step), units="milliseconds")
-        db.add_global_constant("celsius", float(celsius))
-        db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature", units="Kelvins")
-        self.Segment = segment.SegmentMethods._make_Segment_class(db)
+        # db.add_global_constant("time_step", float(time_step), units="milliseconds")
+        # db.add_global_constant("celsius", float(celsius))
+        # db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature", units="Kelvins")
+        self.Segment = neuwon.segment.SegmentMethods._make_Segment_class(db)
         # self.Section = ditto
         # self.Inside = ditto
         # self.Outside = ditto
@@ -102,7 +103,6 @@ class Model:
         self.outside_tortuosity = float(outside_tortuosity)
         self.outside_volume_fraction = float(outside_volume_fraction)
         assert(self.fh_space >= epsilon * 1e-10)
-        assert(self.cytoplasmic_resistance >= epsilon)
         assert(self.max_outside_radius >= epsilon * 1e-6)
         assert(self.outside_tortuosity >= 1.0)
         assert(1.0 >= self.outside_volume_fraction >= 0.0)
@@ -111,16 +111,16 @@ class Model:
         return len(self.Segment.get_database_class())
 
     def __str__(self):
-        return str(self.db)
+        return str(self.database)
 
     def __repr__(self):
-        return repr(self.db)
+        return repr(self.database)
 
     def get_database(self):
         return self.database
 
     def check(self):
-        self.db.check()
+        self.database.check()
 
     def add_species(self, species):
         """
@@ -137,7 +137,7 @@ class Model:
         else: assert(isinstance(species, Species))
         assert(species.name not in self.species)
         self.species[species.name] = species
-        species._initialize(self.db)
+        species._initialize(self.database)
 
     def get_species(self, species_name):
         return self.species[str(species_name)]
@@ -156,7 +156,7 @@ class Model:
             r = NmodlMechanism(nmodl_file_path, **kwargs)
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
-            retval = r.initialize(self.db)
+            retval = r.initialize(self.database)
             if retval is not None: r = retval
         name = str(r.name())
         assert(name not in self.reactions)
@@ -191,8 +191,8 @@ class Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
-        self._injected_currents.advance(self.db)
-        access = self.db.access
+        self._injected_currents.advance(self.database)
+        access = self.database.access
         dt     = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
         conductances        = access("membrane/conductances")
         driving_voltages    = access("membrane/driving_voltages")
@@ -247,7 +247,7 @@ class Model:
                 x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
     def _advance_reactions(self):
-        access = self.db.access
+        access = self.database.access
         for name, species in self.species.items():
             if species.transmembrane:
                 access("membrane/conductances/"+name).fill(0.0)
