@@ -1,6 +1,8 @@
+from collections.abc import Callable, Iterable, Mapping
 import collections
 import matplotlib.pyplot
 import neuwon.database
+import numpy as np
 import scipy.interpolate
 
 class Clock:
@@ -31,7 +33,7 @@ class Clock:
         """ Returns the physical units for 'tick_period'. """
         return self.units
 
-    def register_callback(self, function:collections.abc.Callable):
+    def register_callback(self, function: Callable):
         """
         Argument function will be called immediately after every clock tick.
 
@@ -56,7 +58,7 @@ class Clock:
 
     def _call_callbacks(self):
         for i in reversed(range(len(self.callbacks))):
-            try: keep_alive = self.callbacks[i](self.db.access)
+            try: keep_alive = self.callbacks[i]()
             except Exception:
                 raise RuntimeError("in callback "+repr(self.callbacks[i]))
             if not keep_alive:
@@ -65,7 +67,7 @@ class Clock:
 
 class TimeSeriesBuffer:
     def __init__(self, clock: Clock, max_length:float=None):
-        """ """
+        """ """ # TODO-DOC
         self.clock = clock
         assert isinstance(self.clock, Clock)
         self.max_length = float(np.inf if max_length is None else max_length)
@@ -76,7 +78,7 @@ class TimeSeriesBuffer:
     def stop(self) -> 'self':
         """ Stop recording / playing. """
         self.record_duration = 0
-        self.play_state = np.inf
+        self.play_index = None
         return self
 
     def is_stopped(self) -> bool:
@@ -86,7 +88,7 @@ class TimeSeriesBuffer:
         return self.record_duration > 0
 
     def is_playing(self) -> bool:
-        return self.play_state < np.inf
+        return self.play_index is not None
 
     def clear(self) -> 'self':
         """ Reset the buffer. Removes all data samples from the buffer. """
@@ -97,7 +99,8 @@ class TimeSeriesBuffer:
     def _setup_pointer(self, db_object, component):
         self.db_object = db_object
         assert isinstance(self.db_object, neuwon.database._DB_Object)
-        self.component = self.db_object.get_database_class().get(component).get_name()
+        self.component = self.db_object.get_database_class().get(component)
+        self.component_name = self.component.get_name()
 
     def record(self, db_object, component, duration=None) -> 'self':
         """ """ # TODO-DOC
@@ -109,7 +112,7 @@ class TimeSeriesBuffer:
 
     def _record_implementation(self):
         if not self.is_recording(): return False
-        self.timeseries.append(getattr(self.db_object, self.component))
+        self.timeseries.append(getattr(self.db_object, self.component_name))
         self.timestamps.append(self.clock())
         while self.timestamps[-1] - self.timestamps[0] > self.max_length:
             self.timeseries.popleft()
@@ -122,16 +125,26 @@ class TimeSeriesBuffer:
         assert self.is_stopped()
         self._setup_pointer(db_object, component)
         self.clock.register_callback(self._play_implementation)
-        self.play_state = self.timestamps[0]
+        self.play_index = 0
+        self.play_loop = bool(loop)
         return self
 
     def _play_implementation(self):
-        1/0 # TODO
-        setattr(self.db_object, self.component, 1/0)
+        value = self.timeseries[self.play_index]
+        setattr(self.db_object, self.component_name, value)
+        self.play_index += 1
+        if self.play_index >= len(self):
+            if self.play_loop:
+                self.play_index = 0
+            else:
+                self.play_index = None
+                return False
+        return True
 
     def set_data(self, data_samples, timestamps):
-        """ Overwrite the data buffers. """
-        1/0 # TODO
+        """ Overwrite the data in this buffer. """
+        assert self.is_stopped()
+        raise NotImplementedError("todo: low priority.")
 
     @property
     def y(self):
@@ -160,10 +173,10 @@ class TimeSeriesBuffer:
         return results
 
     def plot(self, show=True):
-        """ Plot a simple line graph of the data using matplotlib. """
+        """ Plot a line graph of the time series using matplotlib. """
         plt = matplotlib.pyplot
-        plt.figure(self.component)
-        plt.title("Time Series of: " + self.component)
+        plt.figure(self.component_name)
+        plt.title("Time Series of: " + self.component_name)
         self.label_axes()
         plt.plot(self.x, self.y)
         if show: plt.show()
@@ -175,14 +188,18 @@ class TimeSeriesBuffer:
                     if this argument is not given.
         """
         if axes is None: axes = matplotlib.pyplot.gca()
-        axes.set_ylabel(self.db_object.get_database_class().get_database().get_units(self.component))
+        axes.set_ylabel(self.component.get_units())
         axes.set_xlabel(self.clock.get_units())
         return axes
+
+    def __len__(self):
+        """ Returns the number of data samples in this buffer. """
+        return len(self.timestamps)
 
     def __repr__(self):
         s = "%d samples"
         if self.is_recording():
-            s += ", rec. src" + repr(self.db_object)
+            s += ", rec. from " + repr(self.db_object)
         elif self.is_playing():
-            s += ", play dst " + repr(self.db_object)
+            s += ", play to " + repr(self.db_object)
         return "<TimeSeriesBuffer: %s>"%s
