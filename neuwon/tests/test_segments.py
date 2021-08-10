@@ -11,3 +11,5 @@ def test_ball_and_stick():
         tip = Segment(parent=tip, coordinates=[i+43,0,0], diameter=3)
         stick.append(tip)
     print(tip)
+
+if __name__ == '__main__': test_ball_and_stick()

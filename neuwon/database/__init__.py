@@ -35,12 +35,13 @@ class Database:
         >>> assert Foo == database.get("Foo")
         >>> assert bar == database.get("Foo.bar")
         """
-        # Convert the user input to a string. Do this even if they give us a DB
-        # thing because it cleans the user input.
         if isinstance(name, DB_Class):
-            name = name.get_name()
+            assert name.database is self
+            return name
         elif isinstance(name, _DataComponent):
-            name = "%s.%s"%(name.get_class().get_name(), name.get_name())
+            assert name._cls.database is self
+            return name
+        elif isinstance(name, str): pass
         else:
             name = str(name)
         _cls, _, attr = name.partition('.')
@@ -269,13 +270,16 @@ class DB_Class(_Documentation):
         obj._idx = idx
         return obj
 
-    def get(self, name: str):
-        """ Get a data component. """ # TODO-DOC
+    def get(self, name: str) -> '_DataComponent':
+        """
+        Get the database's internal representation of a data component that is
+        attached to this DB_Class.
+        """
         return self.components[str(name)]
 
-    def get_data(self, name):
-        """ """ # TODO-DOC
-        return self.components[str(name)].get_data()
+    def get_data(self, name: str):
+        """ Shortcut to: self.get(name).get_data() """
+        return self.get(name).get_data()
 
     def get_all_components(self) -> tuple:
         """
@@ -500,7 +504,7 @@ class _DataComponent(_Documentation):
         return "<%s: %s.%s %s>"%(type(self).__name__, self._cls.name, self.name, self._type_info())
 
 class Attribute(_DataComponent):
-    """ """
+    """ """ # TODO-DOC
     def __init__(self, class_type, name:str, initial_value=None, dtype=Real, shape=(1,),
                 doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
         """
@@ -584,7 +588,7 @@ class Attribute(_DataComponent):
         return self
 
 class ClassAttribute(_DataComponent):
-    """ """
+    """ """ # TODO-DOC
     def __init__(self, class_type, name:str, initial_value,
                 dtype=Real, shape=(1,),
                 doc:str="", units:str=None,
@@ -658,7 +662,7 @@ class Sparse_Matrix(_DataComponent):
             index_to_object = self.column.index_to_object
             cols = [index_to_object(x) for x in lil_mat.rows[instance._idx]]
             data = list(lil_mat.data[instance._idx])
-            if self.reference: 1/0 # Implement maybe?
+            if self.reference: raise NotImplementedError("Implement maybe?")
             return (cols, data)
         elif self.fmt == 'csr':
             help(self.data)

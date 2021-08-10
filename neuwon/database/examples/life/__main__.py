@@ -1,6 +1,7 @@
 from neuwon.database.examples.life.model import GameOfLife
 import argparse
 import numpy as np
+import sys
 import time
 import pygame
 from pygame.locals import *
@@ -45,7 +46,7 @@ while True:
     for event in pygame.event.get():
         if event.type == QUIT:
             pygame.quit()
-            break
+            sys.exit()
 
     model.advance()
     render()
