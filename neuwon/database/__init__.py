@@ -19,36 +19,55 @@ class Database:
     def __init__(self):
         self.class_types = dict()
 
-    def add_class(self, name, base_class=None) -> 'DB_Class':
+    def add_class(self, name: str, base_class:type=None) -> 'DB_Class':
         return DB_Class(self, name, base_class=base_class)
 
-    def get(self, name) -> 'DB_Class' or '_DataComponent':
-        """ """ # TODO-DOC
+    def get(self, name: str) -> 'DB_Class' or '_DataComponent':
+        """ Get the database's internal representation of the named thing.
+
+        Argument name can refer to either:
+            * A DB_Class
+            * An Attibute, ClassAttribute, or Sparse_Matrix
+
+        Example:
+        >>> Foo = database.add_class("Foo")
+        >>> bar = Foo.add_attribute("bar")
+        >>> assert Foo == database.get("Foo")
+        >>> assert bar == database.get("Foo.bar")
+        """
+        # Convert the user input to a string. Do this even if they give us a DB
+        # thing because it cleans the user input.
         if isinstance(name, DB_Class):
-            assert name.get_database() is self
-            return name
-        if isinstance(name, _DataComponent):
-            assert name.get_database() is self
-            return name
-        _cls, _, attr = str(name).partition('.')
+            name = name.get_name()
+        elif isinstance(name, _DataComponent):
+            name = "%s.%s"%(name.get_class().get_name(), name.get_name())
+        else:
+            name = str(name)
+        _cls, _, attr = name.partition('.')
         obj = self.class_types[_cls]
         if attr: obj = obj.components[attr]
         return obj
 
-    def get_class(self, name):
+    def get_class(self, name: str):
+        """ Get the database's internal representation of a class.
+
+        Argument name can be anything which `self.get(name)` accepts.
+        """
         _cls = self.get(name)
         if isinstance(_cls, _DataComponent): _cls = _cls.get_class()
         return _cls
 
-    def get_component(self, name):
+    def get_component(self, name: str):
         component = self.get(name)
         assert isinstance(component, _DataComponent)
         return component
 
-    def get_data(self, name):
+    def get_data(self, name: str):
+        """ Shortcut to: self.get_component(name).get_data() """
         return self.get_component(name).get_data()
 
-    def set_data(self, name, value):
+    def set_data(self, name: str, value):
+        """ Shortcut to: self.get_component(name).set_data(value) """
         self.get_component(name).set_data(value)
 
     def get_all_classes(self) -> tuple:
@@ -99,8 +118,12 @@ class Database:
         """
         raise NotImplementedError
 
-    def check(self, name=None):
-        """ """ # TODO-DOC
+    def check(self, name:str=None):
+        """ Run all configured checks on the database.
+
+        Argument name refers to a class or data component and if given it limits
+                the scope of what is checked.
+        """
         if name is None:
             components = self.get_all_components()
         else:
@@ -144,7 +167,8 @@ class _Documentation:
 class _DB_Object:
     """ Super class for the user facing object-oriented API.
 
-    Programmers may override these methods.
+    This class takes lower precidence in the method resolution order (MRO) than
+    the users custom base_class, so they may override any/all of these methods.
     """
     __slots__ = ()
 
@@ -160,6 +184,7 @@ class _DB_Object:
         for attribute, value in kwargs.items():
             setattr(self, attribute, value)
 
+    # TODO: Should the user be allowed to override this method?
     def __eq__(self, other):
         return ((type(self) is type(other)) and (self._idx == other._idx))
 
@@ -168,8 +193,14 @@ class _DB_Object:
 
 class DB_Class(_Documentation):
     """ """ # TODO-DOC
-    def __init__(self, database, name, base_class=None, sort_key=tuple(), doc="",):
-        """ Create a new class which is managed by the database. """ # TODO-DOC
+    def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc="",):
+        """ Create a new class which is managed by the database.
+
+        Argument base_class:
+
+        Argument sort_key:
+
+        """ # TODO-DOC
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -221,11 +252,11 @@ class DB_Class(_Documentation):
 
     @staticmethod
     def _get_database_class(db_object):
-        """ """ # TODO-DOC
+        """ Get the database's internal representation of this object's type. """
         return db_object._cls
 
     def get_instance_type(self) -> _DB_Object:
-        """ """ # TODO-DOC
+        """ Get the public / external representation of this DB_Class. """
         return self.instance_type
 
     def index_to_object(self, unstable_index: int) -> _DB_Object:
@@ -263,22 +294,22 @@ class DB_Class(_Documentation):
     def get_database(self) -> Database:
         return self.database
 
-    def add_attribute(self, name, initial_value=None, dtype=Real, shape=(1,),
-                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+    def add_attribute(self, name:str, initial_value=None, dtype=Real, shape=(1,),
+                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
         return Attribute(self, name, initial_value=initial_value, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_class_attribute(self, name, initial_value, dtype=Real, shape=(1,),
-                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+    def add_class_attribute(self, name:str, initial_value, dtype=Real, shape=(1,),
+                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
         return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_sparse_matrix(self, name, column, dtype=Real,
-                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+    def add_sparse_matrix(self, name:str, column, dtype=Real,
+                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_connectivity_matrix(self, name, column, doc=""):
+    def add_connectivity_matrix(self, name:str, column, doc=""):
         return Connectivity_Matrix(self, name, column, doc=doc)
 
     def destroy(self):
@@ -341,8 +372,8 @@ class DB_Class(_Documentation):
                 updated_entities.append(entity)
         self.entities = updated_entities
 
-    def check(self, name=None):
-        """ """ # TODO-DOC
+    def check(self, name:str=None):
+        """ Run all configured checks on this class or on only the given data component. """
         if name is None: self.db.check(self)
         else: self.get(name).check()
 
@@ -409,7 +440,7 @@ class _DataComponent(_Documentation):
     def get_class(self) -> DB_Class:    return self._cls
     def get_database(self) -> Database: return self._cls.database
 
-    def get_memory_space(self):
+    def get_memory_space(self) -> str:
         """
         Returns the current location of the data component:
 
@@ -470,14 +501,14 @@ class _DataComponent(_Documentation):
 
 class Attribute(_DataComponent):
     """ """
-    def __init__(self, class_type, name, initial_value=None, dtype=Real, shape=(1,),
-                doc="", units=None, allow_invalid=False, valid_range=(None, None),):
+    def __init__(self, class_type, name:str, initial_value=None, dtype=Real, shape=(1,),
+                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
         """
         Add an instance variable to a class type.
 
         Argument dtype is one of:
             * An instance of numpy.dtype
-            * The name of a class, to make pointers to instances of that class.
+            * A DB_Class or its name, to make pointers to instances of that class.
         """
         _DataComponent.__init__(self, class_type, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
@@ -554,9 +585,9 @@ class Attribute(_DataComponent):
 
 class ClassAttribute(_DataComponent):
     """ """
-    def __init__(self, class_type, name, initial_value,
+    def __init__(self, class_type, name:str, initial_value,
                 dtype=Real, shape=(1,),
-                doc="", units=None,
+                doc:str="", units:str=None,
                 allow_invalid=False, valid_range=(None, None),):
         """ Add a class variable to a class type.
 
@@ -568,11 +599,11 @@ class ClassAttribute(_DataComponent):
         self.data = self.initial_value
 
     def _getter(self, instance):
-        if self.reference: 1/0 # todo?
+        if self.reference: raise NotImplementedError("todo?")
         return self.data
 
     def _setter(self, instance, value):
-        if self.reference: 1/0 # todo?
+        if self.reference: raise NotImplementedError("todo?")
         self.data = self.dtype.type(value)
 
     def get_data(self):
@@ -592,7 +623,7 @@ class Sparse_Matrix(_DataComponent):
 
     # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
 
-    def __init__(self, class_type, name, column, dtype=Real, doc="", units=None,
+    def __init__(self, class_type, name, column, dtype=Real, doc:str="", units:str=None,
                 allow_invalid=False, valid_range=(None, None),):
         """
         Add a sparse matrix that is indexed by Entities. This is useful for
@@ -602,8 +633,7 @@ class Sparse_Matrix(_DataComponent):
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.column = self._cls.database.get_class(column)
-        if self.column != self._cls:
-            self.column.referenced_by_sparse_matrix_columns.append(self)
+        self.column.referenced_by_sparse_matrix_columns.append(self)
         self.fmt = 'lil'
         self.data = self._matrix_class((len(self._cls), len(self.column)), dtype=self.dtype)
         self._host_lil_mem = None
