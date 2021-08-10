@@ -399,9 +399,9 @@ class _DataComponent(_Documentation):
         self._cls.components[self.name] = self
         if shape is None: pass
         elif isinstance(shape, Iterable):
-            self.shape = tuple(int(round(x)) for x in shape)
+            self.shape = tuple(round(x) for x in shape)
         else:
-            self.shape = (int(round(shape)),)
+            self.shape = (round(shape),)
         if isinstance(dtype, str) or isinstance(dtype, DB_Class):
             self.dtype = Pointer
             self.initial_value = NULL
@@ -638,8 +638,9 @@ class Sparse_Matrix(_DataComponent):
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.column = self._cls.database.get_class(column)
         self.column.referenced_by_sparse_matrix_columns.append(self)
+        self.shape = (len(self._cls), len(self.column))
         self.fmt = 'lil'
-        self.data = self._matrix_class((len(self._cls), len(self.column)), dtype=self.dtype)
+        self.data = self._matrix_class(self.shape, dtype=self.dtype)
         self._host_lil_mem = None
 
     @property
@@ -712,16 +713,10 @@ class Sparse_Matrix(_DataComponent):
         else: raise NotImplementedError(self.mem)
         return self
 
-    # TODO: Why does this define a shape property? this is public facing... This
-    # also confuses with get_shape() which is inherited.
-    @property
-    def shape(self):
-        """ """ # TODO-DOC
-        return (len(self._cls), len(self.column))
-
     def _resize(self):
         old_shape = self.data.shape
-        new_shape = self.shape
+        new_shape = self.shape = (len(self._cls), len(self.column))
+
         if old_shape == new_shape: return
 
         if self.fmt == 'csr': self.to_lil()
@@ -738,7 +733,7 @@ class Sparse_Matrix(_DataComponent):
             self.data.rows = self._host_lil_mem.rows[:new_shape[0]]
             self.data.data = self._host_lil_mem.data[:new_shape[0]]
         elif self.fmt == 'coo':
-            self.data.resize(self.shape)
+            self.data.resize(new_shape)
         else: raise NotImplementedError(self.fmt)
 
     def get_data(self):
