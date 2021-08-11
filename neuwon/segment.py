@@ -130,6 +130,7 @@ class SegmentMethods:
         fh_space = self.fh_space * s_areas[membrane_idx] * 1000
         outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
 
+    @staticmethod
     def _electric_coefficients(access):
         """
         Model the electric currents over the membrane surface.
