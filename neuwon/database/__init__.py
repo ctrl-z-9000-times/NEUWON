@@ -197,7 +197,7 @@ class _DB_Object:
         return "<%s:%d>"%(self._cls.name, self._idx)
 
 class DB_Class(_Documentation):
-    """ DB_Class is the database's internal representation of a class type. """
+    """ This is the database's internal representation of a class type. """
     def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc="",):
         """ Create a new class which is managed by the database.
 
@@ -394,7 +394,10 @@ class DB_Class(_Documentation):
 
 class _DataComponent(_Documentation):
     """ Abstract class for all types of data storage. """
-    # TODO: Consider renaming "class_type" to "db_class" throughout.
+    
+    # TODO: Consider renaming "class_type" to "db_class" throughout, also add
+    # type annotations in arglists when appropriate
+    
     def __init__(self, class_type, name,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
         _Documentation.__init__(self, name, doc)
@@ -509,16 +512,10 @@ class _DataComponent(_Documentation):
         return "<%s: %s.%s %s>"%(type(self).__name__, self._cls.name, self.name, self._type_info())
 
 class Attribute(_DataComponent):
-    """ """ # TODO-DOC
+    """ This is the database's internal representation of an instance variable. """
     def __init__(self, class_type, name:str, initial_value=None, dtype=Real, shape=(1,),
                 doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
-        """
-        Add an instance variable to a class type.
-
-        Argument dtype is one of:
-            * An instance of numpy.dtype
-            * A DB_Class or its name, to make pointers to instances of that class.
-        """
+        """ Add an instance variable to a class type. """
         _DataComponent.__init__(self, class_type, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
@@ -593,7 +590,7 @@ class Attribute(_DataComponent):
         return self
 
 class ClassAttribute(_DataComponent):
-    """ """ # TODO-DOC
+    """ This is the database's internal representation of a class variable. """
     def __init__(self, class_type, name:str, initial_value,
                 dtype=Real, shape=(1,),
                 doc:str="", units:str="",
@@ -778,29 +775,63 @@ class Connectivity_Matrix(Sparse_Matrix):
         super()._setter(instance, (values, [True] * len(values)))
 
 if True: # Append docstrings for common arguments.
-        _doc_doc = """ """ # TODO-DOC
-        _dtype_doc = """ """ # TODO-DOC
-        _shape_doc = """ """ # TODO-DOC
-        _initial_value_doc = """ """ # TODO-DOC
-        _units_doc = """ """ # TODO-DOC
-        _allow_invalid_doc = """ """ # TODO-DOC
-        _valid_range_doc = """ """ # TODO-DOC
 
-        _doc = "\n\n".join((
-            _dtype_doc,
-            _shape_doc,
-            _initial_value_doc,
-            _allow_invalid_doc,
-            _valid_range_doc,
-            _doc_doc,
-            _units_doc,
-        ))
+        def _clean_docstr(s):
+            """ Clean and check the users input for custom __docstr__'s. """
+            return textwrap.dedent(str(s)).strip()
+
+        _doc_doc = _clean_docstr("""
+        Argument doc
+        """) # TODO-DOC
+        _units_doc = _clean_docstr("""
+        Argument units
+        """) # TODO-DOC
+        _dtype_doc = _clean_docstr("""
+        Argument dtype
+        Argument dtype is one of:
+            * An instance of numpy.dtype
+            * A DB_Class or its name, to make pointers to instances of that class.
+        """) # TODO-DOC
+        _shape_doc = _clean_docstr("""
+        Argument shape
+        """) # TODO-DOC
+        _initial_value_doc = _clean_docstr("""
+        Argument initial_value
+        """) # TODO-DOC
+        _allow_invalid_doc = _clean_docstr("""
+        Argument allow_invalid
+        """) # TODO-DOC
+        _valid_range_doc = _clean_docstr("""
+        Argument valid_range
+        """) # TODO-DOC
 
         DB_Class.__init__.__doc__             += _doc_doc
-        Attribute.__init__.__doc__            += _doc
-        ClassAttribute.__init__.__doc__       += _doc
-        Sparse_Matrix.__init__.__doc__        += _doc
-        Connectivity_Matrix.__init__.__doc__  += _doc
+        Attribute.__init__.__doc__            += "\n\n".join((
+                _initial_value_doc,
+                _dtype_doc,
+                _shape_doc,
+                _allow_invalid_doc,
+                _valid_range_doc,
+                _doc_doc,
+                _units_doc,
+        ))
+        ClassAttribute.__init__.__doc__       += "\n\n".join((
+                _initial_value_doc,
+                _dtype_doc,
+                _shape_doc,
+                _allow_invalid_doc,
+                _valid_range_doc,
+                _doc_doc,
+                _units_doc,
+        ))
+        Sparse_Matrix.__init__.__doc__        += "\n\n".join((
+                _doc_doc,
+                _units_doc,
+                _dtype_doc,
+                _allow_invalid_doc,
+                _valid_range_doc,
+        ))
+        Connectivity_Matrix.__init__.__doc__  += _doc_doc
 
         Database.add_class.__doc__                  = DB_Class.__init__.__doc__
         DB_Class.add_attribute.__doc__              = Attribute.__init__.__doc__

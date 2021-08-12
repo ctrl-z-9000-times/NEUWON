@@ -1,7 +1,6 @@
 from collections.abc import Callable, Iterable, Mapping
 import collections
 import matplotlib.pyplot
-import neuwon.database
 from neuwon.database import _DB_Object
 import numpy as np
 import scipy.interpolate
@@ -72,9 +71,13 @@ class Clock:
                 self.callbacks.pop()
 
 class TimeSeriesBuffer:
-    """ """ # TODO-DOC
-    def __init__(self, clock: Clock, max_length:float=None):
-        """ """ # TODO-DOC
+    """ Buffer for timeseries data, and associated tools. """
+    def __init__(self, clock: Clock, max_length:float=np.inf):
+        """ Create a new empty buffer for managing time series data.
+
+        Argument max_length is the maximum duration of time that the buffer may
+                contain before it discards the oldest data samples.
+        """
         self.clock = clock
         assert isinstance(self.clock, Clock)
         self.max_length = float(np.inf if max_length is None else max_length)
@@ -108,18 +111,18 @@ class TimeSeriesBuffer:
         assert isinstance(self.db_object, _DB_Object)
         self.component = self.db_object.get_database_class().get(component)
         self.component_name = self.component.get_name()
+        # TODO: I feel like this should guard against users changing the component or the database.
 
     def record(self, db_object: _DB_Object, component: str, duration:float=np.inf) -> 'self':
         """ Record data samples immediately after each clock tick.
 
+        Recording can be interrupted at any time by the "stop" method.
+
         Argument db_object is a database managed object.
 
         Argument component is the name of an attribute of db_object.
-                It must refer to a singular value (eg not a sparse_matrix/list).
 
         Argument duration is the period of time that it records for.
-
-        Recording can be interrupted at any time by the "stop" method.
         """
         assert self.is_stopped()
         self._setup_pointer(db_object, component)
@@ -140,15 +143,14 @@ class TimeSeriesBuffer:
     def play(self, db_object: _DB_Object, component: str, loop:bool=False) -> 'self':
         """ Play back the time series data.
 
+        Play back can be interrupted at any time by the "stop" method.
+
         Argument db_object is a database managed object.
 
         Argument component is the name of an attribute of db_object.
-                It must refer to a singular value (eg not a sparse_matrix/list).
 
         Argument loop causes the playback to restart at the beginning when it
                 reaches the end of the buffer.
-
-        Play back can be interrupted at any time by the "stop" method.
         """
         assert self.is_stopped()
         self._setup_pointer(db_object, component)
@@ -222,12 +224,4 @@ class TimeSeriesBuffer:
 
     def __len__(self):
         """ Returns the number of data samples in this buffer. """
-        return len(self.timestamps)
-
-    def __repr__(self):
-        s = "%d samples"
-        if self.is_recording():
-            s += ", rec. from " + repr(self.db_object)
-        elif self.is_playing():
-            s += ", play to " + repr(self.db_object)
-        return "<TimeSeriesBuffer: %s>"%s
+        return len(self.timeseries)
