@@ -18,7 +18,7 @@ NULL    = np.iinfo(Pointer).max
 class Database:
     def __init__(self):
         """ Create a new empty database. """
-        self.class_types = dict()
+        self.db_classes = dict()
 
     def add_class(self, name: str, base_class:type=None) -> 'DB_Class':
         return DB_Class(self, name, base_class=base_class)
@@ -46,7 +46,7 @@ class Database:
         else:
             name = str(name)
         _cls, _, attr = name.partition('.')
-        obj = self.class_types[_cls]
+        obj = self.db_classes[_cls]
         if attr: obj = obj.components[attr]
         return obj
 
@@ -73,22 +73,22 @@ class Database:
         self.get_component(name).set_data(value)
 
     def get_all_classes(self) -> tuple:
-        return tuple(self.class_types.values())
+        return tuple(self.db_classes.values())
 
     def get_all_components(self) -> tuple:
         return tuple(itertools.chain.from_iterable(
-                x.components.values() for x in self.class_types.values()))
+                x.components.values() for x in self.db_classes.values()))
 
     def to_host(self) -> 'Database':
         """ Move all data to this python process's memory space. """
-        for _cls in self.class_types.values():
+        for _cls in self.db_classes.values():
             for comp in _cls.components.values():
                 comp.to_host()
         return self
 
     def to_device(self):
         """ Move all data components to the default CUDA device. """
-        for _cls in self.class_types.values():
+        for _cls in self.db_classes.values():
             for x in _cls.components.values():
                 x.to_device()
         return self
@@ -189,10 +189,6 @@ class _DB_Object:
         for attribute, value in kwargs.items():
             setattr(self, attribute, value)
 
-    # TODO: Should the user be allowed to override this method?
-    def __eq__(self, other):
-        return ((type(self) is type(other)) and (self._idx == other._idx))
-
     def __repr__(self):
         return "<%s:%d>"%(self._cls.name, self._idx)
 
@@ -203,14 +199,13 @@ class DB_Class(_Documentation):
 
         Argument base_class:
 
-        Argument sort_key:
-
+        Argument sort_key is unimplemented.
         """ # TODO-DOC
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
-        assert self.name not in self.database.class_types
-        self.database.class_types[self.name] = self
+        assert self.name not in self.database.db_classes
+        self.database.db_classes[self.name] = self
         self.size = 0
         self.components = dict()
         self.referenced_by = list()
@@ -227,8 +222,9 @@ class DB_Class(_Documentation):
                 "_cls": self,
                 "__slots__": __slots__,
                 "__init__": self._instance__init__,
-                "get_unstable_index": self._get_unstable_index,
-                "get_database_class": self._get_database_class,
+                "__eq__": self._instance__eq__,
+                "get_unstable_index": self._instance_get_unstable_index,
+                "get_database_class": self._instance_get_database_class,
                 "__module__": bases[0].__module__,
         })
         self.instance_type.__init__.__doc__ = base_class.__init__.__doc__ # This modifies a shared object, which is probably a bug.
@@ -251,12 +247,16 @@ class DB_Class(_Documentation):
         super(type(new_obj), new_obj).__init__(*args, **kwargs)
 
     @staticmethod
-    def _get_unstable_index(db_object):
+    def _instance__eq__(obj_1, obj2):
+        return (type(obj_1) is type(obj2)) and (obj_1._idx == obj2._idx)
+
+    @staticmethod
+    def _instance_get_unstable_index(db_object):
         """ TODO: Explain how / when this index changes. """
         return db_object._idx
 
     @staticmethod
-    def _get_database_class(db_object):
+    def _instance_get_database_class(db_object):
         """ Get the database's internal representation of this object's type. """
         return db_object._cls
 
@@ -394,16 +394,12 @@ class DB_Class(_Documentation):
 
 class _DataComponent(_Documentation):
     """ Abstract class for all types of data storage. """
-    
-    # TODO: Consider renaming "class_type" to "db_class" throughout, also add
-    # type annotations in arglists when appropriate
-    
-    def __init__(self, class_type, name,
+    def __init__(self, db_class, name,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
         _Documentation.__init__(self, name, doc)
-        assert isinstance(class_type, DB_Class)
-        assert self.name not in class_type.components
-        self._cls = class_type
+        assert isinstance(db_class, DB_Class)
+        assert self.name not in db_class.components
+        self._cls = db_class
         self._cls.components[self.name] = self
         if shape is None: pass
         elif isinstance(shape, Iterable):
@@ -513,10 +509,10 @@ class _DataComponent(_Documentation):
 
 class Attribute(_DataComponent):
     """ This is the database's internal representation of an instance variable. """
-    def __init__(self, class_type, name:str, initial_value=None, dtype=Real, shape=(1,),
+    def __init__(self, db_class, name:str, initial_value=None, dtype=Real, shape=(1,),
                 doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
         """ Add an instance variable to a class type. """
-        _DataComponent.__init__(self, class_type, name,
+        _DataComponent.__init__(self, db_class, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self._alloc(0)
@@ -591,7 +587,7 @@ class Attribute(_DataComponent):
 
 class ClassAttribute(_DataComponent):
     """ This is the database's internal representation of a class variable. """
-    def __init__(self, class_type, name:str, initial_value,
+    def __init__(self, db_class, name:str, initial_value,
                 dtype=Real, shape=(1,),
                 doc:str="", units:str="",
                 allow_invalid=False, valid_range=(None, None),):
@@ -599,7 +595,7 @@ class ClassAttribute(_DataComponent):
 
         All instance of the class will use a single shared value for this attribute.
         """
-        _DataComponent.__init__(self, class_type, name,
+        _DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self.initial_value
@@ -629,13 +625,13 @@ class Sparse_Matrix(_DataComponent):
 
     # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
 
-    def __init__(self, class_type, name, column, dtype=Real, doc:str="", units:str="",
+    def __init__(self, db_class, name, column, dtype=Real, doc:str="", units:str="",
                 allow_invalid=False, valid_range=(None, None),):
         """
-        Add a sparse matrix that is indexed by Entities. This is useful for
+        Add a sparse matrix that is indexed by _DB_Objects. This is useful for
         implementing any-to-any connections between entities.
         """
-        _DataComponent.__init__(self, class_type, name,
+        _DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.column = self._cls.database.get_class(column)
@@ -764,9 +760,9 @@ class Sparse_Matrix(_DataComponent):
 
 class Connectivity_Matrix(Sparse_Matrix):
     """ """ # TODO-DOC
-    def __init__(self, class_type, name, column, doc=""):
+    def __init__(self, db_class, name, column, doc=""):
         """ """ # TODO-DOC
-        super().__init__(class_type, name, column, doc=doc, dtype=bool,)
+        super().__init__(db_class, name, column, doc=doc, dtype=bool,)
 
     def _getter(self, instance):
         return super()._getter(instance)[0]
@@ -780,29 +776,40 @@ if True: # Append docstrings for common arguments.
             """ Clean and check the users input for custom __docstr__'s. """
             return textwrap.dedent(str(s)).strip()
 
+        # TODO: After this is done, move these strings to private class
+        # variables on the things they document.
+
         _doc_doc = _clean_docstr("""
         Argument doc
         """) # TODO-DOC
+
         _units_doc = _clean_docstr("""
         Argument units
         """) # TODO-DOC
+
         _dtype_doc = _clean_docstr("""
-        Argument dtype
-        Argument dtype is one of:
-            * An instance of numpy.dtype
-            * A DB_Class or its name, to make pointers to instances of that class.
+        Argument dtype is the data type for this data component. It is either:
+                * An instance of numpy.dtype
+                * A DB_Class or its name, to make pointers to instances of that class.
         """) # TODO-DOC
+
         _shape_doc = _clean_docstr("""
-        Argument shape
-        """) # TODO-DOC
+        Argument shape is the allocation size / shape for this data component.
+        """)
+
         _initial_value_doc = _clean_docstr("""
         Argument initial_value
+                If not given then no initial value is written, and the user may see uninitialized data.
         """) # TODO-DOC
+
         _allow_invalid_doc = _clean_docstr("""
-        Argument allow_invalid
-        """) # TODO-DOC
+        Argument allow_invalid controls whether NaN or NULL values are permissible.
+        """)
+
         _valid_range_doc = _clean_docstr("""
-        Argument valid_range
+        Argument valid_range is pair of numbers (min, max) defining an inclusive
+                range of permissible values.
+                By default ...
         """) # TODO-DOC
 
         DB_Class.__init__.__doc__             += _doc_doc
