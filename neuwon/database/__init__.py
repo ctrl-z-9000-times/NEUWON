@@ -303,17 +303,17 @@ class DB_Class(_Documentation):
         return self.database
 
     def add_attribute(self, name:str, initial_value=None, dtype=Real, shape=(1,),
-                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
         return Attribute(self, name, initial_value=initial_value, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_class_attribute(self, name:str, initial_value, dtype=Real, shape=(1,),
-                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
         return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_sparse_matrix(self, name:str, column, dtype=Real,
-                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
@@ -419,7 +419,7 @@ class _DataComponent(_Documentation):
             else:
                 self.initial_value = self.dtype.type(initial_value)
             self.reference = False
-        self.units = None if units is None else str(units)
+        self.units = str(units)
         self.allow_invalid = bool(allow_invalid)
         self.valid_range = tuple(valid_range)
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
@@ -511,7 +511,7 @@ class _DataComponent(_Documentation):
 class Attribute(_DataComponent):
     """ """ # TODO-DOC
     def __init__(self, class_type, name:str, initial_value=None, dtype=Real, shape=(1,),
-                doc:str="", units:str=None, allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
         """
         Add an instance variable to a class type.
 
@@ -596,7 +596,7 @@ class ClassAttribute(_DataComponent):
     """ """ # TODO-DOC
     def __init__(self, class_type, name:str, initial_value,
                 dtype=Real, shape=(1,),
-                doc:str="", units:str=None,
+                doc:str="", units:str="",
                 allow_invalid=False, valid_range=(None, None),):
         """ Add a class variable to a class type.
 
@@ -632,7 +632,7 @@ class Sparse_Matrix(_DataComponent):
 
     # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
 
-    def __init__(self, class_type, name, column, dtype=Real, doc:str="", units:str=None,
+    def __init__(self, class_type, name, column, dtype=Real, doc:str="", units:str="",
                 allow_invalid=False, valid_range=(None, None),):
         """
         Add a sparse matrix that is indexed by Entities. This is useful for
