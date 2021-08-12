@@ -5,7 +5,17 @@ from pygame.locals import *
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
+from OpenGL.GLUT import *
 import OpenGL.arrays.vbo as glvbo
+
+
+# Opengl Renderer
+#    -> great, cylinder works
+#    -> now make a a simple neur0n and make it look pretty.
+#        * Read straight from the database, see the segment class prototype
+#    -> After the minimum viable prototype works, organize the code and see
+#       about caching vertex data instead of recomputing it every frame.
+
 
 def _rotateAlign(v1, v2):
     # https://gist.github.com/kevinmoran/b45980723e53edeb8a5a43c49f134724
@@ -90,6 +100,58 @@ class Cylinder:
         glDrawArrays(GL_TRIANGLE_STRIP, 0, len(tube))
 
 
+
+class Sphere:
+    @staticmethod
+    def make_sphere(radius, slices, stacks):
+        # Calculate the Vertices
+        num_vertices = (stacks + 1) * (slices + 1)
+        vertices = np.zeros((num_vertices, 3), dtype=np.float32)
+        write_idx = 0
+        for i in range(stacks + 1):
+            phi = math.pi * (i / stacks)
+            # Loop Through Slices
+            for j in range(slices + 1):
+                theta = 2 * math.pi * (j / slices)
+                # Calculate The Vertex Positions
+                vertices[write_idx][0] = math.cos(theta) * math.sin(phi)
+                vertices[write_idx][1] = math.cos(phi)
+                vertices[write_idx][2] = math.sin(theta) * math.sin(phi)
+                write_idx += 1
+        vertices *= radius
+        # Calculate The Index Positions
+        num_triangles = 2 * slices * (stacks + 1)
+        indices = np.zeros((num_triangles, 3), dtype=np.int32)
+        write_idx = 0
+        for i in range(slices * stacks + slices):
+            indices[write_idx, 0] = i
+            indices[write_idx, 1] = i + slices + 1
+            indices[write_idx, 2] = i + slices
+            write_idx += 1
+            indices[write_idx, 0] = i + slices + 1
+            indices[write_idx, 1] = i
+            indices[write_idx, 2] = i + 1
+            write_idx += 1
+        return (vertices, indices)
+
+    @classmethod
+    def draw(cls, coords, radius):
+        vertices, indices = cls.make_sphere(radius, 10, 3)
+        vertices += coords
+
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glVertexPointer(3, GL_FLOAT, 0, vertices)
+
+        # glEnableClientState(GL_COLOR_ARRAY)
+        # glColorPointer(3, GL_FLOAT, 0, np.tile([1.,0.,0.], len(vertices)))
+
+        print(len(vertices))
+        print(max(indices.flat))
+        assert max(indices.flat) < len(vertices)
+
+        glDrawElements(GL_TRIANGLES, 3 * len(indices), GL_UNSIGNED_INT, indices);
+
+
 def main():
     pygame.init()
     display = (800,600)
@@ -98,8 +160,9 @@ def main():
     gluPerspective(45, (display[0]/display[1]), 0.1, 50.0)
 
     glEnable(GL_DEPTH_TEST)
-    glShadeModel(GL_FLAT)
+    glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
     glDisable(GL_CULL_FACE)
+    # glEnable(GL_CULL_FACE)
 
     glTranslatef(0.0,0.0, -5)
 
@@ -113,12 +176,16 @@ def main():
         glClearColor(0,0,0,0) # Background color.
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 
-        Cylinder.draw_cylinder(
-                *Cylinder.calculate_vertexes(
-                        np.array([0.,0.,0.]),
-                        np.array([0.,0,2]),
-                        .3,
-                        cap_A=True))
+        # Cylinder.draw_cylinder(
+        #         *Cylinder.calculate_vertexes(
+        #                 np.array([0.,0.,0.]),
+        #                 np.array([0.,0,2]),
+        #                 .3,
+        #                 cap_A=True))
+
+        Sphere.draw(np.array([0., 1.0, 0.]), .5)
+
+
 
         pygame.display.flip()
         pygame.time.wait(10)
