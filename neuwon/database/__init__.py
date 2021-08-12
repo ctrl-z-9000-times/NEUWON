@@ -17,6 +17,7 @@ NULL    = np.iinfo(Pointer).max
 
 class Database:
     def __init__(self):
+        """ Create a new empty database. """
         self.class_types = dict()
 
     def add_class(self, name: str, base_class:type=None) -> 'DB_Class':
@@ -79,21 +80,21 @@ class Database:
                 x.components.values() for x in self.class_types.values()))
 
     def to_host(self) -> 'Database':
-        """ """ # TODO-DOC
+        """ Move all data to this python process's memory space. """
         for _cls in self.class_types.values():
             for comp in _cls.components.values():
                 comp.to_host()
         return self
 
     def to_device(self):
-        """ """ # TODO-DOC
+        """ Move all data components to the default CUDA device. """
         for _cls in self.class_types.values():
             for x in _cls.components.values():
                 x.to_device()
         return self
 
     def sort(self):
-        """ """
+        """ Sort all DB_Classes according to their "sort_key" arguments. """
         1/0
         """
         NOTES:
@@ -166,10 +167,13 @@ class _Documentation:
     def get_doc(self) -> str:  return self.doc
 
 class _DB_Object:
-    """ Super class for the user facing object-oriented API.
+    """ Super class for the external representation of a class.
 
-    This class takes lower precidence in the method resolution order (MRO) than
-    the users custom base_class, so they may override any/all of these methods.
+    Each instance of DB_Class creates a new subclass of this class, with the
+    purpose of linking all of the subclass instances to the database instance.
+
+    This class takes lower precedence in the method resolution order (MRO) than
+    the user's custom base_class, so they may override any/all of these methods.
     """
     __slots__ = ()
 
@@ -193,7 +197,7 @@ class _DB_Object:
         return "<%s:%d>"%(self._cls.name, self._idx)
 
 class DB_Class(_Documentation):
-    """ """ # TODO-DOC
+    """ DB_Class is the database's internal representation of a class type. """
     def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc="",):
         """ Create a new class which is managed by the database.
 
@@ -261,7 +265,7 @@ class DB_Class(_Documentation):
         return self.instance_type
 
     def index_to_object(self, unstable_index: int) -> _DB_Object:
-        """ """ # TODO-DOC
+        """ Create a new _DB_Object """ # TODO-DOC
         idx = int(unstable_index)
         if idx == NULL: return None
         assert 0 <= idx < len(self)
@@ -390,6 +394,7 @@ class DB_Class(_Documentation):
 
 class _DataComponent(_Documentation):
     """ Abstract class for all types of data storage. """
+    # TODO: Consider renaming "class_type" to "db_class" throughout.
     def __init__(self, class_type, name,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
         _Documentation.__init__(self, name, doc)
@@ -772,8 +777,33 @@ class Connectivity_Matrix(Sparse_Matrix):
     def _setter(self, instance, values):
         super()._setter(instance, (values, [True] * len(values)))
 
-Database.add_class.__doc__             = DB_Class.__init__.__doc__
-DB_Class.add_attribute.__doc__         = Attribute.__init__.__doc__
-DB_Class.add_class_attribute.__doc__   = ClassAttribute.__init__.__doc__
-DB_Class.add_sparse_matrix.__doc__     = Sparse_Matrix.__init__.__doc__
-DB_Class.add_connectivity_matrix.__doc__ = Connectivity_Matrix.__init__.__doc__
+if True: # Append docstrings for common arguments.
+        _doc_doc = """ """ # TODO-DOC
+        _dtype_doc = """ """ # TODO-DOC
+        _shape_doc = """ """ # TODO-DOC
+        _initial_value_doc = """ """ # TODO-DOC
+        _units_doc = """ """ # TODO-DOC
+        _allow_invalid_doc = """ """ # TODO-DOC
+        _valid_range_doc = """ """ # TODO-DOC
+
+        _doc = "\n\n".join((
+            _dtype_doc,
+            _shape_doc,
+            _initial_value_doc,
+            _allow_invalid_doc,
+            _valid_range_doc,
+            _doc_doc,
+            _units_doc,
+        ))
+
+        DB_Class.__init__.__doc__             += _doc_doc
+        Attribute.__init__.__doc__            += _doc
+        ClassAttribute.__init__.__doc__       += _doc
+        Sparse_Matrix.__init__.__doc__        += _doc
+        Connectivity_Matrix.__init__.__doc__  += _doc
+
+        Database.add_class.__doc__                  = DB_Class.__init__.__doc__
+        DB_Class.add_attribute.__doc__              = Attribute.__init__.__doc__
+        DB_Class.add_class_attribute.__doc__        = ClassAttribute.__init__.__doc__
+        DB_Class.add_sparse_matrix.__doc__          = Sparse_Matrix.__init__.__doc__
+        DB_Class.add_connectivity_matrix.__doc__    = Connectivity_Matrix.__init__.__doc__

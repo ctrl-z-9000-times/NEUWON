@@ -2,12 +2,18 @@ from collections.abc import Callable, Iterable, Mapping
 import collections
 import matplotlib.pyplot
 import neuwon.database
+from neuwon.database import _DB_Object
 import numpy as np
 import scipy.interpolate
 
 class Clock:
     """ Clock and notification system. """
     def __init__(self, tick_period: float, units: str=None):
+        """
+        Argument tick_period is a duration of time.
+
+        Argument units is the physical units for 'tick_period'. Optional.
+        """
         self.dt = float(tick_period)
         self.ticks = 0
         self.units = None if units is None else str(units)
@@ -66,6 +72,7 @@ class Clock:
                 self.callbacks.pop()
 
 class TimeSeriesBuffer:
+    """ """ # TODO-DOC
     def __init__(self, clock: Clock, max_length:float=None):
         """ """ # TODO-DOC
         self.clock = clock
@@ -76,7 +83,7 @@ class TimeSeriesBuffer:
         self.stop()
 
     def stop(self) -> 'self':
-        """ Stop recording / playing. """
+        """ Immediately stop recording / playing. """
         self.record_duration = 0
         self.play_index = None
         return self
@@ -98,16 +105,26 @@ class TimeSeriesBuffer:
 
     def _setup_pointer(self, db_object, component):
         self.db_object = db_object
-        assert isinstance(self.db_object, neuwon.database._DB_Object)
+        assert isinstance(self.db_object, _DB_Object)
         self.component = self.db_object.get_database_class().get(component)
         self.component_name = self.component.get_name()
 
-    def record(self, db_object, component, duration=None) -> 'self':
-        """ """ # TODO-DOC
+    def record(self, db_object: _DB_Object, component: str, duration:float=np.inf) -> 'self':
+        """ Record data samples immediately after each clock tick.
+
+        Argument db_object is a database managed object.
+
+        Argument component is the name of an attribute of db_object.
+                It must refer to a singular value (eg not a sparse_matrix/list).
+
+        Argument duration is the period of time that it records for.
+
+        Recording can be interrupted at any time by the "stop" method.
+        """
         assert self.is_stopped()
         self._setup_pointer(db_object, component)
         self.clock.register_callback(self._record_implementation)
-        self.record_duration = float(np.inf if duration is None else duration)
+        self.record_duration = float(duration)
         return self
 
     def _record_implementation(self):
@@ -120,8 +137,19 @@ class TimeSeriesBuffer:
         self.record_duration -= self.clock.dt
         return True
 
-    def play(self, db_object, component, loop=False) -> 'self':
-        """ """ # TODO-DOC
+    def play(self, db_object: _DB_Object, component: str, loop:bool=False) -> 'self':
+        """ Play back the time series data.
+
+        Argument db_object is a database managed object.
+
+        Argument component is the name of an attribute of db_object.
+                It must refer to a singular value (eg not a sparse_matrix/list).
+
+        Argument loop causes the playback to restart at the beginning when it
+                reaches the end of the buffer.
+
+        Play back can be interrupted at any time by the "stop" method.
+        """
         assert self.is_stopped()
         self._setup_pointer(db_object, component)
         self.clock.register_callback(self._play_implementation)
