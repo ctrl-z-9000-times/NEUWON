@@ -166,6 +166,14 @@ class _Documentation:
     def get_name(self) -> str: return self.name
     def get_doc(self) -> str:  return self.doc
 
+    _name_doc = """
+        Argument name
+        """
+
+    _doc_doc = """
+        Argument doc is an optional documentation string.
+        """
+
 class _DB_Object:
     """ Super class for the external representation of a class.
 
@@ -197,10 +205,12 @@ class DB_Class(_Documentation):
     def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc="",):
         """ Create a new class which is managed by the database.
 
-        Argument base_class:
+        Argument base_class: The external representation will inherit from this
+                class. The base_class can implement methods but should not store
+                any data in the instance object.
 
         Argument sort_key is unimplemented.
-        """ # TODO-DOC
+        """
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -228,6 +238,8 @@ class DB_Class(_Documentation):
                 "__module__": bases[0].__module__,
         })
         self.instance_type.__init__.__doc__ = base_class.__init__.__doc__ # This modifies a shared object, which is probably a bug.
+
+    __init__.__doc__ += _Documentation._doc_doc
 
     @staticmethod
     def _instance__init__(new_obj, *args, **kwargs):
@@ -265,7 +277,7 @@ class DB_Class(_Documentation):
         return self.instance_type
 
     def index_to_object(self, unstable_index: int) -> _DB_Object:
-        """ Create a new _DB_Object """ # TODO-DOC
+        """ Create a new _DB_Object given its index. """
         idx = int(unstable_index)
         if idx == NULL: return None
         assert 0 <= idx < len(self)
@@ -303,17 +315,17 @@ class DB_Class(_Documentation):
         return self.database
 
     def add_attribute(self, name:str, initial_value=None, dtype=Real, shape=(1,),
-                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
         return Attribute(self, name, initial_value=initial_value, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_class_attribute(self, name:str, initial_value, dtype=Real, shape=(1,),
-                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
         return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_sparse_matrix(self, name:str, column, dtype=Real,
-                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
@@ -441,12 +453,12 @@ class _DataComponent(_Documentation):
         """ Replace this entire data component with a new set of values. """
         raise NotImplementedError(type(self))
 
-    def get_units(self) -> str:         return self.units
-    def get_dtype(self) -> np.dtype:    return self.dtype
-    def get_shape(self) -> tuple:       return self.shape
-    def get_initial_value(self):        return self.initial_value
-    def get_class(self) -> DB_Class:    return self._cls
-    def get_database(self) -> Database: return self._cls.database
+    def get_units(self) -> str:             return self.units
+    def get_dtype(self) -> np.dtype:        return self.dtype
+    def get_shape(self) -> tuple:           return self.shape
+    def get_initial_value(self) -> object:  return self.initial_value
+    def get_class(self) -> DB_Class:        return self._cls
+    def get_database(self) -> Database:     return self._cls.database
 
     def get_memory_space(self) -> str:
         """
@@ -470,17 +482,12 @@ class _DataComponent(_Documentation):
     def free(self):
         """
         Release the memory used by this data component. The next time the data
-        is accessed it will be reallocated and set to the default value.
+        is accessed it will be reallocated and set to its initial_value.
         """
         # Abstract method, optional.
 
     def check(self):
-        """
-        Check data for values which are:
-            NaN
-            NULL
-            Out of bounds
-        """
+        """ Check data for values which are: NaN, NULL, or Out of bounds. """
         data = self.get_data()
         if isinstance(self, ClassAttribute):  data = np.array([data])
         elif isinstance(self, Sparse_Matrix): data = data.data
@@ -507,16 +514,53 @@ class _DataComponent(_Documentation):
     def __repr__(self):
         return "<%s: %s.%s %s>"%(type(self).__name__, self._cls.name, self.name, self._type_info())
 
+    _units_doc = """
+        Argument units is an optional documentation string for physical units.
+        """
+
+    _dtype_doc = """
+        Argument dtype is the data type for this data component. It is either:
+                * An instance of numpy.dtype
+                * A DB_Class or its name, to make pointers to instances of that class.
+        """
+
+    _shape_doc = """
+        Argument shape is the allocation size / shape for this data component.
+        """
+
+    _allow_invalid_doc = """
+        Argument allow_invalid controls whether NaN or NULL values are permissible.
+        """
+
+    _valid_range_doc = """
+        Argument valid_range is pair of numbers (min, max) defining an inclusive
+                range of permissible values.
+        """
+
 class Attribute(_DataComponent):
     """ This is the database's internal representation of an instance variable. """
     def __init__(self, db_class, name:str, initial_value=None, dtype=Real, shape=(1,),
-                doc:str="", units:str="", allow_invalid=False, valid_range=(None, None),):
-        """ Add an instance variable to a class type. """
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
+        """ Add an instance variable to a class type.
+
+        Argument initial_value is written to new instances of this attribute.
+                This is applied before "base_class.__init__" is called.
+                Optional, if not given then the data will not be initialized.
+        """
         _DataComponent.__init__(self, db_class, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self._alloc(0)
         self._append(0, len(self._cls))
+
+    __init__.__doc__ += "".join((
+                _DataComponent._dtype_doc,
+                _DataComponent._shape_doc,
+                _Documentation._doc_doc,
+                _DataComponent._units_doc,
+                _DataComponent._allow_invalid_doc,
+                _DataComponent._valid_range_doc,
+        ))
 
     def _getter(self, instance):
         value = self.data[instance._idx]
@@ -590,15 +634,26 @@ class ClassAttribute(_DataComponent):
     def __init__(self, db_class, name:str, initial_value,
                 dtype=Real, shape=(1,),
                 doc:str="", units:str="",
-                allow_invalid=False, valid_range=(None, None),):
+                allow_invalid:bool=False, valid_range=(None, None),):
         """ Add a class variable to a class type.
 
         All instance of the class will use a single shared value for this attribute.
+
+        Argument initial_value is required.
         """
         _DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self.initial_value
+
+    __init__.__doc__ += "".join((
+            _DataComponent._dtype_doc,
+            _DataComponent._shape_doc,
+            _Documentation._doc_doc,
+            _DataComponent._units_doc,
+            _DataComponent._allow_invalid_doc,
+            _DataComponent._valid_range_doc,
+    ))
 
     def _getter(self, instance):
         if self.reference: raise NotImplementedError("todo?")
@@ -626,10 +681,15 @@ class Sparse_Matrix(_DataComponent):
     # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
 
     def __init__(self, db_class, name, column, dtype=Real, doc:str="", units:str="",
-                allow_invalid=False, valid_range=(None, None),):
+                allow_invalid:bool=False, valid_range=(None, None),):
         """
         Add a sparse matrix that is indexed by _DB_Objects. This is useful for
         implementing any-to-any connections between entities.
+
+        This db_class is the index for the rows of the sparse matrix.
+
+        Argument column refers to the db_class which is the index for the
+                columns of the sparse matrix.
         """
         _DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
@@ -640,6 +700,14 @@ class Sparse_Matrix(_DataComponent):
         self.fmt = 'lil'
         self.data = self._matrix_class(self.shape, dtype=self.dtype)
         self._host_lil_mem = None
+
+    __init__.__doc__ += "".join((
+            _DataComponent._dtype_doc,
+            _Documentation._doc_doc,
+            _DataComponent._units_doc,
+            _DataComponent._allow_invalid_doc,
+            _DataComponent._valid_range_doc,
+    ))
 
     @property
     def _sparse_module(self):
@@ -763,6 +831,8 @@ class Connectivity_Matrix(Sparse_Matrix):
     def __init__(self, db_class, name, column, doc=""):
         """ """ # TODO-DOC
         super().__init__(db_class, name, column, doc=doc, dtype=bool,)
+    
+    __init__.__doc__  += _Documentation._doc_doc
 
     def _getter(self, instance):
         return super()._getter(instance)[0]
@@ -770,78 +840,8 @@ class Connectivity_Matrix(Sparse_Matrix):
     def _setter(self, instance, values):
         super()._setter(instance, (values, [True] * len(values)))
 
-if True: # Append docstrings for common arguments.
-
-        def _clean_docstr(s):
-            """ Clean and check the users input for custom __docstr__'s. """
-            return textwrap.dedent(str(s)).strip()
-
-        # TODO: After this is done, move these strings to private class
-        # variables on the things they document.
-
-        _doc_doc = _clean_docstr("""
-        Argument doc
-        """) # TODO-DOC
-
-        _units_doc = _clean_docstr("""
-        Argument units
-        """) # TODO-DOC
-
-        _dtype_doc = _clean_docstr("""
-        Argument dtype is the data type for this data component. It is either:
-                * An instance of numpy.dtype
-                * A DB_Class or its name, to make pointers to instances of that class.
-        """) # TODO-DOC
-
-        _shape_doc = _clean_docstr("""
-        Argument shape is the allocation size / shape for this data component.
-        """)
-
-        _initial_value_doc = _clean_docstr("""
-        Argument initial_value
-                If not given then no initial value is written, and the user may see uninitialized data.
-        """) # TODO-DOC
-
-        _allow_invalid_doc = _clean_docstr("""
-        Argument allow_invalid controls whether NaN or NULL values are permissible.
-        """)
-
-        _valid_range_doc = _clean_docstr("""
-        Argument valid_range is pair of numbers (min, max) defining an inclusive
-                range of permissible values.
-                By default ...
-        """) # TODO-DOC
-
-        DB_Class.__init__.__doc__             += _doc_doc
-        Attribute.__init__.__doc__            += "\n\n".join((
-                _initial_value_doc,
-                _dtype_doc,
-                _shape_doc,
-                _allow_invalid_doc,
-                _valid_range_doc,
-                _doc_doc,
-                _units_doc,
-        ))
-        ClassAttribute.__init__.__doc__       += "\n\n".join((
-                _initial_value_doc,
-                _dtype_doc,
-                _shape_doc,
-                _allow_invalid_doc,
-                _valid_range_doc,
-                _doc_doc,
-                _units_doc,
-        ))
-        Sparse_Matrix.__init__.__doc__        += "\n\n".join((
-                _doc_doc,
-                _units_doc,
-                _dtype_doc,
-                _allow_invalid_doc,
-                _valid_range_doc,
-        ))
-        Connectivity_Matrix.__init__.__doc__  += _doc_doc
-
-        Database.add_class.__doc__                  = DB_Class.__init__.__doc__
-        DB_Class.add_attribute.__doc__              = Attribute.__init__.__doc__
-        DB_Class.add_class_attribute.__doc__        = ClassAttribute.__init__.__doc__
-        DB_Class.add_sparse_matrix.__doc__          = Sparse_Matrix.__init__.__doc__
-        DB_Class.add_connectivity_matrix.__doc__    = Connectivity_Matrix.__init__.__doc__
+Database.add_class.__doc__                  = DB_Class.__init__.__doc__
+DB_Class.add_attribute.__doc__              = Attribute.__init__.__doc__
+DB_Class.add_class_attribute.__doc__        = ClassAttribute.__init__.__doc__
+DB_Class.add_sparse_matrix.__doc__          = Sparse_Matrix.__init__.__doc__
+DB_Class.add_connectivity_matrix.__doc__    = Connectivity_Matrix.__init__.__doc__
