@@ -1,11 +1,3 @@
-import sympy
-import numba.cuda
-import numba
-import numpy as np
-import math
-import os.path
-import itertools
-import copy
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real
 from neuwon.model import Reaction, Model
@@ -13,6 +5,14 @@ from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT
 from neuwon.nmodl.pointers import PointerTable, Pointer
 from scipy.linalg import expm
+import copy
+import itertools
+import math
+import numba
+import numba.cuda
+import numpy as np
+import os.path
+import sympy
 
 __all__ = ["NmodlMechanism"]
 
