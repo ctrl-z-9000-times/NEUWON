@@ -42,7 +42,7 @@ class NmodlMechanism(Reaction):
                 self._check_for_unsupported(parser)
                 self.name, self.title, self.description = parser.gather_documentation()
                 self.units = parser.gather_units()
-                self.parameters = ParameterTable().update(parser.gather_parameters())
+                self.parameters = ParameterTable(parser.gather_parameters())
                 self.pointers = PointerTable(self)
                 self.states = parser.gather_states()
                 for state in self.states:
@@ -61,9 +61,9 @@ class NmodlMechanism(Reaction):
         for var_name, kwargs in pointers.items():
             self.pointers.add(var_name, **kwargs)
 
-    def initialize(self, database):
+    def initialize(self, database, **builtin_parameters):
         try:
-            self.parameters.gather_builtin_parameters(database, self.pointers)
+            self.parameters.gather_global_constants(database, builtin_parameters, self.pointers)
             self.parameters.substitute(itertools.chain(
                     (self.initial_block, self.breakpoint_block,),
                     self.derivative_blocks.values(),))
@@ -154,20 +154,20 @@ class NmodlMechanism(Reaction):
                 if var_name in equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in inside:
-                    self.pointers.add(var_name, read="membrane/inside/concentrations/%s"%ion)
+                    self.pointers.add(var_name, read="Segment.inside_concentrations/%s"%ion)
                 elif var_name in outside:
                     self.pointers.add(var_name, read="outside/concentrations/%s"%ion)
                 else: raise ValueError("Unrecognized species READ: \"%s\"."%var_name)
             for y in x.writelist:
                 var_name = y.name.value.eval()
                 if var_name in current:
-                    raise NotImplementedError(var_name)
+                    pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in conductance:
                     self.pointers.add(var_name,
-                            write="membrane/conductances/%s"%ion, accumulate=True)
+                            write="Segment.conductances_%s"%ion, accumulate=True)
                 elif var_name in inside:
                     self.pointers.add(var_name,
-                            write="membrane/inside/delta_concentrations/%s"%ion, accumulate=True)
+                            write="Segment.inside_delta_concentrations/%s"%ion, accumulate=True)
                 elif var_name in outside:
                     self.pointers.add(var_name,
                             write="outside/delta_concentrations/%s"%ion, accumulate=True)
@@ -176,7 +176,7 @@ class NmodlMechanism(Reaction):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                self.pointers.add(var_name, write="membrane/conductances/%s"%ion, accumulate=True)
+                self.pointers.add(var_name, write="Segment.conductances_%s"%ion, accumulate=True)
 
     def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the
@@ -250,8 +250,13 @@ class NmodlMechanism(Reaction):
         }
         self.initial_block.gather_arguments(self)
         for arg in self.initial_block.arguments:
-            try: globals_[arg] = database.get_initial_value(self.pointers[arg].read)
-            except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
+            if arg in self.parameters:
+                globals_[arg] = self.parameters[arg][0]
+            elif arg in self.pointers:
+                read = self.pointers[arg].read
+                globals_[arg] = database.get(read).get_initial_value()
+            else:
+                raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {x: 0 for x in self.states}
         initial_python = self.initial_block.to_python(INITIAL_BLOCK=True)
         code_gen.py_exec(initial_python, globals_, self.initial_scope)
@@ -373,13 +378,14 @@ class NmodlMechanism(Reaction):
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
 
-    _builtin_parameters = {
+    builtin_parameters = {
         "celsius": (None, "degC"),
         "time_step": (None, "ms"),
     }
 
-    def __init__(self, parameters=_builtin_parameters):
+    def __init__(self, parameters):
         dict.__init__(self)
+        self.update(self.builtin_parameters)
         self.update(parameters)
 
     def update(self, parameters, strict=False):
@@ -413,15 +419,17 @@ class ParameterTable(dict):
                 surface_area_parameters[name] = self.pop(name)
         return surface_area_parameters
 
-    def gather_builtin_parameters(self, database, pointers):
-        """ Fill in missing parameter values from the database. """
-        for name in self._builtin_parameters:
-            builtin_value = float(database.access(name))
-            given_value, units = self[name]
-            if given_value is None: self[name] = (builtin_value, units)
+    def gather_global_constants(self, database, builtin_parameters, pointers):
+        """ Fill in missing parameter values from the model & database. """
+        assert set(builtin_parameters).issuperset(self.builtin_parameters)
+        for name, value in builtin_parameters.items():
+            prior_value, units = self[name]
+            # The builtins take lowest precidence.
+            if prior_value is None:
+                self[name] = (float(value), units)
         for name, ptr in list(pointers.items()):
             if ptr.r:
-                try: value = database.access(ptr.read)
+                try: value = database.get(ptr.read)
                 except KeyError: continue
                 if isinstance(value, float):
                     self.update({ptr.name: value})

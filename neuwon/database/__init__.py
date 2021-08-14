@@ -20,8 +20,8 @@ class Database:
         """ Create a new empty database. """
         self.db_classes = dict()
 
-    def add_class(self, name: str, base_class:type=None) -> 'DB_Class':
-        return DB_Class(self, name, base_class=base_class)
+    def add_class(self, name: str, base_class:type=None, doc:str="") -> 'DB_Class':
+        return DB_Class(self, name, base_class=base_class, doc=doc)
 
     def get(self, name: str) -> 'DB_Class' or '_DataComponent':
         """ Get the database's internal representation of the named thing.
@@ -207,10 +207,12 @@ class DB_Class(_Documentation):
 
         Argument base_class: The external representation will inherit from this
                 class. The base_class can implement methods but should not store
-                any data in the instance object.
+                any data in the instance object. Docstrings attached to the
+                base_class will be made publicly visible.
 
         Argument sort_key is unimplemented.
         """
+        if base_class and not doc: doc = base_class.__doc__
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -236,6 +238,7 @@ class DB_Class(_Documentation):
                 "get_unstable_index": self._instance_get_unstable_index,
                 "get_database_class": self._instance_get_database_class,
                 "__module__": bases[0].__module__,
+                "__doc__": doc,
         })
         self.instance_type.__init__.__doc__ = base_class.__init__.__doc__ # This modifies a shared object, which is probably a bug.
 

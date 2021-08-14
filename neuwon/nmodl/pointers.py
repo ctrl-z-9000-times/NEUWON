@@ -42,7 +42,7 @@ class PointerTable(dict):
         return ptr
 
     def initialize(self, database):
-        for ptr in self.values():
+        for ptr in list(self.values()):
             ptr.initialize(database)
             if ptr.target_class == self.mech_name: continue
             elif ptr.target_class not in self:

@@ -28,26 +28,26 @@ class Reaction:
         return type(self).__name__
 
     @classmethod
-    def initialize(self, database):
-        """ (Optional) This method is called after the Model has been created.
+    def initialize(self, model):
+        """
+        Optional method.
+        This method is called after the Model has been created.
         This method is called on a deep copy of each Reaction object.
-
-        Argument database is a function(name) -> value
 
         (Optional) Returns a new Reaction object to use in place of this one. """
         pass
 
     @classmethod
-    def advance(self, database_access):
-        """ Advance all instances of this reaction.
-
-        Argument database_access is function: f(component_name) -> value
-        """
+    def advance(self, model):
+        """ Advance all instances of this reaction. """
         raise TypeError("Abstract method called by %s."%repr(self))
 
-    _library = {
-        "hh": ("nmodl_library/hh.mod",
-            dict(parameter_overrides = {"celsius": 6.3})),
+    # TODO: Don't provide a standard library.
+    #       Distribute these statements into the examples which use them.
+
+    # _library = {
+    #     "hh": ("nmodl_library/hh.mod",
+    #         dict(parameter_overrides = {"celsius": 6.3})),
 
         # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
 
@@ -58,7 +58,7 @@ class Reaction:
 
         # "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
         #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
-    }
+    # }
 
 class Model:
     def __init__(self, time_step,
@@ -142,28 +142,18 @@ class Model:
     def get_species(self, species_name):
         return self.species[str(species_name)]
 
-    def add_reaction(self, reaction):
-        """
-        Argument reactions is one of:
-          * An instance or subclass of the Reaction class, or
-          * The name of a reaction from the standard library.
-        """
+    def add_reaction(self, reaction: Reaction):
         r = reaction
-        if not isinstance(r, Reaction) and not (isinstance(r, type) and issubclass(r, Reaction)):
-            try: nmodl_file_path, kwargs = Reaction._library[str(r)]
-            except KeyError: raise ValueError("Unrecognized Reaction: %s."%str(r))
-            from neuwon.nmodl import NmodlMechanism
-            r = NmodlMechanism(nmodl_file_path, **kwargs)
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
-            retval = r.initialize(self.database)
+            retval = r.initialize(self.database, celsius=self.celsius, time_step=self.time_step)
             if retval is not None: r = retval
         name = str(r.get_name())
         assert(name not in self.reactions)
         self.reactions[name] = r
         return r
 
-    def get_reaction(self, reaction_name):
+    def get_reaction(self, reaction_name:str) -> Reaction:
         return self.reactions[str(reaction_name)]
 
     def advance(self):
@@ -247,16 +237,17 @@ class Model:
                 x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
     def _advance_reactions(self):
-        access = self.database.access
+        def zero(component_name):
+            self.database.get_component(component_name).fill(0.0)
         for name, species in self.species.items():
             if species.transmembrane:
-                access("membrane/conductances/"+name).fill(0.0)
+                zero("Segment.conductances_"+name)
             if species.inside_diffusivity != 0.0:
-                access(species.inside_archetype + "/delta_concentrations/"+name).fill(0.0)
+                zero(species.inside_archetype + "/delta_concentrations/"+name)
             if species.outside_diffusivity != 0.0:
-                access("outside/delta_concentrations/"+name).fill(0.0)
+                zero("outside/delta_concentrations/"+name)
         for name, r in self.reactions.items():
-            try: r.advance(access)
+            try: r.advance(self)
             except Exception: raise RuntimeError("in reaction " + name)
 
     def render_frame(self, membrane_colors,
