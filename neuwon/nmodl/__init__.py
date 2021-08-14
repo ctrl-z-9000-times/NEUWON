@@ -13,6 +13,7 @@ import numba.cuda
 import numpy as np
 import os.path
 import sympy
+import sys
 
 __all__ = ["NmodlMechanism"]
 
@@ -21,6 +22,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 class NmodlMechanism(Reaction):
+    # TODO: Consider renaming "parameter_overrides" to just "parameters", for bevity.
     def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
         """
         Argument filename is an NMODL file to load.

@@ -12,7 +12,7 @@ class PointerTable(dict):
     """
     def __init__(self, mechanism):
         super().__init__()
-        self.mech_name = mechanism.name()
+        self.mech_name = mechanism.get_name()
 
     def add(self, name, read=None, write=None, accumulate=None):
         """ Factory method for Pointer objects.
