@@ -9,10 +9,11 @@ import copy
 from zlib import crc32
 import pickle
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import Real, Entity
-from neuwon.model import Reaction, Model, Segment
+from neuwon.database import Real
+from neuwon.model import Reaction, Model
+from neuwon.nmodl import code_gen
 from neuwon.nmodl.parser import NmodlParser, ANT
-from neuwon.nmodl.pointers import PointerTable, _Pointer
+from neuwon.nmodl.pointers import PointerTable, Pointer
 from scipy.linalg import expm
 
 __all__ = ["NmodlMechanism"]
@@ -216,15 +217,15 @@ class NmodlMechanism(Reaction):
         block = copy.deepcopy(block)
         globals_ = {}
         locals_ = {}
-        py = "def derivative(%s, %s):\n"%(_CodeGen.mangle2("state"), ", ".join(block.arguments))
+        py = "def derivative(%s, %s):\n"%(code_gen.mangle2("state"), ", ".join(block.arguments))
         for idx, name in enumerate(self.states):
-            py += "    %s = %s[%d]\n"%(name, _CodeGen.mangle2("state"), idx)
+            py += "    %s = %s[%d]\n"%(name, code_gen.mangle2("state"), idx)
         for name in self.states:
-            py += "    %s = 0\n"%_CodeGen.mangle('d' + name)
+            py += "    %s = 0\n"%code_gen.mangle('d' + name)
         block.map(lambda x: [] if isinstance(x, _ConserveStatement) else [x])
         py += block.to_python(indent="    ")
-        py += "    return [%s]\n"%", ".join(_CodeGen.mangle('d' + x) for x in self.states)
-        _CodeGen.py_exec(py, globals_, locals_)
+        py += "    return [%s]\n"%", ".join(code_gen.mangle('d' + x) for x in self.states)
+        code_gen.py_exec(py, globals_, locals_)
         return numba.njit(locals_["derivative"])
 
     def _compute_propagator_matrix(self, block, time_step, kwargs):
@@ -250,7 +251,7 @@ class NmodlMechanism(Reaction):
             except KeyError: raise ValueError("Missing initial value for \"%s\"."%arg)
         self.initial_scope = {x: 0 for x in self.states}
         initial_python = self.initial_block.to_python(INITIAL_BLOCK=True)
-        _CodeGen.py_exec(initial_python, globals_, self.initial_scope)
+        code_gen.py_exec(initial_python, globals_, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def solve_steadystate(self, block, args):
@@ -313,7 +314,7 @@ class NmodlMechanism(Reaction):
             if ptr.r: self.arguments.add((ptr.read_py, ptr.read))
             if ptr.w: self.arguments.add((ptr.write_py, ptr.write))
         self.arguments = sorted(self.arguments)
-        index     = _CodeGen.mangle2("index")
+        index     = code_gen.mangle2("index")
         preamble  = []
         preamble.append("import numba.cuda")
         preamble.append("def BREAKPOINT(%s):"%", ".join(py for py, db in self.arguments))
@@ -326,7 +327,7 @@ class NmodlMechanism(Reaction):
         for ptr in pointers:
             if ptr is None: continue
             preamble.append("    %s = %s[%s]"%(
-                _CodeGen.mangle2(ptr.name), ptr.read_py, ptr.index_py))
+                code_gen.mangle2(ptr.name), ptr.read_py, ptr.index_py))
         for variable, ptr in sorted(self.pointers.items()):
             if not ptr.r: continue
             if ptr in pointers: continue
@@ -337,9 +338,9 @@ class NmodlMechanism(Reaction):
         py = self.breakpoint_block.to_python("    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
-            # _CodeGen.mangle(name): km.advance for name, km in self.kinetic_models.items()
+            # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
-        _CodeGen.py_exec(py, breakpoint_globals)
+        code_gen.py_exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
     def new_instances(self, database, locations, scale=1):
@@ -540,7 +541,7 @@ class _IfStatement:
         self.else_block.map(f)
 
     def to_python(self, indent, **kwargs):
-        py = indent + "if %s:\n"%_CodeGen.sympy_to_pycode(self.condition)
+        py = indent + "if %s:\n"%code_gen.sympy_to_pycode(self.condition)
         py += self.main_block.to_python(indent + "    ", **kwargs)
         assert(not self.elif_blocks) # TODO: Unimplemented.
         py += indent + "else:\n"
@@ -562,12 +563,12 @@ class _AssignStatement:
 
     def to_python(self,  indent="", INITIAL_BLOCK=False, **kwargs):
         if not isinstance(self.rhs, str):
-            try: self.rhs = _CodeGen.sympy_to_pycode(self.rhs.simplify())
+            try: self.rhs = code_gen.sympy_to_pycode(self.rhs.simplify())
             except Exception:
                 eprint("Failed at:", repr(self))
                 raise
         if self.derivative:
-            lhs = _CodeGen.mangle('d' + self.lhsn)
+            lhs = code_gen.mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
         if self.pointer and not INITIAL_BLOCK:
             assert self.pointer.w, self.pointer.name + " is not a writable pointer!"
@@ -593,7 +594,7 @@ class _AssignStatement:
     def _solve_sympy(self):
         from sympy import Symbol, Function, Eq
         dt    = Symbol("time_step")
-        lhsn  = _CodeGen.mangle2(self.lhsn)
+        lhsn  = code_gen.mangle2(self.lhsn)
         state = Function(lhsn)(dt)
         deriv = self.rhs.subs(Symbol(self.lhsn), state)
         eq    = Eq(state.diff(dt), deriv)
@@ -703,12 +704,12 @@ class _SolveStatement:
         assert(self.block in mechanism.derivative_blocks)
         # arguments = mechanism.derivative_blocks[self.block].arguments
         # if self.steadystate:
-        #     states_var = _CodeGen.mangle2("states")
-        #     index_var  = _CodeGen.mangle2("index")
+        #     states_var = code_gen.mangle2("states")
+        #     index_var  = code_gen.mangle2("index")
         #     self.py = states_var + " = solve_steadystate('%s', {%s})\n"%(self.block,
         #             ", ".join("'%s': %s"%(x, x) for x in arguments))
         #     for x in mechanism.states:
-        #         self.py += "%s[%s] = %s['%s']\n"%(_CodeGen.mangle(x), index_var, states_var, x)
+        #         self.py += "%s[%s] = %s['%s']\n"%(code_gen.mangle(x), index_var, states_var, x)
         # else:
         #     self.py = self.block + "(%s)\n"%(
         #                 ", ".join(arguments))
@@ -951,32 +952,6 @@ class _cache:
         except Exception as x:
             eprint("Warning: cache error", str(x))
 
-class _CodeGen:
-    # TODO: Consider making and documenting a convention regarding what gets mangled & how.
-    # -> mangle1 for the user's nmodl variables.
-    # -> mangle2 for NEUWON's internal variables.
-    def mangle(x):      return "_" + x
-    def demangle(x):    return x[1:]
-    def mangle2(x):     return "_" + x + "_"
-    def demangle2(x):   return x[1:-1]
-
-    import sympy.printing.pycode as sympy_to_pycode
-
-    def insert_indent(indent, string):
-        return indent + "\n".join(indent + line for line in string.split("\n"))
-
-    def py_exec(python, globals_, locals_=None):
-        if False: print(python)
-        globals_["math"] = math
-        try: exec(python, globals_, locals_)
-        except:
-            for noshow in ("__builtins__", "math"):
-                if noshow in globals_: globals_.pop(noshow)
-            eprint("Error while exec'ing the following python code:")
-            eprint(python)
-            eprint("globals():", repr(globals_))
-            eprint("locals():", repr(locals_))
-            raise
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 

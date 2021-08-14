@@ -1,7 +1,7 @@
 """ Private module. """
 __all__ = []
 
-from . import _CodeGen
+from neuwon.nmodl import code_gen
 
 class PointerTable(dict):
     def __init__(self, mechanism):
@@ -92,16 +92,16 @@ class Pointer:
         """ Python variable name. """
         if self.r:
             if self.w and self.read != self.write:
-                return _CodeGen.mangle('read_' + self.name)
-            return _CodeGen.mangle(self.name)
+                return CodeGen.mangle('read_' + self.name)
+            return CodeGen.mangle(self.name)
 
     @property
     def write_py(self):
         """ Python variable name. """
         if self.w:
             if self.r and self.read != self.write:
-                return _CodeGen.mangle('write_' + self.name)
-            return _CodeGen.mangle(self.name)
+                return CodeGen.mangle('write_' + self.name)
+            return CodeGen.mangle(self.name)
 
     @property
     def index_py(self):
@@ -110,4 +110,4 @@ class Pointer:
             index_var = "index"
         else:
             index_var = self.target_class.lower()
-        return _CodeGen.mangle2(index_var)
+        return CodeGen.mangle2(index_var)
