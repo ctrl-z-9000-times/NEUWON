@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Entity
 from neuwon.model import Reaction, Model, Segment
 from neuwon.nmodl.parser import NmodlParser, ANT
+from neuwon.nmodl.pointers import PointerTable, _Pointer
 from scipy.linalg import expm
 
 __all__ = ["NmodlMechanism"]
@@ -67,6 +68,7 @@ class NmodlMechanism(Reaction):
             #     self.kinetic_models[name] = KineticModel(1/0)
             self._run_initial_block(database)
             self._initialize_database(database)
+            self.pointers.initialize(database)
             self._compile_breakpoint_block(database)
             self.pointers.verify_pointers_exist(database)
         except Exception:
@@ -436,114 +438,6 @@ class ParameterTable(dict):
             for stmt in block:
                 if isinstance(stmt, _AssignStatement):
                     stmt.rhs = stmt.rhs.subs(substitutions)
-
-class PointerTable(dict):
-    def __init__(self, mechanism):
-        super().__init__()
-        self.mech_name = mechanism.name()
-
-    def add(self, name, read=None, write=None, accumulate=None):
-        """ Factory method for Pointer objects.
-
-        Argument name is an nmodl varaible name.
-        Arguments read & write are a database access paths.
-        Argument accumulate must be given at the same time as the "write" argument.
-        """
-        if name in self:
-            ptr = self[name]
-            if read is not None:
-                read = str(read)
-                if ptr.r and ptr.read != read:
-                    eprint("Warning: Pointer override: %s read changed from '%s' to '%s'"%(
-                            ptr.name, ptr.read, read))
-                ptr.read = read
-            if write is not None:
-                write = str(write)
-                if ptr.w and ptr.write != write:
-                    eprint("Warning: Pointer override: %s write changed from '%s' to '%s'"%(
-                            ptr.name, ptr.write, write))
-                ptr.write = write
-                ptr.accumulate = bool(accumulate)
-            else: assert accumulate is None
-        else:
-            self[name] = ptr = Pointer(self.mech_name, name, read, write, accumulate)
-        archetype = ptr.archetype()
-        if (archetype not in self) and (archetype != self.mech_name):
-            if   archetype == "membrane": component = self.mech_name + ".insertion"
-            elif archetype == "inside":   component = "Segment.inside"
-            elif archetype == "outside":  component = "Segment.outside"
-            else: raise NotImplementedError(archetype)
-            self.add(archetype, read=component)
-        return ptr
-
-    def verify_pointers_exist(self, database):
-        for ptr in self.values():
-            if ptr.r: database.get_component(ptr.read)
-            if ptr.w: database.get_component(ptr.write)
-
-class Pointer:
-    def __init__(self, mech_name, name, read, write, accumulate):
-        self.mech_name = mech_name
-        self.name  = str(name)
-        self.read  = str(read)  if read  is not None else None
-        self.write = str(write) if write is not None else None
-        self.accumulate = bool(accumulate)
-
-    @property
-    def r(self): return self.read is not None
-    @property
-    def w(self): return self.write is not None
-    @property
-    def a(self): return self.accumulate
-
-    @property
-    def mode(self):
-        return (('r' if self.r else '') +
-                ('w' if self.w else '') +
-                ('a' if self.a else ''))
-
-    def __repr__(self):
-        args = []
-        if self.r: args.append("read='%s'"%self.read)
-        if self.w: args.append("write='%s'"%self.write)
-        if self.a: args.append("accumulate")
-        return self.name + " = Pointer(%s)"%', '.join(args)
-
-    def archetype(self):
-        component = self.read or self.write
-        if component is None:                       return None
-        elif component.startswith(self.mech_name):  return self.mech_name
-        elif component.startswith("membrane"):      return "membrane"
-        elif component.startswith("inside"):        return "inside"
-        elif component.startswith("outside"):       return "outside"
-        else: raise Exception("Unrecognised archetype: " + component)
-
-    @property
-    def index(self):
-        archetype = self.archetype()
-        if   archetype == "membrane":      return "membrane"
-        elif archetype == "inside":        return "inside"
-        elif archetype == "outside":       return "outside"
-        elif archetype == self.mech_name:  return "index"
-        else: raise NotImplementedError(archetype)
-
-    @property
-    def read_py(self):
-        if self.r:
-            if self.w and self.read != self.write:
-                return _CodeGen.mangle('read_' + self.name)
-            return _CodeGen.mangle(self.name)
-
-    @property
-    def write_py(self):
-        if self.w:
-            if self.r and self.read != self.write:
-                return _CodeGen.mangle('write_' + self.name)
-            return _CodeGen.mangle(self.name)
-
-    @property
-    def index_py(self):
-        return _CodeGen.mangle2(self.index)
 
 class _CodeBlock:
     def __init__(self, mechanism, AST):
