@@ -23,7 +23,7 @@ _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
     @classmethod
-    def name(self):
+    def get_name(self):
         """ A unique name for this reaction and all of its instances. """
         return type(self).__name__
 
@@ -158,7 +158,7 @@ class Model:
             r = copy.deepcopy(r)
             retval = r.initialize(self.database)
             if retval is not None: r = retval
-        name = str(r.name())
+        name = str(r.get_name())
         assert(name not in self.reactions)
         self.reactions[name] = r
         return r

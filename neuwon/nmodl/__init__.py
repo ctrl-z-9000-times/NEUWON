@@ -40,13 +40,13 @@ class NmodlMechanism(Reaction):
             try:
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
-                self._name, self.title, self.description = parser.gather_documentation()
+                self.name, self.title, self.description = parser.gather_documentation()
                 self.units = parser.gather_units()
                 self.parameters = ParameterTable().update(parser.gather_parameters())
                 self.pointers = PointerTable(self)
                 self.states = parser.gather_states()
                 for state in self.states:
-                    self.pointers.add(state, read=(self.name()+"."+state), write=(self.name()+"."+state))
+                    self.pointers.add(state, read=(self.name+"."+state), write=(self.name+"."+state))
                 self._gather_functions(parser)
                 self._gather_IO(parser)
                 self._solve()
@@ -57,7 +57,7 @@ class NmodlMechanism(Reaction):
         self.parameters.update(parameter_overrides, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
         for param in self.surface_area_parameters:
-            self.pointers.add(param, read=(self.name()+"."+param))
+            self.pointers.add(param, read=(self.name+"."+param))
         for var_name, kwargs in pointers.items():
             self.pointers.add(var_name, **kwargs)
 
@@ -94,8 +94,8 @@ class NmodlMechanism(Reaction):
             if parser.lookup(getattr(ANT, x)):
                 raise ValueError("\"%s\"s are not allowed."%x)
 
-    def name(self):
-        return self._name
+    def get_name(self):
+        return self.name
 
     def _gather_functions(self, parser):
         """ Process all blocks of code which contain imperative instructions.
@@ -281,7 +281,7 @@ class NmodlMechanism(Reaction):
         return states
 
     def _initialize_database(self, database):
-        cls = database.add_class(self.name(), doc=self.description)
+        cls = database.add_class(self.name, doc=self.description)
         cls.add_attribute("segment", dtype="Segment")
         for name in self.surface_area_parameters:
             cls.add_attribute(name, units=None) # TODO: units!
@@ -351,12 +351,12 @@ class NmodlMechanism(Reaction):
                 assert(x.archetype.name == "membrane")
                 locations[i] = x = x.index
             assert(isinstance(x, int))
-        ent_idx = database.create_entity(self.name(), len(locations), return_entity=False)
+        ent_idx = database.create_entity(self.name, len(locations), return_entity=False)
         ent_idx = np.array(ent_idx, dtype=np.int)
-        database.access(self.name() + "/insertions")[ent_idx] = locations
+        database.access(self.name + "/insertions")[ent_idx] = locations
         surface_areas = database.access("membrane/surface_areas")[locations]
         for name, (value, units) in self.surface_area_parameters.items():
-            param = database.access(self.name() + "/data/" + name)
+            param = database.access(self.name + "/data/" + name)
             x = 10000 # Convert from NEUWONs m^2 to NEURONs cm^2.
             param[ent_idx] = value * scale * surface_areas * x
         return ent_idx
@@ -365,7 +365,7 @@ class NmodlMechanism(Reaction):
         # for name, km in self.kinetic_models.items():
         #     1/0
         threads = 64
-        locations = access(self.name() + "/insertions")
+        locations = access(self.name + "/insertions")
         if not len(locations): return
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](*(access(db) for py, db in self.arguments))
