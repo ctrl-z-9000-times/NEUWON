@@ -43,8 +43,10 @@ class NmodlMechanism(Reaction):
                 self._name, self.title, self.description = parser.gather_documentation()
                 self.units = parser.gather_units()
                 self.parameters = ParameterTable().update(parser.gather_parameters())
-                self.states = parser.gather_states()
                 self.pointers = PointerTable(self)
+                self.states = parser.gather_states()
+                for state in self.states:
+                    self.pointers.add(state, read=(self.name()+"."+state), write=(self.name()+"."+state))
                 self._gather_functions(parser)
                 self._gather_IO(parser)
                 self._solve()
@@ -54,6 +56,8 @@ class NmodlMechanism(Reaction):
             _cache.save(self)
         self.parameters.update(parameter_overrides, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
+        for param in self.surface_area_parameters:
+            self.pointers.add(param, read=(self.name()+"."+param))
         for var_name, kwargs in pointers.items():
             self.pointers.add(var_name, **kwargs)
 
@@ -71,7 +75,6 @@ class NmodlMechanism(Reaction):
             self._initialize_database(database)
             self.pointers.initialize(database)
             self._compile_breakpoint_block(database)
-            self.pointers.verify_pointers_exist(database)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -278,17 +281,12 @@ class NmodlMechanism(Reaction):
         return states
 
     def _initialize_database(self, database):
-        # TODO: The pointers should really be updated as soon as the states block is parsed.
-        database.add_archetype(self.name(), doc=self.description)
-        database.add_attribute(self.name() + "/insertions", dtype="membrane")
+        cls = database.add_class(self.name(), doc=self.description)
+        cls.add_attribute("segment", dtype="Segment")
         for name in self.surface_area_parameters:
-            path = self.name() + "/data/" + name
-            database.add_attribute(path, units=None) # TODO: Keep track of the units!
-            self.pointers.add(name, read=path)
+            cls.add_attribute(name, units=None) # TODO: units!
         for name in self.states:
-            path = self.name() + "/data/" + name
-            database.add_attribute(path, initial_value=self.initial_state[name], units=name)
-            self.pointers.add(name, read=path, write=path)
+            cls.add_attribute(name, initial_value=self.initial_state[name], units=name)
 
     def _compile_breakpoint_block(self, database):
         # Link assignment to their pointers.

@@ -45,6 +45,7 @@ class PointerTable(dict):
                 elif ptr.target_class == "Outside": read = "Segment.outside"
                 else: raise NotImplementedError(ptr.target_class)
                 self.add(ptr.target_class, read=read)
+        self.verify_pointers_exist(database)
 
     def verify_pointers_exist(self, database):
         for ptr in self.values():
