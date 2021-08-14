@@ -1,3 +1,5 @@
+import math
+import sys
 
 # TODO: Consider making and documenting a convention regarding what gets mangled & how.
 # -> mangle1 for the user's nmodl variables.
@@ -21,14 +23,14 @@ def insert_indent(indent, string):
     return indent + "\n".join(indent + line for line in string.split("\n"))
 
 def py_exec(python, globals_, locals_=None):
-    if False: print(python)
+    if not isinstance(python, str): python = str(python)
     globals_["math"] = math
     try: exec(python, globals_, locals_)
     except:
         for noshow in ("__builtins__", "math"):
             if noshow in globals_: globals_.pop(noshow)
-        eprint("Error while exec'ing the following python code:")
-        eprint(python)
-        eprint("globals():", repr(globals_))
-        eprint("locals():", repr(locals_))
+        err_msg = "Error while exec'ing the following python code:\n" + python
+        err_msg + "\nglobals(): %s"%repr(globals_)
+        err_msg + "\nlocals(): %s"%repr(locals_)
+        print(err_msg, file=sys.stdout)
         raise
