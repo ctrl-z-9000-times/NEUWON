@@ -4,6 +4,12 @@ __all__ = []
 from neuwon.nmodl import code_gen
 
 class PointerTable(dict):
+    """
+    The PointerTable contains all references to persistant memory that the
+    mechanism uses.
+
+    PointerTable[NMODL_Variable_Name] -> Pointer
+    """
     def __init__(self, mechanism):
         super().__init__()
         self.mech_name = mechanism.name()
@@ -45,9 +51,9 @@ class PointerTable(dict):
                 elif ptr.target_class == "Outside": read = "Segment.outside"
                 else: raise NotImplementedError(ptr.target_class)
                 self.add(ptr.target_class, read=read)
-        self.verify_pointers_exist(database)
+        self._verify_pointers_exist(database)
 
-    def verify_pointers_exist(self, database):
+    def _verify_pointers_exist(self, database):
         for ptr in self.values():
             if ptr.r: database.get_component(ptr.read)
             if ptr.w: database.get_component(ptr.write)
