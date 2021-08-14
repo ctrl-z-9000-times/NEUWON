@@ -1,3 +1,6 @@
+""" Private module. """
+__all__ = []
+
 import math
 import sys
 

@@ -6,12 +6,10 @@ import math
 import os.path
 import itertools
 import copy
-from zlib import crc32
-import pickle
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real
 from neuwon.model import Reaction, Model
-from neuwon.nmodl import code_gen
+from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT
 from neuwon.nmodl.pointers import PointerTable, Pointer
 from scipy.linalg import expm
@@ -35,7 +33,7 @@ class NmodlMechanism(Reaction):
             floating-point values.
         """
         self.filename = os.path.abspath(str(filename))
-        if use_cache and _cache.try_loading(self.filename, self): pass
+        if use_cache and cache.try_loading(self.filename, self): pass
         else:
             try:
                 parser = NmodlParser(self.filename)
@@ -53,7 +51,7 @@ class NmodlMechanism(Reaction):
             except Exception:
                 eprint("ERROR while loading file", self.filename)
                 raise
-            _cache.save(self)
+            cache.save(self.filename, self)
         self.parameters.update(parameter_overrides, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
         for param in self.surface_area_parameters:
@@ -915,41 +913,6 @@ def _conserve_sum(states, target_sum):
     correction_factor = target_sum / accumulator
     for i in range(num_states):
         state[i] *= correction_factor
-
-class _cache:
-    @staticmethod
-    def _dir_and_file(filename):
-        cache_dir = os.path.abspath(".nmodl_cache")
-        cache_file = os.path.join(cache_dir, "%X.pickle"%crc32(bytes(filename, 'utf8')))
-        return (cache_dir, cache_file)
-
-    @staticmethod
-    def try_loading(filename, obj):
-        """ Returns True on success, False indicates that no changes were made to the object. """
-        cache_dir, cache_file = _cache._dir_and_file(filename)
-        if not os.path.exists(cache_file): return False
-        nmodl_ts  = os.path.getmtime(filename)
-        cache_ts  = os.path.getmtime(cache_file)
-        python_ts = os.path.getmtime(__file__)
-        if nmodl_ts > cache_ts: return False
-        if python_ts > cache_ts: return False
-        try:
-            with open(cache_file, 'rb') as f: data = pickle.load(f)
-        except Exception as err:
-            eprint("Warning: nmodl cache read failed:", str(err))
-            return False
-        obj.__dict__.update(data)
-        return True
-
-    @staticmethod
-    def save(obj):
-        cache_dir, cache_file = _cache._dir_and_file(obj.filename)
-        try:
-            os.makedirs(cache_dir, exist_ok=True)
-            with open(cache_file, 'wb') as f: pickle.dump(obj.__dict__, f)
-        except Exception as x:
-            eprint("Warning: cache error", str(x))
-
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
