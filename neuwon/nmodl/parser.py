@@ -1,4 +1,6 @@
 """ Private module. """
+__all__ = []
+
 import copy
 import neuwon.units
 import nmodl
@@ -10,7 +12,7 @@ import os.path
 
 ANT = nmodl.ast.AstNodeType
 
-class _NmodlParser:
+class NmodlParser:
     """ Attributes: filename, visitor, lookup, and symbols.
 
     Keep all references to the "nmodl" library separate from the main classes

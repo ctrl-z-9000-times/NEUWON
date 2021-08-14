@@ -9,10 +9,12 @@ import copy
 from zlib import crc32
 import pickle
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import Real, Entity, eprint
+from neuwon.database import Real, Entity
 from neuwon.model import Reaction, Model, Segment
-from neuwon.nmodl_parser import _NmodlParser, ANT
+from neuwon.nmodl.parser import NmodlParser, ANT
 from scipy.linalg import expm
+
+__all__ = ["NmodlMechanism"]
 
 def eprint(*args, **kwargs):
     """ Prints to standard error (sys.stderr). """
@@ -34,13 +36,13 @@ class NmodlMechanism(Reaction):
         if use_cache and _cache.try_loading(self.filename, self): pass
         else:
             try:
-                parser = _NmodlParser(self.filename)
+                parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self._name, self.title, self.description = parser.gather_documentation()
                 self.units = parser.gather_units()
-                self.parameters = _Parameters().update(parser.gather_parameters())
+                self.parameters = ParameterTable().update(parser.gather_parameters())
                 self.states = parser.gather_states()
-                self.pointers = {}
+                self.pointers = PointerTable(self)
                 self._gather_functions(parser)
                 self._gather_IO(parser)
                 self._solve()
@@ -50,7 +52,8 @@ class NmodlMechanism(Reaction):
             _cache.save(self)
         self.parameters.update(parameter_overrides, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
-        for var_name, kwargs in pointers.items(): _Pointer.update(self, var_name, **kwargs)
+        for var_name, kwargs in pointers.items():
+            self.pointers.add(var_name, **kwargs)
 
     def initialize(self, database):
         try:
@@ -65,9 +68,7 @@ class NmodlMechanism(Reaction):
             self._run_initial_block(database)
             self._initialize_database(database)
             self._compile_breakpoint_block(database)
-            for ptr in self.pointers.values():
-                if ptr.r: database.access(ptr.read)
-                if ptr.w: database.access(ptr.write)
+            self.pointers.verify_pointers_exist(database)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -76,7 +77,6 @@ class NmodlMechanism(Reaction):
         # TODO: support for NONLINEAR?
         # TODO: support for INCLUDE?
         # TODO: support for COMPARTMENT?
-        # TODO: sanity check for breakpoint block.
         disallow = (
             "FUNCTION_TABLE_BLOCK",
             "LON_DIFUSE",
@@ -118,23 +118,23 @@ class NmodlMechanism(Reaction):
         if AST.is_binary_expression():
             assert(AST.op.eval() == "=")
             lhsn = AST.lhs.name.get_node_name()
-            return [_AssignStatement(lhsn, _NmodlParser.parse_expression(AST.rhs),
+            return [_AssignStatement(lhsn, NmodlParser.parse_expression(AST.rhs),
                     derivative = is_derivative,)]
         # TODO: Catch procedure calls and raise an explicit error, instead of
         # just saying "unrecognised syntax". Procedure calls must be inlined by
         # the nmodl library.
         # TODO: Get line number from AST and include it in error message.
-        raise ValueError("Unrecognized syntax at %s."%_NmodlParser.to_nmodl(original))
+        raise ValueError("Unrecognized syntax at %s."%NmodlParser.to_nmodl(original))
 
     def _gather_IO(self, parser):
         """ Determine what external data the mechanism accesses. """
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
         if "v" in all_args:
-            _Pointer.update(self, "v", read="membrane/voltages")
+            self.pointers.add("v", read="Segment.voltage")
         if "area" in all_args:
-            _Pointer.update(self, "area", read="membrane/surface_areas")
+            self.pointers.add("area", read="Segment.surface_area")
         if "volume" in all_args:
-            _Pointer.update(self, "volume", read="membrane/inside/volumes")
+            self.pointers.add("volume", read="Segment.inside_volume")
         for x in parser.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
@@ -148,29 +148,29 @@ class NmodlMechanism(Reaction):
                 if var_name in equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in inside:
-                    _Pointer.update(self, var_name, read="membrane/inside/concentrations/%s"%ion)
+                    self.pointers.add(var_name, read="membrane/inside/concentrations/%s"%ion)
                 elif var_name in outside:
-                    _Pointer.update(self, var_name, read="outside/concentrations/%s"%ion)
+                    self.pointers.add(var_name, read="outside/concentrations/%s"%ion)
                 else: raise ValueError("Unrecognized species READ: \"%s\"."%var_name)
             for y in x.writelist:
                 var_name = y.name.value.eval()
                 if var_name in current:
                     raise NotImplementedError(var_name)
                 elif var_name in conductance:
-                    _Pointer.update(self, var_name,
+                    self.pointers.add(var_name,
                             write="membrane/conductances/%s"%ion, accumulate=True)
                 elif var_name in inside:
-                    _Pointer.update(self, var_name,
+                    self.pointers.add(var_name,
                             write="membrane/inside/delta_concentrations/%s"%ion, accumulate=True)
                 elif var_name in outside:
-                    _Pointer.update(self, var_name,
+                    self.pointers.add(var_name,
                             write="outside/delta_concentrations/%s"%ion, accumulate=True)
                 else: raise ValueError("Unrecognized species WRITE: \"%s\"."%var_name)
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                _Pointer.update(self, var_name, write="membrane/conductances/%s"%ion, accumulate=True)
+                self.pointers.add(var_name, write="membrane/conductances/%s"%ion, accumulate=True)
 
     def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the
@@ -281,11 +281,11 @@ class NmodlMechanism(Reaction):
         for name in self.surface_area_parameters:
             path = self.name() + "/data/" + name
             database.add_attribute(path, units=None) # TODO: Keep track of the units!
-            _Pointer.update(self, name, read=path)
+            self.pointers.add(name, read=path)
         for name in self.states:
             path = self.name() + "/data/" + name
             database.add_attribute(path, initial_value=self.initial_state[name], units=name)
-            _Pointer.update(self, name, read=path, write=path)
+            self.pointers.add(name, read=path, write=path)
 
     def _compile_breakpoint_block(self, database):
         # Link assignment to their pointers.
@@ -369,7 +369,7 @@ class NmodlMechanism(Reaction):
         blocks = (locations.shape[0] + (threads - 1)) // threads
         self._cuda_advance[blocks,threads](*(access(db) for py, db in self.arguments))
 
-class _Parameters(dict):
+class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
 
     _builtin_parameters = {
@@ -437,44 +437,53 @@ class _Parameters(dict):
                 if isinstance(stmt, _AssignStatement):
                     stmt.rhs = stmt.rhs.subs(substitutions)
 
-class _Pointer:
-    @staticmethod
-    def update(mechanism, name, read=None, write=None, accumulate=None):
-        """ Factory method for _Pointer objects.
+class PointerTable(dict):
+    def __init__(self, mechanism):
+        super().__init__()
+        self.mech_name = mechanism.name()
+
+    def add(self, name, read=None, write=None, accumulate=None):
+        """ Factory method for Pointer objects.
 
         Argument name is an nmodl varaible name.
         Arguments read & write are a database access paths.
         Argument accumulate must be given at the same time as the "write" argument.
         """
-        if name in mechanism.pointers:
-            self = mechanism.pointers[name]
+        if name in self:
+            ptr = self[name]
             if read is not None:
                 read = str(read)
-                if self.r and self.read != read:
+                if ptr.r and ptr.read != read:
                     eprint("Warning: Pointer override: %s read changed from '%s' to '%s'"%(
-                            self.name, self.read, read))
-                self.read = read
+                            ptr.name, ptr.read, read))
+                ptr.read = read
             if write is not None:
                 write = str(write)
-                if self.w and self.write != write:
+                if ptr.w and ptr.write != write:
                     eprint("Warning: Pointer override: %s write changed from '%s' to '%s'"%(
-                            self.name, self.write, write))
-                self.write = write
-                self.accumulate = bool(accumulate)
+                            ptr.name, ptr.write, write))
+                ptr.write = write
+                ptr.accumulate = bool(accumulate)
             else: assert accumulate is None
         else:
-            mechanism.pointers[name] = self = _Pointer(mechanism, name, read, write, accumulate)
-        archetype = self.archetype
-        if (archetype not in mechanism.pointers) and (archetype != mechanism.name()):
-            if   archetype == "membrane": component = mechanism.name() + "/insertions"
-            elif archetype == "inside":   component = "membrane/inside"
-            elif archetype == "outside":  component = "membrane/outside"
+            self[name] = ptr = Pointer(self.mech_name, name, read, write, accumulate)
+        archetype = ptr.archetype()
+        if (archetype not in self) and (archetype != self.mech_name):
+            if   archetype == "membrane": component = self.mech_name + ".insertion"
+            elif archetype == "inside":   component = "Segment.inside"
+            elif archetype == "outside":  component = "Segment.outside"
             else: raise NotImplementedError(archetype)
-            _Pointer.update(mechanism, archetype, read=component)
-        return self
+            self.add(archetype, read=component)
+        return ptr
 
-    def __init__(self, mechanism, name, read, write, accumulate):
-        self.nmodl_name = mechanism.name()
+    def verify_pointers_exist(self, database):
+        for ptr in self.values():
+            if ptr.r: database.get_component(ptr.read)
+            if ptr.w: database.get_component(ptr.write)
+
+class Pointer:
+    def __init__(self, mech_name, name, read, write, accumulate):
+        self.mech_name = mech_name
         self.name  = str(name)
         self.read  = str(read)  if read  is not None else None
         self.write = str(write) if write is not None else None
@@ -486,45 +495,52 @@ class _Pointer:
     def w(self): return self.write is not None
     @property
     def a(self): return self.accumulate
+
     @property
     def mode(self):
         return (('r' if self.r else '') +
                 ('w' if self.w else '') +
                 ('a' if self.a else ''))
+
     def __repr__(self):
         args = []
         if self.r: args.append("read='%s'"%self.read)
         if self.w: args.append("write='%s'"%self.write)
         if self.a: args.append("accumulate")
-        return self.name + " = _Pointer(%s)"%', '.join(args)
-    @property
+        return self.name + " = Pointer(%s)"%', '.join(args)
+
     def archetype(self):
         component = self.read or self.write
         if component is None:                       return None
-        elif component.startswith(self.nmodl_name): return self.nmodl_name
+        elif component.startswith(self.mech_name):  return self.mech_name
         elif component.startswith("membrane"):      return "membrane"
         elif component.startswith("inside"):        return "inside"
         elif component.startswith("outside"):       return "outside"
         else: raise Exception("Unrecognised archetype: " + component)
+
     @property
     def index(self):
-        if   self.archetype == "membrane":      return "membrane"
-        elif self.archetype == "inside":        return "inside"
-        elif self.archetype == "outside":       return "outside"
-        elif self.archetype == self.nmodl_name: return "index"
-        else: raise NotImplementedError(self.archetype)
+        archetype = self.archetype()
+        if   archetype == "membrane":      return "membrane"
+        elif archetype == "inside":        return "inside"
+        elif archetype == "outside":       return "outside"
+        elif archetype == self.mech_name:  return "index"
+        else: raise NotImplementedError(archetype)
+
     @property
     def read_py(self):
         if self.r:
             if self.w and self.read != self.write:
                 return _CodeGen.mangle('read_' + self.name)
             return _CodeGen.mangle(self.name)
+
     @property
     def write_py(self):
         if self.w:
             if self.r and self.read != self.write:
                 return _CodeGen.mangle('write_' + self.name)
             return _CodeGen.mangle(self.name)
+
     @property
     def index_py(self):
         return _CodeGen.mangle2(self.index)
@@ -594,7 +610,7 @@ class _CodeBlock:
 
 class _IfStatement:
     def __init__(self, mechanism, AST):
-        self.condition = _NmodlParser.parse_expression(AST.condition)
+        self.condition = NmodlParser.parse_expression(AST.condition)
         self.main_block = _CodeBlock(mechanism, AST.statement_block)
         self.elif_blocks = [_CodeBlock(mechanism, block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
@@ -818,7 +834,7 @@ class _LinearSystem:
 
 class _ConserveStatement:
     def __init__(self, mechanism, AST):
-        conserved_expr = _NmodlParser.parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
+        conserved_expr = NmodlParser.parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
         self.states = sorted(str(x) for x in conserved_expr.free_symbols)
         # Assume that the conserve statement was once in the form: sum-of-states = constant-value
         sum_symbol = sympy.Symbol("_CONSERVED_SUM")
