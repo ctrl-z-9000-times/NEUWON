@@ -282,6 +282,10 @@ class OutsideMethods:
         touched.difference_update(set(locations))
         self._initialize_outside_inner(list(touched))
 
+        outside_volumes = access("outside/volumes")
+        fh_space = self.fh_space * s_areas[membrane_idx] * 1000
+        outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
+
     def _initialize_outside_inner(self, locations):
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
         coordinates     = self.db.access("outside/coordinates").get()

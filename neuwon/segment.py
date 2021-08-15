@@ -1,112 +1,145 @@
-import numpy as np
+"""
+Segments are organized in a tree.
+The root of the tree is a sphere,
+all other segments are cylinders.
+"""
 
+import numpy as np
 from neuwon.database import epsilon
 
-class SegmentMethods:
-    """
-
-    Segments are organized in a tree.
-    The root of the tree is a sphere,
-    all other segments are cylinders.
-    """
+class Tree:
     @classmethod
-    def _make_Segment_class(cls, db,
-                initial_voltage = -70,
-                cytoplasmic_resistance = 1,
-                membrane_capacitance = .01,):
-        cls = db.add_class("Segment", cls)
-        cls.add_attribute("parent", dtype=cls, allow_invalid=True)
-        cls.add_connectivity_matrix("children", cls)
-        cls.add_attribute("coordinates", shape=(3,), units="μm")
-        cls.add_attribute("diameter", valid_range=(0.0, np.inf), units="μm")
-        cls.add_attribute("_primary", dtype=np.bool, doc="""
-                Primary segments are straightforward extensions of the parent
-                branch. Non-primary segments are lateral branches off to the side of
-                the parent branch.  """)
-        cls.add_attribute("length", units="μm", doc="""
-                The distance between this node and its parent node.
-                Root node lengths are their radius.\n""")
-        cls.add_attribute("surface_area", valid_range=(epsilon, np.inf), units="μm²")
-        cls.add_attribute("cross_sectional_area", units="μm²",
-                valid_range = (epsilon, np.inf))
-        cls.add_attribute("volumes", valid_range=(epsilon * (1e-6)**3, np.inf), units="Liters")
-        # Electic properties and internal variables.
-        cls.add_attribute("voltage", initial_value=float(initial_voltage), units="mV")
-        cls.add_attribute("axial_resistance", units="")
-        cls.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
-        cls.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
-                units="?",
-                valid_range=(epsilon, np.inf))
-        cls.add_class_attribute("membrane_capacitance", membrane_capacitance,
-                units="?",
-                valid_range=(epsilon, np.inf))
-        cls.add_attribute("_sum_conductances", units="Siemens", valid_range=(0, np.inf))
-        cls.add_attribute("_driving_voltage", units="mV")
-        # db.add_linear_system("membrane/diffusion", function=_electric_coefficients, epsilon=epsilon)
+    def _initialize(cls, database):
+        db_cls = database.add_class("Segment", cls)
+        db_cls.add_attribute("parent", dtype=db_cls, allow_invalid=True)
+        db_cls.add_connectivity_matrix("children", db_cls)
 
-        return cls.get_instance_type()
-
-    def __init__(self, parent, coordinates, diameter, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, parent):
         self.parent = parent
-        self.coordinates = coordinates
-        self.diameter = diameter
         # Add ourselves to the parent's children list.
         parent = self.parent
         if parent is not None:
             siblings = parent.children
             siblings.append(self)
             parent.children = siblings
-        # Determine _primary flag.
-        sphere = parent is None # Root is sphere.
-        if sphere:
+
+    def is_root(self):
+        return self.parent is None
+
+class Geometry(Tree):
+    @classmethod
+    def _initialize(cls, database):
+        super()._initialize(database)
+        db_cls = database.get_class("Segment")
+        db_cls.add_attribute("coordinates", shape=(3,), units="μm")
+        db_cls.add_attribute("diameter", valid_range=(0.0, np.inf), units="μm")
+        db_cls.add_attribute("_primary", dtype=np.bool, doc="""
+                Primary segments are straightforward extensions of the parent
+                branch. Non-primary segments are lateral branches off to the side of
+                the parent branch.  """)
+        db_cls.add_attribute("length", units="μm", doc="""
+                The distance between this node and its parent node.
+                Root node lengths are their radius.\n""")
+        db_cls.add_attribute("surface_area", valid_range=(epsilon, np.inf), units="μm²")
+        db_cls.add_attribute("cross_sectional_area", units="μm²",
+                valid_range = (epsilon, np.inf))
+        db_cls.add_attribute("volumes", valid_range=(epsilon * (1e-6)**3, np.inf), units="Liters")
+
+    def __init__(self, parent, coordinates, diameter):
+        super().__init__(parent)
+        self.coordinates    = coordinates
+        self.diameter       = diameter
+        # Determine the _primary flag.
+        if self.is_sphere():
             self._primary = False # Value does not matter.
-        elif parent.parent is None: # Parent is root / sphere.
-            self._primary = False # Spheres have no primary branches off of a them.
+        elif parent.is_sphere():
+            self._primary = False # Spheres have no primary branches off of them.
         else:
             # Set the first child added to a segment as the primary extension,
             # and all subsequent children as secondary branches.
-            self._primary = len(siblings) < 2
+            self._primary = len(self.parent.children) < 2
 
-        self._compute_geometry()
-        # self._compute_passive_electric_properties()
+        self._compute_length()
+        self._compute_surface_area()
+        self._compute_cross_sectional_area()
+        self._compute_intracellular_volume()
 
-    def _compute_geometry(self):
+    def is_sphere(self):
+        return self.parent is None
+
+    def is_cylinder(self):
+        return not self.is_sphere()
+
+    def _compute_length(self):
         parent = self.parent
-        sphere = parent is None # Root is sphere.
-        # Compute length.
-        if sphere:
-            # Spheres have no defined length, so use the radius instead.
-            self.length = 0.5 * self.diameter
-        else:
-            distance = np.linalg.norm(self.coordinates - parent.coordinates)
+        if self.is_sphere():
+            # Spheres have no defined length, so make one up instead instead.
+            self.length = (2/3) * self.diameter
+        elif self.is_cylinder():
+            length = np.linalg.norm(self.coordinates - parent.coordinates)
             # Subtract the parent's radius from the secondary nodes length,
             # to avoid excessive overlap between segments.
             if not self._primary:
                 parent_radius = 0.5 * parent.diameter
-                if distance < parent_radius + epsilon:
+                if length < parent_radius + epsilon:
                     # This segment is entirely enveloped within its parent. In
                     # this corner case allow the segment to protrude directly
                     # from the center of the parent instead of the surface.
                     pass
                 else:
-                    distance -= parent_radius
-            self.length = distance
-        # Compute surface areas.
-        if sphere:
-            self.surface_area = _surface_area_sphere(self.diameter)
-        else:
-            self.surface_area = _surface_area_cylinder(self.diameter, self.length)
+                    length -= parent_radius
+            self.length = length
+
+    def _compute_surface_area(self):
+        children = self.children
+        diameter = self.diameter
+        if self.is_sphere():
+            surface_area = _surface_area_sphere(diameter)
+        elif self.is_cylinder():
+            surface_area = _surface_area_cylinder(diameter, self.length)
             # Account for the surface area on the tips of terminal/leaf segments.
-            # if self.children.getrow(idx).getnnz() == 0:
-            #     self.surface_area += _area_circle(self.diameter)
-        # Compute cross-sectional areas.
+            if len(children) == 0:
+                surface_area += _area_circle(diameter)
+        # Account for the surface area covered by children.
+        for child in children:
+            if not child._primary:
+                attachment_diameter = min(diameter, child.diameter)
+                surface_area -= _area_circle(attachment_diameter)
+        self.surface_area = surface_area
+
+    def _compute_cross_sectional_area(self):
         self.cross_sectional_area = _area_circle(self.diameter)
-        # Compute intracellular volumes.
-        if sphere:
+
+    def _compute_intracellular_volume(self):
+        if self.parent is None:
             self.volume = 1000 * (4/3) * np.pi * (self.diameter/2) ** 3
         else:
             self.volume = 1000 * np.pi * (self.diameter/2) ** 2 * self.length
+
+class Electrics(Geometry):
+    @classmethod
+    def _initialize(cls, database,
+                initial_voltage = -70,
+                cytoplasmic_resistance = 1,
+                membrane_capacitance = .01,):
+        super()._initialize(database)
+        db_cls = database.get_class("Segment")
+        db_cls.add_attribute("voltage", initial_value=float(initial_voltage), units="mV")
+        db_cls.add_attribute("axial_resistance", units="")
+        db_cls.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
+        db_cls.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
+                units="?",
+                valid_range=(epsilon, np.inf))
+        db_cls.add_class_attribute("membrane_capacitance", membrane_capacitance,
+                units="?",
+                valid_range=(epsilon, np.inf))
+        db_cls.add_attribute("_sum_conductances", units="Siemens", valid_range=(0, np.inf))
+        db_cls.add_attribute("_driving_voltage", units="mV")
+        # db.add_linear_system("membrane/diffusion", function=_electric_coefficients, epsilon=epsilon)
+
+    def __init__(self, parent, coordinates, diameter):
+        super().__init__(parent, coordinates, diameter)
+        self._compute_passive_electric_properties()
 
     def _compute_passive_electric_properties(self):
         Ra = self.cytoplasmic_resistance
@@ -114,9 +147,9 @@ class SegmentMethods:
 
         # Compute axial membrane resistance.
         # TODO: This formula only works for cylinders.
-        self.axial_resistance = Ra * lengths[membrane_idx] / x_areas[membrane_idx]
+        self.axial_resistance = Ra * self.length / self.cross_sectional_area
         # Compute membrane capacitance.
-        self.capacitance = Cm * s_areas[membrane_idx]
+        self.capacitance = Cm * self.surface_area
 
         # TODO: Currently, diffusion from non-primary branches omits the section
         # of diffusive material between the parents surface and center.
@@ -126,14 +159,10 @@ class SegmentMethods:
         # -> For chemical diffusion: make a new attribute for the geometry terms
         #    in the diffusion equation, and include the new frustum in the new attribute.
 
-        outside_volumes = access("outside/volumes")
-        fh_space = self.fh_space * s_areas[membrane_idx] * 1000
-        outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
-
     @staticmethod
     def _electric_coefficients(access):
         """
-        Model the electric currents over the membrane surface.
+        Model the electric currents over the membrane surface (in the axial directions).
         Compute the coefficients of the derivative function:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """

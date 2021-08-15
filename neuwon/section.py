@@ -88,31 +88,6 @@ class Section(DB_Object):
         access("membrane/diameters")[m_idx]   = diameters
         access("membrane/shapes")[m_idx]      = shapes
         access("membrane/shells")[m_idx]      = shells
-        children = access("membrane/children")
-        write_rows = []
-        write_cols = []
-        for p, c in zip(parents, m_idx):
-            if p != NULL:
-                siblings = list(children[p].indices)
-                siblings.append(c)
-                write_rows.append(p)
-                write_cols.append(siblings)
-        data = [np.full(len(x), True) for x in write_cols]
-        access("membrane/children", sparse_matrix_write=(write_rows, write_cols, data))
-        primary    = access("membrane/primary")
-        all_parent = access("membrane/parents").get()
-        children   = access("membrane/children")
-        for p, m in zip(parents, m_idx):
-            if p == NULL: # Root.
-                primary[m] = False # Shape of root is always sphere, value does not matter.
-            elif all_parent[p] == NULL: # Parent is root.
-                primary[m] = False # Spheres have no primary branches off of a them.
-            else:
-                # Set the first child added to a segment as the primary extension,
-                # and all subsequent children as secondary branches.
-                primary[m] = (children[p].getnnz() == 1)
-        self._initialize_membrane_geometry(m_idx)
-        self._initialize_membrane_geometry([p for p in parents if p != NULL])
 
         # shell_radius = [1.0] # TODO
         # access("inside/shell_radius")[i_idx] = cp.tile(shell_radius, m_idx)
