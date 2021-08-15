@@ -13,6 +13,7 @@ def test_connectivity_matrix():
     all_foo = [Foo() for _ in range(num)]
     for q in all_foo:
         q.f = random.sample(all_foo, 2)
+    db.check()
 
     # Do a random walk through the graph, using the OOP API.
     cursor = start = random.choice(all_foo)

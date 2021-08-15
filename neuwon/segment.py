@@ -43,7 +43,7 @@ class Geometry(Tree):
         db_cls.add_attribute("surface_area", valid_range=(epsilon, np.inf), units="μm²")
         db_cls.add_attribute("cross_sectional_area", units="μm²",
                 valid_range = (epsilon, np.inf))
-        db_cls.add_attribute("volumes", valid_range=(epsilon * (1e-6)**3, np.inf), units="Liters")
+        db_cls.add_attribute("volume", valid_range=(epsilon * (1e-6)**3, np.inf), units="Liters")
 
     def __init__(self, parent, coordinates, diameter):
         super().__init__(parent)
@@ -65,7 +65,7 @@ class Geometry(Tree):
         self._compute_intracellular_volume()
 
     def is_sphere(self):
-        return self.parent is None
+        return self.is_root()
 
     def is_cylinder(self):
         return not self.is_sphere()
@@ -111,7 +111,7 @@ class Geometry(Tree):
         self.cross_sectional_area = _area_circle(self.diameter)
 
     def _compute_intracellular_volume(self):
-        if self.parent is None:
+        if self.is_sphere():
             self.volume = 1000 * (4/3) * np.pi * (self.diameter/2) ** 3
         else:
             self.volume = 1000 * np.pi * (self.diameter/2) ** 2 * self.length

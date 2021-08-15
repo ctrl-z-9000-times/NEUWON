@@ -21,6 +21,8 @@ def test_by_num_alive():
     for _ in range(2000): model.advance()
     assert (.01 < sparsity() < .06)
 
+    model.db.check()
+
 
 # def test_pickle():
 #     import pickle
