@@ -212,7 +212,9 @@ class DB_Class(_Documentation):
 
         Argument sort_key is unimplemented.
         """
-        if base_class and not doc: doc = base_class.__doc__
+        if not doc:
+            if base_class and base_class.__doc__:
+                doc = base_class.__doc__
         _Documentation.__init__(self, name, doc)
         assert isinstance(database, Database)
         self.database = database
@@ -226,10 +228,17 @@ class DB_Class(_Documentation):
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
         # Make a new subclass to represent instances which are part of *this* database.
-        bases = (_DB_Object,)
-        if base_class is not None: bases = (base_class,) + bases
+        if base_class:
+            for cls in base_class.mro()[:-1]:
+                if "__slots__" not in vars(cls):
+                    cls.__slots__ = ()
+        if base_class:
+            bases = (base_class, _DB_Object)
+        else:
+            bases = (_DB_Object,)
         __slots__ = ("_idx",)
-        if not hasattr(base_class, "__weakref__"): __slots__ += ("__weakref__",)
+        if not hasattr(base_class, "__weakref__"):
+            __slots__ += ("__weakref__",)
         self.instance_type = type(self.name, bases, {
                 "_cls": self,
                 "__slots__": __slots__,
