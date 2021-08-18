@@ -1,34 +1,32 @@
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import _DB_Object, Attribute, ClassAttribute, _Component
+import neuwon.database
 import collections
 import matplotlib.pyplot
 import numpy as np
 import scipy.interpolate
 import weakref
 
-# IDEA: What if I anchored the clock to the database, as a faux global?
-#       I could literally just write it into the db object.
-#   Pros:
-#       Simpler, cleaner API. user litteral can't fuck it up.
-#   Cons:
-#       Clock would be effectively global (one per database)
-#       Clock would be tied to database (but all the other tools already are as well...)
-#       Clock would be harder to test? no.
-# 
-#   How would I creat, access & control it? I need to sketch out an API before implementing.
-# The clock object will remain globally visible, for documentation purposes.
-# 
-
-
+def _weakref_wrapper(method):
+    method_ref = weakref.WeakMethod(method)
+    def call_if_able():
+        method = method_ref()
+        if method is not None:
+            return method()
+    return call_if_able
 
 class Clock:
     """ Clock and notification system. """
-    def __init__(self, tick_period:float, units:str=""):
+    def __init__(self, database:neuwon.database.Database, tick_period:float, units:str=""):
         """
         Argument tick_period is a duration of time.
 
         Argument units is the physical units for 'tick_period'. Optional.
         """
+        assert isinstance(database, neuwon.database.Database)
+        if database.clock is not None:
+            raise RuntimeError("Database already has a clock.")
+        database.clock = self
+        self.database = database
         self.dt = float(tick_period)
         self.ticks = 0
         self.units = str(units)
@@ -75,23 +73,19 @@ class Clock:
 
     def _call_callbacks(self):
         for i in reversed(range(len(self.callbacks))):
-            try: keep_alive = self.callbacks[i]()
-            except Exception:
-                raise RuntimeError("in callback "+repr(self.callbacks[i]))
+            keep_alive = self.callbacks[i]()
             if not keep_alive:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()
 
 class TimeSeriesBuffer:
     """ Buffer for timeseries data, and associated tools. """
-    def __init__(self, clock: Clock, max_length:float=np.inf):
+    def __init__(self, max_length:float=np.inf):
         """ Create a new empty buffer for managing time series data.
 
         Argument max_length is the maximum duration of time that the buffer may
                 contain before it discards the oldest data samples.
         """
-        self.clock = clock
-        assert isinstance(self.clock, Clock)
         self.max_length = float(np.inf if max_length is None else max_length)
         self.timeseries = collections.deque()
         self.timestamps = collections.deque()
@@ -118,18 +112,19 @@ class TimeSeriesBuffer:
         self.timestamps.clear()
         return self
 
-    def _setup_pointer(self, db_object, component):
-        self.db_object = db_object
-        assert isinstance(self.db_object, _DB_Object)
-        self.component = self.db_object.get_database_class().get(component)
+    def _setup_pointers(self, db_object, component):
+        assert isinstance(db_object, neuwon.database._DB_Object)
+        self.db_object  = db_object
+        db_class        = self.db_object.get_database_class()
+        self.clock      = db_class.get_database().get_clock()
+        self.component  = db_class.get(component)
         self.component_name = self.component.get_name()
-        # TODO: I feel like this should guard against users changing the
-        # component or the database.
+        # TODO: I feel like this should guard against users changing the component.
         # 
         # IDEA: If I dis-allow changing components then I can store the
         # component after first usage and make the argument optional therafter.
 
-    def record(self, db_object: _DB_Object, component: str, duration:float=np.inf) -> 'self':
+    def record(self, db_object: neuwon.database._DB_Object, component: str, duration:float=np.inf) -> 'self':
         """ Record data samples immediately after each clock tick.
 
         Recording can be interrupted at any time by the "stop" method.
@@ -141,8 +136,8 @@ class TimeSeriesBuffer:
         Argument duration is the period of time that it records for.
         """
         assert self.is_stopped()
-        self._setup_pointer(db_object, component)
-        self.clock.register_callback(weakref.WeakMethod(self._record_implementation))
+        self._setup_pointers(db_object, component)
+        self.clock.register_callback(_weakref_wrapper(self._record_implementation))
         self.record_duration = float(duration)
         return self
 
@@ -156,7 +151,7 @@ class TimeSeriesBuffer:
         self.record_duration -= self.clock.dt
         return True
 
-    def play(self, db_object: _DB_Object, component: str, loop:bool=False) -> 'self':
+    def play(self, db_object: neuwon.database._DB_Object, component: str, loop:bool=False) -> 'self':
         """ Play back the time series data.
 
         Play back can be interrupted at any time by the "stop" method.
@@ -169,8 +164,8 @@ class TimeSeriesBuffer:
                 reaches the end of the buffer.
         """
         assert self.is_stopped()
-        self._setup_pointer(db_object, component)
-        self.clock.register_callback(weakref.WeakMethod(self._play_implementation))
+        self._setup_pointers(db_object, component)
+        self.clock.register_callback(_weakref_wrapper(self._play_implementation))
         self.play_index = 0
         self.play_loop = bool(loop)
         return self
@@ -246,37 +241,34 @@ class TimeSeriesBuffer:
 class Trace:
     """
     http://web.archive.org/web/http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
-        Skip to Chapter 9.
+    Skip to Chapter 9.
     """
     # TODO: For now this is going to be constantly ON, with no resets or
     # anything. you make it and it just runs. I would like to add a reset
     # function to it, and make it alter the alpha/period durring the warm up
     # after init/reset. It's not expensive and its a nice thing to do.
-    def __init__(self, clock, db_object, period, mean=True, var=True):
+    def __init__(self, db_object, period, mean=True, var=True):
         """
         Argument db_object is one of:
             -> Attribute, ClassAttribute
             -> pair of (object, component)
         """
-        self.clock = clock
-        assert isinstance(self.clock, Clock)
-        self.period   = float(period)
-        self.alpha    = np.exp(-1.0 / self.period)
-        self.beta     = 1.0 - self.alpha
+        self.period = float(period)
         if var: assert mean
         self.mean = None
         self.var = None
 
-        if isinstance(db_object, _Component):
+        if isinstance(db_object, neuwon.database._DataComponent):
+            self.clock = db_object.get_database().get_clock()
             # Create database components for the mean and variance.
             if mean is True:
                 mean = db_object.get_name() + "_mean"
             if var is True:
                 var = db_object.get_name() + "_var"
             db_class = db_object.get_class()
-            if isinstance(db_object, Attribute):
+            if isinstance(db_object, neuwon.database.Attribute):
                 add_attr = db_class.add_attribute
-            elif isinstance(db_object, ClassAttribute):
+            elif isinstance(db_object, neuwon.database.ClassAttribute):
                 add_attr = db_class.add_class_attribute
             else:
                 raise TypeError(db_object)
@@ -286,9 +278,10 @@ class Trace:
             self.clock.register_callback(self._component_callback)
         else:
             self.db_object, component = db_object
-            assert isinstance(self.db_object, _DB_Object)
+            assert isinstance(self.db_object, neuwon.database._DB_Object)
             component = self.db_object.get_database_class().get(component)
             self.component_name = component.get_name()
+            self.clock = component.get_database().get_clock()
             # TODO: check component.dtype is sane.
             #       Also component.shape could be something other than 1.
             if mean:
@@ -298,11 +291,16 @@ class Trace:
                 else:
                     self.mean = initial_value
             if var: self.var = 0.0
-            self.clock.register_callback(weakref.WeakMethod(self._object_callback))
+            self.clock.register_callback(_weakref_wrapper(self._object_callback))
+
+        dt = self.clock.get_tick_period()
+        self.alpha  = np.exp(-dt / self.period)
+        self.beta   = 1.0 - self.alpha
 
     def _component_callback(self):
-        mean = self.mean.get()
-        var = self.var.get()
+        mean = self.mean.get_data()
+        var = self.var.get_data()
+        return True
 
     def _object_callback(self):
         value     = getattr(self.db_object, self.component_name)
@@ -310,3 +308,4 @@ class Trace:
         incr      = self.beta * diff
         self.mean = self.mean + incr
         self.var  = self.alpha * (self.var + diff * incr)
+        return True

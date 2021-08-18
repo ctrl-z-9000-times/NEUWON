@@ -19,6 +19,7 @@ class Database:
     def __init__(self):
         """ Create a new empty database. """
         self.db_classes = dict()
+        self.clock = None
 
     def add_class(self, name: str, base_class:type=None, doc:str="") -> 'DB_Class':
         return DB_Class(self, name, base_class=base_class, doc=doc)
@@ -78,6 +79,13 @@ class Database:
     def get_all_components(self) -> tuple:
         return tuple(itertools.chain.from_iterable(
                 x.components.values() for x in self.db_classes.values()))
+
+    def add_clock(self, tick_period:float, units:str="") -> 'neuwon.database.time.Clock':
+        from neuwon.database.time import Clock
+        return Clock(self, tick_period, units=units)
+
+    def get_clock(self) -> 'neuwon.database.time.Clock':
+        return self.clock
 
     def to_host(self) -> 'Database':
         """ Move all data to this python process's memory space. """
@@ -452,10 +460,10 @@ class _DataComponent(_Documentation):
 
     def _getter(self, instance):
         """ Get the instance's data value. """
-        raise NotImplementedError
+        raise NotImplementedError(type(self))
     def _setter(self, instance, value):
         """ Set the instance's data value. """
-        raise NotImplementedError
+        raise NotImplementedError(type(self))
 
     def get_data(self):
         """ Returns all data for this component. """
