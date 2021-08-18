@@ -249,7 +249,6 @@ class DB_Class(_Documentation):
                 "__module__": bases[0].__module__,
                 "__doc__": doc,
         })
-        self.instance_type.__init__.__doc__ = base_class.__init__.__doc__ # This modifies a shared object, which is probably a bug.
 
     __init__.__doc__ += _Documentation._doc_doc
 
@@ -659,12 +658,12 @@ class ClassAttribute(_DataComponent):
         self.data = self.initial_value
 
     __init__.__doc__ += "".join((
-            _DataComponent._dtype_doc,
-            _DataComponent._shape_doc,
-            _Documentation._doc_doc,
-            _DataComponent._units_doc,
-            _DataComponent._allow_invalid_doc,
-            _DataComponent._valid_range_doc,
+        _DataComponent._dtype_doc,
+        _DataComponent._shape_doc,
+        _Documentation._doc_doc,
+        _DataComponent._units_doc,
+        _DataComponent._allow_invalid_doc,
+        _DataComponent._valid_range_doc,
     ))
 
     def _getter(self, instance):
@@ -714,11 +713,11 @@ class Sparse_Matrix(_DataComponent):
         self._host_lil_mem = None
 
     __init__.__doc__ += "".join((
-            _DataComponent._dtype_doc,
-            _Documentation._doc_doc,
-            _DataComponent._units_doc,
-            _DataComponent._allow_invalid_doc,
-            _DataComponent._valid_range_doc,
+        _DataComponent._dtype_doc,
+        _Documentation._doc_doc,
+        _DataComponent._units_doc,
+        _DataComponent._allow_invalid_doc,
+        _DataComponent._valid_range_doc,
     ))
 
     @property
