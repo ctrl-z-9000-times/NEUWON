@@ -34,17 +34,13 @@ class Clock:
         self.units = str(units)
         self.callbacks = []
 
-    def clock(self) -> float:
-        """ Returns the current time. """
-        return self.ticks * self.dt
-
-    def time(self) -> float:
+    def get_time(self) -> float:
         """ Returns the current time. """
         return self.ticks * self.dt
 
     def __call__(self) -> float:
         """ Returns the current time. """
-        return self.clock()
+        return self.get_time()
 
     def get_tick_period(self) -> float:
         """ Returns the duration of each tick. """
