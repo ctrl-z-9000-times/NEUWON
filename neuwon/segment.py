@@ -6,6 +6,7 @@ all other segments are cylinders.
 
 import numpy as np
 from neuwon.database import epsilon
+import re
 
 class Tree:
     @classmethod
@@ -49,6 +50,7 @@ class Geometry(Tree):
         super().__init__(parent)
         self.coordinates    = coordinates
         self.diameter       = diameter
+        parent              = self.parent
         # Determine the _primary flag.
         if self.is_sphere():
             self._primary = False # Value does not matter.
@@ -57,10 +59,11 @@ class Geometry(Tree):
         else:
             # Set the first child added to a segment as the primary extension,
             # and all subsequent children as secondary branches.
-            self._primary = len(self.parent.children) < 2
+            self._primary = len(parent.children) < 2
 
         self._compute_length()
         self._compute_surface_area()
+        if parent: parent._compute_surface_area()
         self._compute_cross_sectional_area()
         self._compute_intracellular_volume()
 
@@ -75,7 +78,7 @@ class Geometry(Tree):
         if self.is_sphere():
             # Spheres have no defined length, so make one up instead instead.
             self.length = (2/3) * self.diameter
-        elif self.is_cylinder():
+        else:
             length = np.linalg.norm(self.coordinates - parent.coordinates)
             # Subtract the parent's radius from the secondary nodes length,
             # to avoid excessive overlap between segments.
@@ -95,7 +98,7 @@ class Geometry(Tree):
         diameter = self.diameter
         if self.is_sphere():
             surface_area = _surface_area_sphere(diameter)
-        elif self.is_cylinder():
+        else:
             surface_area = _surface_area_cylinder(diameter, self.length)
             # Account for the surface area on the tips of terminal/leaf segments.
             if len(children) == 0:
@@ -115,6 +118,25 @@ class Geometry(Tree):
             self.volume = 1000 * (4/3) * np.pi * (self.diameter/2) ** 3
         else:
             self.volume = 1000 * np.pi * (self.diameter/2) ** 2 * self.length
+
+    @classmethod
+    def load_swc(cls, swc_data):
+        # TODO: Arguments for coordinate offsets and rotations.
+        swc_data = str(swc_data)
+        if swc_data.endswith(".swc"):
+            with open(swc_data, 'rt') as f:
+                swc_data = f.read()
+        swc_data = re.sub(r"#.*", "", swc_data) # Remove comments.
+        swc_data = [x.strip() for x in swc_data.split("\n") if x.strip()]
+        entries = dict()
+        for line in swc_data:
+            cursor = iter(line.split())
+            sample_number = int(next(cursor))
+            structure_id = int(next(cursor))
+            coords = (float(next(cursor)), float(next(cursor)), float(next(cursor)))
+            radius = float(next(cursor))
+            parent = int(next(cursor))
+            entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
 
 class Electrics(Geometry):
     @classmethod
