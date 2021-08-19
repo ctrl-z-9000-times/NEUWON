@@ -254,26 +254,43 @@ class Trace:
             -> pair of (object, component)
         """
         self.period = float(period)
-        if var: assert mean
+        assert self.period > 0
+        assert mean
         self.mean = None
         self.var = None
 
         if isinstance(db_object, neuwon.database._DataComponent):
-            self.clock = db_object.get_database().get_clock()
-            # Create database components for the mean and variance.
-            if mean is True:
-                mean = db_object.get_name() + "_mean"
-            if var is True:
-                var = db_object.get_name() + "_var"
-            db_class = db_object.get_class()
-            if isinstance(db_object, neuwon.database.Attribute):
+            # Create new database components for the mean and variance.
+            self.component      = db_object
+            self.component_name = self.component.get_name()
+            self.clock          = self.component.get_database().get_clock()
+            if mean is True: mean = self.component_name + "_mean"
+            if var  is True: var  = self.component_name + "_var"
+            db_class = self.component.get_class()
+            if isinstance(self.component, neuwon.database.Attribute):
                 add_attr = db_class.add_attribute
-            elif isinstance(db_object, neuwon.database.ClassAttribute):
+            elif isinstance(self.component, neuwon.database.ClassAttribute):
                 add_attr = db_class.add_class_attribute
             else:
-                raise TypeError(db_object)
-            if mean: self.mean = add_attr(mean,)
-            if var: self.var = add_attr(var,)
+                raise TypeError(self.component)
+            initial_value = self.component.get_initial_value()
+            if initial_value is None:
+                initial_value = 0.0
+            self.mean = add_attr(mean, initial_value,
+                    dtype=self.component.get_dtype(),
+                    shape=self.component.get_shape(),
+                    units=self.component.get_units(),
+                    # doc=,
+                    # allow_invalid=False,
+                    # valid_range=,
+            )
+            if var:
+                self.var = add_attr(var,
+                        initial_value=0,
+                        dtype=self.component.get_dtype(),
+                        shape=self.component.get_shape(),
+                        units=self.component.get_units(),
+                    )
             # Don't use a weakref here because this modifies the global state.
             self.clock.register_callback(self._component_callback)
         else:
@@ -284,12 +301,11 @@ class Trace:
             self.clock = component.get_database().get_clock()
             # TODO: check component.dtype is sane.
             #       Also component.shape could be something other than 1.
-            if mean:
-                initial_value = component.get_initial_value()
-                if initial_value is None:
-                    self.mean = 0.0
-                else:
-                    self.mean = initial_value
+            initial_value = component.get_initial_value()
+            if initial_value is None:
+                self.mean = 0.0
+            else:
+                self.mean = initial_value
             if var: self.var = 0.0
             self.clock.register_callback(_weakref_wrapper(self._object_callback))
 
@@ -297,9 +313,21 @@ class Trace:
         self.alpha  = np.exp(-dt / self.period)
         self.beta   = 1.0 - self.alpha
 
+        # TODO: Set the mean to the current value.
+        pass
+
     def _component_callback(self):
-        mean = self.mean.get_data()
-        var = self.var.get_data()
+        mean  = self.mean.get_data()
+        var   = self.var.get_data()
+        value = self.component.get_data()
+
+        diff = value - mean
+        incr = self.beta * diff
+        mean = mean + incr
+        var  = self.alpha * (var + diff * incr)
+
+        self.mean.set_data(mean)
+        self.var.set_data(var)
         return True
 
     def _object_callback(self):

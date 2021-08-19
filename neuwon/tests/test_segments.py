@@ -20,6 +20,7 @@ def test_swc():
     db = Database()
     Geometry._initialize(db)
     Segment = db.get("Segment").get_instance_type()
+    # http://neuromorpho.org/neuron_info.jsp?neuron_name=109-6_5_6_L1_CA1_N2_CG
     my_neuron = Segment.load_swc("swc_files/109-6_5_6_L1_CA1_N2_CG.CNG.swc")
 
     segs = [x for x in db.get("Segment").get_all_instances() if x.is_cylinder()]

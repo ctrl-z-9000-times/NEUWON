@@ -50,30 +50,29 @@ def test_time_series_buffers():
         m.clock.tick()
     assert f2.bar == .5
 
-def test_object_traces():
-    mean = 12
-    std = .25
-
+def test_traces():
     m = Model()
     f = m.Foo()
-    t = Trace((f, "bar"), 100)
+    trace_obj  = Trace((f, "bar"), 100)
+    trace_attr = Trace(m.db.get("Foo.bar"), 200)
 
-    while m.clock() < 1000:
-        f.bar = np.random.normal(mean, std)
+    m.Foo()
+    m.Foo()
+    num_foo = len(m.db.get("Foo"))
+
+    mean = 12
+    std = .5
+
+    m.clock.reset()
+    while m.clock() < 2000:
+        m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
         m.clock.tick()
 
-    assert t.mean       == approx(mean, .1)
-    assert t.var ** .5  == approx(std,  .1)
-
-def test_attribute_traces():
-    # TODO: test the code paths for taking traces of entire components.
-
-    mean = 12
-    std = .25
-
-    m = Model()
-    f = m.Foo()
-    t = Trace(m.bar, 100)
-    m.clock.tick()
-
-    1/0
+    assert trace_obj.mean       == approx(mean, .1)
+    assert trace_obj.var ** .5  == approx(std,  .5)
+    
+    trace_mean = trace_attr.mean.get_data()
+    trace_var  = trace_attr.var.get_data()
+    for idx in range(num_foo):
+        assert trace_mean[idx]       == approx(mean, .1)
+        assert trace_var[idx] ** .5  == approx(std,  .5)
