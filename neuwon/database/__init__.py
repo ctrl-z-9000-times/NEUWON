@@ -310,6 +310,9 @@ class DB_Class(_Documentation):
         Get the database's internal representation of a data component that is
         attached to this DB_Class.
         """
+        if isinstance(name, _DataComponent):
+            assert name.get_class() is self
+            return name
         return self.components[str(name)]
 
     def get_data(self, name: str):

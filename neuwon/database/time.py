@@ -7,6 +7,8 @@ import scipy.interpolate
 import weakref
 
 def _weakref_wrapper(method):
+    # Note: Don't use weakrefs if the callback writes to the database or any
+    # other globally visible state.
     method_ref = weakref.WeakMethod(method)
     def call_if_able():
         method = method_ref()
@@ -165,7 +167,7 @@ class TimeSeriesBuffer:
         """
         assert self.is_stopped()
         self._setup_pointers(db_object, component)
-        self.clock.register_callback(_weakref_wrapper(self._play_implementation))
+        self.clock.register_callback(self._play_implementation)
         self.play_index = 0
         self.play_loop = bool(loop)
         return self
@@ -251,86 +253,87 @@ class Trace:
         """
         Argument db_object is one of:
             -> Attribute, ClassAttribute
+                    Will create new database components for the mean and variance.
             -> pair of (object, component)
         """
         self.period = float(period)
-        assert self.period > 0
+        assert self.period > 0.0
         assert mean
         self.mean = None
-        self.var = None
-
+        self.var  = None
+        # 
         if isinstance(db_object, neuwon.database._DataComponent):
-            # Create new database components for the mean and variance.
-            self.component      = db_object
-            self.component_name = self.component.get_name()
-            self.clock          = self.component.get_database().get_clock()
+            self.trace_attr = True
+            self.trace_obj  = False
+        else:
+            self.trace_attr = False
+            self.trace_obj  = True
+        # Get the data component.
+        if self.trace_attr:
+            self.component = db_object
+        elif self.trace_obj:
+            self.db_object, component = db_object
+            assert isinstance(self.db_object, neuwon.database._DB_Object)
+            self.component = self.db_object.get_database_class().get(component)
+        # Access all of the meta data from the data component.
+        self.component_name = self.component.get_name()
+        self.clock          = self.component.get_database().get_clock()
+        self._set_exp_rates(self.period)
+        dtype               = self.component.get_dtype()
+        assert dtype.kind == "f"
+        shape               = self.component.get_shape()
+        units               = self.component.get_units()
+        initial_value       = self.component.get_initial_value()
+        if initial_value is None: initial_value = np.zeros(shape, dtype=dtype)
+        db_class            = self.component.get_class()
+        # Register an on-tick callback with the clock.
+        if self.trace_attr:
+            self.clock.register_callback(self._attr_callback)
+        elif self.trace_obj:
+            self.clock.register_callback(_weakref_wrapper(self._obj_callback))
+        # Initialize mean and variance.
+        if self.trace_attr:
             if mean is True: mean = self.component_name + "_mean"
             if var  is True: var  = self.component_name + "_var"
-            db_class = self.component.get_class()
             if isinstance(self.component, neuwon.database.Attribute):
                 add_attr = db_class.add_attribute
             elif isinstance(self.component, neuwon.database.ClassAttribute):
                 add_attr = db_class.add_class_attribute
             else:
                 raise TypeError(self.component)
-            initial_value = self.component.get_initial_value()
-            if initial_value is None:
-                initial_value = 0.0
             self.mean = add_attr(mean, initial_value,
-                    dtype=self.component.get_dtype(),
-                    shape=self.component.get_shape(),
-                    units=self.component.get_units(),
-                    # doc=,
-                    # allow_invalid=False,
-                    # valid_range=,
-            )
-            if var:
-                self.var = add_attr(var,
-                        initial_value=0,
-                        dtype=self.component.get_dtype(),
-                        shape=self.component.get_shape(),
-                        units=self.component.get_units(),
-                    )
-            # Don't use a weakref here because this modifies the global state.
-            self.clock.register_callback(self._component_callback)
-        else:
-            self.db_object, component = db_object
-            assert isinstance(self.db_object, neuwon.database._DB_Object)
-            component = self.db_object.get_database_class().get(component)
-            self.component_name = component.get_name()
-            self.clock = component.get_database().get_clock()
-            # TODO: check component.dtype is sane.
-            #       Also component.shape could be something other than 1.
-            initial_value = component.get_initial_value()
-            if initial_value is None:
-                self.mean = 0.0
-            else:
-                self.mean = initial_value
-            if var: self.var = 0.0
-            self.clock.register_callback(_weakref_wrapper(self._object_callback))
+                    dtype=dtype, shape=shape, units=units,
+                    doc="Exponential moving average of '%s.%s'"%(db_class.get_name(), self.component_name),
+                    allow_invalid=self.component.allow_invalid,
+                    valid_range=self.component.valid_range,)
+            self.mean.set_data(self.component.get_data())
+            if var: self.var = add_attr(var, 0.0,
+                    dtype=dtype, shape=shape, units=units,
+                    doc="Exponential moving variance of '%s.%s'"%(db_class.get_name(), self.component_name),
+                    allow_invalid=self.component.allow_invalid,
+                    valid_range=self.component.valid_range,)
+        elif self.trace_obj:
+            self.mean = getattr(self.db_object, self.component_name)
+            if var: self.var = np.zeros(shape, dtype=dtype)
 
+    def _set_exp_rates(self, period):
         dt = self.clock.get_tick_period()
-        self.alpha  = np.exp(-dt / self.period)
+        self.alpha  = np.exp(-dt / period)
         self.beta   = 1.0 - self.alpha
 
-        # TODO: Set the mean to the current value.
-        pass
-
-    def _component_callback(self):
+    def _attr_callback(self):
         mean  = self.mean.get_data()
         var   = self.var.get_data()
         value = self.component.get_data()
-
-        diff = value - mean
-        incr = self.beta * diff
-        mean = mean + incr
-        var  = self.alpha * (var + diff * incr)
-
+        diff  = value - mean
+        incr  = self.beta * diff
+        mean  = mean + incr
+        var   = self.alpha * (var + diff * incr)
         self.mean.set_data(mean)
         self.var.set_data(var)
         return True
 
-    def _object_callback(self):
+    def _obj_callback(self):
         value     = getattr(self.db_object, self.component_name)
         diff      = value - self.mean
         incr      = self.beta * diff
