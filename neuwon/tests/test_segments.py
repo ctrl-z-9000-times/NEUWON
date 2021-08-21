@@ -1,5 +1,6 @@
 from neuwon.database import *
 from neuwon.segment import *
+import pytest
 
 def test_ball_and_stick():
     db = Database()
@@ -16,6 +17,7 @@ def test_ball_and_stick():
     # help(Segment)
     # db.check()
 
+@pytest.mark.skip()
 def test_swc():
     db = Database()
     Geometry._initialize(db)

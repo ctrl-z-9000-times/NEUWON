@@ -235,35 +235,54 @@ class DB_Class(_Documentation):
         self.instances = weakref.WeakValueDictionary()
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
-        # Make a new subclass to represent instances which are part of *this* database.
-        if base_class:
-            for cls in base_class.mro()[:-1]:
+        self._init_instance_type(base_class, doc)
+
+    def _init_instance_type(self, users_class, doc):
+        """ Make a new subclass to represent instances which are part of *this* database. """
+        # Fixup the user's class to use "__slots__".
+        if users_class:
+            for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
                     cls.__slots__ = ()
-        if base_class:
-            bases = (base_class, _DB_Object)
+        if users_class:
+            super_classes = (users_class, _DB_Object)
         else:
-            bases = (_DB_Object,)
+            super_classes = (_DB_Object,)
         __slots__ = ("_idx",)
-        if not hasattr(base_class, "__weakref__"):
+        if not hasattr(users_class, "__weakref__"):
             __slots__ += ("__weakref__",)
-        self.instance_type = type(self.name, bases, {
-                "_cls": self,
-                "__slots__": __slots__,
-                "__init__": self._instance__init__,
-                "__eq__": self._instance__eq__,
-                "get_unstable_index": self._instance_get_unstable_index,
-                "get_database_class": self._instance_get_database_class,
-                "__module__": bases[0].__module__,
-                "__doc__": doc,
-        })
+        escape = lambda s: s.encode("unicode_escape").decode("utf-8")
+        pycode = textwrap.dedent(f"""
+            class {self.name}(*super_classes):
+                "{escape(doc)}"
+                _cls = self
+                __slots__ = {__slots__}
+                __module__ = super_classes[0].__module__
+
+                def __init__(self, *args, **kwargs):
+                    # TODO pull doc from users base class.
+                    self._cls._init_instance(self)
+                    super().__init__(*args, **kwargs)
+
+                def __eq__(self, other):
+                    return (type(self) is type(other)) and (self._idx == other._idx)
+
+                def get_unstable_index(self):
+                    \"\"\" TODO: Explain how / when this index changes. \"\"\"
+                    return self._idx
+
+                def get_database_class(self):
+                    \"\"\" Get the database's internal representation of this object's type. \"\"\"
+                    return self._cls
+            """)
+        if False: print(pycode)
+        exec(pycode, locals())
+        self.instance_type = locals()[self.name]
 
     __init__.__doc__ += _Documentation._doc_doc
 
-    @staticmethod
-    def _instance__init__(new_obj, *args, **kwargs):
-        self = new_obj._cls
-        self.instances[id(new_obj)] = new_obj
+    def _init_instance(self, new_instance):
+        self.instances[id(new_instance)] = new_instance
         old_size  = self.size
         new_size  = old_size + 1
         self.size = new_size
@@ -274,22 +293,7 @@ class DB_Class(_Documentation):
             elif isinstance(x, ListAttribute): x._append(old_size, new_size)
             else: raise NotImplementedError(type(x))
         for x in self.referenced_by_sparse_matrix_columns: x._resize()
-        new_obj._idx = old_size
-        super(type(new_obj), new_obj).__init__(*args, **kwargs)
-
-    @staticmethod
-    def _instance__eq__(obj_1, obj2):
-        return (type(obj_1) is type(obj2)) and (obj_1._idx == obj2._idx)
-
-    @staticmethod
-    def _instance_get_unstable_index(db_object):
-        """ TODO: Explain how / when this index changes. """
-        return db_object._idx
-
-    @staticmethod
-    def _instance_get_database_class(db_object):
-        """ Get the database's internal representation of this object's type. """
-        return db_object._cls
+        new_instance._idx = old_size
 
     def get_instance_type(self) -> _DB_Object:
         """ Get the public / external representation of this DB_Class. """
