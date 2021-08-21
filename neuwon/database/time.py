@@ -81,7 +81,7 @@ class Clock:
                 self.callbacks.pop()
 
 class TimeSeriesBuffer:
-    """ Buffer for timeseries data, and associated tools. """
+    """ Buffer for timeseries data, and associated helper methods. """
     def __init__(self, max_length:float=np.inf):
         """ Create a new empty buffer for managing time series data.
 
@@ -323,14 +323,15 @@ class Trace:
 
     def _attr_callback(self):
         mean  = self.mean.get_data()
-        var   = self.var.get_data()
         value = self.component.get_data()
         diff  = value - mean
         incr  = self.beta * diff
         mean  = mean + incr
-        var   = self.alpha * (var + diff * incr)
         self.mean.set_data(mean)
-        self.var.set_data(var)
+        if self.var is not None:
+            var = self.var.get_data()
+            var = self.alpha * (var + diff * incr)
+            self.var.set_data(var)
         return True
 
     def _obj_callback(self):
@@ -338,5 +339,6 @@ class Trace:
         diff      = value - self.mean
         incr      = self.beta * diff
         self.mean = self.mean + incr
-        self.var  = self.alpha * (self.var + diff * incr)
+        if self.var is not None:
+            self.var = self.alpha * (self.var + diff * incr)
         return True
