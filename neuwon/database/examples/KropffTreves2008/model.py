@@ -1,6 +1,7 @@
 from htm import SDR
 from htm.encoders.coordinate import CoordinateEncoder
 from neuwon.database import *
+from neuwon.database.time import Trace
 import math
 import numpy as np
 import random
@@ -18,7 +19,7 @@ default_parameters = {
     'gain_rate':  0.001, # Not specified by authors.
     'psi_sat': 30.,
     'learning_rate': 0.001,
-    'learning_desensitization_rate': 0.1,  # Not specified by authors.
+    'learning_desensitization_period': 10,  # Not specified by authors.
 }
 
 class Model:
@@ -29,6 +30,7 @@ class Model:
         for key, value in parameters.items(): setattr(self, key, value)
 
         self.db = Database()
+        self.db.add_clock(1)
         self.GridCell = self.db.add_class("GridCell")
         self.PlaceCell = self.db.add_class("PlaceCell")
 
@@ -37,12 +39,12 @@ class Model:
 
         self.PlaceCell.add_attribute("r", doc="Firing rate")
         self.PlaceCell.add_sparse_matrix("J", self.GridCell, doc="Synapse weights")
-        self.PlaceCell.add_attribute("avg_r", 0)
+        Trace(self.PlaceCell.get("r"), self.learning_desensitization_period, var=False)
 
         self.GridCell.add_attribute("psi", doc="Firing rate")
-        self.GridCell.add_attribute("avg_psi", 0)
         self.GridCell.add_attribute("r_act", 0)
         self.GridCell.add_attribute("r_inact", 0)
+        Trace(self.GridCell.get("psi"), self.learning_desensitization_period, var=False)
 
         PC = self.PlaceCell.get_instance_type()
         GC = self.GridCell.get_instance_type()
@@ -60,8 +62,8 @@ class Model:
         self.gain = 1
         self.db.get_data("GridCell.r_act").fill(0)
         self.db.get_data("GridCell.r_inact").fill(0)
-        self.db.get_data("GridCell.avg_psi").fill(0)
-        self.db.get_data("PlaceCell.avg_r").fill(0)
+        self.db.get_data("GridCell.psi_mean").fill(0)
+        self.db.get_data("PlaceCell.r_mean").fill(0)
 
     def advance(self, coordinates, learn=True):
         # Set the place cell activity based on the positional coordinates.
@@ -95,12 +97,8 @@ class Model:
         self.gain  += self.gain_rate * (s - self.s0)
         # Hebbian learning.
         if not learn: return
-        avg_r   = self.PlaceCell.get_data("avg_r")
-        avg_psi = self.GridCell.get_data("avg_psi")
+        avg_r   = self.PlaceCell.get_data("r_mean")
+        avg_psi = self.GridCell.get_data("psi_mean")
         J = self.PlaceCell.get("J").to_coo().get_data()
         J.data += self.learning_rate * (r[J.row] * psi[J.col] - avg_r[J.row] * avg_psi[J.col])
-        # Update moving averages of cell activity.
-        avg_r   *= 1 - self.learning_desensitization_rate
-        avg_r   += r * self.learning_desensitization_rate
-        avg_psi *= 1 - self.learning_desensitization_rate
-        avg_psi += psi * self.learning_desensitization_rate
+        self.db.get_clock().tick() # Update moving averages of cell activity.

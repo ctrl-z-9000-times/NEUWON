@@ -252,6 +252,9 @@ class DB_Class(_Documentation):
         if not hasattr(users_class, "__weakref__"):
             __slots__ += ("__weakref__",)
         escape = lambda s: s.encode("unicode_escape").decode("utf-8")
+        for cls in super_classes:
+            init_doc = super_classes[0].__init__.__doc__
+            if init_doc is not None: break
         pycode = textwrap.dedent(f"""
             class {self.name}(*super_classes):
                 "{escape(doc)}"
@@ -260,7 +263,7 @@ class DB_Class(_Documentation):
                 __module__ = super_classes[0].__module__
 
                 def __init__(self, *args, **kwargs):
-                    # TODO pull doc from users base class.
+                    "{escape(init_doc)}"
                     self._cls._init_instance(self)
                     super().__init__(*args, **kwargs)
 
