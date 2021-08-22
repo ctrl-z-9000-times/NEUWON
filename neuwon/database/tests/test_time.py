@@ -51,28 +51,46 @@ def test_time_series_buffers():
     assert f2.bar == .5
 
 def test_traces():
+
+    inner_test_traces(
+        period = 100,
+        samples = 2000,
+        start = True,
+        mean = 12,
+        std  = 0.5,
+        tolerance = 0.1,)
+
+    inner_test_traces(
+        period  = 100,
+        samples = 100,
+        start = True,
+        mean = 4000,
+        std  =  600,
+        tolerance = 0.1,)
+
+# TODO: Test traces with a different sizes than (1,).
+
+def inner_test_traces(period, samples, start, mean, std, tolerance):
     m = Model()
     f = m.Foo()
-    trace_obj  = Trace((f, "bar"), 100)
-    trace_attr = Trace(m.db.get("Foo.bar"), 200)
+    trace_obj  = Trace((f, "bar"), period, start=start)
+    trace_attr = Trace(m.db.get("Foo.bar"), period, start=start)
 
-    m.Foo()
-    m.Foo()
+    for _ in range(32):
+        m.Foo()
     num_foo = len(m.db.get("Foo"))
 
-    mean = 12
-    std = .5
-
     m.clock.reset()
-    while m.clock() < 2000:
+    while m.clock() < samples:
         m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
         m.clock.tick()
 
-    assert trace_obj.mean       == approx(mean, .1)
-    assert trace_obj.var ** .5  == approx(std,  .5)
-    
-    trace_mean = trace_attr.mean.get_data()
-    trace_var  = trace_attr.var.get_data()
+    assert trace_obj.get_mean()                 == approx(mean, tolerance)
+    assert trace_obj.get_standard_deviation()   == approx(std,  tolerance)
+
+    trace_mean = trace_attr.get_mean()
+    trace_std  = trace_attr.get_standard_deviation()
     for idx in range(num_foo):
-        assert trace_mean[idx]       == approx(mean, .1)
-        assert trace_var[idx] ** .5  == approx(std,  .5)
+        assert trace_mean[idx]  == approx(mean, tolerance)
+        assert trace_std[idx]   == approx(std,  tolerance)
+    m.db.check()

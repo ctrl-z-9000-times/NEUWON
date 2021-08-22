@@ -244,14 +244,16 @@ class DB_Class(_Documentation):
             for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
                     cls.__slots__ = ()
+        # 
         if users_class:
             super_classes = (users_class, _DB_Object)
         else:
             super_classes = (_DB_Object,)
+        # 
         __slots__ = ("_idx",)
         if not hasattr(users_class, "__weakref__"):
             __slots__ += ("__weakref__",)
-        escape = lambda s: s.encode("unicode_escape").decode("utf-8")
+        # 
         init_doc = _DB_Object.__init__.__doc__
         if users_class:
             user_init = users_class.__init__
@@ -259,6 +261,9 @@ class DB_Class(_Documentation):
                 user_init_doc = user_init.__doc__
                 if user_init_doc is not None:
                     init_doc = user_init_doc
+        def escape(s):
+            """ Escape newlines so that doc-strings can be inserted into a single line string. """
+            return s.encode("unicode_escape").decode("utf-8")
         pycode = textwrap.dedent(f"""
             class {self.name}(*super_classes):
                 "{escape(doc)}"

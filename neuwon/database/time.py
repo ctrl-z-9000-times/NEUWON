@@ -241,33 +241,46 @@ class TimeSeriesBuffer:
         return len(self.timeseries)
 
 class Trace:
+    """ Exponentially weighted mean and standard deviation.
+
+    After every tick of the clock, this will automatically update its
+    measurement of a time-series variable's mean (average) and standard
+    deviation (spread).
     """
-    http://web.archive.org/web/http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
-    Skip to Chapter 9.
-    """
-    # TODO: For now this is going to be constantly ON, with no resets or
-    # anything. you make it and it just runs. I would like to add a reset
-    # function to it, and make it alter the alpha/period durring the warm up
-    # after init/reset. It's not expensive and its a nice thing to do.
-    def __init__(self, db_object, period, mean=True, var=True):
+    # References:
+    #       "Incremental calculation of weighted mean and variance"
+    #       Tony Finch, February 2009
+    #       http://web.archive.org/web/http://people.ds.cam.ac.uk/fanf2/hermes/doc/antiforgery/stats.pdf
+    #       See Chapter 9.
+    #
+    #       "The correct way to start an Exponential Moving Average (EMA)"
+    #       David Owen, 2017-01-31
+    #       https://blog.fugue88.ws/archives/2017-01/The-correct-way-to-start-an-Exponential-Moving-Average-EMA
+    #       Accessed: Aug 22, 2021.
+    #
+    def __init__(self, db_object, period:float, mean=True, var=True, start=True):
         """
         Argument db_object is one of:
             -> Attribute, ClassAttribute
                     Will create new database components for the mean and variance.
             -> pair of (object, component)
+
+        Argument period controls the length of time that a sample influences the
+        mean & std-dev. The weight of a sample is exp(-Δt / period)
+
+        Argument mean
+
+        Argument var
+
+        Argument start
+
         """
         self.period = float(period)
         assert self.period > 0.0
         assert mean
-        self.mean = None
-        self.var  = None
-        # 
-        if isinstance(db_object, neuwon.database._DataComponent):
-            self.trace_attr = True
-            self.trace_obj  = False
-        else:
-            self.trace_attr = False
-            self.trace_obj  = True
+        # Determine which mode of operation to use.
+        self.trace_attr = isinstance(db_object, neuwon.database._DataComponent)
+        self.trace_obj  = not self.trace_attr
         # Get the data component.
         if self.trace_attr:
             self.component = db_object
@@ -275,26 +288,22 @@ class Trace:
             self.db_object, component = db_object
             assert isinstance(self.db_object, neuwon.database._DB_Object)
             self.component = self.db_object.get_database_class().get(component)
-        # Access all of the meta data from the data component.
+        # Access all of the meta-data from the data component.
         self.component_name = self.component.get_name()
-        self.clock          = self.component.get_database().get_clock()
-        self._set_exp_rates(self.period)
+        db_class            = self.component.get_class()
         dtype               = self.component.get_dtype()
         assert dtype.kind == "f"
         shape               = self.component.get_shape()
         units               = self.component.get_units()
+        zero                = self._zero()
         initial_value       = self.component.get_initial_value()
-        if initial_value is None: initial_value = np.zeros(shape, dtype=dtype)
-        db_class            = self.component.get_class()
-        # Register an on-tick callback with the clock.
-        if self.trace_attr:
-            self.clock.register_callback(self._attr_callback)
-        elif self.trace_obj:
-            self.clock.register_callback(_weakref_wrapper(self._obj_callback))
+        if initial_value is None: initial_value = zero
+        if start: initial_value = zero
         # Initialize mean and variance.
         if self.trace_attr:
-            if mean is True: mean = self.component_name + "_mean"
-            if var  is True: var  = self.component_name + "_var"
+            if mean  is True: mean  = f"{self.component_name}_mean"
+            if var   is True: var   = f"{self.component_name}_variance"
+            if start is True: start = f"_{self.component_name}_start"
             if isinstance(self.component, neuwon.database.Attribute):
                 add_attr = db_class.add_attribute
             elif isinstance(self.component, neuwon.database.ClassAttribute):
@@ -303,23 +312,48 @@ class Trace:
                 raise TypeError(self.component)
             self.mean = add_attr(mean, initial_value,
                     dtype=dtype, shape=shape, units=units,
-                    doc="Exponential moving average of '%s.%s'"%(db_class.get_name(), self.component_name),
+                    doc=f"Exponential moving average of '{db_class.get_name()}.{self.component_name}'",
                     allow_invalid=self.component.allow_invalid,
                     valid_range=self.component.valid_range,)
-            self.mean.set_data(self.component.get_data())
-            if var: self.var = add_attr(var, 0.0,
+            self.var = add_attr(var, zero,
                     dtype=dtype, shape=shape, units=units,
-                    doc="Exponential moving variance of '%s.%s'"%(db_class.get_name(), self.component_name),
-                    allow_invalid=self.component.allow_invalid,
-                    valid_range=self.component.valid_range,)
+                    doc=f"Exponential moving variance of '{db_class.get_name()}.{self.component_name}'",
+                    allow_invalid=self.component.allow_invalid,) if var else None
+            self.start = add_attr(start, 1.0,
+                    dtype=dtype,
+                    doc="Weight of moving average samples which occurred before initialization.",
+                    allow_invalid=False,
+                    valid_range=(0.0, 1.0),) if start else None
         elif self.trace_obj:
-            self.mean = getattr(self.db_object, self.component_name)
-            if var: self.var = np.zeros(shape, dtype=dtype)
+            self.mean  = initial_value
+            self.var   = zero if var else None
+            self.start = 1.0  if start else None
+        # Calculate the exponential rates: alpha & beta.
+        self.clock = self.component.get_database().get_clock()
+        dt         = self.clock.get_tick_period()
+        self.alpha = np.exp(-dt / self.period)
+        self.beta  = 1.0 - self.alpha
+        # Register an on-tick callback with the clock.
+        if   self.trace_attr: callback = self._attr_callback
+        elif self.trace_obj:  callback = _weakref_wrapper(self._obj_callback)
+        self.clock.register_callback(callback)
+        # Collect the current value as the first data sample.
+        callback()
 
-    def _set_exp_rates(self, period):
-        dt = self.clock.get_tick_period()
-        self.alpha  = np.exp(-dt / period)
-        self.beta   = 1.0 - self.alpha
+    def reset(self):
+        if self.trace_attr:
+            for comp in (self.mean, self.var, self.start):
+                if comp is not None:
+                    comp.get_data().fill(comp.get_initial_value())
+        elif self.trace_obj:
+            self.mean = self._zero()
+            if self.start is not None: self.start = 1.0
+            if self.var   is not None: self.var = self._zero()
+
+    def _zero(self):
+        dtype = self.component.get_dtype()
+        shape = self.component.get_shape()
+        return np.zeros(shape, dtype=dtype)
 
     def _attr_callback(self):
         mean  = self.mean.get_data()
@@ -328,6 +362,10 @@ class Trace:
         incr  = self.beta * diff
         mean  = mean + incr
         self.mean.set_data(mean)
+        if self.start is not None:
+            start = self.start.get_data()
+            start = self.alpha * start
+            self.start.set_data(start)
         if self.var is not None:
             var = self.var.get_data()
             var = self.alpha * (var + diff * incr)
@@ -335,10 +373,37 @@ class Trace:
         return True
 
     def _obj_callback(self):
+        if self.start is not None:
+            self.start *= self.alpha
         value     = getattr(self.db_object, self.component_name)
         diff      = value - self.mean
         incr      = self.beta * diff
-        self.mean = self.mean + incr
         if self.var is not None:
-            self.var = self.alpha * (self.var + diff * incr)
+            # mean = self.mean
+            mean = self.mean / (1.0 - self.start)
+            self.var = self.alpha * (self.var + self.beta * (value - mean) ** 2)
+        self.mean = self.mean + incr
         return True
+
+    def get_mean(self):
+        if self.trace_attr:
+            if self.start is not None:
+                return self.mean.get_data() / (1.0 - self.start.get_data())
+            else:
+                return self.mean.get_data()
+        elif self.trace_obj:
+            if self.start is not None:
+                return self.mean / (1.0 - self.start)
+            else:
+                return self.mean
+
+    def get_variance(self):
+        # TODO: Should variance have a startup correction factor, like mean?
+        if self.trace_attr:
+            return self.var.get_data()
+        elif self.trace_obj:
+            return self.var / (1.0 - self.start)
+            return self.var
+
+    def get_standard_deviation(self):
+        return self.get_variance() ** 0.5
