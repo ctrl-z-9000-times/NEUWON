@@ -39,12 +39,12 @@ class Model:
 
         self.PlaceCell.add_attribute("r", doc="Firing rate")
         self.PlaceCell.add_sparse_matrix("J", self.GridCell, doc="Synapse weights")
-        Trace(self.PlaceCell.get("r"), self.learning_desensitization_period, var=False, start=False)
+        Trace(self.PlaceCell.get("r"), self.learning_desensitization_period, variance=False, start=False)
 
         self.GridCell.add_attribute("psi", doc="Firing rate")
         self.GridCell.add_attribute("r_act", 0)
         self.GridCell.add_attribute("r_inact", 0)
-        Trace(self.GridCell.get("psi"), self.learning_desensitization_period, var=False, start=False)
+        Trace(self.GridCell.get("psi"), self.learning_desensitization_period, variance=False, start=False)
 
         PC = self.PlaceCell.get_instance_type()
         GC = self.GridCell.get_instance_type()

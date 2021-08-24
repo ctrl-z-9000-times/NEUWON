@@ -1,14 +1,11 @@
-"""
-Segments are organized in a tree.
-The root of the tree is a sphere,
-all other segments are cylinders.
-"""
-
 import numpy as np
 from neuwon.database import epsilon
 import re
 
 class Tree:
+    """
+    Segments are organized in a tree.
+    """
     @classmethod
     def _initialize(cls, database):
         db_cls = database.add_class("Segment", cls)
@@ -28,6 +25,10 @@ class Tree:
         return self.parent is None
 
 class Geometry(Tree):
+    """
+    The root of the tree is a sphere,
+    all other segments are cylinders.
+    """
     @classmethod
     def _initialize(cls, database):
         super()._initialize(database)
@@ -73,6 +74,9 @@ class Geometry(Tree):
     def is_cylinder(self):
         return not self.is_sphere()
 
+    # TODO: Do not subtract redundant length from the "length" attr. Only do
+    # that for the surface area and volume, but keep the length attr pure.
+
     def _compute_length(self):
         parent = self.parent
         if self.is_sphere():
@@ -82,15 +86,15 @@ class Geometry(Tree):
             length = np.linalg.norm(self.coordinates - parent.coordinates)
             # Subtract the parent's radius from the secondary nodes length,
             # to avoid excessive overlap between segments.
-            if not self._primary:
-                parent_radius = 0.5 * parent.diameter
-                if length < parent_radius + epsilon:
-                    # This segment is entirely enveloped within its parent. In
-                    # this corner case allow the segment to protrude directly
-                    # from the center of the parent instead of the surface.
-                    pass
-                else:
-                    length -= parent_radius
+            # if not self._primary:
+            #     parent_radius = 0.5 * parent.diameter
+            #     if length < parent_radius + epsilon:
+            #         # This segment is entirely enveloped within its parent. In
+            #         # this corner case allow the segment to protrude directly
+            #         # from the center of the parent instead of the surface.
+            #         pass
+            #     else:
+            #         length -= parent_radius
             self.length = length
 
     def _compute_surface_area(self):
