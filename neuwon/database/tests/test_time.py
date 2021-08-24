@@ -37,6 +37,7 @@ def test_time_series_buffers():
 
     f = m.Foo()
     b.record(f, "bar")
+    b.clear()
     for i in range(1, 51):
         f.bar = (i / 10) % 2
         m.clock.tick()
@@ -51,37 +52,57 @@ def test_time_series_buffers():
     assert f2.bar == .5
 
 def test_traces():
+    # Test no samples / very few samples.
+    for samples in range(4):
+        inner_test_traces(
+            period      = 100,
+            samples     = samples,
+            start       = True,
+            mean        = 42,
+            std         = 0,
+            tolerance   = 1e-9,)
 
     inner_test_traces(
-        period = 100,
-        samples = 2000,
-        start = True,
-        mean = 12,
-        std  = 0.5,
-        tolerance = 0.1,)
+        period      =   50,
+        samples     = 1000,
+        start       = False, # Test no-start
+        mean        = 12,
+        std         = 0.5,
+        tolerance   = 0.1,)
 
+    for device in [False, True]: # Test on GPU.
+        # Test num-samples == period
+        inner_test_traces(
+            period      = 100,
+            samples     = 100,
+            start       = True,
+            mean        = 4000,
+            std         =  600,
+            tolerance   = 0.1,
+            device      = device,)
+
+def test_trace_averages():
+    """ period >> num-samples. """
     inner_test_traces(
-        period  = 100,
-        samples = 100,
-        start = True,
-        mean = 4000,
-        std  =  600,
-        tolerance = 0.1,)
+        period      = 1e9,
+        samples     = 2e3,
+        start       = True,
+        mean        = -120,
+        std         = 0.3,
+        tolerance   = 0.02,)
 
-# TODO: Test traces with a different sizes than (1,).
-
-def inner_test_traces(period, samples, start, mean, std, tolerance):
+def inner_test_traces(period, samples, start, mean, std, tolerance, device=False):
     m = Model()
+    if device: m.db.to_device()
     f = m.Foo()
-    trace_obj  = Trace((f, "bar"), period, start=start)
-    trace_attr = Trace(m.db.get("Foo.bar"), period, start=start)
-
     for _ in range(32):
         m.Foo()
     num_foo = len(m.db.get("Foo"))
+    m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
 
-    m.clock.reset()
-    while m.clock() < samples:
+    trace_obj  = Trace((f, "bar"), period)
+    trace_attr = Trace(m.db.get("Foo.bar"), period, start=start)
+    while m.db.clock() < samples:
         m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
         m.clock.tick()
 
@@ -90,7 +111,12 @@ def inner_test_traces(period, samples, start, mean, std, tolerance):
 
     trace_mean = trace_attr.get_mean()
     trace_std  = trace_attr.get_standard_deviation()
+    if device:
+        trace_mean = trace_mean.get()
+        trace_std  = trace_std.get()
     for idx in range(num_foo):
         assert trace_mean[idx]  == approx(mean, tolerance)
         assert trace_std[idx]   == approx(std,  tolerance)
     m.db.check()
+    trace_obj.reset()
+    trace_attr.reset()

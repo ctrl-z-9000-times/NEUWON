@@ -182,6 +182,8 @@ class _Documentation:
         Argument doc is an optional documentation string.
         """
 
+# TODO: Make this public for the docs, so that I have a way to refer to objects
+# that are managed by the DB...
 class _DB_Object:
     """ Super class for the external representation of a class.
 
@@ -647,7 +649,10 @@ class Attribute(_DataComponent):
         size = len(self._cls)
         assert len(value) == size
         self.data = self._alloc(size)
-        self.data[:size] = value
+        if self.mem == 'cuda':
+            self.data[:size] = cupy.array(value, dtype=self.dtype)
+        else:
+            self.data[:size] = value
         if self.initial_value is not None:
             self.data[size:].fill(self.initial_value)
 
