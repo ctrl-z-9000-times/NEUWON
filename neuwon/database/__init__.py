@@ -15,6 +15,9 @@ epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
 
+# TODO: Implement method free().
+# TODO: Implement method sort().
+
 class Database:
     def __init__(self):
         """ Create a new empty database. """
@@ -534,10 +537,11 @@ class _DataComponent(_Documentation):
         reference = getattr(self, 'reference', False)
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
-            if reference: assert xp.all(xp.less(data, reference.size)), self.name + " is NULL"
+            if reference:
+                assert xp.all(xp.less(data, reference.size)), self.name + " is NULL"
             else:
-                kind = data.dtype.kind
-                if kind in ("f", "c"): assert not xp.any(xp.isnan(data)), self.name + " is NaN"
+                if data.dtype.kind in ("f", "c"):
+                    assert not xp.any(xp.isnan(data)), self.name + " is NaN"
         lower_bound, upper_bound = self.valid_range
         if lower_bound is not None:
             assert xp.all(xp.less_equal(lower_bound, data)), self.name + " less than %g"%lower_bound

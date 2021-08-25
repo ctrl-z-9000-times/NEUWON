@@ -4,7 +4,7 @@ import pytest
 
 def test_ball_and_stick():
     db = Database()
-    Electrics._initialize(db)
+    SegmentMethods._initialize(db)
     Segment = db.get("Segment").get_instance_type()
     ball = Segment(parent=None, coordinates=[0,0,0], diameter=42)
     stick = []
