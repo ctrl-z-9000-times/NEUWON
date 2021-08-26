@@ -23,7 +23,7 @@ class Scene:
                 objects[idx] = Sphere(seg.coordinates, 0.5 * seg.diameter, nslices)
             elif seg.is_cylinder():
                 objects[idx] = Cylinder(seg.coordinates, seg.parent.coordinates,
-                                        seg.diameter, nslices, cap_A=False)
+                                        seg.diameter, nslices)
         vertices = [obj.get_vertices() for obj in objects]
         indices  = [obj.get_indices() for obj in objects]
         offsets  = np.cumsum([len(x) for x in vertices])
@@ -35,6 +35,8 @@ class Scene:
             self.segments[lower:upper] = idx
         self.vertices = np.vstack(vertices)
         self.indices  = np.vstack(indices)
+        # TODO: Move these arrays to the GPU now, instead of copying them at
+        # render time. Use VBO's?
 
     def draw(self, colors=None, interpolate=False):
         glEnableClientState(GL_VERTEX_ARRAY)
@@ -191,13 +193,31 @@ def main():
 
     db = ball_and_stick()
 
+    move_speed = .5
+    move_direction = (0.0,0.0,0.0)
+
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 quit()
 
-        glTranslatef(0.0, 0.0, -.1)
+        move_direction = [0.0,0.0,0.0]
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_w]:
+            move_direction[2] += move_speed
+        if keys[pygame.K_a]:
+            move_direction[0] += move_speed
+        if keys[pygame.K_s]:
+            move_direction[2] -= move_speed
+        if keys[pygame.K_d]:
+            move_direction[0] -= move_speed
+        if keys[pygame.K_SPACE]:
+            move_direction[1] -= move_speed
+        if keys[pygame.K_LCTRL]:
+            move_direction[1] += move_speed
+        glTranslatef(*move_direction)
+
         # glRotatef(1, 3, 1, 1)
         glClearColor(0,0,0,0) # Background color.
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
