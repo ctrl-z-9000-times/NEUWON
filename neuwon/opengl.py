@@ -2,17 +2,18 @@ import math
 import numpy as np
 import pygame
 from pygame.locals import *
+from scipy.spatial.transform import Rotation
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
-from neuwon.database import Pointer
+from neuwon.database import Database, Pointer, epsilon
 
 # MEMO: Don't optimize this code.
 
 class Scene:
-    def __init__(self, database, lod=.5):
+    def __init__(self, database, lod=2.5):
         lod     = float(lod)
         Segment = database.get("Segment")
         objects = np.zeros(len(Segment), dtype=object)
@@ -117,12 +118,12 @@ class Cylinder(Primative):
         self.vertices = triangle_strip
         self.indices  = np.empty((2 * num_slices, 3), dtype=np.uint32)
         for i in range(num_slices):
-            self.indices[2*i,   0] = i * 2
+            self.indices[2*i,   2] = i * 2
             self.indices[2*i,   1] = i * 2 + 1
-            self.indices[2*i,   2] = i * 2 + 2
-            self.indices[2*i+1, 0] = i * 2 + 3
+            self.indices[2*i,   0] = i * 2 + 2
+            self.indices[2*i+1, 2] = i * 2 + 3
             self.indices[2*i+1, 1] = i * 2 + 2
-            self.indices[2*i+1, 2] = i * 2 + 1
+            self.indices[2*i+1, 0] = i * 2 + 1
 
 class Disk:
     def __init__(self,):
@@ -161,9 +162,109 @@ def _rotateAlign(v1, v2):
     return result
 
 
+class Viewport:
+    def __init__(self, window_size=(800,600), move_speed = .02):
+        pygame.init()
+        pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
+        self.clock = pygame.time.Clock()
+
+        self.window_size = window_size = pygame.display.get_window_size()
+        self.background_color = [0,0,0,0]
+        self.fps = 60.
+        self.fov = 45.
+        self.move_speed = float(move_speed)
+        self.turn_speed = float(move_speed) / 100
+        self.camera_pos   = np.array([0.0, 0.0, 0.0])
+        self.camera_pitch = 0.0
+        self.camera_yaw   = 0.0
+        self.update_camera_rotation_matrix()
+        self.camera_forward = np.array([ 0.0, 0.0, -1.0])
+        self.camera_up      = np.array([ 0.0, 1.0, 0.0])
+
+        pygame.mouse.set_visible(False)
+        self.window_center = [0.5 * x for x in window_size]
+
+        glEnable(GL_DEPTH_TEST)
+        glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
+        glEnable(GL_CULL_FACE)
+
+    def set_scene(self, scene_or_database):
+        if isinstance(scene_or_database, Database):
+            self.scene = Scene(scene_or_database)
+        elif isinstance(scene_or_database, Scene):
+            self.scene = scene_or_database
+        else: raise TypeError(scene_or_database)
+
+    def tick(self):
+        dt = self.clock.tick(self.fps)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
+        self.read_keyboard(dt)
+        self.read_mouse(dt)
+        self.setup_camera()
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+        glClearColor(*self.background_color)
+        self.scene.draw()
+        pygame.display.flip()
+        if False:
+            print("Camera Position", self.camera_pos)
+            print("Camera Pitch", self.camera_pitch)
+            print("Camera Yaw  ", self.camera_yaw)
+
+    def read_keyboard(self, dt):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_w]:
+            self.move_camera([0.0, 0.0, -self.move_speed * dt])
+        if keys[pygame.K_s]:
+            self.move_camera([0.0, 0.0, +self.move_speed * dt])
+        if keys[pygame.K_a]:
+            self.move_camera([-self.move_speed * dt, 0, 0])
+        if keys[pygame.K_d]:
+            self.move_camera([+self.move_speed * dt, 0, 0])
+        if keys[pygame.K_SPACE]:
+            self.camera_pos[1] += self.move_speed * dt
+        if keys[pygame.K_LCTRL]:
+            self.camera_pos[1] -= self.move_speed * dt
+
+    def read_mouse(self, dt):
+        mouse_pos = pygame.mouse.get_pos()
+        pygame.mouse.set_pos(self.window_center)
+        delta = [mouse_pos[dim] - self.window_center[dim] for dim in range(2)]
+        self.camera_yaw   += delta[0] * self.turn_speed * dt
+        self.camera_pitch += delta[1] * self.turn_speed * dt
+        halfpi = 0.5 * np.pi - 50*epsilon
+        self.camera_pitch = np.clip(self.camera_pitch, -halfpi, +halfpi)
+        self.update_camera_rotation_matrix()
+
+    def update_camera_rotation_matrix(self):
+        self.camera_rotation = (
+                Rotation.from_euler('x', (self.camera_pitch)) *
+                Rotation.from_euler('y', (self.camera_yaw))
+        ).as_matrix()
+
+    def move_camera(self, offset):
+        """
+        Move the camera position.
+        The offset is relative to the camera's viewpoint, not the world.
+        """
+        self.camera_pos += np.array(offset).dot(self.camera_rotation)
+
+    def setup_camera(self):
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity();
+        gluPerspective(self.fov, (self.window_size[0]/self.window_size[1]), 0.1, 10000.0)
+
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        camera_lookat = self.camera_forward.dot(self.camera_rotation) + self.camera_pos
+        gluLookAt(*self.camera_pos, *camera_lookat, *self.camera_up)
+
 def main():
 
-    from neuwon.database import Database
     from neuwon.segment import SegmentMethods
 
     def ball_and_stick():
@@ -178,54 +279,13 @@ def main():
             stick.append(tip)
         return db
 
-    pygame.init()
-    display = (800,600)
-    pygame.display.set_mode(display, DOUBLEBUF|OPENGL)
-
-    gluPerspective(45, (display[0]/display[1]), 0.1, 500.0)
-
-    glEnable(GL_DEPTH_TEST)
-    glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
-    glDisable(GL_CULL_FACE)
-    # glEnable(GL_CULL_FACE)
-
-    glTranslatef(0.0,0.0, -5)
-
     db = ball_and_stick()
 
-    move_speed = .5
-    move_direction = (0.0,0.0,0.0)
+    view = Viewport()
+    view.set_scene(db)
 
     while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
+        view.tick()
 
-        move_direction = [0.0,0.0,0.0]
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_w]:
-            move_direction[2] += move_speed
-        if keys[pygame.K_a]:
-            move_direction[0] += move_speed
-        if keys[pygame.K_s]:
-            move_direction[2] -= move_speed
-        if keys[pygame.K_d]:
-            move_direction[0] -= move_speed
-        if keys[pygame.K_SPACE]:
-            move_direction[1] -= move_speed
-        if keys[pygame.K_LCTRL]:
-            move_direction[1] += move_speed
-        glTranslatef(*move_direction)
-
-        # glRotatef(1, 3, 1, 1)
-        glClearColor(0,0,0,0) # Background color.
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-
-        scene = Scene(db)
-        scene.draw(None)
-
-        pygame.display.flip()
-        pygame.time.wait(10)
 
 if __name__ == "__main__": main()
