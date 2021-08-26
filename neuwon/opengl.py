@@ -9,6 +9,8 @@ from OpenGL.GLUT import *
 
 from neuwon.database import Pointer
 
+# MEMO: Don't optimize this code.
+
 class Scene:
     def __init__(self, database, lod=.5):
         lod     = float(lod)
@@ -34,11 +36,11 @@ class Scene:
         self.vertices = np.vstack(vertices)
         self.indices  = np.vstack(indices)
 
-    def draw(self, colors, interpolate=False):
+    def draw(self, colors=None, interpolate=False):
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
 
-        if not colors:
+        if colors is None:
             colors = np.tile([1.,1.,1.], len(self.vertices))
         elif interpolate:
             1/0
@@ -91,7 +93,7 @@ class Sphere(Primative):
         self.indices  = indices
 
 class Cylinder(Primative):
-    def __init__(self, A, B, diameter, num_slices, cap_A):
+    def __init__(self, A, B, diameter, num_slices):
         triangle_strip = np.empty((2 * (num_slices + 1), 3), dtype=np.float32)
         vector = B - A
         length = np.linalg.norm(vector)
@@ -119,21 +121,20 @@ class Cylinder(Primative):
             self.indices[2*i+1, 0] = i * 2 + 3
             self.indices[2*i+1, 1] = i * 2 + 2
             self.indices[2*i+1, 2] = i * 2 + 1
-        if cap_A:
-            1/0
-            triangle_fan = np.empty((num_slices, 3), dtype=np.float32)
-            for s in range(num_slices):
-                f = 2 * math.pi * (s / num_slices)
-                y = math.sin(f)
-                x = math.cos(f)
-                triangle_fan[s, 0] = x
-                triangle_fan[s, 1] = y
-                triangle_fan[s, 2] = 0.
-            triangle_fan = triangle_fan.dot(rot_matrix)
-            triangle_fan += A
-            self.triangle_fan = triangle_fan
-        else:
-            self.triangle_fan = None
+
+class Disk:
+    def __init__(self,):
+        1/0 # todo maybe?
+        triangle_fan = np.empty((num_slices, 3), dtype=np.float32)
+        for s in range(num_slices):
+            f = 2 * math.pi * (s / num_slices)
+            y = math.sin(f)
+            x = math.cos(f)
+            triangle_fan[s, 0] = x
+            triangle_fan[s, 1] = y
+            triangle_fan[s, 2] = 0.
+        triangle_fan = triangle_fan.dot(rot_matrix)
+        triangle_fan += A
 
 def _rotateAlign(v1, v2):
     # https://gist.github.com/kevinmoran/b45980723e53edeb8a5a43c49f134724

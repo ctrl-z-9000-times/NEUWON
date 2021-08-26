@@ -240,6 +240,7 @@ class SegmentMethods(Tree, Geometry, ElectricProperties):
         ElectricProperties.__init__(self, )
 
 class surface_area:
+    # TODO: Consider renaming "circle" to "disk"?
     def circle(diameter):
         return np.pi * ((0.5 * diameter) ** 2)
 
