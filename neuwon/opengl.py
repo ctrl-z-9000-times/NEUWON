@@ -214,7 +214,8 @@ class Viewport:
         delta = [mouse_pos[dim] - self.window_center[dim] for dim in range(2)]
         self.camera_yaw   += delta[0] * self.turn_speed * dt
         self.camera_pitch += delta[1] * self.turn_speed * dt
-        halfpi = 0.5 * np.pi - 50*epsilon
+        halfpi = 0.5 * np.pi - 100*epsilon
+        self.camera_yaw = self.camera_yaw % (2.0 * np.pi)
         self.camera_pitch = np.clip(self.camera_pitch, -halfpi, +halfpi)
         self.update_camera_rotation_matrix()
 
@@ -265,13 +266,13 @@ def main():
         Segment = db.get("Segment").get_instance_type()
         region = neuwon.regions.Sphere([0,0,0], 100)
         soma = Segment(None, [0,0,0], 8)
-        dendrites = neuwon.growth.Tree(soma, region, 0.001,
+        dendrites = neuwon.growth.Tree(soma, region, 0.0005,
                 balancing_factor = .7,
                 extension_distance = 40,
                 bifurcation_distance = 40,
                 extend_before_bifurcate = False,
                 only_bifurcate = True,
-                maximum_segment_length = 10,
+                maximum_segment_length = 20,
                 diameter = 1.5,
         )
         dendrites.grow()

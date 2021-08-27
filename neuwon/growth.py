@@ -11,7 +11,7 @@ from neuwon.database import epsilon, DB_Class
 """
 API design notes:
 -> Growth Routine API/concept.
-        A class that the user can call to incrementially grow neurites.
+        A class that the user can call to incrementally grow neurites.
         growth routines will contain:
             * At least one Region,
             * Dozens of parameters,
@@ -20,7 +20,7 @@ API design notes:
             * an API getting out segments (for other growth routines to grow off of)
 
 User will create an instance of GrowthRoutine for each group of neurons they
-want to create. Then they will incrementially (or all at once) create segments.
+want to create. Then they will incrementally (or all at once) create segments.
 
 """
 
@@ -96,13 +96,15 @@ class Tree(GrowthRoutine):
             maximum_segment_length=np.inf,
             diameter=.3e-6,):
         if isinstance(roots, GrowthRoutine):
-            self.roots = list(roots.get_segments())
-        elif isinstance(roots, Iterable):
-            self.roots = list(roots)
+            self.roots = roots
+            self.Segment = self.roots.Segment
         else:
-            self.roots = [roots]
-        self.Segment = type(self.roots[0])
-        assert all(type(r) == self.Segment for r in self.roots)
+            if isinstance(roots, Iterable):
+                self.roots = list(roots)
+            else:
+                self.roots = [roots]
+            self.Segment = type(self.roots[0])
+            assert all(type(r) is self.Segment for r in self.roots)
         self.region = region
         assert(isinstance(region, Region))
         self.carrier_point_density  = float(carrier_point_density)
@@ -115,15 +117,15 @@ class Tree(GrowthRoutine):
         self.only_bifurcate         = bool(only_bifurcate)
         self.maximum_segment_length = float(maximum_segment_length)
         self.diameter               = float(diameter)
-        assert(all(isinstance(s, self.Segment) for s in self.roots))
-        assert(0 <= self.carrier_point_density)
-        assert(0 <= self.balancing_factor)
-        assert(0 <= self.extension_angle <= np.pi)
-        assert(0 <= self.extension_distance)
-        assert(0 <= self.bifurcation_angle <= np.pi)
-        assert(0 <= self.bifurcation_distance)
+        assert 0 <= self.carrier_point_density
+        assert 0 <= self.balancing_factor
+        assert 0 <= self.extension_angle <= np.pi
+        assert 0 <= self.extension_distance
+        assert 0 <= self.bifurcation_angle <= np.pi
+        assert 0 <= self.bifurcation_distance
 
     def grow(self):
+        roots = self.roots.get_segments() if isinstance(self.roots, GrowthRoutine) else self.roots
         self.path_lengths = PathLengthCache()
         self.segments = [] # List of all newly created segments, user facing output.
         carrier_points = self.region.sample_points(self.carrier_point_density)
@@ -139,7 +141,7 @@ class Tree(GrowthRoutine):
                 if free_points[index]:
                     c = self.cost_function(parent, carrier_points[index])
                     heapq.heappush(costs, (c, parent, index))
-        for seed in self.roots:
+        for seed in roots:
             compute_costs_to_all_carriers(seed)
         while costs or bifurcations:
             if costs:
@@ -169,7 +171,7 @@ class Tree(GrowthRoutine):
     def morphological_constraints_satisfied(self, parent, child_coordinates):
         if (self.only_bifurcate and
             len(parent.children) >= 2 and
-            parent not in self.roots):
+            not parent.is_root()):
             return False
         distance = np.linalg.norm(np.subtract(parent.coordinates, child_coordinates))
         def angle_function(a, b):
@@ -221,7 +223,6 @@ class PathLengthCache:
             cursor_idx = cursor.get_unstable_index()
             parent_idx = parent.get_unstable_index()
             self.path_lengths[cursor_idx] = cursor.length + self.path_lengths[parent_idx]
-
         return self.path_lengths[segment_idx]
 
 

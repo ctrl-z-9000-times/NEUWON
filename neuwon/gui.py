@@ -8,9 +8,6 @@ NOTES:
 * The HH propagation example should be a 20-minute tutorial w/o programming?
 
 * Use the tools which I'm familiar with: tk & matplotlib.
-  How to make 3d? I really really do not want to deal with any of that.
-  Implementing 3d rendering is obviously a non-starter, even using a framework
-  or engine is overkill...
 
 * No initialization. Initializing a model is too complicated for a GUI. User
   must write that python code.
@@ -20,8 +17,6 @@ NOTES:
   window-frame which performs a single function.
   The menu bar (file,edit,view,tools,settings,help,etc) will contain buttons
   for opening all of the different applets.
-  By coding each applet as an independent entity, I should be able to organize
-  them easily, and maybe even allow the user to rearange them to their liking.
 
 * 3D Viewports: There are four windows with pictures of the model: a true 3D
   rendering of it and 3 orthogonal projections along the XYZ axes which are
@@ -57,7 +52,6 @@ NOTES:
 THREADS: Should the GUI run in its own thread?
 -> Single threaded pros/cons:
     + simpler.
-    + guarenteed to collect all datapoints exactly once.
     - TK demands flow control.
 -> Multithreaded pros/cons:
     - complex
