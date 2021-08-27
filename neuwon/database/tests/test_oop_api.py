@@ -8,6 +8,7 @@ class Foo:
 
 def test_OOP_API():
     class FooBaseClass:
+        "Single line docstring."
         def my_helper_method(self):
             self.bar
 
@@ -48,6 +49,12 @@ def test_OOP_API():
 def test_custom_classes():
 
     class _SectionBaseClass:
+        """
+        My
+        multi
+        line
+        documentation
+        """
         def __init__(self, nsegs):
             self.segments = [Segment(section=self) for _ in range(nsegs)]
 
@@ -56,6 +63,7 @@ def test_custom_classes():
             return len(self.segments)
 
     class _SegmentBaseClass:
+        # no docstring.
         __slots__ = ()
         def get_location(self):
             if self.section is None: return None

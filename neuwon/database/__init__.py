@@ -271,13 +271,13 @@ class DB_Class(_Documentation):
             return s.encode("unicode_escape").decode("utf-8")
         pycode = textwrap.dedent(f"""
             class {self.name}(*super_classes):
-                "{escape(doc)}"
+                \"\"\"{escape(doc)}\"\"\"
                 _cls = self
                 __slots__ = {__slots__}
                 __module__ = super_classes[0].__module__
 
                 def __init__(self, *args, **kwargs):
-                    "{escape(init_doc)}"
+                    \"\"\"{escape(init_doc)}\"\"\"
                     self._cls._init_instance(self)
                     super().__init__(*args, **kwargs)
 
