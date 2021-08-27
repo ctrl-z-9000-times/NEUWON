@@ -101,8 +101,8 @@ class Cylinder(Primative):
         vector = B - A
         length = np.linalg.norm(vector)
         vector /= length
-        ref_vector = np.array([0, 0, 1], dtype=np.float32)
-        rot_matrix = _rotateAlign(ref_vector, vector)
+        ref_vector = np.array([0.0, 0.0, 1.0])
+        rot_matrix = Rotation.align_vectors(ref_vector.reshape((-1,3)), vector.reshape((-1,3)))[0].as_matrix()
         for s in range(num_slices + 1):
             f = 2 * math.pi * (s / num_slices)
             y = math.sin(f)
@@ -139,29 +139,6 @@ class Disk:
         triangle_fan = triangle_fan.dot(rot_matrix)
         triangle_fan += A
 
-def _rotateAlign(v1, v2):
-    # https://gist.github.com/kevinmoran/b45980723e53edeb8a5a43c49f134724
-    # https://iquilezles.org/www/articles/noacos/noacos.htm
-    axis = np.cross(v1, v2)
-    axis_x = axis[0]
-    axis_y = axis[1]
-    axis_z = axis[2]
-    cosA = np.dot(v1, v2)
-    k = 1. / (1. + cosA)
-    result = np.array([
-            (axis_x * axis_x * k) + cosA,
-            (axis_y * axis_x * k) - axis_z,
-            (axis_z * axis_x * k) + axis_y,
-            (axis_x * axis_y * k) + axis_z,
-            (axis_y * axis_y * k) + cosA,
-            (axis_z * axis_y * k) - axis_x,
-            (axis_x * axis_z * k) - axis_y,
-            (axis_y * axis_z * k) + axis_x,
-            (axis_z * axis_z * k) + cosA
-    ], dtype=np.float32).reshape((3,3))
-    return result
-
-
 class Viewport:
     def __init__(self, window_size=(800,600), move_speed = .02):
         pygame.init()
@@ -186,7 +163,8 @@ class Viewport:
 
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
-        glEnable(GL_CULL_FACE)
+        if True: glEnable(GL_CULL_FACE)
+        else:    glDisable(GL_CULL_FACE)
 
     def set_scene(self, scene_or_database):
         if isinstance(scene_or_database, Database):
@@ -266,6 +244,8 @@ class Viewport:
 def main():
 
     from neuwon.segment import SegmentMethods
+    import neuwon.regions
+    import neuwon.growth
 
     def ball_and_stick():
         db = Database()
@@ -279,7 +259,27 @@ def main():
             stick.append(tip)
         return db
 
-    db = ball_and_stick()
+    def cell():
+        db = Database()
+        SegmentMethods._initialize(db)
+        Segment = db.get("Segment").get_instance_type()
+        region = neuwon.regions.Sphere([0,0,0], 100)
+        soma = Segment(None, [0,0,0], 8)
+        dendrites = neuwon.growth.Tree(soma, region, 0.001,
+                balancing_factor = .7,
+                extension_distance = 40,
+                bifurcation_distance = 40,
+                extend_before_bifurcate = False,
+                only_bifurcate = True,
+                maximum_segment_length = 10,
+                diameter = 1.5,
+        )
+        dendrites.grow()
+        print("NUM SEGMENTS:", len(dendrites.get_segments()))
+        return db
+
+    db = cell()
+    # db = ball_and_stick()
 
     view = Viewport()
     view.set_scene(db)
