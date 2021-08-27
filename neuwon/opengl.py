@@ -140,7 +140,7 @@ class Disk:
         triangle_fan += A
 
 class Viewport:
-    def __init__(self, window_size=(800,600), move_speed = .02):
+    def __init__(self, window_size=(2*640,2*480), move_speed = .02):
         pygame.init()
         pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
         self.clock = pygame.time.Clock()
