@@ -99,16 +99,16 @@ class Pointer:
         """ Python variable name. """
         if self.r:
             if self.w and self.read != self.write:
-                return CodeGen.mangle('read_' + self.name)
-            return CodeGen.mangle(self.name)
+                return code_gen.mangle('read_' + self.name)
+            return code_gen.mangle(self.name)
 
     @property
     def write_py(self):
         """ Python variable name. """
         if self.w:
             if self.r and self.read != self.write:
-                return CodeGen.mangle('write_' + self.name)
-            return CodeGen.mangle(self.name)
+                return code_gen.mangle('write_' + self.name)
+            return code_gen.mangle(self.name)
 
     @property
     def index_py(self):
@@ -117,4 +117,4 @@ class Pointer:
             index_var = "index"
         else:
             index_var = self.target_class.lower()
-        return CodeGen.mangle2(index_var)
+        return code_gen.mangle2(index_var)
