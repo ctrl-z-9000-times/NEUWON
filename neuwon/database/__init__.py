@@ -84,10 +84,13 @@ class Database:
                 x.components.values() for x in self.db_classes.values()))
 
     def add_clock(self, tick_period:float, units:str="") -> 'neuwon.database.time.Clock':
+        """ """
         from neuwon.database.time import Clock
+        assert self.clock is None, "Database already has a Clock!"
         return Clock(self, tick_period, units=units)
 
     def get_clock(self) -> 'neuwon.database.time.Clock':
+        """ Get the default clock for this database. """
         return self.clock
 
     def to_host(self) -> 'Database':

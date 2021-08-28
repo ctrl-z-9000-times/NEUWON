@@ -114,11 +114,15 @@ class TimeSeriesBuffer:
         self.timestamps.clear()
         return self
 
-    def _setup_pointers(self, db_object, component):
+    def _setup_pointers(self, db_object, component, clock):
         assert isinstance(db_object, neuwon.database._DB_Object)
         self.db_object  = db_object
         db_class        = self.db_object.get_database_class()
-        self.clock      = db_class.get_database().get_clock()
+        if clock is not None:
+            assert isinstance(clock, Clock)
+            self.clock  = clock
+        else:
+            self.clock  = db_class.get_database().get_clock()
         self.component  = db_class.get(component)
         self.component_name = self.component.get_name()
         # TODO: I feel like this should guard against users changing the component.
@@ -126,7 +130,10 @@ class TimeSeriesBuffer:
         # IDEA: If I dis-allow changing components then I can store the
         # component after first usage and make the argument optional therafter.
 
-    def record(self, db_object: neuwon.database._DB_Object, component: str, duration:float=np.inf) -> 'self':
+    def record(self, db_object: neuwon.database._DB_Object, component: str,
+            duration:float=np.inf,
+            clock:Clock=None,
+            ) -> 'self':
         """ Record data samples immediately after each clock tick.
 
         Recording can be interrupted at any time by the "stop" method.
@@ -136,9 +143,12 @@ class TimeSeriesBuffer:
         Argument component is the name of an attribute of db_object.
 
         Argument duration is the period of time that it records for.
+
+        Argument clock is optional, if not given then this uses the database's
+                default clock. See method: "Database.get_clock()".
         """
         assert self.is_stopped()
-        self._setup_pointers(db_object, component)
+        self._setup_pointers(db_object, component, clock)
         self.clock.register_callback(_weakref_wrapper(self._record_implementation))
         self.record_duration = float(duration)
         self._record_implementation() # Collect the current value as the first data sample.
@@ -154,7 +164,11 @@ class TimeSeriesBuffer:
         self.record_duration -= self.clock.dt
         return True
 
-    def play(self, db_object: neuwon.database._DB_Object, component: str, loop:bool=False) -> 'self':
+    def play(self, db_object: neuwon.database._DB_Object, component: str,
+            mode:str="+=",
+            loop:bool=False,
+            clock:Clock=None,
+            ) -> 'self':
         """
         Play back the time series data, writing one value after each clock tick.
 
@@ -166,9 +180,12 @@ class TimeSeriesBuffer:
 
         Argument loop causes the playback to restart at the beginning when it
                 reaches the end of the buffer.
+
+        Argument clock is optional, if not given then this uses the database's
+                default clock. See method: "Database.get_clock()".
         """
         assert self.is_stopped()
-        self._setup_pointers(db_object, component)
+        self._setup_pointers(db_object, component, clock)
         self.clock.register_callback(self._play_implementation)
         self.play_index = 0
         self.play_loop = bool(loop)
