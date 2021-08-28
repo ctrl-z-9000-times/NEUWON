@@ -178,6 +178,10 @@ class TimeSeriesBuffer:
 
         Argument component is the name of an attribute of db_object.
 
+        Argument mode controls how the signal is superimposed on the object.
+                If mode is "=" then the timeseries overwrites the existing values.
+                If mode is "+=" then the signals are added.
+
         Argument loop causes the playback to restart at the beginning when it
                 reaches the end of the buffer.
 
@@ -188,12 +192,18 @@ class TimeSeriesBuffer:
         self._setup_pointers(db_object, component, clock)
         self.clock.register_callback(self._play_implementation)
         self.play_index = 0
+        self.mode = str(mode)
         self.play_loop = bool(loop)
         return self
 
     def _play_implementation(self):
         value = self.timeseries[self.play_index]
-        setattr(self.db_object, self.component_name, value)
+        if self.mode == "=":
+            setattr(self.db_object, self.component_name, value)
+        elif self.mode == "+=":
+            setattr(self.db_object, self.component_name,
+                    value + getattr(self.db_object, self.component_name))
+        else: raise NotImplementedError(self.mode)
         self.play_index += 1
         if self.play_index >= len(self):
             if self.play_loop:
@@ -208,6 +218,8 @@ class TimeSeriesBuffer:
         assert self.is_stopped()
         raise NotImplementedError("todo: low priority.")
         # This should interpolate the given data onto this object's grid.
+
+        return self
 
     @property
     def y(self):
@@ -258,6 +270,22 @@ class TimeSeriesBuffer:
     def __len__(self):
         """ Returns the number of data samples in this buffer. """
         return len(self.timeseries)
+
+    def square_wave(self, minimum, maximum, period, duty_cycle=0.5, phase=0.0) -> 'self':
+        raise NotImplementedError
+        return self
+
+    def sine_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+        raise NotImplementedError
+        return self
+
+    def triangle_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+        raise NotImplementedError
+        return self
+
+    def sawtooth_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+        raise NotImplementedError
+        return self
 
 class Trace:
     """ Exponentially weighted mean and standard deviation.

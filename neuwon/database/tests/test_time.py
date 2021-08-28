@@ -31,6 +31,11 @@ class Model:
         self.Foo = self.Foo.get_instance_type()
         self.clock = self.db.add_clock(.1, 'ms')
 
+def test_time_waveforms():
+    sqr = TimeSeriesBuffer().square_wave(0, 1, 10)
+    1/0
+
+
 def test_time_series_buffers():
     m = Model()
     b = TimeSeriesBuffer()
@@ -46,10 +51,15 @@ def test_time_series_buffers():
     # b.plot()
 
     f2 = m.Foo()
-    b.play(f2, "bar")
+    b.play(f2, "bar", mode='=')
     for i in range(5):
         m.clock.tick()
     assert f2.bar == .5
+
+# TODO: Write more elaborate tests for the time series buffers.  In specific
+# check using multiple different clocks with different tick rates, and check
+# that it correctly interpolates between them.
+
 
 def test_traces():
     # Test no samples / very few samples.
