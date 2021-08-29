@@ -217,8 +217,14 @@ class ElectricProperties:
             coef.append(-dt / (r * c_parent))
         return (coef, (dst, src))
 
-    def inject_current(self, current, duration=1e-3):
-        self.model._injected_currents.inject_current(self.entity.index, current, duration)
+    def inject_current(self, current, duration = 1.4):
+        duration = float(duration)
+        assert(duration >= 0)
+        current = float(current)
+
+        clock = 1/0
+        dv = current * min(clocl.get_tick_period(), t) / self.capacitances
+        TimeSeriesBuffer().set_data([dv, dv], [0,duration]).play(self, "voltage", clock=clock)
 
 class SegmentMethods(Tree, Geometry, ElectricProperties):
     @classmethod

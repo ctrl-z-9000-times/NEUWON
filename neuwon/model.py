@@ -249,33 +249,3 @@ class Model:
         for name, r in self.reactions.items():
             try: r.advance(self)
             except Exception: raise RuntimeError("in reaction " + name)
-
-class _InjectedCurrents:
-    def __init__(self):
-        self.currents = []
-        self.locations = []
-        self.remaining = []
-
-    def advance(self, database):
-        time_step = database.access("time_step") / _ITERATIONS_PER_TIMESTEP
-        capacitances = database.access("membrane/capacitances")
-        voltages = database.access("membrane/voltages")
-        for idx, (amps, location, t) in enumerate(
-                zip(self.currents, self.locations, self.remaining)):
-            dv = amps * min(time_step, t) / capacitances[location]
-            voltages[location] += dv
-            self.remaining[idx] -= time_step
-        keep = [t > 0 for t in self.remaining]
-        self.currents  = [x for k, x in zip(keep, self.currents) if k]
-        self.locations = [x for k, x in zip(keep, self.locations) if k]
-        self.remaining = [x for k, x in zip(keep, self.remaining) if k]
-
-    def inject_current(self, location, current, duration = 1.4):
-        location = int(location)
-        # assert(location < len(self))
-        duration = float(duration)
-        assert(duration >= 0)
-        current = float(current)
-        self.currents.append(current)
-        self.locations.append(location)
-        self.remaining.append(duration)
