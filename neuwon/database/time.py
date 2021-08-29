@@ -217,8 +217,6 @@ class TimeSeriesBuffer:
         """ Overwrite the data in this buffer. """
         assert self.is_stopped()
         raise NotImplementedError("todo: low priority.")
-        # This should interpolate the given data onto this object's grid.
-
         return self
 
     @property
@@ -272,18 +270,22 @@ class TimeSeriesBuffer:
         return len(self.timeseries)
 
     def square_wave(self, minimum, maximum, period, duty_cycle=0.5, phase=0.0) -> 'self':
+        assert self.is_stopped()
         raise NotImplementedError
         return self
 
     def sine_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+        assert self.is_stopped()
         raise NotImplementedError
         return self
 
     def triangle_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+        assert self.is_stopped()
         raise NotImplementedError
         return self
 
     def sawtooth_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+        assert self.is_stopped()
         raise NotImplementedError
         return self
 

@@ -1,6 +1,6 @@
 from neuwon.database import *
 from neuwon.database.time import *
-from pytest import approx
+from pytest import approx, mark
 import random
 
 def test_clock():
@@ -31,9 +31,20 @@ class Model:
         self.Foo = self.Foo.get_instance_type()
         self.clock = self.db.add_clock(.1, 'ms')
 
+@mark.skip
 def test_time_waveforms():
     sqr = TimeSeriesBuffer().square_wave(0, 1, 10)
     1/0
+
+
+    x = TimeSeriesBuffer()
+    # x.data_samples *=
+    # x.data_samples +=
+    # x.time_stamps += 
+    # x.time_stamps *= 
+    # x.time_stamps = "ERROR, can not assign to the internal data!"
+    # x.set_data(data_samples, time_stamps)
+    x.set_data([1,1], [0,100])
 
 
 def test_time_series_buffers():
