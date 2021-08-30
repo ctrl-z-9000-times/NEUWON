@@ -31,46 +31,42 @@ class Model:
         self.Foo = self.Foo.get_instance_type()
         self.clock = self.db.add_clock(.1, 'ms')
 
-@mark.skip
-def test_time_waveforms():
-    sqr = TimeSeriesBuffer().square_wave(0, 1, 10)
-    1/0
-
-
-    x = TimeSeriesBuffer()
-    # x.data_samples *=
-    # x.data_samples +=
-    # x.time_stamps += 
-    # x.time_stamps *= 
-    # x.time_stamps = "ERROR, can not assign to the internal data!"
-    # x.set_data(data_samples, time_stamps)
-    x.set_data([1,1], [0,100])
-
-
 def test_time_series_buffers():
     m = Model()
     b = TimeSeriesBuffer()
 
     f = m.Foo()
     b.record(f, "bar")
-    b.clear()
-    for i in range(1, 51):
+    for i in range(50):
         f.bar = (i / 10) % 2
         m.clock.tick()
     b.stop()
-    assert len(b) == 50
+    assert len(b) == 51
     # b.plot()
 
     f2 = m.Foo()
     b.play(f2, "bar", mode='=')
-    for i in range(5):
+    for i in range(6):
         m.clock.tick()
-    assert f2.bar == .5
+        assert f2.bar == (i / 10) % 2
 
-# TODO: Write more elaborate tests for the time series buffers.  In specific
-# check using multiple different clocks with different tick rates, and check
-# that it correctly interpolates between them.
+    b.stop()
+    b.clear()
+    assert not len(b)
 
+def test_time_waveforms():
+    m = Model()
+    f = m.Foo()
+
+    sqr = TimeSeriesBuffer().square_wave(0, 1, 1)
+    sqr.play(f, "bar", mode="=")
+
+    assert f.bar == 1
+    for _ in range(7): m.clock.tick()
+    assert f.bar == 0
+
+    assert sum(sqr.play_data) == 5
+    assert len(sqr.play_data) == 10
 
 def test_traces():
     # Test no samples / very few samples.

@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable, Mapping
+import math
 import neuwon.database
 import collections
 import matplotlib.pyplot
@@ -82,21 +83,15 @@ class Clock:
 
 class TimeSeriesBuffer:
     """ Buffer for timeseries data, and associated helper methods. """
-    def __init__(self, max_length:float=np.inf):
-        """ Create a new empty buffer for managing time series data.
-
-        Argument max_length is the maximum duration of time that the buffer may
-                contain before it discards the oldest data samples.
-        """
-        self.max_length = float(np.inf if max_length is None else max_length)
-        self.timeseries = collections.deque()
-        self.timestamps = collections.deque()
+    def __init__(self):
+        """ Create a new empty buffer. """
         self.stop()
+        self.clear()
 
     def stop(self) -> 'self':
         """ Immediately stop recording / playing. """
         self.record_duration = 0
-        self.play_index = None
+        self.play_data = None
         return self
 
     def is_stopped(self) -> bool:
@@ -106,12 +101,31 @@ class TimeSeriesBuffer:
         return self.record_duration > 0
 
     def is_playing(self) -> bool:
-        return self.play_index is not None
+        return self.play_data is not None
 
     def clear(self) -> 'self':
         """ Reset the buffer. Removes all data samples from the buffer. """
-        self.timeseries.clear()
-        self.timestamps.clear()
+        assert self.is_stopped()
+        self.timeseries = collections.deque()
+        self.timestamps = collections.deque()
+        return self
+
+    def get_data(self) -> np.ndarray:
+        """ Returns a list containing all of the data samples. """
+        return self.timeseries
+
+    def get_timestamps(self) -> np.ndarray:
+        """ Returns a list containing all of the timestamps. """
+        return self.timestamps
+
+    def set_data(self, data_samples, timestamps):
+        """ Overwrite the data in this buffer. """
+        assert self.is_stopped()
+        self.timeseries = collections.deque(data_samples)
+        self.timestamps = collections.deque(timestamps)
+        assert len(self.timeseries) == len(self.timestamps)
+        for i in range(len(self.timestamps) - 1):
+            assert self.timestamps[i] <= self.timestamps[i + 1]
         return self
 
     def _setup_pointers(self, db_object, component, clock):
@@ -131,7 +145,8 @@ class TimeSeriesBuffer:
         # component after first usage and make the argument optional therafter.
 
     def record(self, db_object: neuwon.database._DB_Object, component: str,
-            duration:float=np.inf,
+            record_duration:float=np.inf,
+            discard_after:float=np.inf,
             clock:Clock=None,
             ) -> 'self':
         """ Record data samples immediately after each clock tick.
@@ -142,7 +157,10 @@ class TimeSeriesBuffer:
 
         Argument component is the name of an attribute of db_object.
 
-        Argument duration is the period of time that it records for.
+        Argument record_duration is the period of time to record for.
+
+        Argument discard_after is the maximum length of time that the buffer
+                can contain before it discards the oldest data samples.
 
         Argument clock is optional, if not given then this uses the database's
                 default clock. See method: "Database.get_clock()".
@@ -150,7 +168,8 @@ class TimeSeriesBuffer:
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
         self.clock.register_callback(_weakref_wrapper(self._record_implementation))
-        self.record_duration = float(duration)
+        self.record_duration = float(record_duration)
+        self.discard_after = float(discard_after)
         self._record_implementation() # Collect the current value as the first data sample.
         return self
 
@@ -158,7 +177,7 @@ class TimeSeriesBuffer:
         if not self.is_recording(): return False
         self.timeseries.append(getattr(self.db_object, self.component_name))
         self.timestamps.append(self.clock())
-        while self.timestamps[-1] - self.timestamps[0] > self.max_length:
+        while self.timestamps[-1] - self.timestamps[0] > self.discard_after:
             self.timeseries.popleft()
             self.timestamps.popleft()
         self.record_duration -= self.clock.dt
@@ -191,13 +210,18 @@ class TimeSeriesBuffer:
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
         self.clock.register_callback(self._play_implementation)
+        start = math.floor(self.timestamps[ 0] / self.clock.dt)
+        end   = math.ceil( self.timestamps[-1] / self.clock.dt)
+        timestamps = self.clock.get_tick_period() * np.arange(start, end)
+        self.play_data  = self.interpolate(timestamps)
         self.play_index = 0
-        self.mode = str(mode)
-        self.play_loop = bool(loop)
+        self.play_loop  = bool(loop)
+        self.mode       = str(mode)
+        self._play_implementation() # Immediately write the first value.
         return self
 
     def _play_implementation(self):
-        value = self.timeseries[self.play_index]
+        value = self.play_data[self.play_index]
         if self.mode == "=":
             setattr(self.db_object, self.component_name, value)
         elif self.mode == "+=":
@@ -205,35 +229,20 @@ class TimeSeriesBuffer:
                     value + getattr(self.db_object, self.component_name))
         else: raise NotImplementedError(self.mode)
         self.play_index += 1
-        if self.play_index >= len(self):
+        if self.play_index >= len(self.play_data):
             if self.play_loop:
                 self.play_index = 0
             else:
-                self.play_index = None
+                self.play_data = None
                 return False
         return True
-
-    def set_data(self, data_samples, timestamps):
-        """ Overwrite the data in this buffer. """
-        assert self.is_stopped()
-        raise NotImplementedError("todo: low priority.")
-        return self
-
-    @property
-    def y(self):
-        """ Data samples """
-        return self.timeseries
-    @property
-    def x(self):
-        """ Timestamps """
-        return self.timestamps
 
     def interpolate(self, timestamps):
         """
         Interpolate the value of this timeseries at the given timestamps.
         This uses linear interpolation.
         """
-        f = scipy.interpolate.interp1d(self.x, self.y)
+        f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data())
         min_t = self.timestamps[0]
         max_t = self.timestamps[-1]
         min_v = self.timeseries[0]
@@ -248,10 +257,13 @@ class TimeSeriesBuffer:
     def plot(self, show=True):
         """ Plot a line graph of the time series using matplotlib. """
         plt = matplotlib.pyplot
-        plt.figure(self.component_name)
-        plt.title("Time Series of: " + self.component_name)
-        self.label_axes()
-        plt.plot(self.x, self.y)
+        if hasattr(self, "component_name"):
+            plt.figure(name)
+            plt.title("Time Series of: " + name)
+            self.label_axes()
+        else:
+            plt.figure()
+        plt.plot(self.get_timestamps(), self.get_data())
         if show: plt.show()
 
     def label_axes(self, axes=None):
@@ -269,22 +281,30 @@ class TimeSeriesBuffer:
         """ Returns the number of data samples in this buffer. """
         return len(self.timeseries)
 
-    def square_wave(self, minimum, maximum, period, duty_cycle=0.5, phase=0.0) -> 'self':
+    def square_wave(self, minimum, maximum, period, duty_cycle=0.5) -> 'self':
+        assert self.is_stopped()
+        min_        = float(minimum)
+        max_        = float(maximum)
+        period      = float(period)
+        duty_cycle  = float(duty_cycle)
+        assert 0.0 <= duty_cycle <= 1.0
+        start = 0
+        mid   = period * duty_cycle
+        end   = period
+        self.set_data([max_, max_, min_, min_], [start, mid, mid, end])
+        return self
+
+    def sine_wave(self, minimum, maximum, period) -> 'self':
         assert self.is_stopped()
         raise NotImplementedError
         return self
 
-    def sine_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+    def triangle_wave(self, minimum, maximum, period) -> 'self':
         assert self.is_stopped()
         raise NotImplementedError
         return self
 
-    def triangle_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
-        assert self.is_stopped()
-        raise NotImplementedError
-        return self
-
-    def sawtooth_wave(self, minimum, maximum, period, phase=0.0) -> 'self':
+    def sawtooth_wave(self, minimum, maximum, period) -> 'self':
         assert self.is_stopped()
         raise NotImplementedError
         return self
