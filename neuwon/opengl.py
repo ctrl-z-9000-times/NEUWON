@@ -163,8 +163,7 @@ class Viewport:
 
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
-        if True: glEnable(GL_CULL_FACE)
-        else:    glDisable(GL_CULL_FACE)
+        glDisable(GL_CULL_FACE)
 
     def set_scene(self, scene_or_database):
         if isinstance(scene_or_database, Database):
