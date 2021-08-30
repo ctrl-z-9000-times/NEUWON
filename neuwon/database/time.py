@@ -81,6 +81,15 @@ class Clock:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()
 
+# TODO: Work these notes into the docs for TimeSeriesBuffer.
+
+# Note: the timestamps may have irregular intervals between them, but they be
+# sorted.
+
+
+
+
+
 class TimeSeriesBuffer:
     """ Buffer for timeseries data, and associated helper methods. """
     def __init__(self):
@@ -282,7 +291,6 @@ class TimeSeriesBuffer:
         return len(self.timeseries)
 
     def square_wave(self, minimum, maximum, period, duty_cycle=0.5) -> 'self':
-        assert self.is_stopped()
         min_        = float(minimum)
         max_        = float(maximum)
         period      = float(period)
@@ -291,23 +299,30 @@ class TimeSeriesBuffer:
         start = 0
         mid   = period * duty_cycle
         end   = period
-        self.set_data([max_, max_, min_, min_], [start, mid, mid, end])
-        return self
+        return self.set_data([max_, max_, min_, min_], [start, mid, mid, end])
 
     def sine_wave(self, minimum, maximum, period) -> 'self':
-        assert self.is_stopped()
-        raise NotImplementedError
-        return self
+        min_        = float(minimum)
+        max_        = float(maximum)
+        period      = float(period)
+        mult        = 0.5 * (max_ - min_)
+        add         = min_ + mult
+        n           = 1000
+        return self.set_data(
+                add + mult * np.sin(np.linspace(0.0, 2.0 * np.pi, n)),
+                np.linspace(0, period, n))
 
     def triangle_wave(self, minimum, maximum, period) -> 'self':
-        assert self.is_stopped()
-        raise NotImplementedError
-        return self
+        min_        = float(minimum)
+        max_        = float(maximum)
+        period      = float(period)
+        return self.set_data([min_, max_, min_], [0.0, 0.5 * period, period])
 
     def sawtooth_wave(self, minimum, maximum, period) -> 'self':
-        assert self.is_stopped()
-        raise NotImplementedError
-        return self
+        min_        = float(minimum)
+        max_        = float(maximum)
+        period      = float(period)
+        return self.set_data([min_, max_, min_], [0.0, period, period])
 
 class Trace:
     """ Exponentially weighted mean and standard deviation.

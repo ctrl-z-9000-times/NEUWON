@@ -48,13 +48,14 @@ def test_time_series_buffers():
     b.play(f2, "bar", mode='=')
     for i in range(6):
         m.clock.tick()
-        assert f2.bar == (i / 10) % 2
+        correct_value = (i / 10) % 2
+        assert f2.bar == approx(correct_value, 1e-9)
 
     b.stop()
     b.clear()
     assert not len(b)
 
-def test_time_waveforms():
+def test_waveforms():
     m = Model()
     f = m.Foo()
 
@@ -67,6 +68,21 @@ def test_time_waveforms():
 
     assert sum(sqr.play_data) == 5
     assert len(sqr.play_data) == 10
+
+    tri = TimeSeriesBuffer().triangle_wave(0, 1, 2)
+    tri.play(f, "bar", mode="=", loop=True)
+    assert max(tri.play_data) == approx(1, .01)
+
+    saw = TimeSeriesBuffer().sawtooth_wave(0, 1, 100)
+    f2 = m.Foo()
+    saw.play(f2, "bar", mode="=", loop=True)
+    assert max(saw.play_data) == approx(1, .01)
+    for _ in range(int(99.9 / m.clock.dt)): m.clock.tick()
+    assert f2.bar == approx(1, .01)
+
+    sin = TimeSeriesBuffer().sine_wave(2, 5, 10)
+    # TODO: CHeck that when looping, the phase does not drift!
+    1/0
 
 def test_traces():
     # Test no samples / very few samples.
