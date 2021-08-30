@@ -222,6 +222,11 @@ class ElectricProperties:
         assert(duration >= 0)
         current = float(current)
 
+        # Inject_Current is applied two times every tick, at the start of advance_species.
+        # Need to make a second clock for the pre-species-advance stuff, put it in the model.
+        # Put a link to the model (and via the model the second clock) in the
+        # Segment class (where the _cls slot is).
+
         clock = 1/0
         dv = current * min(clocl.get_tick_period(), t) / self.capacitances
         TimeSeriesBuffer().set_data([dv, dv], [0,duration]).play(self, "voltage", clock=clock)
