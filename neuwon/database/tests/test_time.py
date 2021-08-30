@@ -1,6 +1,7 @@
 from neuwon.database import *
 from neuwon.database.time import *
 from pytest import approx, mark
+import matplotlib.pyplot as plt
 import random
 
 def test_clock():
@@ -24,12 +25,12 @@ def test_clock():
     assert c.get_time() == 100
 
 class Model:
-    def __init__(self):
+    def __init__(self, dt=0.1):
         self.db = Database()
         self.Foo = self.db.add_class("Foo")
         self.bar = self.Foo.add_attribute("bar", 0, units='my_units')
         self.Foo = self.Foo.get_instance_type()
-        self.clock = self.db.add_clock(.1, 'ms')
+        self.clock = self.db.add_clock(dt, 'ms')
 
 def test_time_series_buffers():
     m = Model()
@@ -55,7 +56,7 @@ def test_time_series_buffers():
     b.clear()
     assert not len(b)
 
-def test_waveforms():
+def test_waveforms_basic():
     m = Model()
     f = m.Foo()
 
@@ -81,8 +82,51 @@ def test_waveforms():
     assert f2.bar == approx(1, .01)
 
     sin = TimeSeriesBuffer().sine_wave(2, 5, 10)
-    # TODO: CHeck that when looping, the phase does not drift!
-    1/0
+
+def test_waveform_frequency():
+    """
+    Generate some waveforms, play them back into a recording buffewr and, and
+    run it for a long time. Then check that it has the correct frequency and
+    that it did not drift.
+    """
+    m = Model(dt=1)
+    p = 73
+    n_cycles = 500
+    f_sqr = m.Foo()
+    f_tri = m.Foo()
+    f_saw = m.Foo()
+    f_sin = m.Foo()
+    TimeSeriesBuffer().square_wave(  -1, 1, p).play(f_sqr, "bar", mode="=", loop=True)
+    TimeSeriesBuffer().triangle_wave(-1, 1, p).play(f_tri, "bar", mode="=", loop=True)
+    TimeSeriesBuffer().sawtooth_wave(-1, 1, p).play(f_saw, "bar", mode="=", loop=True)
+    TimeSeriesBuffer().sine_wave(    -1, 1, p).play(f_sin, "bar", mode="=", loop=True)
+    buf_sqr = TimeSeriesBuffer().record(f_sqr, "bar")
+    buf_tri = TimeSeriesBuffer().record(f_tri, "bar")
+    buf_saw = TimeSeriesBuffer().record(f_saw, "bar")
+    buf_sin = TimeSeriesBuffer().record(f_sin, "bar")
+    for _ in range(round(n_cycles * p / m.clock.dt)):
+        m.clock.tick()
+    # Check for correct phase / no drifting.
+    assert f_sqr.bar == 1
+    assert f_tri.bar == -1
+    assert f_saw.bar == -1
+    assert f_sin.bar == 0
+    # Check frequency.
+    for buf in (buf_sqr, buf_tri, buf_saw, buf_sin):
+        data = buf.get_data()
+        ts   = buf.get_timestamps()
+        fft  = np.abs(np.fft.fft(data))
+        freq = np.fft.fftfreq(len(fft), m.clock.dt)
+        maxf = next(f for f in freq[np.argsort(-fft)] if f >= 0)
+        assert maxf == approx(1.0 / p, 1e-4)
+        # Optional, plot the waveform and its & Fourier transform.
+        if False:
+            plt.subplot(2, 1, 1)
+            plt.plot(ts, data)
+            plt.subplot(2, 1, 2)
+            plt.plot(freq, fft)
+            plt.xlim(0, max(freq))
+            plt.show()
 
 def test_traces():
     # Test no samples / very few samples.
