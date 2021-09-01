@@ -82,7 +82,7 @@ class Clock:
 # sorted.
 
 
-
+# TODO: Consider renaming TimeSeriesBuffer to just "TimeSeries" for bevity.
 
 
 class TimeSeriesBuffer:

@@ -86,12 +86,14 @@ class Model:
         """
         self.species = {}
         self.reactions = {}
-        self.clock = Clock(time_step, units="ms")
         self.database = db = Database()
-        # db.add_global_constant("time_step", float(time_step), units="milliseconds")
-        # db.add_global_constant("celsius", float(celsius))
-        # db.add_global_constant("T", db.access("celsius") + 273.15, doc="Temperature", units="Kelvins")
-        self.Segment = neuwon.segment.SegmentMethods._make_Segment_class(db)
+        self.clock = Clock(time_step, units="ms")
+        self.time_step = self.clock.get_tick_period()
+        self.input_clock = Clock(0.5 * self.time_step, units="ms")
+        self.celsius = float(celsius)
+        self.T = self.celsius + 273.15 # Temperature, in Kelvins.
+        self.Segment = neuwon.segment.SegmentMethods._initialize(db)
+        self.Segment._model = self
         # self.Section = ditto
         # self.Inside = ditto
         # self.Outside = ditto
@@ -181,9 +183,8 @@ class Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
-        self._injected_currents.advance(self.database)
-        access = self.database.access
-        dt     = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
+        self.input_clock.tick()
+        dt                  = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
         conductances        = access("membrane/conductances")
         driving_voltages    = access("membrane/driving_voltages")
         voltages            = access("membrane/voltages")
