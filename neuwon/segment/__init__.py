@@ -8,6 +8,7 @@ class Tree:
     """
     Segments are organized in a tree.
     """
+    __slots__ = ()
     @staticmethod
     def _initialize(db_cls):
         db_cls.add_attribute("parent", dtype=db_cls, allow_invalid=True)
@@ -30,6 +31,7 @@ class Geometry:
     The root of the tree is a sphere,
     all other segments are cylinders.
     """
+    __slots__ = ()
     @staticmethod
     def _initialize(db_cls):
         db_cls.add_attribute("coordinates", shape=(3,),
@@ -155,6 +157,7 @@ class Geometry:
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
 
 class ElectricProperties:
+    __slots__ = ()
     @staticmethod
     def _initialize(db_cls, *,
                 initial_voltage,
@@ -186,13 +189,14 @@ class ElectricProperties:
         # Compute membrane capacitance.
         self.capacitance = Cm * self.surface_area
 
-    @staticmethod
-    def _electric_coefficients(access):
+    @classmethod
+    def _electric_coefficients(cls):
         """
         Model the electric currents over the membrane surface (in the axial directions).
         Compute the coefficients of the derivative function:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """
+        db_cls = cls.get_database_class()
         dt           = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
         parents      = access("membrane/parents").get()
         resistances  = access("membrane/axial_resistances").get()
@@ -217,6 +221,17 @@ class ElectricProperties:
             coef.append(-dt / (r * c_parent))
         return (coef, (dst, src))
 
+        coef = scipy.sparse.csc_matrix(coef, shape=(self.archetype.size, self.archetype.size))
+        # Note: always use double precision floating point for building the impulse response matrix.
+        # TODO: Detect if the user returns f32 and auto-convert it to f64.
+        matrix = scipy.sparse.linalg.expm(coef)
+        # Prune the impulse response matrix.
+        matrix.data[np.abs(matrix.data) < epsilon] = 0
+        matrix.eliminate_zeros()
+        self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
+
+
+
     def inject_current(self, current, duration = 1.4):
         duration = float(duration)
         assert(duration >= 0)
@@ -232,6 +247,8 @@ class ElectricProperties:
         TimeSeriesBuffer().set_data([dv, dv], [0,duration]).play(self, "voltage", clock=clock)
 
 class SegmentMethods(Tree, Geometry, ElectricProperties):
+    """ """
+    __slots__ = ()
     @classmethod
     def _initialize(cls, database,
                 initial_voltage = -70,
