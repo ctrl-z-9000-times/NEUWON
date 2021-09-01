@@ -19,17 +19,12 @@ def _weakref_wrapper(method):
 
 class Clock:
     """ Clock and notification system. """
-    def __init__(self, database:neuwon.database.Database, tick_period:float, units:str=""):
+    def __init__(self, tick_period:float, units:str=""):
         """
         Argument tick_period is a duration of time.
 
         Argument units is the physical units for 'tick_period'. Optional.
         """
-        assert isinstance(database, neuwon.database.Database)
-        if database.clock is not None:
-            raise RuntimeError("Database already has a clock.")
-        database.clock = self
-        self.database = database
         self.dt = float(tick_period)
         self.ticks = 0
         self.units = str(units)

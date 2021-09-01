@@ -5,14 +5,10 @@ import matplotlib.pyplot as plt
 import random
 
 def test_clock():
-    db = Database()
-    c = Clock(db, 1)
-    
-    db = Database()
-    c = Clock(db, .1)
-    
-    db = Database()
-    c = Clock(db, 1/40, 'ms')
+    c = Clock(1)
+    c = Clock('3.4')
+    c = Clock(.1)
+    c = Clock(1/40, 'ms')
     assert c.get_time() == 0
 
     for x in range(40): c.tick()
@@ -27,9 +23,9 @@ def test_clock():
 class Model:
     def __init__(self, dt=0.1):
         self.db = Database()
-        self.Foo = self.db.add_class("Foo")
-        self.bar = self.Foo.add_attribute("bar", 0, units='my_units')
-        self.Foo = self.Foo.get_instance_type()
+        db_Foo = self.db.add_class("Foo")
+        self.bar = db_Foo.add_attribute("bar", 0, units='my_units')
+        self.Foo = db_Foo.get_instance_type()
         self.clock = self.db.add_clock(dt, 'ms')
 
 def test_time_series_buffers():

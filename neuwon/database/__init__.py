@@ -87,7 +87,8 @@ class Database:
         """ """
         from neuwon.database.time import Clock
         assert self.clock is None, "Database already has a Clock!"
-        return Clock(self, tick_period, units=units)
+        self.clock = Clock(tick_period, units=units)
+        return self.clock
 
     def get_clock(self) -> 'neuwon.database.time.Clock':
         """ Get the default clock for this database. """
