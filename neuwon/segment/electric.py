@@ -1,3 +1,6 @@
+""" Private module. """
+__all__ = []
+
 from neuwon.database import epsilon
 import numpy as np
 
@@ -33,6 +36,22 @@ class ElectricProperties:
         self.axial_resistance = Ra * self.length / self.cross_sectional_area
         # Compute membrane capacitance.
         self.capacitance = Cm * self.surface_area
+
+    @classmethod
+    def _electric_advance(cls, time_step):
+        db_cls              = cls.get_database_class()
+        conductance         = db_cls.get_data("conductance")
+        driving_voltage     = db_cls.get_data("driving_voltage")
+        capacitance         = db_cls.get_data("capacitance")
+        voltage             = db_cls.get_data("voltage")
+        integral_v          = db_cls.get_data("integral_v")
+        # Update voltages.
+        exponent        = -dt * conductances / capacitances
+        alpha           = cp.exp(exponent)
+        diff_v          = driving_voltages - voltages
+        irm             = access("membrane/diffusion")
+        voltages[:]     = irm.dot(driving_voltages - diff_v * alpha)
+        integral_v[:]   = dt * driving_voltages - exponent * diff_v * alpha
 
     @classmethod
     def _electric_coefficients(cls):

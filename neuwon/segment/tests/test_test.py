@@ -4,8 +4,7 @@ import pytest
 
 def test_ball_and_stick():
     db = Database()
-    SegmentMethods._initialize(db)
-    Segment = db.get("Segment").get_instance_type()
+    Segment = SegmentMethods._initialize(db)
     ball = Segment(parent=None, coordinates=[0,0,0], diameter=42)
     stick = []
     tip = ball
@@ -14,8 +13,7 @@ def test_ball_and_stick():
         stick.append(tip)
     for x in db.get("Segment").get_all_instances():
         print(x.volume)
-    # help(Segment)
-    # db.check()
+    db.check()
 
 @pytest.mark.skip()
 def test_swc():
@@ -39,7 +37,4 @@ def test_swc():
     assert pct_diff(length,  1315.5) <= .05
     assert pct_diff(surface, 6621.44) <= .05
     assert pct_diff(volume,  3500.58) <= .05
-
-if __name__ == '__main__':
-    test_ball_and_stick()
-    test_swc()
+    db.check()

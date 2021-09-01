@@ -1,7 +1,35 @@
+""" Private module. """
+__all__ = []
+
 from neuwon.database import epsilon
 import numpy as np
 
-# IDEA: Make Tree a parent class for Geometery. IMO this way would be much more clear.
+class surface_area:
+    def disk(diameter):
+        """ Surface area of one side only, area of circle. """
+        return 0.25 * np.pi * (diameter ** 2)
+
+    def sphere(diameter):
+        return np.pi * (diameter ** 2)
+
+    def cylinder(diameter, length):
+        """ Lateral surface area, does not include the end caps. """
+        return np.pi * diameter * length
+
+    def frustum(radius_1, radius_2, length):
+        """ Lateral surface area, does not include the end caps. """
+        s = sqrt((radius_1 - radius_2) ** 2 + length ** 2)
+        return np.pi * (radius_1 + radius_2) * s
+
+class volume:
+    def sphere(diameter):
+        return (4.0 / 3.0 ) * np.pi * (0.5 * diameter) ** 3
+
+    def cylinder(diameter, length):
+        return surface_area.disk(diameter) * length
+
+    def frustum(radius_1, radius_2, length):
+        return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
 
 class Tree:
     """
@@ -25,7 +53,7 @@ class Tree:
     def is_root(self):
         return self.parent is None
 
-class Geometry:
+class SegmentGeometry(Tree):
     """
     The root of the tree is a sphere,
     all other segments are cylinders.
@@ -33,6 +61,8 @@ class Geometry:
     __slots__ = ()
     @staticmethod
     def _initialize(db_cls):
+        Tree._initialize(db_cls)
+
         db_cls.add_attribute("coordinates", shape=(3,),
                 units="μm",)
 
@@ -62,7 +92,8 @@ class Geometry:
                 units="μm³",
                 valid_range=(epsilon, np.inf),)
 
-    def __init__(self, coordinates, diameter):
+    def __init__(self, parent, coordinates, diameter):
+        Tree.__init__(self, parent)
         self.coordinates    = coordinates
         self.diameter       = diameter
         parent              = self.parent
@@ -96,8 +127,10 @@ class Geometry:
             self.length = np.linalg.norm(self.coordinates - self.parent.coordinates)
 
     def _secondary_length(self):
-        # Subtract the parent's radius from the secondary nodes length,
-        # to avoid excessive overlap between segments.
+        """
+        Subtract the parent's radius from the secondary nodes length,
+        to avoid excessive overlap between segments.
+        """
         length = self.length
         if not self._primary:
             parent_radius = 0.5 * self.parent.diameter
@@ -119,46 +152,19 @@ class Geometry:
             area = surface_area.cylinder(diameter, self._secondary_length())
             # Account for the surface area on the tips of terminal/leaf segments.
             if len(children) == 0:
-                area += surface_area.circle(diameter)
+                area += surface_area.disk(diameter)
         # Account for the surface area covered by children.
         for child in children:
             if not child._primary:
                 attachment_diameter = min(diameter, child.diameter)
-                area -= surface_area.circle(attachment_diameter)
+                area -= surface_area.disk(attachment_diameter)
         self.surface_area = area
 
     def _compute_cross_sectional_area(self):
-        self.cross_sectional_area = surface_area.circle(self.diameter)
+        self.cross_sectional_area = surface_area.disk(self.diameter)
 
     def _compute_intracellular_volume(self):
         if self.is_sphere():
             self.volume = volume.sphere(self.diameter)
         else:
             self.volume = volume.cylinder(self.diameter, self._secondary_length())
-
-class surface_area:
-    # TODO: Consider renaming "circle" to "disk"?
-    def circle(diameter):
-        return np.pi * ((0.5 * diameter) ** 2)
-
-    def sphere(diameter):
-        return np.pi * (diameter ** 2)
-
-    def cylinder(diameter, length):
-        """ Lateral surface area, does not include the end caps. """
-        return np.pi * diameter * length
-
-    def frustum(radius_1, radius_2, length):
-        """ Lateral surface area, does not include the end caps. """
-        s = sqrt((radius_1 - radius_2) ** 2 + length ** 2)
-        return np.pi * (radius_1 + radius_2) * s
-
-class volume:
-    def sphere(diameter):
-        return (4.0 / 3.0 ) * np.pi * (0.5 * diameter) ** 3
-
-    def cylinder(diameter, length):
-        return surface_area.circle(diameter) * length
-
-    def frustum(radius_1, radius_2, length):
-        return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)

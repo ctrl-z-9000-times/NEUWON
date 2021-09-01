@@ -1,11 +1,9 @@
+from neuwon.segment.electric import ElectricProperties
+from neuwon.segment.geometry import SegmentGeometry
 import numpy as np
 import re
-from neuwon.segment.geometry import Tree, Geometry
-from neuwon.segment.electric import ElectricProperties
 
-__all__ = ["SegmentMethods"]
-
-class SegmentMethods(Tree, Geometry, ElectricProperties):
+class SegmentMethods(SegmentGeometry, ElectricProperties):
     """ """
     __slots__ = ()
     @classmethod
@@ -14,17 +12,16 @@ class SegmentMethods(Tree, Geometry, ElectricProperties):
                 cytoplasmic_resistance = 1,
                 membrane_capacitance = .01,):
         db_cls = database.add_class("Segment", cls)
-        Tree._initialize(db_cls)
-        Geometry._initialize(db_cls)
+        SegmentGeometry._initialize(db_cls)
         ElectricProperties._initialize(db_cls,
                 initial_voltage=initial_voltage,
                 cytoplasmic_resistance=cytoplasmic_resistance,
                 membrane_capacitance=membrane_capacitance,)
+        return db_cls.get_instance_type()
 
     def __init__(self, parent, coordinates, diameter):
-        Tree.__init__(self, parent)
-        Geometry.__init__(self, coordinates, diameter)
-        ElectricProperties.__init__(self, )
+        SegmentGeometry.__init__(self, parent, coordinates, diameter)
+        ElectricProperties.__init__(self)
 
     @classmethod
     def load_swc(cls, swc_data):
