@@ -5,6 +5,7 @@ import numba
 class GameOfLife:
 
     class _CellBaseClass:
+        __slots__ = ()
         @classmethod
         def _add_to_database(cls, database):
             cell_data = database.add_class("Cell", cls)

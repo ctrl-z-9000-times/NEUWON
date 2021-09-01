@@ -10,6 +10,8 @@ from OpenGL.GLUT import *
 
 from neuwon.database import Database, Pointer, epsilon
 
+__all__ = ["Scene", "Viewport"]
+
 # MEMO: Don't optimize this code.
 
 class Scene:
@@ -165,9 +167,9 @@ class Viewport:
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
         glDisable(GL_CULL_FACE)
 
-    def set_scene(self, scene_or_database):
+    def set_scene(self, scene_or_database, *args):
         if isinstance(scene_or_database, Database):
-            self.scene = Scene(scene_or_database)
+            self.scene = Scene(scene_or_database, *args)
         elif isinstance(scene_or_database, Scene):
             self.scene = scene_or_database
         else: raise TypeError(scene_or_database)

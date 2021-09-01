@@ -251,7 +251,7 @@ class DB_Class(_Documentation):
         if users_class:
             for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
-                    cls.__slots__ = ()
+                    raise TypeError(f"Class \"{cls.__name__}\" does not define __slots__!")
         # 
         if users_class:
             super_classes = (users_class, _DB_Object)
@@ -291,9 +291,10 @@ class DB_Class(_Documentation):
                     \"\"\" TODO: Explain how / when this index changes. \"\"\"
                     return self._idx
 
-                def get_database_class(self):
+                @classmethod
+                def get_database_class(cls):
                     \"\"\" Get the database's internal representation of this object's type. \"\"\"
-                    return self._cls
+                    return cls._cls
             """)
         if False: print(pycode)
         exec(pycode, locals())
