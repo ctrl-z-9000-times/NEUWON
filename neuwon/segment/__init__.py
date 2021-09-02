@@ -3,6 +3,20 @@ from neuwon.segment.geometry import SegmentGeometry
 import numpy as np
 import re
 
+def _custom_super(target_type, obj):
+    """ Special wrapper for built-in method "super".
+
+    Returns a bound super proxy object, where the MRO starts *at* the given
+    target_type, as opposed to super's default behavior of starting the
+    MRO *after* the given type.
+    """
+    if isinstance(obj, type):
+        mro = obj.mro()
+    else:
+        mro = type(obj).mro()
+    idx = mro.index(target_type) - 1
+    return super(mro[idx], obj)
+
 class SegmentMethods(SegmentGeometry, ElectricProperties):
     """ """
     __slots__ = ()
@@ -12,8 +26,8 @@ class SegmentMethods(SegmentGeometry, ElectricProperties):
                 cytoplasmic_resistance = 1,
                 membrane_capacitance = .01,):
         db_cls = database.add_class("Segment", cls)
-        SegmentGeometry._initialize(db_cls)
-        ElectricProperties._initialize(db_cls,
+        _custom_super(SegmentGeometry, cls)._initialize(db_cls)
+        _custom_super(ElectricProperties, cls)._initialize(db_cls,
                 initial_voltage=initial_voltage,
                 cytoplasmic_resistance=cytoplasmic_resistance,
                 membrane_capacitance=membrane_capacitance,)
