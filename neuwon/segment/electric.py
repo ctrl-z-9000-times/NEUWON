@@ -1,17 +1,21 @@
 """ Private module. """
 __all__ = []
 
-from neuwon.database import epsilon
+from neuwon.database import epsilon, NULL
 import numpy as np
+import cupy as cp
+import scipy.sparse
+import scipy.sparse.linalg
 
 class ElectricProperties:
     __slots__ = ()
-    @staticmethod
-    def _initialize(db_cls, *,
+    @classmethod
+    def _initialize(cls, db_cls, *,
                 initial_voltage,
                 cytoplasmic_resistance,
                 membrane_capacitance,):
-        db_cls.add_attribute("voltage", initial_value=float(initial_voltage), units="mV")
+        db_cls.add_attribute("voltage", float(initial_voltage), units="mV")
+        db_cls.add_attribute("integral_v", 0.0)
         db_cls.add_attribute("axial_resistance", units="")
         db_cls.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
         db_cls.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
@@ -20,12 +24,14 @@ class ElectricProperties:
         db_cls.add_class_attribute("membrane_capacitance", membrane_capacitance,
                 units="?",
                 valid_range=(epsilon, np.inf))
-        db_cls.add_attribute("_sum_conductances", units="Siemens", valid_range=(0, np.inf))
-        db_cls.add_attribute("_driving_voltage", units="mV")
-        # db.add_linear_system("membrane/diffusion", function=_electric_coefficients, epsilon=epsilon)
+        db_cls.add_attribute("sum_conductance", units="Siemens", valid_range=(0, np.inf))
+        db_cls.add_attribute("driving_voltage", units="mV")
+        cls._clean = False
+        db_cls.add_sparse_matrix("electric_propagator_matrix", db_cls)
 
     def __init__(self):
         self._compute_passive_electric_properties()
+        type(self)._clean = False
 
     def _compute_passive_electric_properties(self):
         Ra = self.cytoplasmic_resistance
@@ -39,32 +45,35 @@ class ElectricProperties:
 
     @classmethod
     def _electric_advance(cls, time_step):
+        if not cls._clean:
+            cls._compute_propagator_matrix(time_step)
+        dt = time_step
         db_cls              = cls.get_database_class()
-        conductance         = db_cls.get_data("conductance")
+        conductance         = db_cls.get_data("sum_conductance")
         driving_voltage     = db_cls.get_data("driving_voltage")
         capacitance         = db_cls.get_data("capacitance")
         voltage             = db_cls.get_data("voltage")
         integral_v          = db_cls.get_data("integral_v")
         # Update voltages.
-        exponent        = -dt * conductances / capacitances
-        alpha           = cp.exp(exponent)
-        diff_v          = driving_voltages - voltages
-        irm             = access("membrane/diffusion")
-        voltages[:]     = irm.dot(driving_voltages - diff_v * alpha)
-        integral_v[:]   = dt * driving_voltages - exponent * diff_v * alpha
+        exponent        = -dt * conductance / capacitance
+        alpha           = np.exp(exponent)
+        diff_v          = driving_voltage - voltage
+        irm             = db_cls.get_data("electric_propagator_matrix")
+        voltage[:]      = irm.dot(driving_voltage - diff_v * alpha)
+        integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha
 
     @classmethod
-    def _electric_coefficients(cls):
+    def _compute_propagator_matrix(cls, time_step):
         """
         Model the electric currents over the membrane surface (in the axial directions).
         Compute the coefficients of the derivative function:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """
         db_cls = cls.get_database_class()
-        dt           = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
-        parents      = access("membrane/parents").get()
-        resistances  = access("membrane/axial_resistances").get()
-        capacitances = access("membrane/capacitances").get()
+        dt           = time_step / 1000
+        parents      = db_cls.get_data("parent")
+        resistances  = db_cls.get_data("axial_resistance")
+        capacitances = db_cls.get_data("capacitance")
         src = []; dst = []; coef = []
         for child, parent in enumerate(parents):
             if parent == NULL: continue
@@ -83,29 +92,21 @@ class ElectricProperties:
             src.append(parent)
             dst.append(parent)
             coef.append(-dt / (r * c_parent))
-        return (coef, (dst, src))
-
-        coef = scipy.sparse.csc_matrix(coef, shape=(self.archetype.size, self.archetype.size))
+        coef = (coef, (dst, src))
         # Note: always use double precision floating point for building the impulse response matrix.
-        # TODO: Detect if the user returns f32 and auto-convert it to f64.
+        coef = scipy.sparse.csc_matrix(coef, shape=(len(db_cls), len(db_cls)), dtype=np.float64)
         matrix = scipy.sparse.linalg.expm(coef)
         # Prune the impulse response matrix.
         matrix.data[np.abs(matrix.data) < epsilon] = 0
         matrix.eliminate_zeros()
-        self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
-
-
+        db_cls.get("electric_propagator_matrix").set_data(matrix)
+        cls._clean = True
 
     def inject_current(self, current, duration = 1.4):
         duration = float(duration)
         assert(duration >= 0)
         current = float(current)
 
-        # Inject_Current is applied two times every tick, at the start of advance_species.
-        # Need to make a second clock for the pre-species-advance stuff, put it in the model.
-        # Put a link to the model (and via the model the second clock) in the
-        # Segment class (where the _cls slot is).
-
-        clock = 1/0
-        dv = current * min(clocl.get_tick_period(), t) / self.capacitances
+        clock = type(self)._model.input_clock
+        dv = current * min(clock.get_tick_period(), t) / self.capacitance
         TimeSeriesBuffer().set_data([dv, dv], [0,duration]).play(self, "voltage", clock=clock)

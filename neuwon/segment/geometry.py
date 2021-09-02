@@ -36,8 +36,8 @@ class Tree:
     Segments are organized in a tree.
     """
     __slots__ = ()
-    @staticmethod
-    def _initialize(db_cls):
+    @classmethod
+    def _initialize(cls, db_cls):
         db_cls.add_attribute("parent", dtype=db_cls, allow_invalid=True)
         db_cls.add_connectivity_matrix("children", db_cls)
 
@@ -59,9 +59,9 @@ class SegmentGeometry(Tree):
     all other segments are cylinders.
     """
     __slots__ = ()
-    @staticmethod
-    def _initialize(db_cls):
-        Tree._initialize(db_cls)
+    @classmethod
+    def _initialize(cls, db_cls):
+        super()._initialize(db_cls)
 
         db_cls.add_attribute("coordinates", shape=(3,),
                 units="μm",)
