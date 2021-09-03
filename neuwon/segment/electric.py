@@ -15,7 +15,7 @@ class ElectricProperties:
                 cytoplasmic_resistance,
                 membrane_capacitance,):
         db_cls.add_attribute("voltage", float(initial_voltage), units="mV")
-        db_cls.add_attribute("integral_v", 0.0)
+        db_cls.add_attribute("integral_voltage")
         db_cls.add_attribute("axial_resistance", units="")
         db_cls.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
         db_cls.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
@@ -53,12 +53,13 @@ class ElectricProperties:
         driving_voltage     = db_cls.get_data("driving_voltage")
         capacitance         = db_cls.get_data("capacitance")
         voltage             = db_cls.get_data("voltage")
-        integral_v          = db_cls.get_data("integral_v")
+        integral_v          = db_cls.get_data("integral_voltage")
         # Update voltages.
         exponent        = -dt * conductance / capacitance
         alpha           = np.exp(exponent)
         diff_v          = driving_voltage - voltage
-        irm             = db_cls.get_data("electric_propagator_matrix")
+        irm             = db_cls.get("electric_propagator_matrix").to_csr().to_host().get_data()
+        irm = np.eye(len(db_cls))
         voltage[:]      = irm.dot(driving_voltage - diff_v * alpha)
         integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha
 
@@ -99,7 +100,7 @@ class ElectricProperties:
         # Prune the impulse response matrix.
         matrix.data[np.abs(matrix.data) < epsilon] = 0
         matrix.eliminate_zeros()
-        db_cls.get("electric_propagator_matrix").set_data(matrix)
+        db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._clean = True
 
     def inject_current(self, current, duration = 1.4):
