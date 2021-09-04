@@ -1,4 +1,4 @@
-from neuwon.nmodl.parser import NmodlParser
+from neuwon.nmodl.parser import ANT, NmodlParser
 
 def verify_executes(filename):
     x = NmodlParser(filename)
@@ -6,6 +6,13 @@ def verify_executes(filename):
     assert x.gather_states()
     assert x.gather_units()
     assert x.gather_parameters()
+
+    for AST in x.lookup(ANT.INITIAL_BLOCK):
+        x.parse_code_block()
+    for AST in x.lookup(ANT.BREAKPOINT_BLOCK):
+        x.parse_code_block()
+    for AST in x.lookup(ANT.DERIVATIVE_BLOCK):
+        x.parse_code_block(AST)
 
 def test_hh():
     verify_executes("./nmodl_library/hh.mod")
