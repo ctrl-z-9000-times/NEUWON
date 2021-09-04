@@ -153,7 +153,7 @@ class Database:
         for c in components:
             try: c.check()
             except Exception as x: exceptions.append(str(x))
-        if exceptions: raise AssertionError(",\n\t".join(sorted(exceptions)))
+        if exceptions: raise AssertionError(",\n                ".join(sorted(exceptions))+".")
 
     def __repr__(self):
         """ Table summarizing contents. """
