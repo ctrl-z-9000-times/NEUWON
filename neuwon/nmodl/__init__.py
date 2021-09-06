@@ -59,7 +59,10 @@ class NmodlMechanism(Reaction):
                 self.states = parser.gather_states()
                 for state in self.states:
                     self.pointers.add(state, read=(self.name+"."+state), write=(self.name+"."+state))
-                self._gather_functions(parser)
+                blocks = parser.gather_code_blocks()
+                self.initial_block = blocks['INITIAL']
+                self.breakpoint_block = blocks['BREAKPOINT']
+                self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative}
                 self._gather_IO(parser)
                 self._solve()
             except Exception:
@@ -108,19 +111,6 @@ class NmodlMechanism(Reaction):
 
     def get_name(self):
         return self.name
-
-    def _gather_functions(self, parser):
-        """ Process all blocks of code which contain imperative instructions.
-        Sets: initial_block, breakpoint_block, derivative_blocks. """
-        self.derivative_blocks = {AST.name.get_node_name(): parser.parse_code_block(AST)
-                        for AST in parser.lookup(ANT.DERIVATIVE_BLOCK)}
-        self.initial_block    = parser.parse_code_block(parser.lookup(ANT.INITIAL_BLOCK).pop())
-        self.breakpoint_block = parser.parse_code_block(parser.lookup(ANT.BREAKPOINT_BLOCK).pop())
-
-        for block in self.derivative_blocks.values():
-            block.gather_arguments(self)
-        self.initial_block.gather_arguments(self)
-        self.breakpoint_block.gather_arguments(self)
 
     def _gather_IO(self, parser):
         """ Determine what external data the mechanism accesses. """

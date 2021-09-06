@@ -9,7 +9,7 @@ def mk_db():
     SegmentMethods._initialize(db)
     return db
 
-@pytest.mark.skip()
+# @pytest.mark.skip()
 def test_hh():
     hh = NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
     db = mk_db()

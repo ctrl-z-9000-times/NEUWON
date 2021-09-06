@@ -78,6 +78,19 @@ class NmodlParser:
             parameters[name] = (value, units)
         return parameters
 
+    def gather_code_blocks(self):
+        blocks = {}
+        for AST in self.lookup(ANT.DERIVATIVE_BLOCK):
+            name = AST.name.get_node_name()
+            code_block = self.parse_code_block(AST)
+            blocks[name] = code_block
+            code_block.gather_arguments(blocks)
+        blocks['INITIAL']    = self.parse_code_block(self.lookup(ANT.INITIAL_BLOCK).pop())
+        blocks['BREAKPOINT'] = self.parse_code_block(self.lookup(ANT.BREAKPOINT_BLOCK).pop())
+        blocks['INITIAL']   .gather_arguments(blocks)
+        blocks['BREAKPOINT'].gather_arguments(blocks)
+        return blocks
+
     @classmethod
     def parse_code_block(cls, AST):
         return CodeBlock(AST)
@@ -158,38 +171,12 @@ class CodeBlock:
             self.statements.extend(NmodlParser.parse_statement(stmt))
         self.conserve_statements = [x for x in self if isinstance(x, ConserveStatement)]
 
-    def gather_arguments(self, mechanism):
-        """ Sets arguments and assigned lists. """
-        self.arguments = set()
-        self.assigned = set()
-        for stmt in self.statements:
-            if isinstance(stmt, AssignStatement):
-                for symbol in stmt.rhs.free_symbols:
-                    if symbol.name not in self.assigned:
-                        self.arguments.add(symbol.name)
-                self.assigned.add(stmt.lhsn)
-            elif isinstance(stmt, IfStatement):
-                stmt.gather_arguments(mechanism)
-                for symbol in stmt.arguments:
-                    if symbol not in self.assigned:
-                        self.arguments.add(symbol)
-                self.assigned.update(stmt.assigned)
-            elif isinstance(stmt, SolveStatement):
-                target_block = mechanism.derivative_blocks[stmt.block]
-                for symbol in target_block.arguments:
-                    if symbol not in self.assigned:
-                        self.arguments.add(symbol)
-                self.assigned.update(target_block.assigned)
-            elif isinstance(stmt, ConserveStatement): pass
-            else: raise NotImplementedError(stmt)
-        self.arguments = sorted(self.arguments)
-        self.assigned = sorted(self.assigned)
-
     def __iter__(self):
         for stmt in self.statements:
+            yield stmt
             if isinstance(stmt, IfStatement):
-                for x in stmt: yield x
-            else: yield stmt
+                for x in stmt:
+                    yield x
 
     def map(self, f):
         """ Argument f is function f(Statement) -> [Statement,]"""
@@ -200,6 +187,34 @@ class CodeBlock:
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
+    def gather_arguments(self, code_blocks):
+        """ Sets arguments and assigned lists. """
+        self.arguments = set()
+        self.assigned  = set()
+        for stmt in iter(self):
+            if isinstance(stmt, AssignStatement):
+                for symbol in stmt.rhs.free_symbols:
+                    if symbol.name not in self.assigned:
+                        self.arguments.add(symbol.name)
+                self.assigned.add(stmt.lhsn)
+            elif isinstance(stmt, IfStatement):
+                for symbol in stmt.condition.free_symbols:
+                    self.arguments.add(symbol.name)
+                for block in [stmt.main_block] + stmt.elif_blocks + [stmt.else_block]:
+                    block.gather_arguments(code_blocks)
+                    self.arguments.update(block.arguments)
+                    self.assigned.update(block.assigned)
+            elif isinstance(stmt, SolveStatement):
+                target_block = code_blocks[stmt.block]
+                for symbol in target_block.arguments:
+                    if symbol not in self.assigned:
+                        self.arguments.add(symbol)
+                self.assigned.update(target_block.assigned)
+            elif isinstance(stmt, ConserveStatement): pass
+            else: raise NotImplementedError(stmt)
+        self.arguments = sorted(self.arguments)
+        self.assigned  = sorted(self.assigned)
+
 class IfStatement:
     def __init__(self, AST):
         self.condition = NmodlParser.parse_expression(AST.condition)
@@ -207,23 +222,6 @@ class IfStatement:
         self.elif_blocks = [CodeBlock(block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
         self.else_block = CodeBlock(AST.elses)
-
-    def gather_arguments(self, mechanism):
-        """ Sets arguments and assigned lists. """
-        self.arguments = set()
-        self.assigned = set()
-        for symbol in self.condition.free_symbols:
-            self.arguments.add(symbol.name)
-        self.main_block.gather_arguments(mechanism)
-        self.arguments.update(self.main_block.arguments)
-        self.assigned.update(self.main_block.assigned)
-        for block in self.elif_blocks:
-            block.gather_arguments(mechanism)
-            self.arguments.update(block.arguments)
-            self.assigned.update(block.assigned)
-        self.else_block.gather_arguments(mechanism)
-        self.arguments.update(self.else_block.arguments)
-        self.assigned.update(self.else_block.assigned)
 
     def __iter__(self):
         for x in self.main_block: yield x
