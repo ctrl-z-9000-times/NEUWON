@@ -172,10 +172,16 @@ class CodeBlock:
         self.conserve_statements = [x for x in self if isinstance(x, ConserveStatement)]
 
     def __iter__(self):
+        """ Yields all Statements contained in this block. """
         for stmt in self.statements:
             yield stmt
             if isinstance(stmt, IfStatement):
-                for x in stmt:
+                for x in stmt.main_block:
+                    yield x
+                for block in stmt.elif_blocks:
+                    for x in block:
+                        yield x
+                for x in stmt.else_block:
                     yield x
 
     def map(self, f):
@@ -183,7 +189,10 @@ class CodeBlock:
         mapped_statements = []
         for stmt in self.statements:
             if isinstance(stmt, IfStatement):
-                stmt.map(f)
+                stmt.main_block.map(f)
+                for block in stmt.elif_blocks:
+                    block.map(f)
+                stmt.else_block.map(f)
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
@@ -222,18 +231,6 @@ class IfStatement:
         self.elif_blocks = [CodeBlock(block) for block in AST.elseifs]
         assert(not self.elif_blocks) # TODO: Unimplemented.
         self.else_block = CodeBlock(AST.elses)
-
-    def __iter__(self):
-        for x in self.main_block: yield x
-        for block in self.elif_blocks:
-            for x in block: yield x
-        for x in self.else_block: yield x
-
-    def map(self, f):
-        """ Argument f is function f(Statement) -> [Statement,]"""
-        self.main_block.map(f)
-        for block in self.elif_blocks: block.map(f)
-        self.else_block.map(f)
 
 class AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False):
@@ -372,21 +369,6 @@ class SolveStatement:
         else: self.method = "sparse" # FIXME
         AST.ifsolerr # TODO: What does this do?
         # assert(self.block in mechanism.derivative_blocks)
-        # arguments = mechanism.derivative_blocks[self.block].arguments
-        # if self.steadystate:
-        #     states_var = code_gen.mangle2("states")
-        #     index_var  = code_gen.mangle2("index")
-        #     self.py = states_var + " = solve_steadystate('%s', {%s})\n"%(self.block,
-        #             ", ".join("'%s': %s"%(x, x) for x in arguments))
-        #     for x in mechanism.states:
-        #         self.py += "%s[%s] = %s['%s']\n"%(code_gen.mangle(x), index_var, states_var, x)
-        # else:
-        #     self.py = self.block + "(%s)\n"%(
-        #                 ", ".join(arguments))
-
-class _LinearSystem:
-    def __init__(self, name):
-        1/0
 
 class ConserveStatement:
     def __init__(self, AST):

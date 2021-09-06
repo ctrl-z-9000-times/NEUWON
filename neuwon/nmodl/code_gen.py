@@ -41,8 +41,7 @@ def to_python(self, indent="", **kwargs):
     elif isinstance(self, AssignStatement):
         INITIAL_BLOCK = kwargs.get("INITIAL_BLOCK", False)
         if not isinstance(self.rhs, str):
-            # TODO: Reimport sympytopycode BC this can't import codegen BC codegen imports this file...
-            try: self.rhs = code_gen.sympy_to_pycode(self.rhs.simplify())
+            try: self.rhs = sympy_to_pycode(self.rhs.simplify())
             except Exception:
                 eprint("Failed at:", repr(self))
                 raise

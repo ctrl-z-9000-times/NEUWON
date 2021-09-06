@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real
 from neuwon.model import Reaction, Model
 from neuwon.nmodl import code_gen, cache
-from neuwon.nmodl.parser import NmodlParser, ANT
+from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement
 from neuwon.nmodl.pointers import PointerTable, Pointer
 from scipy.linalg import expm
 import copy
@@ -31,7 +31,7 @@ def eprint(*args, **kwargs):
 #         if variable in surface_area_parameters:
 #             idx = surface_area_parameters.index(variable)
 #             self.breakpoint_block.statements.append(
-#                     _AssignStatement(variable, variable, pointer=pointer))
+#                     AssignStatement(variable, variable, pointer=pointer))
 
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameters={}, use_cache=True):
@@ -165,16 +165,16 @@ class NmodlMechanism(Reaction):
         self.solved_blocks = {}
         sympy_methods = ("cnexp", "derivimplicit", "euler")
         self.breakpoint_block.map((lambda stmt: self._sympy_solve(stmt.block).statements
-                if isinstance(stmt, _SolveStatement) and stmt.method in sympy_methods else [stmt]))
+                if isinstance(stmt, SolveStatement) and stmt.method in sympy_methods else [stmt]))
         self.breakpoint_block.map((lambda stmt: _LinearSystem(self, stmt.block)
-                if isinstance(stmt, _SolveStatement) and stmt.method == "sparse" else [stmt]))
+                if isinstance(stmt, SolveStatement) and stmt.method == "sparse" else [stmt]))
 
     def _sympy_solve(self, block_name):
         if block_name in self.solved_blocks: return self.solved_blocks[block_name]
         block = self.derivative_blocks[block_name]
         self.solved_blocks[block_name] = block = copy.deepcopy(block)
         for stmt in block:
-            if isinstance(stmt, _AssignStatement) and stmt.derivative:
+            if isinstance(stmt, AssignStatement) and stmt.derivative:
                 # if stmt.lhsn in self.pointers and self.pointers[stmt.lhsn].accumulate:
                 #     stmt.derivative = False # Main model will integrate, after summing derivatives across all reactions.
                 #     continue
@@ -187,7 +187,7 @@ class NmodlMechanism(Reaction):
         """
         self.derivative_functions = {}
         solve_statements = {stmt.block: stmt
-                for stmt in self.breakpoint_block if isinstance(stmt, _SolveStatement)}
+                for stmt in self.breakpoint_block if isinstance(stmt, SolveStatement)}
         for name, block in self.derivative_blocks.items():
             if name not in solve_statements: continue
             if solve_statements[name].method == "sparse":
@@ -275,13 +275,13 @@ class NmodlMechanism(Reaction):
     def _compile_breakpoint_block(self, database):
         # Link assignment to their pointers.
         for stmt in self.breakpoint_block:
-            if isinstance(stmt, _AssignStatement):
+            if isinstance(stmt, AssignStatement):
                 stmt.pointer = self.pointers.get(stmt.lhsn, None)
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
         self.breakpoint_block.statements.sort(key=lambda stmt: bool(
-                isinstance(stmt, _AssignStatement)
+                isinstance(stmt, AssignStatement)
                 and stmt.pointer and "conductance" in stmt.pointer.name))
         # 
         self.breakpoint_block.gather_arguments(self)
@@ -422,5 +422,5 @@ class ParameterTable(dict):
             substitutions.append((name, value))
         for block in blocks:
             for stmt in block:
-                if isinstance(stmt, _AssignStatement):
+                if isinstance(stmt, AssignStatement):
                     stmt.rhs = stmt.rhs.subs(substitutions)
