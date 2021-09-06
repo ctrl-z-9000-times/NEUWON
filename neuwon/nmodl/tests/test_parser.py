@@ -8,9 +8,9 @@ def verify_executes(filename):
     assert x.gather_parameters()
 
     for AST in x.lookup(ANT.INITIAL_BLOCK):
-        x.parse_code_block()
+        x.parse_code_block(AST)
     for AST in x.lookup(ANT.BREAKPOINT_BLOCK):
-        x.parse_code_block()
+        x.parse_code_block(AST)
     for AST in x.lookup(ANT.DERIVATIVE_BLOCK):
         x.parse_code_block(AST)
 

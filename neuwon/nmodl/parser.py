@@ -200,12 +200,6 @@ class CodeBlock:
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
-    def to_python(self, indent="", **kwargs):
-        py = ""
-        for stmt in self.statements:
-            py += stmt.to_python(indent, **kwargs)
-        return py.rstrip() + "\n"
-
 class IfStatement:
     def __init__(self, AST):
         self.condition = NmodlParser.parse_expression(AST.condition)
@@ -243,14 +237,6 @@ class IfStatement:
         for block in self.elif_blocks: block.map(f)
         self.else_block.map(f)
 
-    def to_python(self, indent, **kwargs):
-        py = indent + "if %s:\n"%code_gen.sympy_to_pycode(self.condition)
-        py += self.main_block.to_python(indent + "    ", **kwargs)
-        assert(not self.elif_blocks) # TODO: Unimplemented.
-        py += indent + "else:\n"
-        py += self.else_block.to_python(indent + "    ", **kwargs)
-        return py
-
 class AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False):
         self.lhsn = str(lhsn) # Left hand side name.
@@ -263,23 +249,6 @@ class AssignStatement:
         if self.derivative: s = "'" + s
         if self.pointer: s += "  (%s)"%str(self.pointer)
         return s
-
-    def to_python(self,  indent="", INITIAL_BLOCK=False, **kwargs):
-        if not isinstance(self.rhs, str):
-            try: self.rhs = code_gen.sympy_to_pycode(self.rhs.simplify())
-            except Exception:
-                eprint("Failed at:", repr(self))
-                raise
-        if self.derivative:
-            lhs = code_gen.mangle('d' + self.lhsn)
-            return indent + lhs + " += " + self.rhs + "\n"
-        if self.pointer and not INITIAL_BLOCK:
-            assert self.pointer.w, self.pointer.name + " is not a writable pointer!"
-            array_access = self.pointer.write_py + "[" + self.pointer.index_py + "]"
-            eq = " += " if self.pointer.a else " = "
-            assign_local = self.lhsn + " = " if self.pointer.r and not self.pointer.a else ""
-            return indent + array_access + eq + assign_local + self.rhs + "\n"
-        return indent + self.lhsn + " = " + self.rhs + "\n"
 
     def solve(self):
         """ Solve this differential equation in-place. """
@@ -417,17 +386,8 @@ class SolveStatement:
         #     self.py = self.block + "(%s)\n"%(
         #                 ", ".join(arguments))
 
-    def to_python(self, indent, **kwargs):
-        1/0
-        if self.steadystate: return insert_indent(indent, self._steadystate_callback)
-        else:
-            return indent + 1/0
-
 class _LinearSystem:
     def __init__(self, name):
-        1/0
-
-    def to_python(self, indent, **kwargs):
         1/0
 
 class ConserveStatement:
@@ -442,9 +402,3 @@ class ConserveStatement:
         sum_solution = sympy.solvers.solve(sympy.Eq(conserved_expr, assumed_form), sum_symbol)
         assert(len(sum_solution) == 1)
         self.conserve_sum = sum_solution[0].evalf()
-
-    def to_python(self, indent, **kwargs):
-        py  = indent + "_CORRECTION_FACTOR = %s / (%s)\n"%(str(self.conserve_sum), " + ".join(self.states))
-        for x in self.states:
-            py += indent + x + " *= _CORRECTION_FACTOR\n"
-        return py
