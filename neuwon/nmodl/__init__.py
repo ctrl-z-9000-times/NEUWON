@@ -34,17 +34,16 @@ def eprint(*args, **kwargs):
 #                     _AssignStatement(variable, variable, pointer=pointer))
 
 class NmodlMechanism(Reaction):
-    # TODO: Consider renaming "parameter_overrides" to just "parameters", for bevity.
-    def __init__(self, filename, pointers={}, parameter_overrides={}, use_cache=True):
+    def __init__(self, filename, pointers={}, parameters={}, use_cache=True):
         """
         Argument filename is an NMODL file to load.
-            The standard NMODL file name extension is ".mod"
+                The standard NMODL file name extension is ".mod"
 
         Argument pointers is a mapping of NMODL variable names to database
-            component names.
+                component names.
 
-        Argument parameter_overrides is a mapping of parameter names to custom
-            floating-point values.
+        Argument parameters is a mapping of parameter names to custom
+                floating-point values.
         """
         self.filename = os.path.abspath(str(filename))
         if use_cache and cache.try_loading(self.filename, self): pass
@@ -69,7 +68,7 @@ class NmodlMechanism(Reaction):
                 eprint("ERROR while loading file", self.filename)
                 raise
             cache.save(self.filename, self)
-        self.parameters.update(parameter_overrides, strict=True)
+        self.parameters.update(parameters, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
         for param in self.surface_area_parameters:
             self.pointers.add(param, read=(self.name+"."+param))
