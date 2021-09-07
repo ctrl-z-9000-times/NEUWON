@@ -7,14 +7,6 @@ This file provides tools for performing constructive solid geometry:
 """
 import numpy as np
 
-# IDEA: Make a region subclass for working with arbitrary shapes which are loaded from file.
-#       Do a 3D projection of a 2D image to a uniform height?
-#       Or accept a stack of images and interpolate an arbitrary 3D volume?
-
-# IDEA: Reject points at random to effect the relative density in different areas.
-#       Use the hash of the floating point coordinates as the source of randomness
-#       so that it is stable.
-
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
 
@@ -156,3 +148,52 @@ class Cylinder(Region):
             return False
         dist_sqr = displacement.dot(displacement) - dot*dot/self.length_sqr;
         return dist_sqr <= self.radius_sqr
+
+class _Image(Rectangle):
+    """ """
+    def __init__(self, corner1, corner2, image, z_axis):
+        """ """
+        super().__init__(corner1, corner2)
+        if   z_axis in "xX": self.z_axis = 0
+        elif z_axis in "yY": self.z_axis = 1
+        elif z_axis in "zZ": self.z_axis = 2
+        else: self.z_axis = int(z_axis)
+        # 
+        self.image = np.array(image, dtype=np.float32)
+
+    def contains(self, coordinates):
+        if not super().contains(coordinates):
+            return False
+        # Use hashes to assign a stable unique identity to every location.
+        h = hash(tuple(coordinates))
+        # Convert hash into float in range [0, 1]
+        z = 2 ** 30
+        h = (h % z) / z
+        # Get the image pixel value for these coordinates.
+        shape   = self.image.shape
+        x, y    = (dim for dim in range(3) if dim != self.z_axis)
+        offset  = coordinates - self.a
+        offset  = (offset[x], offset[y])
+        scale   = ((self.b[x] - self.a[x]) / shape[0],
+                   (self.b[y] - self.a[y]) / shape[1])
+        coords  = (offset[0] / scale[0], offset[1] / scale[1])
+        coords  = (min(int(coords[0]), shape[0]), min(int(coords[1]), shape[1]))
+        pixel   = self.image[coords[0], coords[1]]
+        # Decide if the location is part of this region.
+        return h < pixel
+
+class _ImageStack:
+    """ """
+    def __init__(self, stack):
+        """ """
+        1/0
+        self.stack = Union([
+            Image()
+            for x in stack
+            ])
+
+    def aabb(self):
+        return self.stack.aabb()
+
+    def contains(self, coordinates):
+        return self.stack.contains(coordinates)
