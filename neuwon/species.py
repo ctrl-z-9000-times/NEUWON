@@ -1,4 +1,8 @@
 
+
+F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
+R = 8.31446261815324 # Universal gas constant
+
 class Species:
     """ """
 
@@ -79,7 +83,7 @@ class Species:
         try: self.reversal_potential = float(reversal_potential)
         except ValueError:
             self.reversal_potential = str(reversal_potential)
-            assert(self.reversal_potential in ("nerst", "goldman_hodgkin_katz"))
+            assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
         self.inside_concentration   = float(inside_concentration)
         self.outside_concentration  = float(outside_concentration)
         self.inside_global_const    = inside_diffusivity is None
@@ -102,9 +106,9 @@ class Species:
         if self.outside_global_const: assert self.outside_decay_period == np.inf
 
     def __repr__(self):
-        return "neuwon.Species(%s)"%self.name
+        return "neuwon.species.Species(%s)"%self.name
 
-    def _initialize(self, database):
+    def _initialize(self, database, time_step):
         db = database
         if self.inside_global_const:
             db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
@@ -241,6 +245,34 @@ class Species:
                 write_idx += 1
         return (coef, (dst, src))
 
+    def _advance(self, database):
+        # Calculate the transmembrane ion flows.
+        if not (s.transmembrane and s.charge != 0): continue
+        if s.inside_global_const and s.outside_global_const: continue
+        reversal_potential = access("membrane/reversal_potentials/"+s.name)
+        g = access("membrane/conductances/"+s.name)
+        millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
+        if s.inside_diffusivity != 0:
+            if s.use_shells:
+                1/0
+            else:
+                volumes        = access("membrane/inside/volumes")
+                concentrations = access("membrane/inside/concentrations/"+s.name)
+                concentrations += millimoles / volumes
+        if s.outside_diffusivity != 0:
+            volumes = access("outside/volumes")
+            s.outside.concentrations -= millimoles / self.geometry.outside_volumes
+        # Update chemical concentrations with local changes and diffusion.
+        if not s.inside_global_const:
+            x    = access("membrane/inside/concentrations/"+s.name)
+            rr   = access("membrane/inside/delta_concentrations/"+s.name)
+            irm  = access("membrane/inside/diffusions/"+s.name)
+            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+        if not s.outside_global_const:
+            x    = access("outside/concentrations/"+s.name)
+            rr   = access("outside/delta_concentrations/"+s.name)
+            irm  = access("outside/diffusions/"+s.name)
+            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
 
 class InsideMethods:

@@ -15,9 +15,6 @@ from PIL import Image, ImageFont, ImageDraw
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
 
-F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
-R = 8.31446261815324 # Universal gas constant
-
 _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
 
 class Reaction:
@@ -184,7 +181,7 @@ class Model:
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
         self.input_clock.tick()
-        dt                  = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
+        dt                  = self.time_step / 1000 / _ITERATIONS_PER_TIMESTEP
         conductances        = access("membrane/conductances")
         driving_voltages    = access("membrane/driving_voltages")
         voltages            = access("membrane/voltages")
@@ -200,42 +197,11 @@ class Model:
             driving_voltages += g * reversal_potential
         driving_voltages /= conductances
         driving_voltages[:] = cp.nan_to_num(driving_voltages)
-        # Update voltages.
-        exponent    = -dt * conductances / capacitances
-        alpha       = cp.exp(exponent)
-        diff_v      = driving_voltages - voltages
-        irm         = access("membrane/diffusion")
-        voltages[:] = irm.dot(driving_voltages - diff_v * alpha)
-        integral_v  = dt * driving_voltages - exponent * diff_v * alpha
-        # Calculate the transmembrane ion flows.
+
+        self.Segment._electric_advance(self.time_step)
+
         for s in self.species.values():
-            if not (s.transmembrane and s.charge != 0): continue
-            if s.inside_global_const and s.outside_global_const: continue
-            reversal_potential = access("membrane/reversal_potentials/"+s.name)
-            g = access("membrane/conductances/"+s.name)
-            millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
-            if s.inside_diffusivity != 0:
-                if s.use_shells:
-                    1/0
-                else:
-                    volumes        = access("membrane/inside/volumes")
-                    concentrations = access("membrane/inside/concentrations/"+s.name)
-                    concentrations += millimoles / volumes
-            if s.outside_diffusivity != 0:
-                volumes = access("outside/volumes")
-                s.outside.concentrations -= millimoles / self.geometry.outside_volumes
-        # Update chemical concentrations with local changes and diffusion.
-        for s in self.species.values():
-            if not s.inside_global_const:
-                x    = access("membrane/inside/concentrations/"+s.name)
-                rr   = access("membrane/inside/delta_concentrations/"+s.name)
-                irm  = access("membrane/inside/diffusions/"+s.name)
-                x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
-            if not s.outside_global_const:
-                x    = access("outside/concentrations/"+s.name)
-                rr   = access("outside/delta_concentrations/"+s.name)
-                irm  = access("outside/diffusions/"+s.name)
-                x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+            s._advance(self.time_step)
 
     def _advance_reactions(self):
         def zero(component_name):

@@ -51,7 +51,10 @@ class Database:
             name = str(name)
         _cls, _, attr = name.partition('.')
         obj = self.db_classes[_cls]
-        if attr: obj = obj.components[attr]
+        try:
+            if attr: obj = obj.components[attr]
+        except KeyError:
+            raise AttributeError("'%s' object has no attribute '%s'"%(_cls, attr))
         return obj
 
     def get_class(self, name: str):
