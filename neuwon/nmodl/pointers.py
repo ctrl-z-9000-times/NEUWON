@@ -46,7 +46,7 @@ class PointerTable(dict):
             ptr.initialize(database)
             if ptr.target_class == self.mech_name: continue
             elif ptr.target_class not in self:
-                if   ptr.target_class == "Segment": read = self.mech_name + ".insertion"
+                if   ptr.target_class == "Segment": read = self.mech_name + ".segment"
                 elif ptr.target_class == "Inside":  read = "Segment.inside"
                 elif ptr.target_class == "Outside": read = "Segment.outside"
                 else: raise NotImplementedError(ptr.target_class)
@@ -67,12 +67,12 @@ class Pointer:
         self.accumulate = bool(accumulate)
 
     def initialize(self, database):
+        # TODO: Make target_class into a method, and get rid of this method.
         component = self.read or self.write
         if component is None:
             self.target_class = None
         else:
-            component = database.get_component(component)
-            self.target_class = component.get_class().get_name()
+            self.target_class = str(component).partition('.')[0]
 
     @property
     def r(self): return self.read is not None
@@ -93,6 +93,8 @@ class Pointer:
         if self.w: args.append("write='%s'"%self.write)
         if self.a: args.append("accumulate")
         return self.name + " = Pointer(%s)"%', '.join(args)
+
+    # TODO: Make the following into explicit methods instead of properties.
 
     @property
     def read_py(self):

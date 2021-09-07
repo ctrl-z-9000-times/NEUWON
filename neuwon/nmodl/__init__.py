@@ -77,7 +77,7 @@ class NmodlMechanism(Reaction):
 
     def initialize(self, database, **builtin_parameters):
         try:
-            self.parameters.gather_global_constants(database, builtin_parameters, self.pointers)
+            self.parameters.update(builtin_parameters, strict=True, override=False)
             self.parameters.substitute(itertools.chain(
                     (self.initial_block, self.breakpoint_block,),
                     self.derivative_blocks.values(),))
@@ -113,6 +113,8 @@ class NmodlMechanism(Reaction):
 
     def _gather_IO(self, parser):
         """ Determine what external data the mechanism accesses. """
+        self.breakpoint_block.gather_arguments()
+        self.initial_block.gather_arguments()
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
         if "v" in all_args:
             self.pointers.add("v", read="Segment.voltage")
@@ -169,9 +171,8 @@ class NmodlMechanism(Reaction):
         self.breakpoint_block.map((lambda stmt: _LinearSystem(self, stmt.block)
                 if isinstance(stmt, SolveStatement) and stmt.method == "sparse" else [stmt]))
 
-    def _sympy_solve(self, block_name):
-        if block_name in self.solved_blocks: return self.solved_blocks[block_name]
-        block = self.derivative_blocks[block_name]
+    def _sympy_solve(self, block):
+        block_name = block.name
         self.solved_blocks[block_name] = block = copy.deepcopy(block)
         for stmt in block:
             if isinstance(stmt, AssignStatement) and stmt.derivative:
@@ -286,7 +287,7 @@ class NmodlMechanism(Reaction):
                 isinstance(stmt, AssignStatement)
                 and stmt.pointer and "conductance" in stmt.pointer.name))
         # 
-        self.breakpoint_block.gather_arguments(self)
+        self.breakpoint_block.gather_arguments()
         initial_scope_carryover = []
         for arg in self.breakpoint_block.arguments:
             if arg in self.pointers: pass
@@ -369,7 +370,7 @@ class ParameterTable(dict):
         self.update(self.builtin_parameters)
         self.update(parameters)
 
-    def update(self, parameters, strict=False):
+    def update(self, parameters, strict=False, override=True):
         for name, value in parameters.items():
             name = str(name)
             if not isinstance(value, Iterable): value = (value, None)
@@ -379,8 +380,10 @@ class ParameterTable(dict):
             if name in self:
                 old_value, old_units = self[name]
                 if units is None: units = old_units
-                elif strict and old_units is not None:
+                elif old_units is not None and (strict or not override):
                     assert units == old_units, "Parameter \"%s\" units changed."%name
+                if old_value is not None and not override:
+                    value = old_value
             elif strict: raise ValueError("Invalid parameter override \"%s\"."%name)
             self[name] = (value, units)
         return self
@@ -399,23 +402,6 @@ class ParameterTable(dict):
             if units and "/cm2" in units:
                 surface_area_parameters[name] = self.pop(name)
         return surface_area_parameters
-
-    def gather_global_constants(self, database, builtin_parameters, pointers):
-        """ Fill in missing parameter values from the model & database. """
-        assert set(builtin_parameters).issuperset(self.builtin_parameters)
-        for name, value in builtin_parameters.items():
-            prior_value, units = self[name]
-            # The builtins take lowest precidence.
-            if prior_value is None:
-                self[name] = (float(value), units)
-        for name, ptr in list(pointers.items()):
-            if ptr.r:
-                try: value = database.get(ptr.read)
-                except KeyError: continue
-                if isinstance(value, float):
-                    self.update({ptr.name: value})
-                    ptr.read = None
-                    if not ptr.mode: del pointers[name]
 
     def substitute(self, blocks):
         substitutions = []

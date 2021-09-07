@@ -7,6 +7,8 @@ def verify_file_parses(filename):
     assert x.gather_units()
     assert x.gather_parameters()
     b = x.gather_code_blocks()
+    for z in b.values():
+        z.gather_arguments()
     assert 'v' in b['BREAKPOINT'].arguments
 
 def test_hh():

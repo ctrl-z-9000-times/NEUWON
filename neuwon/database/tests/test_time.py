@@ -162,7 +162,7 @@ def test_trace_averages():
         start       = True,
         mean        = -120,
         std         = 0.3,
-        tolerance   = 0.02,)
+        tolerance   = 0.03,)
 
 def inner_test_traces(period, samples, start, mean, std, tolerance, device=False):
     m = Model()

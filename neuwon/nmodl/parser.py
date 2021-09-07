@@ -84,11 +84,12 @@ class NmodlParser:
             name = AST.name.get_node_name()
             code_block = self.parse_code_block(AST)
             blocks[name] = code_block
-            code_block.gather_arguments(blocks)
         blocks['INITIAL']    = self.parse_code_block(self.lookup(ANT.INITIAL_BLOCK).pop())
         blocks['BREAKPOINT'] = self.parse_code_block(self.lookup(ANT.BREAKPOINT_BLOCK).pop())
-        blocks['INITIAL']   .gather_arguments(blocks)
-        blocks['BREAKPOINT'].gather_arguments(blocks)
+        for b in blocks.values():
+            for stmt in b:
+                if isinstance(stmt, SolveStatement):
+                    stmt.block = blocks[stmt.block]
         return blocks
 
     @classmethod
@@ -196,7 +197,7 @@ class CodeBlock:
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
-    def gather_arguments(self, code_blocks):
+    def gather_arguments(self):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned  = set()
@@ -214,11 +215,12 @@ class CodeBlock:
                 for symbol in stmt.condition.free_symbols:
                     read_symbol(symbol.name)
                 for block in [stmt.main_block] + stmt.elif_blocks + [stmt.else_block]:
-                    block.gather_arguments(code_blocks)
+                    block.gather_arguments()
                     for name in block.arguments:    read_symbol(name)
                     for name in block.assigned:     write_symbol(name)
             elif isinstance(stmt, SolveStatement):
-                target_block = code_blocks[stmt.block]
+                target_block = stmt.block
+                target_block.gather_arguments()
                 for name in target_block.arguments: read_symbol(name)
                 for name in target_block.assigned:  write_symbol(name)
             elif isinstance(stmt, ConserveStatement): pass
@@ -254,7 +256,6 @@ class SolveStatement:
         if AST.method: self.method = AST.method.get_node_name()
         else: self.method = "sparse" # FIXME
         AST.ifsolerr # TODO: What does this do?
-        # assert(self.block in mechanism.derivative_blocks)
 
 class ConserveStatement:
     def __init__(self, AST):
