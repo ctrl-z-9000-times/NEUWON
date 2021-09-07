@@ -1,6 +1,8 @@
 """ Private module. """
 __all__ = []
 
+import sympy
+
 from neuwon.nmodl import code_gen
 from neuwon.nmodl.parser import AssignStatement
 
@@ -8,7 +10,7 @@ def solve(self):
     """ Solve this differential equation in-place. """
     assert(self.derivative)
     if False: print("SOLVE:   ", 'd/dt', self.lhsn, "=", self.rhs)
-    self._solve_sympy()
+    _solve_sympy(self)
     # self._solve_crank_nicholson()
     # try:
     # except Exception as x: eprint("Warning Sympy solver failed: "+str(x))

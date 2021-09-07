@@ -4,6 +4,7 @@ from neuwon.model import Reaction, Model
 from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement
 from neuwon.nmodl.pointers import PointerTable, Pointer
+from neuwon.nmodl.solver import solve
 from scipy.linalg import expm
 import copy
 import itertools
@@ -12,7 +13,6 @@ import numba
 import numba.cuda
 import numpy as np
 import os.path
-import sympy
 import sys
 
 __all__ = ["NmodlMechanism"]
@@ -178,7 +178,7 @@ class NmodlMechanism(Reaction):
                 # if stmt.lhsn in self.pointers and self.pointers[stmt.lhsn].accumulate:
                 #     stmt.derivative = False # Main model will integrate, after summing derivatives across all reactions.
                 #     continue
-                stmt.solve()
+                solve(stmt)
         return block
 
     def _compile_derivative_blocks(self):
@@ -227,7 +227,8 @@ class NmodlMechanism(Reaction):
         globals_ = {
             "solve_steadystate": self.solve_steadystate,
         }
-        self.initial_block.gather_arguments(self)
+        self.initial_scope = {x: 0 for x in self.states}
+        initial_python = code_gen.to_python(self.initial_block, INITIAL_BLOCK=True)
         for arg in self.initial_block.arguments:
             if arg in self.parameters:
                 globals_[arg] = self.parameters[arg][0]
@@ -235,9 +236,10 @@ class NmodlMechanism(Reaction):
                 read = self.pointers[arg].read
                 globals_[arg] = database.get(read).get_initial_value()
             else:
+                eprint(initial_python)
+                eprint("Arguments:", self.initial_block.arguments)
+                eprint("Assigned:", self.initial_block.assigned)
                 raise ValueError("Missing initial value for \"%s\"."%arg)
-        self.initial_scope = {x: 0 for x in self.states}
-        initial_python = self.initial_block.to_python(INITIAL_BLOCK=True)
         code_gen.py_exec(initial_python, globals_, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 

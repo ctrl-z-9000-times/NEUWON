@@ -200,25 +200,27 @@ class CodeBlock:
         """ Sets arguments and assigned lists. """
         self.arguments = set()
         self.assigned  = set()
+        def read_symbol(symbol_name):
+            if symbol_name not in self.assigned:
+                self.arguments.add(symbol_name)
+        def write_symbol(symbol_name):
+            self.assigned.add(symbol_name)
         for stmt in iter(self):
             if isinstance(stmt, AssignStatement):
                 for symbol in stmt.rhs.free_symbols:
-                    if symbol.name not in self.assigned:
-                        self.arguments.add(symbol.name)
-                self.assigned.add(stmt.lhsn)
+                    read_symbol(symbol.name)
+                write_symbol(stmt.lhsn)
             elif isinstance(stmt, IfStatement):
                 for symbol in stmt.condition.free_symbols:
-                    self.arguments.add(symbol.name)
+                    read_symbol(symbol.name)
                 for block in [stmt.main_block] + stmt.elif_blocks + [stmt.else_block]:
                     block.gather_arguments(code_blocks)
-                    self.arguments.update(block.arguments)
-                    self.assigned.update(block.assigned)
+                    for name in block.arguments:    read_symbol(name)
+                    for name in block.assigned:     write_symbol(name)
             elif isinstance(stmt, SolveStatement):
                 target_block = code_blocks[stmt.block]
-                for symbol in target_block.arguments:
-                    if symbol not in self.assigned:
-                        self.arguments.add(symbol)
-                self.assigned.update(target_block.assigned)
+                for name in target_block.arguments: read_symbol(name)
+                for name in target_block.assigned:  write_symbol(name)
             elif isinstance(stmt, ConserveStatement): pass
             else: raise NotImplementedError(stmt)
         self.arguments = sorted(self.arguments)
