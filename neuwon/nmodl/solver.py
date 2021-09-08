@@ -6,18 +6,21 @@ import sympy
 from neuwon.nmodl import code_gen
 from neuwon.nmodl.parser import AssignStatement
 
-def solve(self):
+def solve(self: AssignStatement):
     """ Solve this differential equation in-place. """
-    assert(self.derivative)
-    if False: print("SOLVE:   ", 'd/dt', self.lhsn, "=", self.rhs)
-    _solve_sympy(self)
-    # self._solve_crank_nicholson()
-    # try:
-    # except Exception as x: eprint("Warning Sympy solver failed: "+str(x))
-    # try: ; return
-    # except Exception as x: eprint("Warning Crank-Nicholson solver failed: "+str(x))
+    assert self.derivative
     self.derivative = False
-    if False: print("SOLUTION:", self.lhsn, '=', self.rhs)
+    try:
+        sympy_solve_ode(self)
+        return
+    except Exception as x:
+        print("Warning Sympy solver failed: "+str(x))
+    try:
+        crank_nicholson(self)
+        return
+    except Exception as x:
+        print("Warning Crank-Nicholson failed: "+str(x))
+    raise ValueError(f"Failed to solve '{repr(self)}'")
 
 def _solve_sympy(self):
     from sympy import Symbol, Function, Eq
@@ -30,7 +33,7 @@ def _solve_sympy(self):
     self.rhs = sympy.dsolve(eq, state, ics=ics).rhs.simplify()
     self.rhs = self.rhs.subs(Symbol(lhsn), Symbol(self.lhsn))
 
-def _sympy_solve_ode(self, use_pade_approx=False):
+def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
     """ Analytically integrate this derivative equation.
 
     Optionally, the analytic result can be expanded in powers of dt,
@@ -92,7 +95,10 @@ def _sympy_solve_ode(self, use_pade_approx=False):
         # evaluate solution at x(dt), extract rhs of expression
         solution = solution.subs({t: dt}).rhs.simplify()
 
-def pade_approx(self):
+    if use_pade_approx:
+        pade_approx(self)
+
+def pade_approx(self: AssignStatement):
     """
     (1,1) order Pade approximant, correct to 2nd order in dt,
     constructed from the coefficients of 2nd order Taylor expansion.
@@ -112,7 +118,7 @@ def pade_approx(self):
     if _a1 == 0 and _a2 == 0:
         solution = _a0
 
-def _solve_crank_nicholson(self):
+def crank_nicholson(self):
     dt              = sympy.Symbol("time_step", real=True, positive=True)
     init_state      = sympy.Symbol(self.lhsn)
     next_state      = sympy.Symbol("Future" + self.lhsn)

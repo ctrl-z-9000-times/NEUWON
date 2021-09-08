@@ -145,7 +145,7 @@ class Model:
         r = reaction
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
-            retval = r.initialize(self.database, celsius=self.celsius, time_step=self.time_step)
+            retval = r.initialize(self)
             if retval is not None: r = retval
         name = str(r.get_name())
         assert(name not in self.reactions)

@@ -2,17 +2,17 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real
 from neuwon.model import Reaction, Model
 from neuwon.nmodl import code_gen, cache
-from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement
+from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
 from neuwon.nmodl.pointers import PointerTable, Pointer
 from neuwon.nmodl.solver import solve
 from scipy.linalg import expm
 import copy
-import itertools
 import math
 import numba
 import numba.cuda
 import numpy as np
 import os.path
+import sympy
 import sys
 
 __all__ = ["NmodlMechanism"]
@@ -75,13 +75,16 @@ class NmodlMechanism(Reaction):
         for var_name, kwargs in pointers.items():
             self.pointers.add(var_name, **kwargs)
 
-    def initialize(self, database, **builtin_parameters):
+    def initialize(self, model):
+        database = model.get_database()
+        builtin_parameters = {
+            "time_step": model.time_step,
+            "celsius":   model.celsius,
+        }
         try:
             self.parameters.update(builtin_parameters, strict=True, override=False)
-            self.parameters.substitute(itertools.chain(
-                    (self.initial_block, self.breakpoint_block,),
-                    self.derivative_blocks.values(),))
-            # self._solve() # TODO: only solve for kinetic models here.
+            self.parameters.substitute(
+                    list(self.derivative_blocks.values()) + [self.initial_block, self.breakpoint_block,],)
             # self.kinetic_models = {}
             # for name, block in self.derivative_functions.items():
             #     self.kinetic_models[name] = KineticModel(1/0)
@@ -161,26 +164,20 @@ class NmodlMechanism(Reaction):
 
     def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the
-        systems of differential equations.
-
-        Sets solved_blocks. """
-        self.solved_blocks = {}
+        systems of differential equations. """
         sympy_methods = ("cnexp", "derivimplicit", "euler")
-        self.breakpoint_block.map((lambda stmt: self._sympy_solve(stmt.block).statements
-                if isinstance(stmt, SolveStatement) and stmt.method in sympy_methods else [stmt]))
-        self.breakpoint_block.map((lambda stmt: _LinearSystem(self, stmt.block)
-                if isinstance(stmt, SolveStatement) and stmt.method == "sparse" else [stmt]))
-
-    def _sympy_solve(self, block):
-        block_name = block.name
-        self.solved_blocks[block_name] = block = copy.deepcopy(block)
-        for stmt in block:
-            if isinstance(stmt, AssignStatement) and stmt.derivative:
-                # if stmt.lhsn in self.pointers and self.pointers[stmt.lhsn].accumulate:
-                #     stmt.derivative = False # Main model will integrate, after summing derivatives across all reactions.
-                #     continue
-                solve(stmt)
-        return block
+        for idx, stmt in enumerate(self.breakpoint_block):
+            if not isinstance(stmt, SolveStatement): continue
+            syseq_block = stmt.block
+            if stmt.method in sympy_methods:
+                if syseq_block.derivative:
+                    for stmt in syseq_block:
+                        if isinstance(stmt, AssignStatement) and stmt.derivative:
+                            solve(stmt)
+            elif stmt.method == "sparse":
+                1/0
+            bp_stmts = self.breakpoint_block.statements
+            self.breakpoint_block.statements = bp_stmts[:idx] + syseq_block.statements + bp_stmts[idx+1:]
 
     def _compile_derivative_blocks(self):
         """ Replace the derivative_blocks with compiled functions in the form:
@@ -320,7 +317,7 @@ class NmodlMechanism(Reaction):
             preamble.append(stmt)
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)
-        py = self.breakpoint_block.to_python("    ")
+        py = code_gen.to_python(self.breakpoint_block, "    ")
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
             # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
@@ -404,11 +401,18 @@ class ParameterTable(dict):
         return surface_area_parameters
 
     def substitute(self, blocks):
-        substitutions = []
+        substitutions = {}
         for name, (value, units) in self.items():
-            if value is None: continue
-            substitutions.append((name, value))
+            if value is None:
+                continue
+            if name == "time_step":
+                symbol = sympy.Symbol(name, real=True, positive=True)
+            else:
+                symbol = sympy.Symbol(name, real=True)
+            substitutions[symbol] = value
         for block in blocks:
             for stmt in block:
                 if isinstance(stmt, AssignStatement):
                     stmt.rhs = stmt.rhs.subs(substitutions)
+                elif isinstance(stmt, IfStatement):
+                    stmt.condition = stmt.condition.subs(substitutions)

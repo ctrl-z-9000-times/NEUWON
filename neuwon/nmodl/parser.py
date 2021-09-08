@@ -107,6 +107,8 @@ class NmodlParser:
         if AST.is_conserve():     return [ConserveStatement(AST)]
         if AST.is_expression_statement():
             AST = AST.expression
+        if AST.is_wrapped_expression():
+            AST = AST.expression
         if AST.is_solve_block(): return [SolveStatement(AST)]
         if AST.is_statement_block():
             return list(itertools.chain.from_iterable(
@@ -118,11 +120,11 @@ class NmodlParser:
             lhsn = AST.lhs.name.get_node_name()
             return [AssignStatement(lhsn, NmodlParser.parse_expression(AST.rhs),
                     derivative = is_derivative,)]
-        # TODO: Catch procedure calls and raise an explicit error, instead of
-        # just saying "unrecognised syntax". Procedure calls must be inlined by
-        # the nmodl library.
+        original = NmodlParser.to_nmodl(original)
         # TODO: Get line number from AST and include it in error message.
-        raise ValueError("Unrecognized syntax at %s."%NmodlParser.to_nmodl(original))
+        if AST.is_function_call():
+            raise ValueError(f"Function call not inlined: {original}")
+        raise ValueError("Unrecognized syntax at %s."%original)
 
     @classmethod
     def parse_expression(cls, AST):
@@ -131,8 +133,8 @@ class NmodlParser:
             return cls.parse_expression(AST.expression)
         if AST.is_integer():  return sympy.Integer(AST.eval())
         if AST.is_double():   return sympy.Float(AST.eval(), 18)
-        if AST.is_name():     return sympy.symbols(AST.get_node_name(), real=True)
-        if AST.is_var_name(): return sympy.symbols(AST.name.get_node_name(), real=True)
+        if AST.is_name():     return sympy.Symbol(AST.get_node_name(), real=True)
+        if AST.is_var_name(): return sympy.Symbol(AST.name.get_node_name(), real=True)
         if AST.is_unary_expression():
             op = AST.op.eval()
             if op == "-": return - cls.parse_expression(AST.expression)
@@ -148,6 +150,8 @@ class NmodlParser:
             if op == "^": return lhs ** rhs
             if op == "<": return lhs < rhs
             if op == ">": return lhs > rhs
+            if op == "<=": return lhs <= rhs
+            if op == ">=": return lhs >= rhs
             raise ValueError("Unrecognized syntax at %s."%cls.to_nmodl(AST))
         if AST.is_function_call():
             name = AST.name.get_node_name()
@@ -177,23 +181,17 @@ class CodeBlock:
         for stmt in self.statements:
             yield stmt
             if isinstance(stmt, IfStatement):
-                for x in stmt.main_block:
-                    yield x
-                for block in stmt.elif_blocks:
+                for block in stmt.blocks:
                     for x in block:
                         yield x
-                for x in stmt.else_block:
-                    yield x
 
     def map(self, f):
         """ Argument f is function f(Statement) -> [Statement,]"""
         mapped_statements = []
         for stmt in self.statements:
             if isinstance(stmt, IfStatement):
-                stmt.main_block.map(f)
-                for block in stmt.elif_blocks:
+                for block in stmt.blocks:
                     block.map(f)
-                stmt.else_block.map(f)
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
@@ -214,7 +212,7 @@ class CodeBlock:
             elif isinstance(stmt, IfStatement):
                 for symbol in stmt.condition.free_symbols:
                     read_symbol(symbol.name)
-                for block in [stmt.main_block] + stmt.elif_blocks + [stmt.else_block]:
+                for block in stmt.blocks:
                     block.gather_arguments()
                     for name in block.arguments:    read_symbol(name)
                     for name in block.assigned:     write_symbol(name)
@@ -230,11 +228,13 @@ class CodeBlock:
 
 class IfStatement:
     def __init__(self, AST):
-        self.condition = NmodlParser.parse_expression(AST.condition)
-        self.main_block = CodeBlock(AST.statement_block)
+        self.condition   = NmodlParser.parse_expression(AST.condition)
+        self.main_block  = CodeBlock(AST.statement_block)
         self.elif_blocks = [CodeBlock(block) for block in AST.elseifs]
-        assert(not self.elif_blocks) # TODO: Unimplemented.
-        self.else_block = CodeBlock(AST.elses)
+        self.else_block  = CodeBlock(AST.elses) if AST.elses is not None else None
+        self.blocks      = [self.main_block] + self.elif_blocks
+        if self.else_block is not None:
+            self.blocks.append(self.else_block)
 
 class AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False):
@@ -251,6 +251,7 @@ class AssignStatement:
 
 class SolveStatement:
     def __init__(self, AST):
+        # The "block" attribute gets rewritten by the method gather_code_blocks().
         self.block = AST.block_name.get_node_name()
         self.steadystate = AST.steadystate
         if AST.method: self.method = AST.method.get_node_name()
