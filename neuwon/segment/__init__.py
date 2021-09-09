@@ -26,12 +26,13 @@ class SegmentMethods(SegmentGeometry, ElectricProperties):
                 cytoplasmic_resistance = 1,
                 membrane_capacitance = .01,):
         db_cls = database.add_class("Segment", cls)
+        cls = db_cls.get_instance_type()
         _custom_super(SegmentGeometry, cls)._initialize(db_cls)
         _custom_super(ElectricProperties, cls)._initialize(db_cls,
                 initial_voltage=initial_voltage,
                 cytoplasmic_resistance=cytoplasmic_resistance,
                 membrane_capacitance=membrane_capacitance,)
-        return db_cls.get_instance_type()
+        return cls
 
     def __init__(self, parent, coordinates, diameter):
         SegmentGeometry.__init__(self, parent, coordinates, diameter)

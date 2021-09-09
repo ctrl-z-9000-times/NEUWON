@@ -50,7 +50,7 @@ def to_python(self, indent="", **kwargs):
             return indent + lhs + " += " + self.rhs + "\n"
         if self.pointer and not INITIAL_BLOCK:
             assert self.pointer.w, self.pointer.name + " is not a writable pointer!"
-            array_access = self.pointer.write_py + "[" + self.pointer.index_py + "]"
+            array_access = self.pointer.write_py() + "[" + self.pointer.index_py() + "]"
             eq = " += " if self.pointer.a else " = "
             assign_local = self.lhsn + " = " if self.pointer.r and not self.pointer.a else ""
             return indent + array_access + eq + assign_local + self.rhs + "\n"

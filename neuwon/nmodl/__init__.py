@@ -75,12 +75,7 @@ class NmodlMechanism(Reaction):
         for var_name, kwargs in pointers.items():
             self.pointers.add(var_name, **kwargs)
 
-    def initialize(self, model):
-        database = model.get_database()
-        builtin_parameters = {
-            "time_step": model.time_step,
-            "celsius":   model.celsius,
-        }
+    def initialize(self, database, **builtin_parameters):
         try:
             self.parameters.update(builtin_parameters, strict=True, override=False)
             self.parameters.substitute(
@@ -293,27 +288,27 @@ class NmodlMechanism(Reaction):
             else: raise ValueError("Unhandled argument: \"%s\"."%arg)
         self.arguments = set()
         for ptr in self.pointers.values():
-            if ptr.r: self.arguments.add((ptr.read_py, ptr.read))
-            if ptr.w: self.arguments.add((ptr.write_py, ptr.write))
+            if ptr.r: self.arguments.add((ptr.read_py(), ptr.read))
+            if ptr.w: self.arguments.add((ptr.write_py(), ptr.write))
         self.arguments = sorted(self.arguments)
         index     = code_gen.mangle2("index")
         preamble  = []
         preamble.append("import numba.cuda")
         preamble.append("def BREAKPOINT(%s):"%", ".join(py for py, db in self.arguments))
         preamble.append("    "+index+" = numba.cuda.grid(1)")
-        membrane = self.pointers.get("membrane", None)
+        segment  = self.pointers.get("segment",  None)
         inside   = self.pointers.get("inside",   None)
         outside  = self.pointers.get("outside",  None)
-        pointers = (membrane, inside, outside)
-        preamble.append("    if "+index+" >= "+membrane.read_py+".shape[0]: return")
+        pointers = (segment, inside, outside)
+        preamble.append("    if "+index+" >= "+segment.read_py()+".shape[0]: return")
         for ptr in pointers:
             if ptr is None: continue
             preamble.append("    %s = %s[%s]"%(
-                code_gen.mangle2(ptr.name), ptr.read_py, ptr.index_py))
+                code_gen.mangle2(ptr.name), ptr.read_py(), ptr.index_py()))
         for variable, ptr in sorted(self.pointers.items()):
             if not ptr.r: continue
             if ptr in pointers: continue
-            stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py, ptr.index_py)
+            stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py(), ptr.index_py())
             preamble.append(stmt)
         for variable_value_pair in initial_scope_carryover:
             preamble.append("    %s = %s"%variable_value_pair)

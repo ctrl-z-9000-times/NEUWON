@@ -43,20 +43,26 @@ class PointerTable(dict):
 
     def initialize(self, database):
         for ptr in list(self.values()):
-            ptr.initialize(database)
-            if ptr.target_class == self.mech_name: continue
-            elif ptr.target_class not in self:
-                if   ptr.target_class == "Segment": read = self.mech_name + ".segment"
-                elif ptr.target_class == "Inside":  read = "Segment.inside"
-                elif ptr.target_class == "Outside": read = "Segment.outside"
-                else: raise NotImplementedError(ptr.target_class)
-                self.add(ptr.target_class, read=read)
+            target_class = ptr.get_target_class()
+            if target_class == self.mech_name: continue
+            elif target_class not in self:
+                if   target_class == "Segment": read = self.mech_name + ".segment"
+                elif target_class == "Inside":  read = "Segment.inside"
+                elif target_class == "Outside": read = "Segment.outside"
+                else: raise NotImplementedError(target_class)
+                self.add(target_class.lower(), read=read)
         self._verify_pointers_exist(database)
 
     def _verify_pointers_exist(self, database):
         for ptr in self.values():
             if ptr.r: database.get_component(ptr.read)
             if ptr.w: database.get_component(ptr.write)
+
+    def sorted_values(self):
+        return [ptr for (name, ptr) in sorted(self.items())]
+
+    def __repr__(self):
+        return "{\t" + ",\n\t".join(repr(ptr) for ptr in self.sorted_values()) + "}"
 
 class Pointer:
     def __init__(self, mech_name, name, read, write, accumulate):
@@ -66,13 +72,12 @@ class Pointer:
         self.write = str(write) if write is not None else None
         self.accumulate = bool(accumulate)
 
-    def initialize(self, database):
-        # TODO: Make target_class into a method, and get rid of this method.
+    def get_target_class(self):
         component = self.read or self.write
         if component is None:
-            self.target_class = None
+            return None
         else:
-            self.target_class = str(component).partition('.')[0]
+            return component.partition('.')[0]
 
     @property
     def r(self): return self.read is not None
@@ -89,14 +94,11 @@ class Pointer:
 
     def __repr__(self):
         args = []
-        if self.r: args.append("read='%s'"%self.read)
-        if self.w: args.append("write='%s'"%self.write)
+        if self.r: args.append(f"read='{self.read}'")
+        if self.w: args.append(f"write='{self.write}'")
         if self.a: args.append("accumulate")
-        return self.name + " = Pointer(%s)"%', '.join(args)
+        return f"{self.name} = Pointer({', '.join(args)})"
 
-    # TODO: Make the following into explicit methods instead of properties.
-
-    @property
     def read_py(self):
         """ Python variable name. """
         if self.r:
@@ -104,7 +106,6 @@ class Pointer:
                 return code_gen.mangle('read_' + self.name)
             return code_gen.mangle(self.name)
 
-    @property
     def write_py(self):
         """ Python variable name. """
         if self.w:
@@ -112,11 +113,11 @@ class Pointer:
                 return code_gen.mangle('write_' + self.name)
             return code_gen.mangle(self.name)
 
-    @property
     def index_py(self):
         """ Python variable name. """
-        if self.target_class == self.mech_name:
+        target_class = self.get_target_class()
+        if target_class == self.mech_name:
             index_var = "index"
         else:
-            index_var = self.target_class.lower()
+            index_var = target_class.lower()
         return code_gen.mangle2(index_var)
