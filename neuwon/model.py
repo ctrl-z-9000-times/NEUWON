@@ -18,10 +18,13 @@ class Reaction:
     @classmethod
     def get_name(self):
         """ A unique name for this reaction and all of its instances. """
+        name = getattr(self, "name", False)
+        if name:
+            return name
         return type(self).__name__
 
     @classmethod
-    def initialize(self, model):
+    def initialize(self, database, time_step, celsius):
         """
         Optional method.
         This method is called after the Model has been created.
@@ -34,24 +37,6 @@ class Reaction:
     def advance(self, model):
         """ Advance all instances of this reaction. """
         raise TypeError("Abstract method called by %s."%repr(self))
-
-    # TODO: Don't provide a standard library.
-    #       Distribute these statements into the examples which use them.
-
-    # _library = {
-    #     "hh": ("nmodl_library/hh.mod",
-    #         dict(parameter_overrides = {"celsius": 6.3})),
-
-        # "na11a": ("neuwon/nmodl_library/Balbi2017/Nav11_a.mod", {}),
-
-        # "Kv11_13States_temperature2": ("neuwon/nmodl_library/Kv-kinetic-models/hbp-00009_Kv1.1/hbp-00009_Kv1.1__13States_temperature2/hbp-00009_Kv1.1__13States_temperature2_Kv11.mod", {}),
-
-        # "AMPA5": ("neuwon/nmodl_library/Destexhe1994/ampa5.mod",
-        #     dict(pointers={"C": AccessHandle("Glu", outside_concentration=True)})),
-
-        # "caL": ("neuwon/nmodl_library/Destexhe1994/caL3d.mod",
-        #     dict(pointers={"g": AccessHandle("ca", conductance=True)})),
-    # }
 
 class Model:
     def __init__(self, time_step,
@@ -90,7 +75,6 @@ class Model:
         # self.Section = ditto
         # self.Inside = ditto
         # self.Outside = ditto
-        self._injected_currents = _InjectedCurrents()
 
 
         self.fh_space = float(fh_space)
@@ -104,9 +88,6 @@ class Model:
 
     def __len__(self):
         return len(self.Segment.get_database_class())
-
-    def __str__(self):
-        return str(self.database)
 
     def __repr__(self):
         return repr(self.database)
@@ -141,7 +122,9 @@ class Model:
         r = reaction
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
-            retval = r.initialize(self)
+            retval = r.initialize(self.database,
+                    time_step=self.time_step,
+                    celsius=self.celsius,)
             if retval is not None: r = retval
         name = str(r.get_name())
         assert(name not in self.reactions)

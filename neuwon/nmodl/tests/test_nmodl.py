@@ -12,7 +12,12 @@ def test_hh():
     db_cls.add_attribute("conductances_k")
     db_cls.add_attribute("conductances_l")
 
-    hh.initialize(db, time_step=.1, celsius=6.3)
+    hh = hh.initialize(db, time_step=.1, celsius=6.3)
+
+    my_seg = Segment(None, [0,0,0], 12)
+    my_hh  = hh(my_seg, scale=.2)
+
+    hh.advance()
 
 @pytest.mark.skip()
 def test_kinetic_model():

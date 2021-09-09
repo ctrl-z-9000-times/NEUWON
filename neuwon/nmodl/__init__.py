@@ -87,6 +87,7 @@ class NmodlMechanism(Reaction):
             self._initialize_database(database)
             self.pointers.initialize(database)
             self._compile_breakpoint_block(database)
+            return database.get(self.name)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -320,7 +321,7 @@ class NmodlMechanism(Reaction):
         code_gen.py_exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
-    def new_instances(self, database, locations, scale=1):
+    def new_instances(self, database, segment, scale=1):
         if isinstance(database, Model): database = database.db
         locations = list(locations)
         for i, x in enumerate(locations):
