@@ -1,4 +1,11 @@
-
+from collections.abc import Callable, Iterable, Mapping
+from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse.linalg import expm
+import cupy as cp
+import math
+import neuwon.voronoi
+import numba.cuda
+import numpy as np
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
@@ -56,13 +63,9 @@ class Species:
 
     def __init__(self, name,
             charge = 0,
-            transmembrane = False,
-            reversal_potential = "nerst",
-            # TODO: Consider allowing concentration=None, which would undefined
-            # the concentration and remove the database entry. This way it does
-            # not clutter up the DB schema documentation w/ unused junk.
-            inside_concentration  = 0.0,
-            outside_concentration = 0.0,
+            reversal_potential    = None,
+            inside_concentration  = None,
+            outside_concentration = None,
             inside_diffusivity    = None,
             outside_diffusivity   = None,
             inside_decay_period   = float("inf"),
@@ -79,13 +82,16 @@ class Species:
         """
         self.name = str(name)
         self.charge = int(charge)
-        self.transmembrane = bool(transmembrane)
-        try: self.reversal_potential = float(reversal_potential)
-        except ValueError:
-            self.reversal_potential = str(reversal_potential)
-            assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
-        self.inside_concentration   = float(inside_concentration)
-        self.outside_concentration  = float(outside_concentration)
+        if reversal_potential is None:
+            self.reversal_potential = None
+        else:
+            try:
+                self.reversal_potential = float(reversal_potential)
+            except ValueError:
+                self.reversal_potential = str(reversal_potential)
+                assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
+        self.conductance = (self.charge != 0) or (self.reversal_potential is not None)
+        if self.conductance: assert self.reversal_potential is not None
         self.inside_global_const    = inside_diffusivity is None
         self.outside_global_const   = outside_diffusivity is None
         self.inside_diffusivity     = float(inside_diffusivity) if not self.inside_global_const else 0.0
@@ -93,14 +99,28 @@ class Species:
         self.inside_decay_period    = float(inside_decay_period)
         self.outside_decay_period   = float(outside_decay_period)
         self.use_shells             = bool(use_shells)
-        self.inside_archetype       = "inside" if self.use_shells else "membrane/inside"
+        self.inside_archetype       = "Inside" if self.use_shells else "Segment"
         self.outside_grid           = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
-        assert(self.inside_concentration  >= 0.0)
-        assert(self.outside_concentration >= 0.0)
-        assert(self.inside_diffusivity    >= 0)
-        assert(self.outside_diffusivity   >= 0)
-        assert(self.inside_decay_period   > 0.0)
-        assert(self.outside_decay_period  > 0.0)
+        if inside_concentration is not None:
+            self.inside_concentration = float(inside_concentration)
+            assert self.inside_concentration  >= 0.0
+        else:
+            self.inside_concentration = None
+            assert self.inside_global_const
+            assert self.inside_decay_period == float('inf')
+
+        if outside_concentration is not None:
+            self.outside_concentration = float(outside_concentration)
+            assert self.outside_concentration >= 0.0
+        else:
+            self.outside_concentration = None
+            assert self.outside_global_const
+            assert self.outside_decay_period == float('inf')
+
+        assert self.inside_diffusivity    >= 0
+        assert self.outside_diffusivity   >= 0
+        assert self.inside_decay_period   > 0.0
+        assert self.outside_decay_period  > 0.0
         if self.inside_global_const:  assert self.inside_decay_period == np.inf
         if self.inside_global_const:  assert not self.use_shells
         if self.outside_global_const: assert self.outside_decay_period == np.inf
@@ -108,47 +128,43 @@ class Species:
     def __repr__(self):
         return "neuwon.species.Species(%s)"%self.name
 
-    def _initialize(self, database, time_step):
-        db = database
+    def _initialize(self, database):
+        inside_cls = database.get(self.inside_archetype)
         if self.inside_global_const:
-            db.add_global_constant(self.inside_archetype+"/concentrations/" + self.name,
+            inside_cls.add_class_attribute(f"{self.name}_concentration",
                     self.inside_concentration, units="millimolar")
         else:
-            db.add_attribute(self.inside_archetype+"/concentrations/" + self.name,
+            inside_cls.add_attribute(f"{self.name}_concentration",
                     initial_value=self.inside_concentration, units="millimolar")
-            db.add_attribute(self.inside_archetype+"/delta_concentrations/" + self.name,
+            inside_cls.add_attribute(f"{self.name}_delta_concentration",
                     initial_value=0.0, units="millimolar / timestep")
-            db.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
-                    function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
-        if self.outside_global_const:
-            db.add_global_constant("outside/concentrations/" + self.name,
-                    self.outside_concentration, units="millimolar")
-        else:
-            db.add_attribute("outside/concentrations/" + self.name,
-                    initial_value=self.outside_concentration, units="millimolar")
-            db.add_attribute("outside/delta_concentrations/" + self.name,
-                    initial_value=0.0, units="millimolar / timestep")
-            db.add_linear_system("outside/diffusions/" + self.name,
-                    function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
-        if self.transmembrane:
-            db.add_attribute("membrane/conductances/" + self.name,
-                    initial_value=0.0, bounds=(0, np.inf), units="Siemens")
-            if isinstance(self.reversal_potential, float):
-                db.add_global_constant("membrane/reversal_potentials/" + self.name,
-                        self.reversal_potential, units="mV")
-            elif (self.inside_global_const and self.outside_global_const
-                    and self.reversal_potential == "nerst"):
-                db.add_global_constant("membrane/reversal_potentials/" + self.name,
-                        self._nerst_potential(self.charge, db.access("T"),
-                                self.inside_concentration,
-                                self.outside_concentration),
-                        units="mV")
+            # inside_cls.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
+            #         function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+        if self.outside_concentration is not None:
+            outside_cls = database.get("Outside")
+            if self.outside_global_const:
+                outside_cls.add_class_attribute(f"{self.name}_concentration",
+                        self.outside_concentration, units="millimolar")
             else:
-                db.add_attribute("membrane/reversal_potentials/" + self.name,
+                outside_cls.add_attribute(f"{self.name}_concentration",
+                        initial_value=self.outside_concentration, units="millimolar")
+                outside_cls.add_attribute(f"{self.name}_delta_concentration",
+                        initial_value=0.0, units="millimolar / timestep")
+                # outside_cls.add_linear_system(f"{self.name}_diffusion",
+                #         function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+        if self.conductance:
+            segment_cls = database.get("Segment")
+            segment_cls.add_attribute(f"{self.name}_conductance",
+                    initial_value=0.0, valid_range=(0, np.inf), units="Siemens")
+            if isinstance(self.reversal_potential, float):
+                segment_cls.add_class_attribute(f"{self.name}_reversal_potential",
+                        self.reversal_potential, units="mV")
+            else:
+                segment_cls.add_attribute(f"{self.name}_reversal_potential",
                         units="mV")
 
-    def _reversal_potential(self, access):
-        x = access("membrane/reversal_potentials/" + self.name)
+    def _compute_reversal_potential(self, database, celsius):
+        x = database.get_data(f"Segment.{self.name}_reversal_potential")
         if isinstance(x, float): return x
         inside  = access(self.inside_archetype+"/concentrations/"+self.name)
         outside = access("outside/concentrations/"+self.name)
@@ -245,10 +261,24 @@ class Species:
                 write_idx += 1
         return (coef, (dst, src))
 
+    def _accumulate_conductance(self, database):
+        dt                  = self.time_step / 1000 / _ITERATIONS_PER_TIMESTEP
+        conductances        = access("membrane/conductances")
+        driving_voltages    = access("membrane/driving_voltages")
+        voltages            = access("membrane/voltages")
+        capacitances        = access("membrane/capacitances")
+        # Accumulate the net conductances and driving voltages from each ion species' data.
+        if not s.transmembrane: continue
+        reversal_potential = s._reversal_potential(access)
+        g = access("membrane/conductances/"+s.name)
+        conductances += g
+        driving_voltages += g * reversal_potential
+
+
     def _advance(self, database):
         # Calculate the transmembrane ion flows.
-        if not (s.transmembrane and s.charge != 0): continue
-        if s.inside_global_const and s.outside_global_const: continue
+        if not (s.transmembrane and s.charge != 0): return
+        if s.inside_global_const and s.outside_global_const: return
         reversal_potential = access("membrane/reversal_potentials/"+s.name)
         g = access("membrane/conductances/"+s.name)
         millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
@@ -276,8 +306,8 @@ class Species:
 
 
 class InsideMethods:
-    @staticmethod
-    def _initialize(db):
+    @classmethod
+    def _initialize(cls):
         db.add_archetype("inside", doc="Intracellular space.")
         db.add_attribute("membrane/inside", dtype="inside", doc="""
                 A reference to the outermost shell.
@@ -295,8 +325,8 @@ class InsideMethods:
         db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
 
 class OutsideMethods:
-    @staticmethod
-    def _initialize(db):
+    @classmethod
+    def _initialize(cls):
         db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
         db.add_attribute("membrane/outside", dtype="outside", doc="")
         db.add_attribute("outside/coordinates", shape=(3,), units="μm")

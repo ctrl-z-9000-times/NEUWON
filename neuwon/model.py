@@ -1,19 +1,15 @@
-import copy
-import cupy as cp
-import math
-import neuwon.voronoi
-import numba.cuda
-import numpy as np
-import os
-import subprocess
-import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import *
 from neuwon.database.time import Clock
-import neuwon.segment
-from PIL import Image, ImageFont, ImageDraw
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
+import copy
+import cupy as cp
+import math
+import neuwon.segment
+import neuwon.voronoi
+import numba.cuda
+import numpy as np
 
 _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
 
@@ -181,20 +177,13 @@ class Model:
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
         self.input_clock.tick()
-        dt                  = self.time_step / 1000 / _ITERATIONS_PER_TIMESTEP
+
         conductances        = access("membrane/conductances")
         driving_voltages    = access("membrane/driving_voltages")
-        voltages            = access("membrane/voltages")
-        capacitances        = access("membrane/capacitances")
-        # Accumulate the net conductances and driving voltages from each ion species' data.
         conductances.fill(0.0) # Zero accumulator.
         driving_voltages.fill(0.0) # Zero accumulator.
         for s in self.species.values():
-            if not s.transmembrane: continue
-            reversal_potential = s._reversal_potential(access)
-            g = access("membrane/conductances/"+s.name)
-            conductances += g
-            driving_voltages += g * reversal_potential
+            s._accumulate_conductances(self.database)
         driving_voltages /= conductances
         driving_voltages[:] = cp.nan_to_num(driving_voltages)
 
