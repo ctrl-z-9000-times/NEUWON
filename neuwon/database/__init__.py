@@ -160,6 +160,8 @@ class Database:
 
     def __repr__(self):
         """ Table summarizing contents. """
+        return repr(super())
+        # TODO!
         s = ""
         case_insensitive = lambda kv_pair: kv_pair[0].lower()
         components = sorted(self.components.items(), key=case_insensitive)

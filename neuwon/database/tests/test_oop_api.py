@@ -42,6 +42,7 @@ def test_OOP_API():
     Foo.add_connectivity_matrix("friends", Foo)
     x.friends.append(y)
 
+    print(db)
     if False:
         help(Foo)
         help(x)
@@ -72,16 +73,16 @@ def test_custom_classes():
             index = self.section.segments.index(self)
             return (index + .5) / self.section.nsegs
 
-    _db = Database()
-    _Section_cls = _db.add_class("Section", _SectionBaseClass)
-    _Segment_cls = _db.add_class("Segment", _SegmentBaseClass)
-    _Section_cls.add_connectivity_matrix("segments", "Segment")
-    _Segment_cls.add_attribute("section", dtype="Section", allow_invalid=True)
-    Section = _Section_cls.get_instance_type()
-    Segment = _Segment_cls.get_instance_type()
+    db = Database()
+    Section_cls = db.add_class("Section", _SectionBaseClass)
+    Segment_cls = db.add_class("Segment", _SegmentBaseClass)
+    Section_cls.add_connectivity_matrix("segments", "Segment")
+    Segment_cls.add_attribute("section", dtype="Section", allow_invalid=True)
+    Section = Section_cls.get_instance_type()
+    Segment = Segment_cls.get_instance_type()
 
     assert Section.__doc__ == _SectionBaseClass.__doc__ # Check for inherit docs.
-    assert Segment.get_database_class() is _Segment_cls # Check for classmethod.
+    assert Segment.get_database_class() is Segment_cls # Check for classmethod.
 
     my_secs = [Section(n) for n in range(20)]
     absdif = lambda a,b: abs(a-b)
@@ -89,6 +90,8 @@ def test_custom_classes():
     assert my_secs[3].segments[0].get_location() == pytest.approx(1/6)
     assert my_secs[3].segments[1].get_location() == pytest.approx(3/6)
     assert my_secs[3].segments[2].get_location() == pytest.approx(5/6)
+
+    print(db)
 
 def test_requires_slots():
     class NoSlots:
