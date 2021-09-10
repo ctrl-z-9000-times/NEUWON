@@ -198,29 +198,6 @@ class NmodlMechanism(Reaction):
         code_gen.py_exec(initial_python, {}, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
-    def solve_steadystate(self, block, args):
-        # First generate a state which satisfies the CONSERVE constraints.
-        states = {x: 0 for x in self.states}
-        conserved_states = set()
-        for block_name, block in self.derivative_functions.items():
-            for stmt in block.conserve_statements:
-                initial_value = stmt.conserve_sum / len(stmt.states)
-                for x in stmt.states:
-                    if x in conserved_states:
-                        raise ValueError(
-                            "Unsupported: states can not be CONSERVED more than once. State: \"%s\"."%x)
-                    else: conserved_states.add(x)
-                for x in stmt.states: states[x] = initial_value
-        if block in self.derivative_functions:
-            dt = 1000 * 60 * 60 * 24 * 7 # One week in ms.
-            irm = self._compute_propagator_matrix(block, dt, args)
-            states = [states[name] for name in self.states] # Convert to list.
-            states = irm.dot(states)
-            states = {name: states[index] for index, name in enumerate(self.states)} # Convert to dictionary.
-        else:
-            1/0 # TODO: run the simulation until the state stops changing.
-        return states
-
     def _initialize_database(self, database):
         cls = database.add_class(self.name, NMODL, doc=self.description)
         cls.add_attribute("segment", dtype="Segment")
