@@ -50,7 +50,10 @@ class Database:
         else:
             name = str(name)
         _cls, _, attr = name.partition('.')
-        obj = self.db_classes[_cls]
+        try:
+            obj = self.db_classes[_cls]
+        except KeyError:
+            raise KeyError(f"No such DB_Class '{_cls}'")
         try:
             if attr: obj = obj.components[attr]
         except KeyError:

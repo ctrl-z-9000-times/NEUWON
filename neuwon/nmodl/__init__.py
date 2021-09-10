@@ -164,16 +164,14 @@ class NmodlMechanism(Reaction):
             self.parameters.update(builtin_parameters, strict=True, override=False)
             self.parameters.substitute(
                     list(self.derivative_blocks.values()) + [self.initial_block, self.breakpoint_block,],)
-            # self.kinetic_models = {}
-            # for name, block in self.derivative_functions.items():
-            #     self.kinetic_models[name] = KineticModel(1/0)
             self._run_initial_block(database)
             cls = self._initialize_database(database)
             self.pointers.initialize(database)
             self._compile_breakpoint_block()
             cls._cuda_advance = self._cuda_advance
+            cls._advance_arguments = self.arguments
             cls._surface_area_parameters = self.surface_area_parameters
-            return database.get(self.name).get_instance_type()
+            return cls
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -181,23 +179,23 @@ class NmodlMechanism(Reaction):
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
-        globals_ = {
-            "solve_steadystate": self.solve_steadystate,
-        }
         self.initial_scope = {x: 0 for x in self.states}
         initial_python = code_gen.to_python(self.initial_block)
         for arg in self.initial_block.arguments:
             if arg in self.parameters:
-                globals_[arg] = self.parameters[arg][0]
-            elif arg in self.pointers:
+                self.initial_scope[arg] = self.parameters[arg][0]
+                continue
+            if arg in self.pointers:
                 read = self.pointers[arg].read
-                globals_[arg] = database.get(read).get_initial_value()
-            else:
-                eprint(initial_python)
-                eprint("Arguments:", self.initial_block.arguments)
-                eprint("Assigned:", self.initial_block.assigned)
-                raise ValueError("Missing initial value for \"%s\"."%arg)
-        code_gen.py_exec(initial_python, globals_, self.initial_scope)
+                value = database.get(read).get_initial_value()
+                if value is not None:
+                    self.initial_scope[arg] = value
+                    continue
+            eprint(initial_python)
+            eprint("Arguments:", self.initial_block.arguments)
+            eprint("Assigned:", self.initial_block.assigned)
+            raise ValueError("Missing initial value for \"%s\"."%arg)
+        code_gen.py_exec(initial_python, {}, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def solve_steadystate(self, block, args):
@@ -284,23 +282,22 @@ class NmodlMechanism(Reaction):
 class NMODL(Reaction):
     __slots__ = ()
     def __init__(self, segment, scale=1.0):
-        type(self)
         self.segment = segment
         sa = float(scale) * self.segment.surface_area
-
         for name, (value, units) in self._surface_area_parameters.items():
-            param = database.access(self.name + "/data/" + name)
-            x = 1/0 # Convert from NEUWONs um^2 to NEURONs cm^2.
-            param[ent_idx] = value * scale * surface_areas * x
+            param = getattr(self, name)
+            x_factor = (1e-2 * 1e-2) / (1e-6 * 1e-6) # Convert from NEUWONs um^2 to NEURONs cm^2.
+            setattr(self, name, value * sa * x_factor)
 
-    def advance(self):
-        # for name, km in self.kinetic_models.items():
-        #     1/0
+    @classmethod
+    def advance(cls):
+        db = cls.get_database_class().get_database()
+        segment_data = db.get_data(cls.get_name() + ".segment")
+        if not len(segment_data): return
+        args = (db.get_data(db_access) for arg_name, db_access in cls._advance_arguments)
         threads = 64
-        locations = access(self.name + "/insertions")
-        if not len(locations): return
-        blocks = (locations.shape[0] + (threads - 1)) // threads
-        self._cuda_advance[blocks,threads](*(access(db) for py, db in self.arguments))
+        blocks = (segment_data.shape[0] + (threads - 1)) // threads
+        cls._cuda_advance[blocks,threads](*args)
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """

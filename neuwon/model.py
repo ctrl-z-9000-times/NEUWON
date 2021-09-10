@@ -22,7 +22,11 @@ class Reaction:
         name = getattr(self, "name", False)
         if name:
             return name
-        return type(self).__name__
+        # Return class name.
+        if isinstance(self, type):
+            return self.__name__
+        else:
+            return type(self).__name__
 
     @classmethod
     def initialize(self, database, time_step, celsius):
