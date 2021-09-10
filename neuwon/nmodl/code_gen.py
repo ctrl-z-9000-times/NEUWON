@@ -26,20 +26,19 @@ import sympy.printing.pycode as sympy_to_pycode
 def insert_indent(indent, string):
     return indent + "\n".join(indent + line for line in string.split("\n"))
 
-def to_python(self, indent="", **kwargs):
+def to_python(self, indent="", pointers={}):
     """ Argument self is any parser CodeBlock or Statment. """
     py = ""
     if isinstance(self, CodeBlock):
         for stmt in self.statements:
-            py += to_python(stmt, indent, **kwargs)
+            py += to_python(stmt, indent, pointers)
     elif isinstance(self, IfStatement):
         py += indent + "if %s:\n"%sympy_to_pycode(self.condition)
-        py += to_python(self.main_block, indent + "    ", **kwargs)
+        py += to_python(self.main_block, indent + "    ", pointers)
         assert not self.elif_blocks, "Unimplemented."
         py += indent + "else:\n"
-        py += to_python(self.else_block, indent + "    ", **kwargs)
+        py += to_python(self.else_block, indent + "    ", pointers)
     elif isinstance(self, AssignStatement):
-        INITIAL_BLOCK = kwargs.get("INITIAL_BLOCK", False)
         if not isinstance(self.rhs, str):
             try: self.rhs = sympy_to_pycode(self.rhs.simplify())
             except Exception:
@@ -48,11 +47,12 @@ def to_python(self, indent="", **kwargs):
         if self.derivative:
             lhs = mangle('d' + self.lhsn)
             return indent + lhs + " += " + self.rhs + "\n"
-        if self.pointer and not INITIAL_BLOCK:
-            assert self.pointer.w, self.pointer.name + " is not a writable pointer!"
-            array_access = self.pointer.write_py() + "[" + self.pointer.index_py() + "]"
-            eq = " += " if self.pointer.a else " = "
-            assign_local = self.lhsn + " = " if self.pointer.r and not self.pointer.a else ""
+        ptr = pointers.get(self.lhsn, None)
+        if ptr is not None:
+            assert ptr.w, ptr.name + " is not a writable pointer!"
+            array_access = ptr.write_py() + "[" + ptr.index_py() + "]"
+            eq = " += " if ptr.a else " = "
+            assign_local = self.lhsn + " = " if ptr.r and not ptr.a else ""
             return indent + array_access + eq + assign_local + self.rhs + "\n"
         return indent + self.lhsn + " = " + self.rhs + "\n"
     elif isinstance(self, ConserveStatement):

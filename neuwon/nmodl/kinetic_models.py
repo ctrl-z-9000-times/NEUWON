@@ -1,3 +1,4 @@
+from scipy.linalg import expm
 
 # TODO: What are the units on atol? How does the timestep factor into it?
 
@@ -11,6 +12,48 @@
 
 # TODO: Write function to check that derivative_functions are Linear &
 # time-invariant. Put this in the KineticModel class.
+
+
+
+def _compile_derivative_blocks(self):
+    """ Replace the derivative_blocks with compiled functions in the form:
+            f(state_vector, **block.arguments) ->  Δstate_vector/Δt
+    """
+    self.derivative_functions = {}
+    solve_statements = {stmt.block: stmt
+            for stmt in self.breakpoint_block if isinstance(stmt, SolveStatement)}
+    for name, block in self.derivative_blocks.items():
+        if name not in solve_statements: continue
+        if solve_statements[name].method == "sparse":
+            self.derivative_functions[name] = self._compile_derivative_block(block)
+
+def _compile_derivative_block(self, block):
+    """ Returns function in the form:
+            f(state_vector, **block.arguments) -> derivative_vector """
+    block = copy.deepcopy(block)
+    globals_ = {}
+    locals_ = {}
+    py = "def derivative(%s, %s):\n"%(code_gen.mangle2("state"), ", ".join(block.arguments))
+    for idx, name in enumerate(self.states):
+        py += "    %s = %s[%d]\n"%(name, code_gen.mangle2("state"), idx)
+    for name in self.states:
+        py += "    %s = 0\n"%code_gen.mangle('d' + name)
+    block.map(lambda x: [] if isinstance(x, _ConserveStatement) else [x])
+    py += block.to_python(indent="    ")
+    py += "    return [%s]\n"%", ".join(code_gen.mangle('d' + x) for x in self.states)
+    code_gen.py_exec(py, globals_, locals_)
+    return numba.njit(locals_["derivative"])
+
+def _compute_propagator_matrix(self, block, time_step, kwargs):
+    1/0
+    f = self.derivative_functions[block]
+    n = len(self.states)
+    A = np.zeros((n,n))
+    for i in range(n):
+        state = np.array([0. for x in self.states])
+        state[i] = 1
+        A[:, i] = f(state, **kwargs)
+    return expm(A * time_step)
 
 class KineticModel:
     def __init__(self, time_step, input_pointers, num_states, kinetics,

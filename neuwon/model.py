@@ -15,6 +15,7 @@ _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this 
 
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
+    __slots__ = ()
     @classmethod
     def get_name(self):
         """ A unique name for this reaction and all of its instances. """
@@ -34,7 +35,7 @@ class Reaction:
         pass
 
     @classmethod
-    def advance(self, model):
+    def advance(self):
         """ Advance all instances of this reaction. """
         raise TypeError("Abstract method called by %s."%repr(self))
 
@@ -118,7 +119,7 @@ class Model:
     def get_species(self, species_name):
         return self.species[str(species_name)]
 
-    def add_reaction(self, reaction: Reaction):
+    def add_reaction(self, reaction: Reaction) -> Reaction:
         r = reaction
         if hasattr(r, "initialize"):
             r = copy.deepcopy(r)
@@ -127,7 +128,7 @@ class Model:
                     celsius=self.celsius,)
             if retval is not None: r = retval
         name = str(r.get_name())
-        assert(name not in self.reactions)
+        assert name not in self.reactions
         self.reactions[name] = r
         return r
 

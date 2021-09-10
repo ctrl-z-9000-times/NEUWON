@@ -1,11 +1,10 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real
-from neuwon.model import Reaction, Model
+from neuwon.model import Reaction
 from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
 from neuwon.nmodl.pointers import PointerTable, Pointer
 from neuwon.nmodl.solver import solve
-from scipy.linalg import expm
 import copy
 import math
 import numba
@@ -14,6 +13,7 @@ import numpy as np
 import os.path
 import sympy
 import sys
+import textwrap
 
 __all__ = ["NmodlMechanism"]
 
@@ -33,6 +33,7 @@ def eprint(*args, **kwargs):
 #             self.breakpoint_block.statements.append(
 #                     AssignStatement(variable, variable, pointer=pointer))
 
+# TODO: Consider renamining this to "NMODL_Factory"
 class NmodlMechanism(Reaction):
     def __init__(self, filename, pointers={}, parameters={}, use_cache=True):
         """
@@ -74,23 +75,6 @@ class NmodlMechanism(Reaction):
             self.pointers.add(param, read=(self.name+"."+param))
         for var_name, kwargs in pointers.items():
             self.pointers.add(var_name, **kwargs)
-
-    def initialize(self, database, **builtin_parameters):
-        try:
-            self.parameters.update(builtin_parameters, strict=True, override=False)
-            self.parameters.substitute(
-                    list(self.derivative_blocks.values()) + [self.initial_block, self.breakpoint_block,],)
-            # self.kinetic_models = {}
-            # for name, block in self.derivative_functions.items():
-            #     self.kinetic_models[name] = KineticModel(1/0)
-            self._run_initial_block(database)
-            self._initialize_database(database)
-            self.pointers.initialize(database)
-            self._compile_breakpoint_block(database)
-            return database.get(self.name)
-        except Exception:
-            eprint("ERROR while loading file", self.filename)
-            raise
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -175,45 +159,24 @@ class NmodlMechanism(Reaction):
             bp_stmts = self.breakpoint_block.statements
             self.breakpoint_block.statements = bp_stmts[:idx] + syseq_block.statements + bp_stmts[idx+1:]
 
-    def _compile_derivative_blocks(self):
-        """ Replace the derivative_blocks with compiled functions in the form:
-                f(state_vector, **block.arguments) ->  Δstate_vector/Δt
-        """
-        self.derivative_functions = {}
-        solve_statements = {stmt.block: stmt
-                for stmt in self.breakpoint_block if isinstance(stmt, SolveStatement)}
-        for name, block in self.derivative_blocks.items():
-            if name not in solve_statements: continue
-            if solve_statements[name].method == "sparse":
-                self.derivative_functions[name] = self._compile_derivative_block(block)
-
-    def _compile_derivative_block(self, block):
-        """ Returns function in the form:
-                f(state_vector, **block.arguments) -> derivative_vector """
-        block = copy.deepcopy(block)
-        globals_ = {}
-        locals_ = {}
-        py = "def derivative(%s, %s):\n"%(code_gen.mangle2("state"), ", ".join(block.arguments))
-        for idx, name in enumerate(self.states):
-            py += "    %s = %s[%d]\n"%(name, code_gen.mangle2("state"), idx)
-        for name in self.states:
-            py += "    %s = 0\n"%code_gen.mangle('d' + name)
-        block.map(lambda x: [] if isinstance(x, _ConserveStatement) else [x])
-        py += block.to_python(indent="    ")
-        py += "    return [%s]\n"%", ".join(code_gen.mangle('d' + x) for x in self.states)
-        code_gen.py_exec(py, globals_, locals_)
-        return numba.njit(locals_["derivative"])
-
-    def _compute_propagator_matrix(self, block, time_step, kwargs):
-        1/0
-        f = self.derivative_functions[block]
-        n = len(self.states)
-        A = np.zeros((n,n))
-        for i in range(n):
-            state = np.array([0. for x in self.states])
-            state[i] = 1
-            A[:, i] = f(state, **kwargs)
-        return expm(A * time_step)
+    def initialize(self, database, **builtin_parameters):
+        try:
+            self.parameters.update(builtin_parameters, strict=True, override=False)
+            self.parameters.substitute(
+                    list(self.derivative_blocks.values()) + [self.initial_block, self.breakpoint_block,],)
+            # self.kinetic_models = {}
+            # for name, block in self.derivative_functions.items():
+            #     self.kinetic_models[name] = KineticModel(1/0)
+            self._run_initial_block(database)
+            cls = self._initialize_database(database)
+            self.pointers.initialize(database)
+            self._compile_breakpoint_block()
+            cls._cuda_advance = self._cuda_advance
+            cls._surface_area_parameters = self.surface_area_parameters
+            return database.get(self.name).get_instance_type()
+        except Exception:
+            eprint("ERROR while loading file", self.filename)
+            raise
 
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
@@ -222,7 +185,7 @@ class NmodlMechanism(Reaction):
             "solve_steadystate": self.solve_steadystate,
         }
         self.initial_scope = {x: 0 for x in self.states}
-        initial_python = code_gen.to_python(self.initial_block, INITIAL_BLOCK=True)
+        initial_python = code_gen.to_python(self.initial_block)
         for arg in self.initial_block.arguments:
             if arg in self.parameters:
                 globals_[arg] = self.parameters[arg][0]
@@ -261,38 +224,37 @@ class NmodlMechanism(Reaction):
         return states
 
     def _initialize_database(self, database):
-        cls = database.add_class(self.name, doc=self.description)
+        cls = database.add_class(self.name, NMODL, doc=self.description)
         cls.add_attribute("segment", dtype="Segment")
         for name in self.surface_area_parameters:
             cls.add_attribute(name, units=None) # TODO: units!
         for name in self.states:
             cls.add_attribute(name, initial_value=self.initial_state[name], units=name)
+        return cls.get_instance_type()
 
-    def _compile_breakpoint_block(self, database):
-        # Link assignment to their pointers.
-        for stmt in self.breakpoint_block:
-            if isinstance(stmt, AssignStatement):
-                stmt.pointer = self.pointers.get(stmt.lhsn, None)
+    def _compile_breakpoint_block(self):
         # Move assignments to conductances to the end of the block, where they
         # belong. This is needed because the nmodl library inserts conductance
         # hints and associated statements at the beginning of the block.
-        self.breakpoint_block.statements.sort(key=lambda stmt: bool(
-                isinstance(stmt, AssignStatement)
-                and stmt.pointer and "conductance" in stmt.pointer.name))
+        # self.breakpoint_block.statements.sort(key=lambda stmt: bool(
+        #         isinstance(stmt, AssignStatement)
+        #         and stmt.pointer and "conductance" in stmt.pointer.name))
         # 
         self.breakpoint_block.gather_arguments()
-        initial_scope_carryover = []
         for arg in self.breakpoint_block.arguments:
             if arg in self.pointers: pass
             elif arg in self.initial_scope:
-                initial_scope_carryover.append((arg, self.initial_scope[arg]))
+                value = float(self.initial_scope[arg])
+                self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
             else: raise ValueError("Unhandled argument: \"%s\"."%arg)
+        self.breakpoint_block.gather_arguments()
         self.arguments = set()
         for ptr in self.pointers.values():
             if ptr.r: self.arguments.add((ptr.read_py(), ptr.read))
             if ptr.w: self.arguments.add((ptr.write_py(), ptr.write))
         self.arguments = sorted(self.arguments)
         index     = code_gen.mangle2("index")
+        # TODO: Consider moving some of this preamble stuff to the code_gen module?
         preamble  = []
         preamble.append("import numba.cuda")
         preamble.append("def BREAKPOINT(%s):"%", ".join(py for py, db in self.arguments))
@@ -311,9 +273,7 @@ class NmodlMechanism(Reaction):
             if ptr in pointers: continue
             stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py(), ptr.index_py())
             preamble.append(stmt)
-        for variable_value_pair in initial_scope_carryover:
-            preamble.append("    %s = %s"%variable_value_pair)
-        py = code_gen.to_python(self.breakpoint_block, "    ")
+        py = code_gen.to_python(self.breakpoint_block, "    ", self.pointers)
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
             # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
@@ -321,27 +281,19 @@ class NmodlMechanism(Reaction):
         code_gen.py_exec(py, breakpoint_globals)
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
-    def new_instances(self, database, segment, scale=1):
-        if isinstance(database, Model): database = database.db
-        locations = list(locations)
-        for i, x in enumerate(locations):
-            if isinstance(x, Segment):
-                locations[i] = x = x.index
-            elif isinstance(x, Entity):
-                assert(x.archetype.name == "membrane")
-                locations[i] = x = x.index
-            assert(isinstance(x, int))
-        ent_idx = database.create_entity(self.name, len(locations), return_entity=False)
-        ent_idx = np.array(ent_idx, dtype=np.int)
-        database.access(self.name + "/insertions")[ent_idx] = locations
-        surface_areas = database.access("membrane/surface_areas")[locations]
-        for name, (value, units) in self.surface_area_parameters.items():
-            param = database.access(self.name + "/data/" + name)
-            x = 10000 # Convert from NEUWONs m^2 to NEURONs cm^2.
-            param[ent_idx] = value * scale * surface_areas * x
-        return ent_idx
+class NMODL(Reaction):
+    __slots__ = ()
+    def __init__(self, segment, scale=1.0):
+        type(self)
+        self.segment = segment
+        sa = float(scale) * self.segment.surface_area
 
-    def advance(self, access):
+        for name, (value, units) in self._surface_area_parameters.items():
+            param = database.access(self.name + "/data/" + name)
+            x = 1/0 # Convert from NEUWONs um^2 to NEURONs cm^2.
+            param[ent_idx] = value * scale * surface_areas * x
+
+    def advance(self):
         # for name, km in self.kinetic_models.items():
         #     1/0
         threads = 64

@@ -241,12 +241,10 @@ class AssignStatement:
         self.lhsn = str(lhsn) # Left hand side name.
         self.rhs  = rhs       # Right hand side.
         self.derivative = bool(derivative)
-        self.pointer = None # Associated with the left hand side.
 
     def __repr__(self):
         s = self.lhsn + " = " + str(self.rhs)
         if self.derivative: s = "'" + s
-        if self.pointer: s += "  (%s)"%str(self.pointer)
         return s
 
 class SolveStatement:
