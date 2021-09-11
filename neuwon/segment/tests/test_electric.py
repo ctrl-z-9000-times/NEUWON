@@ -82,7 +82,7 @@ def test_length_constant():
     print("lambda ratio:", ratio)
     assert ratio == pytest.approx(1 / np.e, .25)
 
-test_length_constant()
+# test_length_constant()
 
 @pytest.mark.skip("Can't do without the model.")
 def test_inject_current():

@@ -828,6 +828,7 @@ class Sparse_Matrix(_DataComponent):
         return self
 
     def to_device(self) -> 'self':
+        if self.dtype.kind not in 'fc': return self # Cupy only supports float & complex types.
         if self.mem == 'host':
             self.mem = 'cuda'
             self._host_lil_mem = None

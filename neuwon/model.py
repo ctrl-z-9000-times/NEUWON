@@ -1,14 +1,10 @@
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import *
+from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
-from scipy.sparse import csr_matrix, csc_matrix
-from scipy.sparse.linalg import expm
+from neuwon.segment import SegmentMethods
+from neuwon.species import Species
 import copy
 import cupy as cp
-import math
-import neuwon.segment
-import neuwon.voronoi
-import numba.cuda
 import numpy as np
 
 _ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
@@ -74,13 +70,11 @@ class Model:
         self.time_step = self.clock.get_tick_period()
         self.input_clock = Clock(0.5 * self.time_step, units="ms")
         self.celsius = float(celsius)
-        self.T = self.celsius + 273.15 # Temperature, in Kelvins.
-        self.Segment = neuwon.segment.SegmentMethods._initialize(db)
+        self.Segment = SegmentMethods._initialize(db)
         self.Segment._model = self
         # self.Section = ditto
         # self.Inside = ditto
         # self.Outside = ditto
-
 
         self.fh_space = float(fh_space)
         self.max_outside_radius = float(max_outside_radius)
@@ -103,7 +97,7 @@ class Model:
     def check(self):
         self.database.check()
 
-    def add_species(self, species):
+    def add_species(self, species) -> Species:
         """
         Argument species is one of:
           * An instance of the Species class,
@@ -119,8 +113,9 @@ class Model:
         assert(species.name not in self.species)
         self.species[species.name] = species
         species._initialize(self.database)
+        return species
 
-    def get_species(self, species_name):
+    def get_species(self, species_name) -> Species:
         return self.species[str(species_name)]
 
     def add_reaction(self, reaction: Reaction) -> Reaction:
@@ -150,30 +145,32 @@ class Model:
         For more information see: The NEURON Book, 2003.
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
+        # self.database.to_device()
         self._advance_species()
         self._advance_reactions()
         self._advance_species()
-        self._advance_clock()
+        self.clock.tick()
 
     def _advance_lockstep(self):
         """ Naive integration strategy, for reference only. """
         self._advance_species()
         self._advance_species()
         self._advance_reactions()
-        self._advance_clock()
+        self.clock.tick()
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
         self.input_clock.tick()
 
-        conductances        = access("membrane/conductances")
-        driving_voltages    = access("membrane/driving_voltages")
+        conductances        = self.database.get_data("Segment.sum_conductance")
+        driving_voltages    = self.database.get_data("Segment.driving_voltage")
         conductances.fill(0.0) # Zero accumulator.
         driving_voltages.fill(0.0) # Zero accumulator.
         for s in self.species.values():
             s._accumulate_conductances(self.database)
         driving_voltages /= conductances
-        driving_voltages[:] = cp.nan_to_num(driving_voltages)
+        xp = cp.get_array_module(driving_voltages)
+        driving_voltages[:] = xp.nan_to_num(driving_voltages)
 
         self.Segment._electric_advance(self.time_step)
 

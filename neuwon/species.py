@@ -9,6 +9,7 @@ import numpy as np
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
+zero_c = 273.15 # Temperature, in Kelvins.
 
 class Species:
     """ """
@@ -268,7 +269,7 @@ class Species:
         voltages            = access("membrane/voltages")
         capacitances        = access("membrane/capacitances")
         # Accumulate the net conductances and driving voltages from each ion species' data.
-        if not s.transmembrane: continue
+        if not s.transmembrane: return
         reversal_potential = s._reversal_potential(access)
         g = access("membrane/conductances/"+s.name)
         conductances += g
@@ -371,7 +372,7 @@ class OutsideMethods:
 
 
 
-class _Linear_System(_Component):
+class _Linear_System:
     def __init__(self, class_type, name, function, epsilon, doc="", allow_invalid=False,):
         """ Add a system of linear & time-invariant differential equations.
 

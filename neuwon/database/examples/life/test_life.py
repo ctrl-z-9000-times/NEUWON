@@ -13,7 +13,7 @@ def test_by_num_alive():
     num_cells = size * size
     sparsity = lambda: model.get_num_alive() / num_cells
 
-    assert (.30 < sparsity() < .36)
+    assert (.26 < sparsity() < .36)
     for _ in range(3): model.advance()
     assert (.20 < sparsity() < .33)
     for _ in range(500): model.advance()
