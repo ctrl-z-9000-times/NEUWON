@@ -13,55 +13,6 @@ zero_c = 273.15 # Temperature, in Kelvins.
 
 class Species:
     """ """
-
-    # TODO: Consider getting rid of the standard library of species and mechanisms.
-    # Instead provide it in code examples which the user can copy paste into their
-    # code, or possible import directly from an "examples" sub-module (like with
-    # htm.core: `import htm.examples`). The problem with this std-lib is that there
-    # is no real consensus on what's standard? Species have a lot of arguments and
-    # while there may be one scientifically correct value for each argument, the
-    # user might want to omit options for run-speed. Mechanisms come in so many
-    # different flavors too, with varying levels of bio-accuracy vs run-speed.
-    # 
-    # Also, modify add_reactions to accept a whole dictionary of reactions so
-    # that this works: model.add_reactions(neuwon.examples.Hodgkin_Huxley.reactions)
-    _library = {
-        "na": {
-            "charge": 1,
-            "transmembrane": True,
-            "reversal_potential": "nerst",
-            "inside_concentration":   15,
-            "outside_concentration": 145,
-        },
-        "k": {
-            "charge": 1,
-            "transmembrane": True,
-            "reversal_potential": "nerst",
-            "inside_concentration": 150,
-            "outside_concentration":  4,
-        },
-        "ca": {
-            "charge": 2,
-            "transmembrane": True,
-            "reversal_potential": "nerst",
-            # "reversal_potential": "goldman_hodgkin_katz", # TODO: Does not work...
-            "inside_concentration": 70e-6,
-            "outside_concentration": 2,
-            "inside_diffusivity": 1e-9,
-        },
-        "cl": {
-            "charge": -1,
-            "transmembrane": True,
-            "reversal_potential": "nerst",
-            "inside_concentration":   10,
-            "outside_concentration": 110,
-        },
-        "glu": {
-            "outside_diffusivity": 1e-9,
-            "outside_decay_period": .5e-3,
-        },
-    }
-
     def __init__(self, name,
             charge = 0,
             reversal_potential    = None,
