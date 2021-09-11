@@ -16,8 +16,11 @@ def test_hh():
 
     my_seg = Segment(None, [0,0,0], 12)
     my_hh  = hh(my_seg, scale=.2)
-
     hh.advance()
+    hh.advance()
+    hh(Segment(None, [40,0,0], 12), scale=.2)
+    for _ in range(4):
+        hh.advance()
 
 @pytest.mark.skip()
 def test_kinetic_model():
