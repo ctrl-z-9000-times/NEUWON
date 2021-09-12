@@ -128,7 +128,7 @@ class NmodlMechanism(Reaction):
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in conductance:
                     self.pointers.add(var_name,
-                            write="Segment.conductances_%s"%ion, accumulate=True)
+                            write=f"Segment.{ion}_conductance", accumulate=True)
                 elif var_name in inside:
                     self.pointers.add(var_name,
                             write="Segment.inside_delta_concentrations/%s"%ion, accumulate=True)
@@ -140,7 +140,7 @@ class NmodlMechanism(Reaction):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                self.pointers.add(var_name, write="Segment.conductances_%s"%ion, accumulate=True)
+                self.pointers.add(var_name, write=f"Segment.{ion}_conductance", accumulate=True)
 
     def _solve(self):
         """ Replace SolveStatements with the solved equations to advance the

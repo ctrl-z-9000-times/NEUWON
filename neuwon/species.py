@@ -16,8 +16,8 @@ class Species:
     def __init__(self, name,
             charge = 0,
             reversal_potential    = None,
-            inside_concentration  = None,
-            outside_concentration = None,
+            inside_concentration: "millimolar"  = None,
+            outside_concentration: "millimolar" = None,
             inside_diffusivity    = None,
             outside_diffusivity   = None,
             inside_decay_period   = float("inf"),
@@ -26,8 +26,8 @@ class Species:
             outside_grid = None,):
         """
         Arguments
-        * inside_concentration:  initial value, units millimolar.
-        * outside_concentration: initial value, units millimolar.
+        * inside_concentration:  initial value.
+        * outside_concentration: initial value.
         * reversal_potential: is one of: number, "nerst", "goldman_hodgkin_katz"
 
         If diffusivity is not given, then the concentration is a global constant.
@@ -42,8 +42,8 @@ class Species:
             except ValueError:
                 self.reversal_potential = str(reversal_potential)
                 assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
-        self.conductance = (self.charge != 0) or (self.reversal_potential is not None)
-        if self.conductance: assert self.reversal_potential is not None
+        self.electric = (self.charge != 0) or (self.reversal_potential is not None)
+        if self.electric: assert self.reversal_potential is not None
         self.inside_global_const    = inside_diffusivity is None
         self.outside_global_const   = outside_diffusivity is None
         self.inside_diffusivity     = float(inside_diffusivity) if not self.inside_global_const else 0.0
@@ -60,7 +60,6 @@ class Species:
             self.inside_concentration = None
             assert self.inside_global_const
             assert self.inside_decay_period == float('inf')
-
         if outside_concentration is not None:
             self.outside_concentration = float(outside_concentration)
             assert self.outside_concentration >= 0.0
@@ -68,7 +67,6 @@ class Species:
             self.outside_concentration = None
             assert self.outside_global_const
             assert self.outside_decay_period == float('inf')
-
         assert self.inside_diffusivity    >= 0
         assert self.outside_diffusivity   >= 0
         assert self.inside_decay_period   > 0.0
@@ -77,47 +75,58 @@ class Species:
         if self.inside_global_const:  assert not self.use_shells
         if self.outside_global_const: assert self.outside_decay_period == np.inf
 
+    def get_name(self) -> str:
+        return self.name
+
     def __repr__(self):
         return "neuwon.species.Species(%s)"%self.name
 
     def _initialize(self, database):
         inside_cls = database.get(self.inside_archetype)
-        if self.inside_global_const:
-            inside_cls.add_class_attribute(f"{self.name}_concentration",
-                    self.inside_concentration, units="millimolar")
-        else:
-            inside_cls.add_attribute(f"{self.name}_concentration",
-                    initial_value=self.inside_concentration, units="millimolar")
-            inside_cls.add_attribute(f"{self.name}_delta_concentration",
-                    initial_value=0.0, units="millimolar / timestep")
-            # inside_cls.add_linear_system(self.inside_archetype+"/diffusions/" + self.name,
-            #         function=self._inside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
+        if self.inside_concentration is not None:
+            if self.inside_global_const:
+                inside_cls.add_class_attribute(f"{self.name}_concentration",
+                        initial_value=self.inside_concentration,
+                        units="millimolar")
+            else:
+                inside_cls.add_attribute(f"{self.name}_concentration",
+                        initial_value=self.inside_concentration,
+                        units="millimolar")
+                inside_cls.add_attribute(f"{self.name}_delta_concentration",
+                        initial_value=0.0,
+                        units="millimolar / timestep")
         if self.outside_concentration is not None:
             outside_cls = database.get("Outside")
             if self.outside_global_const:
                 outside_cls.add_class_attribute(f"{self.name}_concentration",
-                        self.outside_concentration, units="millimolar")
+                        self.outside_concentration,
+                        units="millimolar")
             else:
                 outside_cls.add_attribute(f"{self.name}_concentration",
-                        initial_value=self.outside_concentration, units="millimolar")
+                        initial_value=self.outside_concentration,
+                        units="millimolar")
                 outside_cls.add_attribute(f"{self.name}_delta_concentration",
-                        initial_value=0.0, units="millimolar / timestep")
-                # outside_cls.add_linear_system(f"{self.name}_diffusion",
-                #         function=self._outside_diffusion_coefficients, epsilon=epsilon * 1e-9,)
-        if self.conductance:
+                        initial_value=0.0,
+                        units="millimolar / timestep")
+        if self.electric:
             segment_cls = database.get("Segment")
             segment_cls.add_attribute(f"{self.name}_conductance",
-                    initial_value=0.0, valid_range=(0, np.inf), units="Siemens")
+                    initial_value=0.0,
+                    valid_range=(0, np.inf),
+                    units="Siemens")
             if isinstance(self.reversal_potential, float):
                 segment_cls.add_class_attribute(f"{self.name}_reversal_potential",
-                        self.reversal_potential, units="mV")
+                        initial_value=self.reversal_potential,
+                        units="mV")
             else:
                 segment_cls.add_attribute(f"{self.name}_reversal_potential",
+                        initial_value=np.nan,
                         units="mV")
 
     def _compute_reversal_potential(self, database, celsius):
         x = database.get_data(f"Segment.{self.name}_reversal_potential")
         if isinstance(x, float): return x
+        1/0 # The following code needs to be rewritten for the new database & schema.
         inside  = access(self.inside_archetype+"/concentrations/"+self.name)
         outside = access("outside/concentrations/"+self.name)
         if not isinstance(inside, float) and self.use_shells:
@@ -133,28 +142,57 @@ class Species:
         else: raise NotImplementedError(self.reversal_potential)
         return x
 
-    @staticmethod
-    def _nerst_potential(charge, T, inside_concentration, outside_concentration):
-        xp = cp.get_array_module(inside_concentration)
-        ratio = xp.divide(outside_concentration, inside_concentration)
-        return xp.nan_to_num(1e3 * R * T / F / charge * xp.log(ratio))
+    def _zero_accumulators(self, database):
+        def zero(component_name):
+            database.get_data(component_name).fill(0.0)
+        if self.electric:
+            zero(f"Segment.{name}_conductance")
+        if self.inside_diffusivity != 0.0:
+            zero(self.inside_archetype + "/delta_concentrations/"+name)
+        if self.outside_diffusivity != 0.0:
+            zero("outside/delta_concentrations/"+name)
 
-    @staticmethod
-    def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
-        xp = cp.get_array_module(inside_concentration)
-        inside_concentration  = inside_concentration * 1e-3  # Convert from millimolar to molar
-        outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
-        z = (charge * F / (R * T)) * voltages
-        return ((1e3 * charge * F) *
-                (inside_concentration * Species._efun(-z) - outside_concentration * Species._efun(z)))
+    def _accumulate_conductance(self, database):
+        dt                  = self.time_step / 1000 / _ITERATIONS_PER_TIMESTEP
+        conductances        = access("membrane/conductances")
+        driving_voltages    = access("membrane/driving_voltages")
+        voltages            = access("membrane/voltages")
+        capacitances        = access("membrane/capacitances")
+        # Accumulate the net conductances and driving voltages from each ion species' data.
+        if not s.electric: return
+        reversal_potential = s._reversal_potential(access)
+        g = access("membrane/conductances/"+s.name)
+        conductances += g
+        driving_voltages += g * reversal_potential
 
-    @staticmethod
-    @cp.fuse()
-    def _efun(z):
-        if abs(z) < 1e-4:
-            return 1 - z / 2
-        else:
-            return z / (math.exp(z) - 1)
+    def _advance(self, database):
+        # Calculate the transmembrane ion flows.
+        if s.inside_global_const and s.outside_global_const: return
+        if not (s.electric and s.charge != 0): return
+        reversal_potential = access("membrane/reversal_potentials/"+s.name)
+        g = access("membrane/conductances/"+s.name)
+        millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
+        if s.inside_diffusivity != 0:
+            if s.use_shells:
+                1/0
+            else:
+                volumes        = access("membrane/inside/volumes")
+                concentrations = access("membrane/inside/concentrations/"+s.name)
+                concentrations += millimoles / volumes
+        if s.outside_diffusivity != 0:
+            volumes = access("outside/volumes")
+            s.outside.concentrations -= millimoles / self.geometry.outside_volumes
+        # Update chemical concentrations with local changes and diffusion.
+        if not s.inside_global_const:
+            x    = access("membrane/inside/concentrations/"+s.name)
+            rr   = access("membrane/inside/delta_concentrations/"+s.name)
+            irm  = access("membrane/inside/diffusions/"+s.name)
+            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+        if not s.outside_global_const:
+            x    = access("outside/concentrations/"+s.name)
+            rr   = access("outside/delta_concentrations/"+s.name)
+            irm  = access("outside/diffusions/"+s.name)
+            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
     def _inside_diffusion_coefficients(self, access):
         dt      = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
@@ -213,49 +251,25 @@ class Species:
                 write_idx += 1
         return (coef, (dst, src))
 
-    def _accumulate_conductance(self, database):
-        dt                  = self.time_step / 1000 / _ITERATIONS_PER_TIMESTEP
-        conductances        = access("membrane/conductances")
-        driving_voltages    = access("membrane/driving_voltages")
-        voltages            = access("membrane/voltages")
-        capacitances        = access("membrane/capacitances")
-        # Accumulate the net conductances and driving voltages from each ion species' data.
-        if not s.transmembrane: return
-        reversal_potential = s._reversal_potential(access)
-        g = access("membrane/conductances/"+s.name)
-        conductances += g
-        driving_voltages += g * reversal_potential
+def _nerst_potential(charge, T, inside_concentration, outside_concentration):
+    xp = cp.get_array_module(inside_concentration)
+    ratio = xp.divide(outside_concentration, inside_concentration)
+    return xp.nan_to_num(1e3 * R * T / F / charge * xp.log(ratio))
 
+def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
+    xp = cp.get_array_module(inside_concentration)
+    inside_concentration  = inside_concentration * 1e-3  # Convert from millimolar to molar
+    outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
+    z = (charge * F / (R * T)) * voltages
+    return ((1e3 * charge * F) *
+            (inside_concentration * Species._efun(-z) - outside_concentration * Species._efun(z)))
 
-    def _advance(self, database):
-        # Calculate the transmembrane ion flows.
-        if not (s.transmembrane and s.charge != 0): return
-        if s.inside_global_const and s.outside_global_const: return
-        reversal_potential = access("membrane/reversal_potentials/"+s.name)
-        g = access("membrane/conductances/"+s.name)
-        millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
-        if s.inside_diffusivity != 0:
-            if s.use_shells:
-                1/0
-            else:
-                volumes        = access("membrane/inside/volumes")
-                concentrations = access("membrane/inside/concentrations/"+s.name)
-                concentrations += millimoles / volumes
-        if s.outside_diffusivity != 0:
-            volumes = access("outside/volumes")
-            s.outside.concentrations -= millimoles / self.geometry.outside_volumes
-        # Update chemical concentrations with local changes and diffusion.
-        if not s.inside_global_const:
-            x    = access("membrane/inside/concentrations/"+s.name)
-            rr   = access("membrane/inside/delta_concentrations/"+s.name)
-            irm  = access("membrane/inside/diffusions/"+s.name)
-            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
-        if not s.outside_global_const:
-            x    = access("outside/concentrations/"+s.name)
-            rr   = access("outside/delta_concentrations/"+s.name)
-            irm  = access("outside/diffusions/"+s.name)
-            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
-
+@cp.fuse()
+def _efun(z):
+    if abs(z) < 1e-4:
+        return 1 - z / 2
+    else:
+        return z / (math.exp(z) - 1)
 
 class InsideMethods:
     @classmethod

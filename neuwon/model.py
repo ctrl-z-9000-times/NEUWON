@@ -178,15 +178,8 @@ class Model:
             s._advance(self.time_step)
 
     def _advance_reactions(self):
-        def zero(component_name):
-            self.database.get_component(component_name).fill(0.0)
         for name, species in self.species.items():
-            if species.transmembrane:
-                zero("Segment.conductances_"+name)
-            if species.inside_diffusivity != 0.0:
-                zero(species.inside_archetype + "/delta_concentrations/"+name)
-            if species.outside_diffusivity != 0.0:
-                zero("outside/delta_concentrations/"+name)
+            species._zero_accumulators()
         for name, r in self.reactions.items():
             try: r.advance(self)
             except Exception: raise RuntimeError("in reaction " + name)
