@@ -8,6 +8,10 @@ import cupy as cp
 import scipy.sparse
 import scipy.sparse.linalg
 
+# TODO: Consider the following renames:
+#       cytoplasmic_resistance => specific_resistance
+#       membrane_capacitance => specific_capacitance
+
 class ElectricProperties:
     __slots__ = ()
     @classmethod
@@ -109,4 +113,5 @@ class ElectricProperties:
         current = float(current)
         clock = type(self)._model.input_clock
         dv = current * clock.get_tick_period() / self.capacitance
-        TimeSeriesBuffer().set_data([dv, dv], [0, duration]).play(self, "voltage", clock=clock)
+        input_signal = TimeSeriesBuffer().set_data([0, dv, dv, 0], [0, 0, duration, duration])
+        input_signal.play(self, "voltage", clock=clock)

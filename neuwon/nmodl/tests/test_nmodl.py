@@ -3,7 +3,7 @@ from neuwon.database import Database
 from neuwon.nmodl import NmodlMechanism
 import pytest
 
-def hh_smoke_test():
+def test_hh_smoke_test():
     dt = .1
     db = Database()
     hh = NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)

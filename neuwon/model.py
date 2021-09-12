@@ -30,6 +30,8 @@ class Reaction:
         (Optional) Returns a new Reaction object to use in place of this one. """
         pass
 
+    # TODO: Consider passing advance the same args as for initialize, BC it
+    # might be useful for the end user?
     @classmethod
     def advance(self):
         """ Advance all instances of this reaction. """
