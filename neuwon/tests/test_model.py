@@ -4,7 +4,7 @@ from neuwon.species import Species
 from neuwon.database.time import TimeSeriesBuffer
 import pytest
 
-def smoke_test():
+def test_smoke_test():
     m = Model(.1)
     m.advance()
     m.Segment(None, [0,0,0], 13)
@@ -32,19 +32,15 @@ def test_model_hh():
 
     m.advance()
     m.check()
-    print(m.database.get_data("hh.segment"))
 
     while m.clock() < 10:
         m.advance()
-        print(m.database.get_data("Segment.na_conductance"))
         m.check()
-    TimeSeriesBuffer().square_wave(0, 1e-9, 4).play(root, "voltage")
+    root.inject_current(1e-9, 2)
     while m.clock() < 50:
         m.advance()
         m.check()
 
-    print(x.get_timestamps())
-    print(x.get_data())
     x.plot()
 
 if __name__ == "__main__": test_model_hh()

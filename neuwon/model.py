@@ -6,8 +6,6 @@ from neuwon.species import Species
 import cupy as cp
 import numpy as np
 
-_ITERATIONS_PER_TIMESTEP = 2 # model._advance calls model._advance_species this many times.
-
 class Reaction:
     """ Abstract class for specifying reactions and mechanisms. """
     __slots__ = ()
@@ -44,9 +42,9 @@ class Model:
             max_outside_radius=20e-6,
             outside_volume_fraction=.20,
             outside_tortuosity=1.55,
-            cytoplasmic_resistance = 1,
+            cytoplasmic_resistance = 1e6,
             # TODO: Consider switching membrane_capacitance to use NEURON's units: uf/cm^2
-            membrane_capacitance = 1e-2,
+            membrane_capacitance = 1e-14,
             initial_voltage = -70,):
         """
         Argument cytoplasmic_resistance

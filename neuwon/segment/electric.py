@@ -2,6 +2,7 @@
 __all__ = []
 
 from neuwon.database import epsilon, NULL
+from neuwon.database.time import TimeSeriesBuffer
 import numpy as np
 import cupy as cp
 import scipy.sparse
@@ -49,14 +50,14 @@ class ElectricProperties:
             cls._compute_propagator_matrix(time_step)
         dt = time_step
         db_cls              = cls.get_database_class()
-        conductance         = db_cls.get_data("sum_conductance")
+        sum_conductance     = db_cls.get_data("sum_conductance")
         driving_voltage     = db_cls.get_data("driving_voltage")
         capacitance         = db_cls.get_data("capacitance")
         voltage             = db_cls.get_data("voltage")
         integral_v          = db_cls.get_data("integral_voltage")
         irm                 = db_cls.get("electric_propagator_matrix").to_csr().to_host().get_data()
         # Update voltages.
-        exponent        = -dt * conductance / capacitance
+        exponent        = -dt * sum_conductance / capacitance
         alpha           = np.exp(exponent)
         diff_v          = driving_voltage - voltage
         voltage[:]      = irm.dot(driving_voltage - diff_v * alpha)
@@ -104,9 +105,8 @@ class ElectricProperties:
 
     def inject_current(self, current, duration = 1.4):
         duration = float(duration)
-        assert(duration >= 0)
+        assert duration >= 0
         current = float(current)
-
         clock = type(self)._model.input_clock
-        dv = current * min(clock.get_tick_period(), t) / self.capacitance
-        TimeSeriesBuffer().set_data([dv, dv], [0,duration]).play(self, "voltage", clock=clock)
+        dv = current * clock.get_tick_period() / self.capacitance
+        TimeSeriesBuffer().set_data([dv, dv], [0, duration]).play(self, "voltage", clock=clock)
