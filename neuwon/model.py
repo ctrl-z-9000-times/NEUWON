@@ -3,7 +3,6 @@ from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
 from neuwon.segment import SegmentMethods
 from neuwon.species import Species
-import copy
 import cupy as cp
 import numpy as np
 
@@ -29,7 +28,6 @@ class Reaction:
         """
         Optional method.
         This method is called after the Model has been created.
-        This method is called on a deep copy of each Reaction object.
 
         (Optional) Returns a new Reaction object to use in place of this one. """
         pass
@@ -122,7 +120,6 @@ class Model:
     def add_reaction(self, reaction: Reaction) -> Reaction:
         r = reaction
         if hasattr(r, "initialize"):
-            r = copy.deepcopy(r)
             retval = r.initialize(self.database,
                     time_step=self.time_step,
                     celsius=self.celsius,)
