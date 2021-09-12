@@ -146,52 +146,48 @@ class Species:
         def zero(component_name):
             database.get_data(component_name).fill(0.0)
         if self.electric:
-            zero(f"Segment.{name}_conductance")
+            zero(f"Segment.{self.name}_conductance")
         if self.inside_diffusivity != 0.0:
-            zero(self.inside_archetype + "/delta_concentrations/"+name)
+            zero(self.inside_archetype + "/delta_concentrations/"+self.name)
         if self.outside_diffusivity != 0.0:
-            zero("outside/delta_concentrations/"+name)
+            zero("outside/delta_concentrations/"+self.name)
 
-    def _accumulate_conductance(self, database):
-        dt                  = self.time_step / 1000 / _ITERATIONS_PER_TIMESTEP
-        conductances        = access("membrane/conductances")
-        driving_voltages    = access("membrane/driving_voltages")
-        voltages            = access("membrane/voltages")
-        capacitances        = access("membrane/capacitances")
-        # Accumulate the net conductances and driving voltages from each ion species' data.
-        if not s.electric: return
-        reversal_potential = s._reversal_potential(access)
-        g = access("membrane/conductances/"+s.name)
-        conductances += g
-        driving_voltages += g * reversal_potential
+    def _accumulate_conductance(self, database, celsius):
+        if not self.electric: return
+        sum_conductance     = database.get_data("Segment.sum_conductance")
+        driving_voltage     = database.get_data("Segment.driving_voltage")
+        species_conductance = database.get_data(f"Segment.{self.name}_conductance")
+        reversal_potential  = self._compute_reversal_potential(database, celsius)
+        sum_conductance += species_conductance
+        driving_voltage += species_conductance * reversal_potential
 
     def _advance(self, database):
         # Calculate the transmembrane ion flows.
-        if s.inside_global_const and s.outside_global_const: return
-        if not (s.electric and s.charge != 0): return
-        reversal_potential = access("membrane/reversal_potentials/"+s.name)
-        g = access("membrane/conductances/"+s.name)
-        millimoles = g * (dt * reversal_potential - integral_v) / (s.charge * F)
-        if s.inside_diffusivity != 0:
-            if s.use_shells:
+        if self.inside_global_const and self.outside_global_const: return
+        if not (self.electric and self.charge != 0): return
+        reversal_potential = access("membrane/reversal_potentials/"+self.name)
+        g = access("membrane/conductances/"+self.name)
+        millimoles = g * (dt * reversal_potential - integral_v) / (self.charge * F)
+        if self.inside_diffusivity != 0:
+            if self.use_shells:
                 1/0
             else:
                 volumes        = access("membrane/inside/volumes")
-                concentrations = access("membrane/inside/concentrations/"+s.name)
+                concentrations = access("membrane/inside/concentrations/"+self.name)
                 concentrations += millimoles / volumes
-        if s.outside_diffusivity != 0:
+        if self.outside_diffusivity != 0:
             volumes = access("outside/volumes")
-            s.outside.concentrations -= millimoles / self.geometry.outside_volumes
+            self.outside.concentrations -= millimoles / self.geometry.outside_volumes
         # Update chemical concentrations with local changes and diffusion.
-        if not s.inside_global_const:
-            x    = access("membrane/inside/concentrations/"+s.name)
-            rr   = access("membrane/inside/delta_concentrations/"+s.name)
-            irm  = access("membrane/inside/diffusions/"+s.name)
+        if not self.inside_global_const:
+            x    = access("membrane/inside/concentrations/"+self.name)
+            rr   = access("membrane/inside/delta_concentrations/"+self.name)
+            irm  = access("membrane/inside/diffusions/"+self.name)
             x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
-        if not s.outside_global_const:
-            x    = access("outside/concentrations/"+s.name)
-            rr   = access("outside/delta_concentrations/"+s.name)
-            irm  = access("outside/diffusions/"+s.name)
+        if not self.outside_global_const:
+            x    = access("outside/concentrations/"+self.name)
+            rr   = access("outside/delta_concentrations/"+self.name)
+            irm  = access("outside/diffusions/"+self.name)
             x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
     def _inside_diffusion_coefficients(self, access):

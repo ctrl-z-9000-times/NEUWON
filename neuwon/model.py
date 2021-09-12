@@ -67,6 +67,7 @@ class Model:
         self.reactions = {}
         self.database = db = Database()
         self.clock = Clock(time_step, units="ms")
+        self.database.add_clock(self.clock)
         self.time_step = self.clock.get_tick_period()
         self.input_clock = Clock(0.5 * self.time_step, units="ms")
         self.celsius = float(celsius)
@@ -162,15 +163,15 @@ class Model:
         """ Note: Each call to this method integrates over half a time step. """
         self.input_clock.tick()
 
-        conductances        = self.database.get_data("Segment.sum_conductance")
-        driving_voltages    = self.database.get_data("Segment.driving_voltage")
-        conductances.fill(0.0) # Zero accumulator.
-        driving_voltages.fill(0.0) # Zero accumulator.
+        sum_conductance = self.database.get_data("Segment.sum_conductance")
+        driving_voltage = self.database.get_data("Segment.driving_voltage")
+        sum_conductance.fill(0.0) # Zero accumulator.
+        driving_voltage.fill(0.0) # Zero accumulator.
         for s in self.species.values():
-            s._accumulate_conductances(self.database)
-        driving_voltages /= conductances
-        xp = cp.get_array_module(driving_voltages)
-        driving_voltages[:] = xp.nan_to_num(driving_voltages)
+            s._accumulate_conductance(self.database, self.celsius)
+        driving_voltage /= sum_conductance
+        xp = cp.get_array_module(driving_voltage)
+        driving_voltage[:] = xp.nan_to_num(driving_voltage)
 
         self.Segment._electric_advance(self.time_step)
 
@@ -179,7 +180,7 @@ class Model:
 
     def _advance_reactions(self):
         for name, species in self.species.items():
-            species._zero_accumulators()
+            species._zero_accumulators(self.database)
         for name, r in self.reactions.items():
             try: r.advance(self)
             except Exception: raise RuntimeError("in reaction " + name)

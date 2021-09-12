@@ -267,7 +267,7 @@ class NMODL(Reaction):
             setattr(self, name, value * sa)
 
     @classmethod
-    def advance(cls):
+    def advance(cls, *args, **kwargs):
         db = cls.get_database_class().get_database()
         segment_data = db.get_data(cls.get_name() + ".segment")
         if not len(segment_data): return

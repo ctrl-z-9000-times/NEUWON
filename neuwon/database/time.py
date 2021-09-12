@@ -261,7 +261,8 @@ class TimeSeriesBuffer:
     def plot(self, show=True):
         """ Plot a line graph of the time series using matplotlib. """
         plt = matplotlib.pyplot
-        if hasattr(self, "component_name"):
+        name = getattr(self, "component_name", None)
+        if name is not None:
             plt.figure(name)
             plt.title("Time Series of: " + name)
             self.label_axes()
