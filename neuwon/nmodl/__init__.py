@@ -146,18 +146,22 @@ class NmodlMechanism(Reaction):
         """ Replace SolveStatements with the solved equations to advance the
         systems of differential equations. """
         sympy_methods = ("cnexp", "derivimplicit", "euler")
-        for idx, stmt in enumerate(self.breakpoint_block):
-            if not isinstance(stmt, SolveStatement): continue
-            syseq_block = stmt.block
-            if stmt.method in sympy_methods:
-                if syseq_block.derivative:
-                    for stmt in syseq_block:
-                        if isinstance(stmt, AssignStatement) and stmt.derivative:
-                            solve(stmt)
-            elif stmt.method == "sparse":
-                1/0
-            bp_stmts = self.breakpoint_block.statements
-            self.breakpoint_block.statements = bp_stmts[:idx] + syseq_block.statements + bp_stmts[idx+1:]
+        while True:
+            for idx, stmt in enumerate(self.breakpoint_block):
+                if not isinstance(stmt, SolveStatement): continue
+                syseq_block = stmt.block
+                if stmt.method in sympy_methods:
+                    if syseq_block.derivative:
+                        for stmt in syseq_block:
+                            if isinstance(stmt, AssignStatement) and stmt.derivative:
+                                solve(stmt)
+                elif stmt.method == "sparse":
+                    1/0
+                bp_stmts = self.breakpoint_block.statements
+                self.breakpoint_block.statements = bp_stmts[:idx] + syseq_block.statements + bp_stmts[idx+1:]
+                break
+            else:
+                break
 
     def initialize(self, database, **builtin_parameters):
         try:

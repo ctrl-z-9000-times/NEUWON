@@ -52,7 +52,7 @@ class ElectricProperties:
     def _electric_advance(cls, time_step):
         if not cls._clean:
             cls._compute_propagator_matrix(time_step)
-        dt = time_step
+        dt = time_step / 1000
         db_cls              = cls.get_database_class()
         sum_conductance     = db_cls.get_data("sum_conductance")
         driving_voltage     = db_cls.get_data("driving_voltage")

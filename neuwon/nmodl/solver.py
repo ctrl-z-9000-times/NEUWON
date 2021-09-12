@@ -23,17 +23,6 @@ def solve(self: AssignStatement):
         print("Warning Crank-Nicholson failed: "+str(x))
     raise ValueError(f"Failed to solve '{repr(self)}'")
 
-def _solve_sympy(self):
-    from sympy import Symbol, Function, Eq
-    dt    = Symbol("time_step")
-    lhsn  = code_gen.mangle2(self.lhsn)
-    state = Function(lhsn)(dt)
-    deriv = self.rhs.subs(Symbol(self.lhsn), state)
-    eq    = Eq(state.diff(dt), deriv)
-    ics   = {state.subs(dt, 0): Symbol(lhsn)}
-    self.rhs = sympy.dsolve(eq, state, ics=ics).rhs.simplify()
-    self.rhs = self.rhs.subs(Symbol(lhsn), Symbol(self.lhsn))
-
 def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
     """ Analytically integrate this derivative equation.
 
@@ -57,44 +46,44 @@ def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
         "1st_linear_Integral",
     }
 
-    x = sympy.Symbol(self.lhsn)
+    x = sympy.Symbol(self.lhsn, real=True)
     dxdt = self.rhs
-    x, dxdt = _sympify_diff_eq(diff_string, vars)
     # Set up differential equation d(x(t))/dt = ...
     # Where the function x_t = x(t) is substituted for the symbol x.
     # The dependent variable is a function of t.
-    t = sp.Dummy("t", real=True, positive=True)
-    x_t = sp.Function("x(t)", real=True)(t)
-    diffeq = sp.Eq(x_t.diff(t), dxdt.subs({x: x_t}))
+    t = sympy.Dummy("t", real=True, positive=True)
+    x_t = sympy.Function("x(t)", real=True)(t)
+    diffeq = sympy.Eq(x_t.diff(t), dxdt.subs({x: x_t}))
 
     # For simple linear case write down solution in preferred form:
-    dt = sp.symbols("time_step", real=True, positive=True)
     solution = None
     c1 = dxdt.diff(x).simplify()
     if c1 == 0:
         # Constant equation:
         # x' = c0
         # x(t+dt) = x(t) + c0 * dt
-        solution = (x + dt * dxdt).simplify()
+        self.rhs = x + dt * dxdt
     elif c1.diff(x) == 0:
         # Linear equation:
         # x' = c0 + c1*x
         # x(t+dt) = (-c0 + (c0 + c1*x(t))*exp(c1*dt))/c1
         c0 = (dxdt - c1 * x).simplify()
-        solution = (-c0 / c1).simplify() + (c0 + c1 * x).simplify() * sp.exp(
+        self.rhs = (-c0 / c1).simplify() + (c0 + c1 * x).simplify() * sympy.exp(
             c1 * dt
         ) / c1
     else:
         # Otherwise try to solve ODE with sympy:
         # First classify ODE, if it is too hard then exit.
-        ode_properties = set(sp.classify_ode(diffeq))
+        ode_properties = set(sympy.classify_ode(diffeq))
         assert ode_properties.issuperset(ode_properties_require_all), "ODE too hard"
         assert ode_properties.intersection(ode_properties_require_one_of), "ODE too hard"
         # Try to find analytic solution, with initial condition x_t(t=0) = x
         # (note dsolve can return a list of solutions, in which case this currently fails)
-        solution = sp.dsolve(diffeq, x_t, ics={x_t.subs({t: 0}): x})
+        solution = sympy.dsolve(diffeq, x_t, ics={x_t.subs({t: 0}): x})
         # evaluate solution at x(dt), extract rhs of expression
-        solution = solution.subs({t: dt}).rhs.simplify()
+        self.rhs = solution.subs({t: dt}).rhs
+
+    self.rhs = self.rhs.simplify()
 
     if use_pade_approx:
         pade_approx(self)
@@ -108,7 +97,7 @@ def pade_approx(self: AssignStatement):
     NMODL library distributed under the terms of the GNU Lesser General Public License.
     """
     1/0 # unimplemented
-    taylor_series = sp.Poly(sp.series(solution, dt, 0, 3).removeO(), dt)
+    taylor_series = sympy.Poly(sympy.series(solution, dt, 0, 3).removeO(), dt)
     _a0 = taylor_series.nth(0)
     _a1 = taylor_series.nth(1)
     _a2 = taylor_series.nth(2)

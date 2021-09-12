@@ -32,6 +32,7 @@ def test_time_constant():
     tau = root.capacitance / root.sum_conductance
     nstep = 1000
     dt = tau / nstep
+    dt = dt * 1e3 # Convert to milliseconds.
     for _ in range(nstep):
         Segment._electric_advance(dt)
     assert root.voltage == pytest.approx(1 - (1 / np.e))

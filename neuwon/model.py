@@ -159,6 +159,7 @@ class Model:
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
         self.input_clock.tick()
+        dt = self.input_clock.get_tick_period()
 
         sum_conductance = self.database.get_data("Segment.sum_conductance")
         driving_voltage = self.database.get_data("Segment.driving_voltage")
@@ -170,10 +171,10 @@ class Model:
         xp = cp.get_array_module(driving_voltage)
         driving_voltage[:] = xp.nan_to_num(driving_voltage)
 
-        self.Segment._electric_advance(self.time_step)
+        self.Segment._electric_advance(dt)
 
         for s in self.species.values():
-            s._advance(self.time_step)
+            s._advance(dt)
 
     def _advance_reactions(self):
         for name, species in self.species.items():
