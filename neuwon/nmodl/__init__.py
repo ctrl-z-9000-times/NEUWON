@@ -254,6 +254,7 @@ class NmodlMechanism(Reaction):
             # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
         code_gen.py_exec(py, breakpoint_globals)
+        self._breakpoint_pycode = py # Save this for debugging purposes.
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
 class NMODL(Reaction):

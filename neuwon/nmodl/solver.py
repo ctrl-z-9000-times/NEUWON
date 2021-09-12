@@ -1,10 +1,11 @@
 """ Private module. """
 __all__ = []
 
-import sympy
-
 from neuwon.nmodl import code_gen
 from neuwon.nmodl.parser import AssignStatement
+import sympy
+
+dt = sympy.Symbol("time_step", real=True, positive=True)
 
 def solve(self: AssignStatement):
     """ Solve this differential equation in-place. """
@@ -106,7 +107,7 @@ def pade_approx(self: AssignStatement):
     Copyright (C) 2018-2019 Blue Brain Project. This method was part of the
     NMODL library distributed under the terms of the GNU Lesser General Public License.
     """
-    1/0 # unimplemtned
+    1/0 # unimplemented
     taylor_series = sp.Poly(sp.series(solution, dt, 0, 3).removeO(), dt)
     _a0 = taylor_series.nth(0)
     _a1 = taylor_series.nth(1)
@@ -118,12 +119,12 @@ def pade_approx(self: AssignStatement):
     if _a1 == 0 and _a2 == 0:
         solution = _a0
 
-def crank_nicholson(self):
-    dt              = sympy.Symbol("time_step", real=True, positive=True)
-    init_state      = sympy.Symbol(self.lhsn)
-    next_state      = sympy.Symbol("Future" + self.lhsn)
+def crank_nicholson(self: AssignStatement):
+    init_state      = sympy.Symbol(self.lhsn, real=True)
+    next_state      = sympy.Symbol("_Future_" + self.lhsn, real=True)
     implicit_deriv  = self.rhs.subs(init_state, next_state)
     eq = sympy.Eq(next_state, init_state + implicit_deriv * dt / 2)
     backward_euler = sympy.solve(eq, next_state)
     assert len(backward_euler) == 1, backward_euler
     self.rhs = backward_euler.pop() * 2 - init_state
+    self.rhs = self.rhs.simplify()
