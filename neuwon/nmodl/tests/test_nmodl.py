@@ -7,7 +7,10 @@ def test_hh_smoke_test():
     dt = .1
     db = Database()
     hh = NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
-    Segment = SegmentMethods._initialize(db)
+    Segment = SegmentMethods._initialize(db,
+                initial_voltage = -70,
+                cytoplasmic_resistance = 1e6,
+                membrane_capacitance = 1e-14,)
     db_cls = Segment.get_database_class()
     db_cls.add_attribute("na_conductance")
     db_cls.add_attribute("k_conductance")

@@ -69,7 +69,10 @@ class Model:
         self.time_step = self.clock.get_tick_period()
         self.input_clock = Clock(0.5 * self.time_step, units="ms")
         self.celsius = float(celsius)
-        self.Segment = SegmentMethods._initialize(db)
+        self.Segment = SegmentMethods._initialize(db,
+                initial_voltage=initial_voltage,
+                cytoplasmic_resistance=cytoplasmic_resistance,
+                membrane_capacitance=membrane_capacitance,)
         self.Segment._model = self
         # self.Section = ditto
         # self.Inside = ditto

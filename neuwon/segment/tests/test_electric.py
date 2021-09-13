@@ -8,7 +8,10 @@ import pytest
 def test_advance_smoke_test():
     dt = .1
     db = Database()
-    Segment = SegmentMethods._initialize(db)
+    Segment = SegmentMethods._initialize(db,
+            initial_voltage = -70,
+            cytoplasmic_resistance = 1e6,
+            membrane_capacitance = 1e-14,)
     Segment._electric_advance(dt)
     Segment(None, [0,0,0], 13)
     Segment._electric_advance(dt)
@@ -24,7 +27,10 @@ def test_advance_smoke_test():
 
 def test_time_constant():
     db = Database()
-    Segment = SegmentMethods._initialize(db)
+    Segment = SegmentMethods._initialize(db,
+            initial_voltage = -70,
+            cytoplasmic_resistance = 1e6,
+            membrane_capacitance = 1e-14,)
     root = Segment(None, [0,0,0], 20)
     root.voltage = 0
     root.driving_voltage = 1
@@ -44,7 +50,10 @@ def test_length_constant():
     rm = 1e9
     ri = 1e6
     db = Database()
-    Segment = SegmentMethods._initialize(db)
+    Segment = SegmentMethods._initialize(db,
+            initial_voltage = -70,
+            cytoplasmic_resistance = 1e6,
+            membrane_capacitance = 1e-14,)
     root = Segment(None, [0,0,0], diam)
     section = [root]
     tip = root
