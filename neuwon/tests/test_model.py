@@ -1,7 +1,7 @@
 from neuwon.model import Model
 from neuwon.nmodl import NmodlMechanism
 from neuwon.species import Species
-from neuwon.database.time import TimeSeriesBuffer
+from neuwon.database.time import TimeSeries
 import pytest
 
 def test_smoke_test():
@@ -24,7 +24,7 @@ def test_model_hh(debug=False):
         tip = m.Segment(tip, [x,0,7], 1)
         hh(tip, 1e-9)
 
-    x = TimeSeriesBuffer().record(tip, 'voltage')
+    x = TimeSeries().record(tip, 'voltage')
 
     m.advance()
     m.check()

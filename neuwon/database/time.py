@@ -76,17 +76,14 @@ class Clock:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()
 
-# TODO: Work these notes into the docs for TimeSeriesBuffer.
+# TODO: Work these notes into the docs for TimeSeries.
 
 # Note: the timestamps may have irregular intervals between them, but they be
 # sorted.
 
 
-# TODO: Consider renaming TimeSeriesBuffer to just "TimeSeries" for bevity.
-
-
-class TimeSeriesBuffer:
-    """ Buffer for timeseries data, and associated helper methods. """
+class TimeSeries:
+    """ Buffer for time-series data, and associated helper methods. """
     def __init__(self):
         """ Create a new empty buffer. """
         self.stop()

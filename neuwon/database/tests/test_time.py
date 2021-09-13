@@ -30,7 +30,7 @@ class Model:
 
 def test_time_series_buffers():
     m = Model()
-    b = TimeSeriesBuffer()
+    b = TimeSeries()
 
     f = m.Foo()
     b.record(f, "bar")
@@ -56,7 +56,7 @@ def test_waveforms_basic():
     m = Model()
     f = m.Foo()
 
-    sqr = TimeSeriesBuffer().square_wave(0, 1, 1)
+    sqr = TimeSeries().square_wave(0, 1, 1)
     sqr.play(f, "bar", mode="=")
 
     assert f.bar == 1
@@ -66,18 +66,18 @@ def test_waveforms_basic():
     assert sum(sqr.play_data) == 5
     assert len(sqr.play_data) == 10
 
-    tri = TimeSeriesBuffer().triangle_wave(0, 1, 2)
+    tri = TimeSeries().triangle_wave(0, 1, 2)
     tri.play(f, "bar", mode="=", loop=True)
     assert max(tri.play_data) == approx(1, .01)
 
-    saw = TimeSeriesBuffer().sawtooth_wave(0, 1, 100)
+    saw = TimeSeries().sawtooth_wave(0, 1, 100)
     f2 = m.Foo()
     saw.play(f2, "bar", mode="=", loop=True)
     assert max(saw.play_data) == approx(1, .01)
     for _ in range(int(99.9 / m.clock.dt)): m.clock.tick()
     assert f2.bar == approx(1, .01)
 
-    sin = TimeSeriesBuffer().sine_wave(2, 5, 10)
+    sin = TimeSeries().sine_wave(2, 5, 10)
 
 def test_waveform_frequency():
     """
@@ -92,14 +92,14 @@ def test_waveform_frequency():
     f_tri = m.Foo()
     f_saw = m.Foo()
     f_sin = m.Foo()
-    TimeSeriesBuffer().square_wave(  -1, 1, p).play(f_sqr, "bar", mode="=", loop=True)
-    TimeSeriesBuffer().triangle_wave(-1, 1, p).play(f_tri, "bar", mode="=", loop=True)
-    TimeSeriesBuffer().sawtooth_wave(-1, 1, p).play(f_saw, "bar", mode="=", loop=True)
-    TimeSeriesBuffer().sine_wave(    -1, 1, p).play(f_sin, "bar", mode="=", loop=True)
-    buf_sqr = TimeSeriesBuffer().record(f_sqr, "bar")
-    buf_tri = TimeSeriesBuffer().record(f_tri, "bar")
-    buf_saw = TimeSeriesBuffer().record(f_saw, "bar")
-    buf_sin = TimeSeriesBuffer().record(f_sin, "bar")
+    TimeSeries().square_wave(  -1, 1, p).play(f_sqr, "bar", mode="=", loop=True)
+    TimeSeries().triangle_wave(-1, 1, p).play(f_tri, "bar", mode="=", loop=True)
+    TimeSeries().sawtooth_wave(-1, 1, p).play(f_saw, "bar", mode="=", loop=True)
+    TimeSeries().sine_wave(    -1, 1, p).play(f_sin, "bar", mode="=", loop=True)
+    buf_sqr = TimeSeries().record(f_sqr, "bar")
+    buf_tri = TimeSeries().record(f_tri, "bar")
+    buf_saw = TimeSeries().record(f_saw, "bar")
+    buf_sin = TimeSeries().record(f_sin, "bar")
     for _ in range(round(n_cycles * p / m.clock.dt)):
         m.clock.tick()
     # Check for correct phase / no drifting.

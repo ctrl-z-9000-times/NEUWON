@@ -2,7 +2,7 @@
 __all__ = []
 
 from neuwon.database import epsilon, NULL
-from neuwon.database.time import TimeSeriesBuffer
+from neuwon.database.time import TimeSeries
 import numpy as np
 import cupy as cp
 import scipy.sparse
@@ -113,5 +113,5 @@ class ElectricProperties:
         current = float(current)
         clock = type(self)._model.input_clock
         dv = current * clock.get_tick_period() / self.capacitance
-        input_signal = TimeSeriesBuffer().set_data([0, dv, dv, 0], [0, 0, duration, duration])
+        input_signal = TimeSeries().set_data([0, dv, dv, 0], [0, 0, duration, duration])
         input_signal.play(self, "voltage", clock=clock)

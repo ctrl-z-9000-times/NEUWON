@@ -60,10 +60,10 @@ class Experiment:
             segment = self.segments[idx]
             hh_ent  = Entity(self.model.db, "hh", self.hh[idx])
             self.probes.append(segment)
-            v_tracker = TimeSeriesBuffer(segment.entity, "membrane/voltages")
+            v_tracker = TimeSeries(segment.entity, "membrane/voltages")
             self.v.append(v_tracker)
             self.model.add_callback(v_tracker)
-            m_tracker = TimeSeriesBuffer(hh_ent, "hh/data/m")
+            m_tracker = TimeSeries(hh_ent, "hh/data/m")
             self.m.append(m_tracker)
             self.model.add_callback(m_tracker)
         if True:
@@ -213,7 +213,7 @@ dynamics near that point."""
     plt.figtext(0.5, 0.01, caption, horizontalalignment='center', fontsize=14)
 
 def analyze_length_step():
-    1/0 # TODO: Rewrite this to use the new TimeSeriesBuffer class.
+    1/0 # TODO: Rewrite this to use the new TimeSeries class.
     x2 = Experiment(time_step=25e-3, length_step=10e-6)
     x3 = Experiment(time_step=25e-3, length_step=20e-6)
     x4 = Experiment(time_step=25e-3, length_step=100e-6)
