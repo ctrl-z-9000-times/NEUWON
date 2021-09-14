@@ -43,9 +43,7 @@ def test_time_constant():
     assert root.voltage == pytest.approx(1 - (1 / np.e))
     db.check()
 
-def test_length_constant():
-    diam = 2
-    rm = 1e11
+def measure_length_constant(diam, rm, max_len, dt, ptol, plot):
     db = Database()
     Segment = SegmentMethods._initialize(db,
             initial_voltage = -70,
@@ -53,10 +51,7 @@ def test_length_constant():
             membrane_capacitance = 1e-14,)
     root = Segment(None, [0,0,0], diam)
     section = [root]
-    tip = root
-    for x in np.linspace(1, 1000, 500):
-        tip = Segment(tip, [x, 0, 0], diam)
-        section.append(tip)
+    section.extend(Segment.make_section(root, [2000, 0, 0], diam, max_len))
     for seg in section:
         seg.voltage             = 0
         seg.driving_voltage     = 0
@@ -67,9 +62,8 @@ def test_length_constant():
     rm = 1.0 / (probe.sum_conductance / probe.length)
     ri = probe.axial_resistance / probe.length
     length_constant = (rm / ri) ** 0.5
-    print("length_constant:", length_constant, 'um')
+    print("Estimated lambda:", length_constant, 'um')
 
-    dt = .001
     for i in range(round(10/dt)):
         probe.voltage = 1
         Segment._electric_advance(dt)
@@ -77,18 +71,52 @@ def test_length_constant():
     irm = db.get("Segment.electric_propagator_matrix").to_host().get_data()
     assert np.sum(irm.data) / irm.shape[0] == pytest.approx(1), "Check that charge is conserved."
 
-    import matplotlib.pyplot as plt
     x_coords = [seg.coordinates[0] for seg in section]
-    plt.plot(x_coords, [seg.voltage for seg in section])
-    plt.show()
-
     test = section[bisect.bisect_left(x_coords, probe_x + length_constant)]
     ratio = test.voltage / probe.voltage
-    print("Ratio at lambda:", ratio)
-    assert ratio == pytest.approx(1 / np.e, .25)
+    print("Attenuation at lambda:", ratio)
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.plot(x_coords, [seg.voltage for seg in section])
+        plt.show()
+    assert ratio == pytest.approx(1 / np.e, ptol)
     assert (test.coordinates[0] - probe_x) == pytest.approx(length_constant, .1)
 
-test_length_constant()
+def test_length_constant_1():
+    measure_length_constant(
+        diam = 1,
+        rm = 4e11,
+        max_len = 2,
+        dt = .01,
+        ptol = .05,
+        plot = False)
+
+def test_length_constant_2():
+    measure_length_constant(
+        diam = .9,
+        rm = 2e11,
+        max_len = 10,
+        dt = .025,
+        ptol = .15,
+        plot = False)
+
+def test_length_constant_3():
+    measure_length_constant(
+        diam = 4, # 
+        rm = 5e10, # high conductance.
+        max_len = 5,
+        dt = .025,
+        ptol = .20,
+        plot = False)
+
+def test_length_constant_4():
+    measure_length_constant(
+        diam = 2,
+        rm = 3e11,
+        max_len = 20,
+        dt = .1, #
+        ptol = .25,
+        plot = False)
 
 def test_inject_current():
     from neuwon.model import Model
