@@ -43,11 +43,9 @@ def test_time_constant():
     assert root.voltage == pytest.approx(1 - (1 / np.e))
     db.check()
 
-@pytest.mark.skip
 def test_length_constant():
-    diam = 1
-    rm = 1e9
-    ri = 1e6
+    diam = 2
+    rm = 1e11
     db = Database()
     Segment = SegmentMethods._initialize(db,
             initial_voltage = -70,
@@ -56,41 +54,41 @@ def test_length_constant():
     root = Segment(None, [0,0,0], diam)
     section = [root]
     tip = root
-    for x in np.linspace(1, 100, 300):
+    for x in np.linspace(1, 1000, 500):
         tip = Segment(tip, [x, 0, 0], diam)
         section.append(tip)
-    x_coords = [seg.coordinates[0] for seg in section]
     for seg in section:
         seg.voltage             = 0
         seg.driving_voltage     = 0
         seg.sum_conductance     = seg.surface_area / rm
-        seg.capacitance         = 1e-9
-        seg.axial_resistance    = ri * seg.length
     probe   = section[len(section) // 2]
     probe_x = probe.coordinates[0]
 
-    length_constant = ((rm / np.pi / diam) / ri) ** .5
+    rm = 1.0 / (probe.sum_conductance / probe.length)
+    ri = probe.axial_resistance / probe.length
+    length_constant = (rm / ri) ** 0.5
     print("length_constant:", length_constant, 'um')
 
-    dt = .01
+    dt = .001
     for i in range(round(10/dt)):
         probe.voltage = 1
         Segment._electric_advance(dt)
     db.check()
-    irm = db.get_data("Segment.electric_propagator_matrix")
+    irm = db.get("Segment.electric_propagator_matrix").to_host().get_data()
     assert np.sum(irm.data) / irm.shape[0] == pytest.approx(1), "Check that charge is conserved."
 
     import matplotlib.pyplot as plt
+    x_coords = [seg.coordinates[0] for seg in section]
     plt.plot(x_coords, [seg.voltage for seg in section])
     plt.show()
 
     test = section[bisect.bisect_left(x_coords, probe_x + length_constant)]
-    assert (test.coordinates[0] - probe_x) == pytest.approx(length_constant, .05)
     ratio = test.voltage / probe.voltage
-    print("lambda ratio:", ratio)
+    print("Ratio at lambda:", ratio)
     assert ratio == pytest.approx(1 / np.e, .25)
+    assert (test.coordinates[0] - probe_x) == pytest.approx(length_constant, .1)
 
-# test_length_constant()
+test_length_constant()
 
 def test_inject_current():
     from neuwon.model import Model
