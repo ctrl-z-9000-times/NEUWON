@@ -15,7 +15,7 @@ def test_model_hh(debug=False):
     m = Model(.1, celsius=6.3)
     na = m.add_species(Species("na", reversal_potential=40))
     k  = m.add_species(Species("k", reversal_potential=-80))
-    l  = m.add_species(Species("l", reversal_potential=-40))
+    l  = m.add_species("l", reversal_potential=-40)
     hh_cls = NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
     hh = m.add_reaction(hh_cls)
     print(hh_cls._breakpoint_pycode)

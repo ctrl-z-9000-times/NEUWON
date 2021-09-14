@@ -99,20 +99,14 @@ class Model:
     def check(self):
         self.database.check()
 
-    def add_species(self, species) -> Species:
+    def add_species(self, species, *args, **kwargs) -> Species:
         """
-        Argument species is one of:
-          * An instance of the Species class,
-          * A dictionary of arguments for initializing a new instance of the Species class,
-          * The species name, to be filled in from a standard library.
+        Accepts either a Species object or the arguments to create one.
+                See 'neuwon.species.Species.__init__' for function signature.
         """
-        if isinstance(species, Mapping):
-            species = Species(**species)
-        elif isinstance(species, str):
-            if species in Species._library: species = Species(species, **Species._library[species])
-            else: raise ValueError("Unrecognized species: %s."%species)
-        else: assert(isinstance(species, Species))
-        assert(species.name not in self.species)
+        if not isinstance(species, Species):
+            species = Species(species, *args, **kwargs)
+        assert species.name not in self.species
         self.species[species.name] = species
         species._initialize(self.database)
         return species
