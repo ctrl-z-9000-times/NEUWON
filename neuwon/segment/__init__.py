@@ -1,3 +1,4 @@
+from neuwon.database import epsilon
 from neuwon.segment.electric import ElectricProperties
 from neuwon.segment.geometry import SegmentGeometry
 import numpy as np
@@ -56,3 +57,40 @@ class SegmentMethods(SegmentGeometry, ElectricProperties):
             radius = float(next(cursor))
             parent = int(next(cursor))
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
+
+    @classmethod
+    def make_section(cls, parent, coordinates, diameter, maximum_segment_length=np.inf):
+        """
+        Argument parents:
+        Argument coordinates:
+        Argument diameters:
+        Argument maximum_segment_length
+
+        Returns a list of Segments.
+        """
+        maximum_segment_length = float(maximum_segment_length)
+        assert maximum_segment_length > 0
+        if maximum_segment_length == np.inf or parent is None:
+            return [cls(parent, coordinates, diameter)]
+        coords      = [float(x) for x in coordinates]
+        diameter    = float(diameter)
+        displace    = np.subtract(parent.coordinates, coordinates)
+        length      = np.linalg.norm(displace)
+        p_coords    = np.array(parent.coordinates)
+        if parent.is_sphere() or len(parent.children) > 0:
+            parent_r  = 0.5 * parent.diameter
+            if parent_r < length - epsilon:
+                p_coords -= displace * (parent_r / length)
+                length   -= parent_r
+        divisions   = max(1, int(np.ceil(length / maximum_segment_length)))
+        section     = []
+        x = np.linspace(p_coords[0], coordinates[0], divisions+1)
+        y = np.linspace(p_coords[1], coordinates[1], divisions+1)
+        z = np.linspace(p_coords[2], coordinates[2], divisions+1)
+        d = np.linspace(parent.diameter, diameter,   divisions+1)
+        args = zip(x,y,z,d)
+        next(args)
+        for (x,y,z,d) in args:
+            parent = cls(parent, (x,y,z), d)
+            section.append(parent)
+        return section
