@@ -4,7 +4,6 @@ import bisect
 import numpy as np
 import pytest
 
-
 def test_advance_smoke_test():
     dt = .1
     db = Database()
