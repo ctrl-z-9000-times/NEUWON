@@ -164,10 +164,9 @@ class Database:
             except Exception as x: exceptions.append(str(x))
         if exceptions: raise AssertionError(",\n                ".join(sorted(exceptions))+".")
 
-    def __repr__(self):
+    def _repr__(self): # TODO!
         """ Table summarizing contents. """
         return repr(super())
-        # TODO!
         s = ""
         case_insensitive = lambda kv_pair: kv_pair[0].lower()
         components = sorted(self.components.items(), key=case_insensitive)

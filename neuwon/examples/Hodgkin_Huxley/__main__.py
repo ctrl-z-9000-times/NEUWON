@@ -6,21 +6,23 @@ channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon.model import *
+from neuwon.nmodl import NmodlMechanism
+from neuwon.model import Model
+from neuwon.database.time import TimeSeries
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 
 class Experiment:
     def __init__(self,
-            axon_length   = 1000e-6,
-            axon_diameter = 1e-6,
-            soma_diameter = 11e-6,
+            axon_length   = 1000,
+            axon_diameter = 1,
+            soma_diameter = 11,
             time_step     = 1e-3,
-            length_step   = 20e-6,
+            length_step   = 20,
             stagger       = True,
             probes        = None,
-            stimulus      = 2e-10,
+            stimulus      = 1e-9,
         ):
         self.time_step = time_step
         self.length_step = length_step
@@ -31,79 +33,61 @@ class Experiment:
         self.stimulus = stimulus
         self.probe_locations = list(probes) if probes is not None else [1.0]
         self.make_model()
-        self.generate_input()
+        self.init_steady_state()
+        self.setup_measurements()
         self.run_experiment()
 
     def make_model(self):
         """ Construct a soma with a single long axon. """
-        self.model = m = Model(self.time_step)
-        m.add_species(Species("l", transmembrane = True, reversal_potential = -54.3,))
-        m.add_species("k")
-        m.add_species("na")
-        m.add_reaction("hh")
-        self.soma = m.create_segment(None, [0,0,0], self.soma_diameter)
+        self.model = m = Model(self.time_step, celsius=6.3)
+        na_cls  = m.add_species("na", reversal_potential = +60)
+        k_cls   = m.add_species("k",  reversal_potential = -88)
+        l_cls   = m.add_species("l",  reversal_potential = -54.3,)
+        hh_cls  = m.add_reaction(NmodlMechanism("./nmodl_library/hh.mod"))
+        self.soma = m.Segment(None, [0,0,0], self.soma_diameter)
         if self.length > 0:
-            self.axon = m.create_segment(self.soma[-1],
+            self.axon = m.Segment.make_section(self.soma,
                     [0,0,self.length], self.axon_diameter,
                     maximum_segment_length=self.length_step)
             self.tip = self.axon[-1]
         else:
             self.axon = []
-            self.tip = self.soma[-1]
-        self.segments = self.soma + self.axon
-        self.hh = m.get_reaction("hh").new_instances(m, self.segments, scale=1)
+            self.tip = self.soma
+        self.segments = [self.soma] + self.axon
+        self.hh = [hh_cls(seg, scale=1) for seg in self.segments]
+        if True:
+            print(self.model)
+        if True:
+            print("Number of Locations:", len(self.model))
+            sa_units = self.soma.get_database_class().get("surface_area").get_units()
+            sa = self.soma.surface_area
+            print("Soma surface area:", sa, sa_units)
+            sa += sum(x.surface_area for x in self.axon)
+            print("Total surface area:", sa, sa_units)
+
+    def init_steady_state(self):
+        while self.model.clock() < 20:
+            self.model.advance()
+        self.model.clock.reset()
+
+    def setup_measurements(self):
         self.probes = []
         self.v = []
         self.m = []
         for p in self.probe_locations:
             idx = int(round(p * (len(self.segments)-1)))
             segment = self.segments[idx]
-            hh_ent  = Entity(self.model.db, "hh", self.hh[idx])
+            hh      = self.hh[idx]
             self.probes.append(segment)
-            v_tracker = TimeSeries(segment.entity, "membrane/voltages")
-            self.v.append(v_tracker)
-            self.model.add_callback(v_tracker)
-            m_tracker = TimeSeries(hh_ent, "hh/data/m")
-            self.m.append(m_tracker)
-            self.model.add_callback(m_tracker)
-        if True:
-            print("Number of Locations:", len(self.model))
-            sa = sum(x.read("membrane/surface_areas") for x in self.soma)
-            print("Soma surface area:", sa, "m^2")
-            sa += sum(x.read("membrane/surface_areas") for x in self.axon)
-            print("Total surface area:", sa, "m^2")
-        if False:
-            print(str(self.model))
-            self.model.db.browse_docs()
-            1/0
-        if False: print(repr(self.model))
-        if False:
-            import tkinter
-            from neuwon.gui import PlotData
-            from threading import Thread
-            # Thread.run
-            m.data_plots.add(PlotData(self.tip.entity, 'membrane/voltages'))
-
-    def generate_input(self):
-        """ Subject the soma to three pulses of current injection. """
-        self.time_span = 50
-        self.input_current = []
-        ap_times = [10, 25, 40]
-        for step in range(int(self.time_span / self.time_step)):
-            t = step * self.time_step
-            self.input_current.append(any(abs(x - t) < self.time_step / 2 for x in ap_times))
-
-    def input_pattern(self, time):
-        ap_times = [10, 25, 40]
-        for ap_start in ap_times:
-            if time >= ap_start and time < ap_start + 1:
-                return self.stimulus
-        return 0
+            self.v.append(TimeSeries().record(segment, "voltage"))
+            self.m.append(TimeSeries().record(hh, "m"))
 
     def run_experiment(self):
-        for inp in self.input_current:
-            if inp:
-                self.soma[0].inject_current(self.stimulus, duration=1)
+        ap_times = [10, 25, 40]
+        while self.model.clock() < 50:
+            if ap_times and self.model.clock() > ap_times[0]:
+                ap_times.pop(0)
+                self.soma.inject_current(self.stimulus, duration=1)
             if self.stagger:
                 self.model.advance()
             else:
@@ -114,7 +98,7 @@ def analyze_accuracy():
     # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
     args = {
         "axon_length": 0,
-        "soma_diameter": 5.7e-6,
+        "soma_diameter": 5.7,
         "stimulus": 0.025e-9,
         "probes": [0],
     }
@@ -202,11 +186,11 @@ dynamics near that point."""
     x = Experiment(probes=[0, .2, .4, .6, .8, 1.0], time_step=2.5e-3,)
     colors = 'k purple b g y r'.split()
     plt.figure("AP Propagation")
-    soma_coords = x.soma[0].coordinates
+    soma_coords = x.soma.coordinates
     for c, p, v_buf in zip(colors, x.probes, x.v):
         dist = np.linalg.norm(np.subtract(soma_coords, p.coordinates))
         plt.plot(v_buf.timestamps, v_buf.timeseries, c,
-            label="Distance from soma: %g μm"%(dist*1e6))
+            label="Distance from soma: %g μm"%(dist))
     v_buf.label_axes()
     plt.legend()
     plt.title("Action Potential Propagation")
@@ -214,15 +198,15 @@ dynamics near that point."""
 
 def analyze_length_step():
     1/0 # TODO: Rewrite this to use the new TimeSeries class.
-    x2 = Experiment(time_step=25e-3, length_step=10e-6)
-    x3 = Experiment(time_step=25e-3, length_step=20e-6)
-    x4 = Experiment(time_step=25e-3, length_step=100e-6)
-    x5 = Experiment(time_step=25e-3, length_step=200e-6)
+    x2 = Experiment(time_step=25e-3, length_step=10)
+    x3 = Experiment(time_step=25e-3, length_step=20)
+    x4 = Experiment(time_step=25e-3, length_step=100)
+    x5 = Experiment(time_step=25e-3, length_step=200)
     plt.figure("Segment Length")
-    plt.plot(x2.time_stamps, x2.v[0], 'k', label="Maximum Inter-Nodal Length: %g μm"%(x2.length_step*1e6))
-    plt.plot(x3.time_stamps, x3.v[0], 'b', label="Maximum Inter-Nodal Length: %g μm"%(x3.length_step*1e6))
-    plt.plot(x4.time_stamps, x4.v[0], 'g', label="Maximum Inter-Nodal Length: %g μm"%(x4.length_step*1e6))
-    plt.plot(x5.time_stamps, x5.v[0], 'r', label="Maximum Inter-Nodal Length: %g μm"%(x5.length_step*1e6))
+    plt.plot(x2.time_stamps, x2.v[0], 'k', label="Maximum Inter-Nodal Length: %g μm"%(x2.length_step*1))
+    plt.plot(x3.time_stamps, x3.v[0], 'b', label="Maximum Inter-Nodal Length: %g μm"%(x3.length_step*1))
+    plt.plot(x4.time_stamps, x4.v[0], 'g', label="Maximum Inter-Nodal Length: %g μm"%(x4.length_step*1))
+    plt.plot(x5.time_stamps, x5.v[0], 'r', label="Maximum Inter-Nodal Length: %g μm"%(x5.length_step*1))
     plt.legend()
     plt.title("Effect of inter-nodal length on simulation accuracy")
     plt.xlabel('ms')
