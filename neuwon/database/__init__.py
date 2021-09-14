@@ -802,6 +802,7 @@ class Sparse_Matrix(_DataComponent):
         self.write_row(instance._idx, columns, data)
 
     def to_lil(self) -> 'self':
+        self.to_host()
         if self.fmt != "lil":
             self.fmt = "lil"
             self.data = self._matrix_class(self.data, dtype=self.dtype)

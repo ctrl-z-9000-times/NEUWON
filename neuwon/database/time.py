@@ -78,10 +78,11 @@ class Clock:
 
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
-    def __init__(self):
+    def __init__(self, *initial_data):
         """ Create a new empty buffer. """
         self.stop()
         self.clear()
+        if initial_data: self.set_data(*initial_data)
 
     def stop(self) -> 'self':
         """ Immediately stop recording / playing. """
@@ -105,17 +106,22 @@ class TimeSeries:
         self.timestamps = collections.deque()
         return self
 
-    def get_data(self) -> np.ndarray:
+    def get_data(self) -> collections.deque:
         """ Returns a list containing all of the data samples. """
         return self.timeseries
 
-    def get_timestamps(self) -> np.ndarray:
+    def get_timestamps(self) -> collections.deque:
         """ Returns a list containing all of the timestamps. """
         return self.timestamps
 
-    def set_data(self, data_samples, timestamps):
+    def set_data(self, data_samples, timestamps=None) -> 'self':
         """ Overwrite the data in this buffer. """
         assert self.is_stopped()
+        if isinstance(data_samples, TimeSeries):
+            timestamps   = data_samples.get_timestamps()
+            data_samples = data_samples.get_data()
+        elif timestamps is None:
+            raise TypeError("TimeSeries.set_data() missing required positional argument: 'timestamps'")
         self.timeseries = collections.deque(data_samples)
         self.timestamps = collections.deque(timestamps)
         assert len(self.timeseries) == len(self.timestamps)
@@ -208,7 +214,7 @@ class TimeSeries:
         start = math.floor(self.timestamps[ 0] / self.clock.dt)
         end   = math.ceil( self.timestamps[-1] / self.clock.dt)
         timestamps = self.clock.get_tick_period() * np.arange(start, end)
-        self.play_data  = self.interpolate(timestamps)
+        self.play_data  = self.interpolate(timestamps).get_data()
         self.play_index = 0
         self.play_loop  = bool(loop)
         self.mode       = str(mode)
@@ -232,22 +238,21 @@ class TimeSeries:
                 return False
         return True
 
-    def interpolate(self, timestamps):
+    def interpolate(self, timestamps) -> 'TimeSeries':
         """
         Interpolate the value of this timeseries at the given timestamps.
         This uses linear interpolation.
         """
-        f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data())
+        if isinstance(timestamps, TimeSeries):
+            timestamps = timestamps.get_timestamps()
         min_t = self.timestamps[0]
         max_t = self.timestamps[-1]
         min_v = self.timeseries[0]
         max_v = self.timeseries[-1]
-        results = np.empty(len(timestamps))
-        for i, t in enumerate(timestamps):
-            if   t < min_t: results[i] = min_v
-            elif t > max_t: results[i] = max_v
-            else: results[i] = f(t)
-        return results
+        f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
+                                        fill_value = (min_v, max_v),)
+        results = [f(t) for t in timestamps]
+        return TimeSeries().set_data(results, timestamps)
 
     def plot(self, show=True):
         """ Plot a line graph of the time series using matplotlib. """
