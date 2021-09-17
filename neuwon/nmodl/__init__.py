@@ -266,7 +266,7 @@ class NMODL(Reaction):
     def __init__(self, segment, scale=1.0):
         self.segment = segment
         scale = float(scale)
-        x_factor = (1e-2 * 1e-2) / (1e-6 * 1e-6) # Convert from NEUWONs um^2 to NEURONs cm^2.
+        x_factor = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
         sa = x_factor * scale * self.segment.surface_area
         for name, (value, units) in self._surface_area_parameters.items():
             setattr(self, name, value * sa)

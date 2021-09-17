@@ -4,7 +4,7 @@ __all__ = []
 from neuwon.database import epsilon, NULL
 from neuwon.database.time import TimeSeries
 import numpy as np
-import cupy as cp
+import cupy
 import scipy.sparse
 import scipy.sparse.linalg
 
@@ -24,7 +24,7 @@ class ElectricProperties:
         db_cls.add_attribute("axial_resistance", units="")
         db_cls.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
         db_cls.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
-                units="?",
+                units="ohm-cm",
                 valid_range=(epsilon, np.inf))
         db_cls.add_class_attribute("membrane_capacitance", membrane_capacitance,
                 units="?",
@@ -39,13 +39,10 @@ class ElectricProperties:
         type(self)._clean = False
 
     def _compute_passive_electric_properties(self):
-        Ra = self.cytoplasmic_resistance
-        Cm = self.membrane_capacitance
+        Ra = self.cytoplasmic_resistance * 1e4 # Convert from ohm-cm to ohm-um.
+        Cm = self.membrane_capacitance * 1e-14 # Convert from uf/cm^2 to f/um^2.
 
-        # Compute axial membrane resistance.
-        # TODO: This formula only works for cylinders.
         self.axial_resistance = Ra * self.length / self.cross_sectional_area
-        # Compute membrane capacitance.
         self.capacitance = Cm * self.surface_area
 
     @classmethod

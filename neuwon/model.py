@@ -44,9 +44,8 @@ class Model:
             max_outside_radius=20e-6,
             outside_volume_fraction=.20,
             outside_tortuosity=1.55,
-            cytoplasmic_resistance = 1e6,
-            # TODO: Consider switching membrane_capacitance to use NEURON's units: uf/cm^2
-            membrane_capacitance = 1e-14,
+            cytoplasmic_resistance = 1000,
+            membrane_capacitance = 1, # uf/cm^2
             initial_voltage = -70,):
         """
         Argument cytoplasmic_resistance
@@ -57,7 +56,7 @@ class Model:
 
         Argument max_outside_radius
 
-        Argument membrane_capacitance, units: Farads / Meter^2
+        Argument membrane_capacitance
 
         Argument initial_voltage, units: millivolts
         """
