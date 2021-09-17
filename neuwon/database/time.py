@@ -260,7 +260,7 @@ class TimeSeries:
         name = getattr(self, "component_name", None)
         if name is not None:
             plt.figure(name)
-            plt.title("Time Series of: " + name)
+            plt.title("Time Series of " + name)
             self.label_axes()
         else:
             plt.figure()

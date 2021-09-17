@@ -116,6 +116,9 @@ class Model:
 
     def add_reaction(self, reaction: Reaction) -> Reaction:
         r = reaction
+        if isinstance(r, str) and r.endswith(".mod"):
+            from neuwon.nmodl import NmodlMechanism
+            r = NmodlMechanism(r)
         if hasattr(r, "initialize"):
             retval = r.initialize(self.database,
                     time_step=self.time_step,

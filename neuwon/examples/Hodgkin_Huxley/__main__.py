@@ -6,7 +6,6 @@ channels to experiment with.
 Run from the command line as:
 $ python ./NEUWON/examples/Hodgkin_Huxley propagation
 """
-from neuwon.nmodl import NmodlMechanism
 from neuwon.model import Model
 from neuwon.database.time import TimeSeries
 import numpy as np
@@ -43,7 +42,7 @@ class Experiment:
         na_cls  = m.add_species("na", reversal_potential = +60)
         k_cls   = m.add_species("k",  reversal_potential = -88)
         l_cls   = m.add_species("l",  reversal_potential = -54.3,)
-        hh_cls  = m.add_reaction(NmodlMechanism("./nmodl_library/hh.mod"))
+        hh_cls  = m.add_reaction("./nmodl_library/hh.mod")
         self.soma = m.Segment(None, [0,0,0], self.soma_diameter)
         if self.length > 0:
             self.axon = m.Segment.make_section(self.soma,
@@ -66,7 +65,7 @@ class Experiment:
             print("Total surface area:", sa, sa_units)
 
     def init_steady_state(self):
-        while self.model.clock() < 20:
+        while self.model.clock() < 30:
             self.model.advance()
         self.model.clock.reset()
 
@@ -85,7 +84,7 @@ class Experiment:
     def run_experiment(self):
         ap_times = [10, 25, 40]
         while self.model.clock() < 50:
-            if ap_times and self.model.clock() > ap_times[0]:
+            if ap_times and self.model.clock() >= ap_times[0]:
                 ap_times.pop(0)
                 self.soma.inject_current(self.stimulus, duration=1)
             if self.stagger:
@@ -98,7 +97,7 @@ def analyze_accuracy():
     # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
     args = {
         "axon_length": 0,
-        "soma_diameter": 5.7,
+        "soma_diameter": 5.645,
         "stimulus": 0.025e-9,
         "probes": [0],
     }
@@ -107,10 +106,10 @@ def analyze_accuracy():
     gold_timestamps = gold.v[0].timestamps
 
     def measure_error(experiment):
-        v = experiment.v[0].interpolate(gold_timestamps)
-        m = experiment.m[0].interpolate(gold_timestamps)
-        error_v = np.abs(v - gold.v[0].timeseries)
-        error_m = np.abs(m - gold.m[0].timeseries)
+        v = experiment.v[0].interpolate(gold_timestamps).get_data()
+        m = experiment.m[0].interpolate(gold_timestamps).get_data()
+        error_v = np.abs(np.subtract(v, gold.v[0].timeseries))
+        error_m = np.abs(np.subtract(m, gold.m[0].timeseries))
         return (error_v, error_m)
 
     def make_label(x):
