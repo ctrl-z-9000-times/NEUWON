@@ -3,7 +3,6 @@ __all__ = []
 
 import copy
 import itertools
-import neuwon.units
 import nmodl
 import nmodl.ast
 import nmodl.dsl
@@ -59,12 +58,6 @@ class NmodlParser:
         """ Returns sorted list the names of the states. """
         return sorted(v.get_name() for v in
                 self.symbols.get_variables_with_properties(nmodl.symtab.NmodlType.state_var))
-
-    def gather_units(self):
-        units = copy.deepcopy(neuwon.units.builtin_units)
-        for AST in self.lookup(ANT.UNIT_DEF):
-            units.add_unit(AST.unit1.name.eval(), AST.unit2.name.eval())
-        return units
 
     def gather_parameters(self):
         """ Returns dictionary of name -> (value, units). """

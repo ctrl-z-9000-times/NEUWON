@@ -53,7 +53,6 @@ class NmodlMechanism(Reaction):
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self.name, self.title, self.description = parser.gather_documentation()
-                self.units = parser.gather_units()
                 self.parameters = ParameterTable(parser.gather_parameters())
                 self.pointers = PointerTable(self)
                 self.states = parser.gather_states()
