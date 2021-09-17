@@ -3,7 +3,7 @@ from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
 import cupy as cp
 import math
-import neuwon.voronoi
+import neuwon.species.voronoi
 import numba.cuda
 import numpy as np
 
@@ -321,7 +321,7 @@ class OutsideMethods:
             coords = coordinates[location]
             potential_neighbors = tree.query_ball_point(coords, 2 * self.max_outside_radius)
             potential_neighbors.remove(location)
-            volume, neighbors = neuwon.voronoi.voronoi_cell(location,
+            volume, neighbors = neuwon.species.voronoi.voronoi_cell(location,
                     self.max_outside_radius, np.array(potential_neighbors, dtype=Pointer), coordinates)
             write_neighbor_cols.append(list(neighbors['location']))
             write_neighbor_dist.append(list(neighbors['distance']))
