@@ -23,6 +23,7 @@ class Database:
         """ Create a new empty database. """
         self.db_classes = dict()
         self.clock = None
+        self.memory_space = 'host'
 
     def add_class(self, name: str, base_class:type=None, doc:str="") -> 'DB_Class':
         return DB_Class(self, name, base_class=base_class, doc=doc)
@@ -103,19 +104,10 @@ class Database:
         """ Get the default clock for this database. """
         return self.clock
 
-    def to_host(self) -> 'Database':
-        """ Move all data to this python process's memory space. """
-        for _cls in self.db_classes.values():
-            for comp in _cls.components.values():
-                comp.to_host()
-        return self
-
-    def to_device(self):
-        """ Move all data components to the default CUDA device. """
-        for _cls in self.db_classes.values():
-            for x in _cls.components.values():
-                x.to_device()
-        return self
+    def using_memory_space(self, memory_space:str):
+        """
+        """
+        return _MemorySpaceContextManager(self, memory_space)
 
     def sort(self):
         """ Sort all DB_Classes according to their "sort_key" arguments. """
@@ -493,7 +485,7 @@ class _DataComponent(_Documentation):
         self.valid_range = tuple(valid_range)
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2
-        self.mem = 'host'
+        self.memory_space = self._cls.database.memory_space
         setattr(self._cls.instance_type, self.name,
                 property(self._getter, self._setter, doc=self.doc,))
 
@@ -520,19 +512,22 @@ class _DataComponent(_Documentation):
 
     def get_memory_space(self) -> str:
         """
-        Returns the current location of the data component:
+        Returns the current location of this data component:
 
         Returns "host" when located in python's memory space.
         Returns "cuda" when located in CUDA's memory space.
         """
-        return self.mem
+        return self.memory_space
 
-    def to_host(self) -> 'self':
+    # def _to_memory_space(self, target_memory_space):
+    #     if self.memory_space != target_memory_space
+
+    def _to_host(self):
         """ Move the data to the CPU and into this python process's memory space. """
         # Abstract method, optional.
         return self
 
-    def to_device(self) -> 'self':
+    def _to_device(self):
         """ Move the data to the target device's memory space. """
         # Abstract method, optional.
         return self
@@ -654,41 +649,45 @@ class Attribute(_DataComponent):
         shape = (2 * size,)
         if self.shape != (1,): # Don't append empty trailing dimension.
             shape += self.shape
-        if self.mem == 'host':
+        if self.memory_space == 'host':
             return np.empty(shape, dtype=self.dtype)
-        elif self.mem == 'cuda':
+        elif self.memory_space == 'cuda':
             return cupy.empty(shape, dtype=self.dtype)
-        else: raise NotImplementedError(self.mem)
+        else: raise NotImplementedError(self.memory_space)
 
     def get_data(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
-        return self.data[:len(self._cls)]
+        _cls = self._cls
+        # target_mem = _cls.database.memory_space
+        # if self.memory_space != target_mem:
+
+        return self.data[:len(_cls)]
 
     def set_data(self, value):
         size = len(self._cls)
         assert len(value) == size
         self.data = self._alloc(size)
-        if self.mem == 'cuda':
+        if self.memory_space == 'cuda':
             self.data[:size] = cupy.array(value, dtype=self.dtype)
         else:
             self.data[:size] = value
         if self.initial_value is not None:
             self.data[size:].fill(self.initial_value)
 
-    def to_host(self) -> 'self':
-        if self.mem == 'host': pass
-        elif self.mem == 'cuda':
+    def _to_host(self):
+        if self.memory_space == 'host': pass
+        elif self.memory_space == 'cuda':
             self.data = self.data.get()
-            self.mem = 'host'
-        else: raise NotImplementedError(self.mem)
+            self.memory_space = 'host'
+        else: raise NotImplementedError(self.memory_space)
         return self
 
-    def to_device(self) -> 'self':
-        if self.mem == 'host':
+    def _to_device(self):
+        if self.memory_space == 'host':
             self.data = cupy.array(self.data)
-            self.mem = 'cuda'
-        elif self.mem == 'cuda': pass
-        else: raise NotImplementedError(self.mem)
+            self.memory_space = 'cuda'
+        elif self.memory_space == 'cuda': pass
+        else: raise NotImplementedError(self.memory_space)
         return self
 
 class ClassAttribute(_DataComponent):
@@ -773,9 +772,9 @@ class Sparse_Matrix(_DataComponent):
 
     @property
     def _sparse_module(self):
-        if   self.mem == 'host': return scipy.sparse
-        elif self.mem == 'cuda': return cupyx.scipy.sparse
-        else: raise NotImplementedError(self.mem)
+        if   self.memory_space == 'host': return scipy.sparse
+        elif self.memory_space == 'cuda': return cupyx.scipy.sparse
+        else: raise NotImplementedError(self.memory_space)
 
     @property
     def _matrix_class(self):
@@ -822,25 +821,25 @@ class Sparse_Matrix(_DataComponent):
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
-    def to_host(self) -> 'self':
-        if self.mem == 'host': pass
-        elif self.mem == 'cuda':
+    def _to_host(self):
+        if self.memory_space == 'host': pass
+        elif self.memory_space == 'cuda':
             self.data = self.data.get()
-            self.mem = 'host'
-        else: raise NotImplementedError(self.mem)
+            self.memory_space = 'host'
+        else: raise NotImplementedError(self.memory_space)
         return self
 
-    def to_device(self) -> 'self':
+    def _to_device(self):
         if self.dtype.kind not in 'fc': return self # Cupy only supports float & complex types.
-        if self.mem == 'host':
-            self.mem = 'cuda'
+        if self.memory_space == 'host':
+            self.memory_space = 'cuda'
             self._host_lil_mem = None
             if self.fmt == 'lil': self.fmt = 'csr'
             if self.fmt == 'csr': self.data = self._matrix_class(self.data, dtype=self.dtype)
             elif self.fmt == 'coo': self.data = self._matrix_class(self.data, dtype=self.dtype)
             else: raise NotImplementedError(self.fmt)
-        elif self.mem == 'cuda': pass
-        else: raise NotImplementedError(self.mem)
+        elif self.memory_space == 'cuda': pass
+        else: raise NotImplementedError(self.memory_space)
         return self
 
     def _resize(self):
