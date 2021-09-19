@@ -4,7 +4,6 @@ def verify_file_parses(filename, check_for_v=True):
     x = NmodlParser(filename)
     assert x.gather_documentation()
     assert x.gather_states()
-    assert x.gather_units()
     assert x.gather_parameters()
     b = x.gather_code_blocks()
     for z in b.values():

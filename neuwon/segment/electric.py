@@ -56,7 +56,7 @@ class ElectricProperties:
         capacitance         = db_cls.get_data("capacitance")
         voltage             = db_cls.get_data("voltage")
         integral_v          = db_cls.get_data("integral_voltage")
-        irm                 = db_cls.get("electric_propagator_matrix").to_csr().to_host().get_data()
+        irm                 = db_cls.get("electric_propagator_matrix").to_csr().get_data()
         # Update voltages.
         exponent        = -dt * sum_conductance / capacitance
         alpha           = np.exp(exponent)

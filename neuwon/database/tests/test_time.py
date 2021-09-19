@@ -179,7 +179,6 @@ def inner_test_traces(period, samples, start, mean, std, tolerance, device=False
         if device:
             with m.db.using_memory_space('cuda'):
                 gpu_array = m.db.get_data("Foo.bar")
-                print(type(gpu_array))
         m.clock.tick()
 
     assert trace_obj.get_mean()                 == approx(mean, tolerance)

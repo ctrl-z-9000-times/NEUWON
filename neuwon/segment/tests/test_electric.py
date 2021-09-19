@@ -68,7 +68,7 @@ def measure_length_constant(diam, rm, max_len, dt, ptol, plot):
         probe.voltage = 1
         Segment._electric_advance(dt)
     db.check()
-    irm = db.get("Segment.electric_propagator_matrix").to_host().get_data()
+    irm = db.get("Segment.electric_propagator_matrix").get_data()
     assert np.sum(irm.data) / irm.shape[0] == pytest.approx(1), "Check that charge is conserved."
 
     x_coords = [seg.coordinates[0] for seg in section]
