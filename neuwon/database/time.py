@@ -217,7 +217,7 @@ class TimeSeries:
         start = math.floor(self.timestamps[ 0] / self.clock.dt)
         end   = math.ceil( self.timestamps[-1] / self.clock.dt)
         timestamps = self.clock.get_tick_period() * np.arange(start, end)
-        self.play_data  = self.interpolate(timestamps).get_data()
+        self.play_data  = self.interpolate_function()(timestamps)
         self.play_index = 0
         self.play_loop  = bool(loop)
         self.mode       = str(mode)
@@ -273,8 +273,9 @@ class TimeSeries:
         This uses linear interpolation.
         """
         assert self.is_stopped()
-        return scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
-                        fill_value = (self.timeseries[0], self.timeseries[-1]),)
+        f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
+                            fill_value = (self.timeseries[0], self.timeseries[-1]),)
+        return np.vectorize(f)
 
     def plot(self, show=True):
         """ Plot a line graph of the time series using matplotlib. """
@@ -475,18 +476,7 @@ class Trace:
         else:
             return np.zeros(shape, dtype=dtype)
 
-    def _consolidate_memory_spaces(self):
-        if self.component.get_memory_space() == "host":
-            for comp in (self.mean, self.var, self.start):
-                if comp is not None:
-                    comp.to_host()
-        elif self.component.get_memory_space() == "cuda":
-            for comp in (self.mean, self.var, self.start):
-                if comp is not None:
-                    comp.to_device()
-
     def _attr_callback_nostart(self):
-        self._consolidate_memory_spaces()
         value = self.component.get_data()
         mean  = self.mean.get_data()
         diff  = value - mean
@@ -500,7 +490,8 @@ class Trace:
         return True
 
     def _attr_callback_start(self):
-        self._consolidate_memory_spaces()
+        # db = self.component.get_database()
+        # with db.using_memory_space(self.component.get_memory_space()):
         value  = self.component.get_data()
         mean   = self.mean.get_data()
         mean  += self.beta * (value - mean)

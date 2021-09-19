@@ -166,7 +166,6 @@ def test_trace_averages():
 
 def inner_test_traces(period, samples, start, mean, std, tolerance, device=False):
     m = Model()
-    if device: m.db.to_device()
     f = m.Foo()
     for _ in range(32):
         m.Foo()
@@ -177,6 +176,10 @@ def inner_test_traces(period, samples, start, mean, std, tolerance, device=False
     trace_attr = Trace(m.db.get("Foo.bar"), period, start=start)
     while m.db.clock() < samples:
         m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
+        if device:
+            with m.db.using_memory_space('cuda'):
+                gpu_array = m.db.get_data("Foo.bar")
+                print(type(gpu_array))
         m.clock.tick()
 
     assert trace_obj.get_mean()                 == approx(mean, tolerance)
@@ -184,9 +187,6 @@ def inner_test_traces(period, samples, start, mean, std, tolerance, device=False
 
     trace_mean = trace_attr.get_mean()
     trace_std  = trace_attr.get_standard_deviation()
-    if device:
-        trace_mean = trace_mean.get()
-        trace_std  = trace_std.get()
     for idx in range(num_foo):
         assert trace_mean[idx]  == approx(mean, tolerance)
         assert trace_std[idx]   == approx(std,  tolerance)
