@@ -1,8 +1,9 @@
 from collections.abc import Callable, Iterable, Mapping
-import math
-import neuwon.database
 import collections
+import functools
+import math
 import matplotlib.pyplot
+import neuwon.database
 import numpy as np
 import scipy.interpolate
 import weakref
@@ -76,6 +77,8 @@ class Clock:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()
 
+# TODO: Consider renaming "TimeSeries.timeseries" to "TimeSeries.data" for
+# bevity & conformity (its getter is named "get_data()")
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
     def __init__(self, *initial_data):
@@ -238,21 +241,40 @@ class TimeSeries:
                 return False
         return True
 
-    def interpolate(self, timestamps) -> 'TimeSeries':
+    def interpolate(self, *timeseries):
+        # todo doc this, should probably include an example here too...
         """
-        Interpolate the value of this timeseries at the given timestamps.
+
+        Modifies TimeSeries in-place.
+        All TimeSeries must be stopped.
+        """
+        if isinstance(self, TimeSeries):
+            timeseries = [self] + list(timeseries)
+        else:
+            # In this case we were called as a classmethod.
+            timeseries = list(timeseries)
+        timestamps = []
+        for idx, ts in enumerate(timeseries):
+            if isinstance(ts, TimeSeries):
+                timestamps.append(ts.get_timestamps())
+            else:
+                timestamps.append(np.array(ts, dtype=float))
+                timeseries[idx] = None
+        timestamps = functools.reduce(np.union1d, timestamps)
+        for ts in timeseries:
+            if ts is not None:
+                ts.set_data(ts.interpolate_function()(timestamps), timestamps)
+                # f = ts.interpolate_function()
+                # ts.set_data([f(t) for t in timestamps], timestamps)
+
+    def interpolate_function(self) -> Callable:
+        """ Returns the function: interpolate(timestamp) -> value
+
         This uses linear interpolation.
         """
-        if isinstance(timestamps, TimeSeries):
-            timestamps = timestamps.get_timestamps()
-        min_t = self.timestamps[0]
-        max_t = self.timestamps[-1]
-        min_v = self.timeseries[0]
-        max_v = self.timeseries[-1]
-        f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
-                                        fill_value = (min_v, max_v),)
-        results = [f(t) for t in timestamps]
-        return TimeSeries().set_data(results, timestamps)
+        assert self.is_stopped()
+        return scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
+                        fill_value = (self.timeseries[0], self.timeseries[-1]),)
 
     def plot(self, show=True):
         """ Plot a line graph of the time series using matplotlib. """
