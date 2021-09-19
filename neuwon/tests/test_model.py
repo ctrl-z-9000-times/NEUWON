@@ -38,6 +38,7 @@ def test_model_hh(debug=False):
         m.advance()
         m.check()
 
+    x.stop()
     if debug: x.plot()
 
     correct = TimeSeries(*zip(*(
@@ -51,7 +52,8 @@ def test_model_hh(debug=False):
         [30,    10.6],
         [-80,   12.75],
         [-70,   20],
-    ))).interpolate(x.get_timestamps())
+    )))
+    correct.interpolate(x)
     abs_diff = np.abs(np.subtract(x.get_data(), correct.get_data()))
     assert max(abs_diff) < 30
 

@@ -225,6 +225,7 @@ class TimeSeries:
         return self
 
     def _play_implementation(self):
+        if self.play_data is None: return False
         value = self.play_data[self.play_index]
         if self.mode == "=":
             setattr(self.db_object, self.component_name, value)
@@ -242,11 +243,21 @@ class TimeSeries:
         return True
 
     def interpolate(self, *timeseries):
-        # todo doc this, should probably include an example here too...
-        """
+        """ Interpolate any number of TimeSeries to a common set of timestamps.
 
-        Modifies TimeSeries in-place.
-        All TimeSeries must be stopped.
+        This method accepts any number of arguments which are either:
+          * Instances of TimeSeries to be interpolated.
+                This instance is automatically included.
+          * Lists of timestamps to interpolate at.
+
+        This method finds the union of all timestamps, including all timestamps
+        contained inside of TimeSeries as well as any lists of timestamps.
+
+        All TimeSeries are interpolated at the union of timestamps.
+        This modifies the TimeSeries in-place!
+
+        After calling this, all given TimeSeries have identical timestamps and
+        their data arrays can be directly compared.
         """
         if isinstance(self, TimeSeries):
             timeseries = [self] + list(timeseries)

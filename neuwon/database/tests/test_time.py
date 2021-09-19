@@ -51,6 +51,7 @@ def test_time_series_buffers():
     b.stop()
     b.clear()
     assert not len(b)
+    m.clock.tick()
 
 def test_waveforms_basic():
     m = Model()

@@ -99,7 +99,7 @@ class ElectricProperties:
         coef = scipy.sparse.csc_matrix(coef, shape=(len(db_cls), len(db_cls)), dtype=np.float64)
         matrix = scipy.sparse.linalg.expm(coef)
         # Prune the impulse response matrix.
-        matrix.data[np.abs(matrix.data) < epsilon] = 0
+        matrix.data[np.abs(matrix.data) < epsilon] = 0.0
         matrix.eliminate_zeros()
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._clean = True
