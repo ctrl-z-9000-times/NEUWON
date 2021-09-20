@@ -275,8 +275,6 @@ class TimeSeries:
         for ts in timeseries:
             if ts is not None:
                 ts.set_data(ts.interpolate_function()(timestamps), timestamps)
-                # f = ts.interpolate_function()
-                # ts.set_data([f(t) for t in timestamps], timestamps)
 
     def interpolate_function(self) -> Callable:
         """ Returns the function: interpolate(timestamp) -> value
@@ -285,7 +283,8 @@ class TimeSeries:
         """
         assert self.is_stopped()
         f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
-                            fill_value = (self.timeseries[0], self.timeseries[-1]),)
+                            fill_value = (self.timeseries[0], self.timeseries[-1]),
+                            bounds_error = False,)
         return np.vectorize(f)
 
     def plot(self, show=True):
