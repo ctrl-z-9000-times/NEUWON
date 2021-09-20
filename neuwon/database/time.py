@@ -287,8 +287,17 @@ class TimeSeries:
                             bounds_error = False,)
         return np.vectorize(f)
 
-    def plot(self, show=True):
-        """ Plot a line graph of the time series using matplotlib. """
+    def plot(self, *args, show:bool=True, **kwargs):
+        """ Plot a line graph of the time series using matplotlib.
+
+        Argument show causes this to immediately display the plot, which will
+                also block this thread of execution until the user closes the
+                plot's window. If false then the plot is not displayed until
+                the caller calls: `matplotlib.pyplot.show()`.
+
+        Extra positional and keyword arguments are passed through to the method
+                `matplotlib.pyplot.plot`.
+        """
         plt = matplotlib.pyplot
         name = getattr(self, "component_name", None)
         if name is not None:
@@ -297,7 +306,7 @@ class TimeSeries:
             self.label_axes()
         else:
             plt.figure()
-        plt.plot(self.get_timestamps(), self.get_data())
+        plt.plot(self.get_timestamps(), self.get_data(), *args, **kwargs)
         if show: plt.show()
 
     def label_axes(self, axes=None):
