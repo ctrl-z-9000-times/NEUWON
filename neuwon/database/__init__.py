@@ -104,8 +104,36 @@ class Database:
         return self.clock
 
     def using_memory_space(self, memory_space:str):
-        # TODO: Documentation, include example usage.
         """
+        Request that the database use a specific memory space.
+
+        Returns a context manager which must be used with the "with" statement.
+
+        Example:
+            >>> with database.using_memory_space('cuda'):
+            >>>     database.get_data('obj.attr') -> Data in GPU memory
+
+            * Inside of the "with" block, the database will endevour to store
+              your data in the given memory space. If the memory space does not
+              implement your data's type then it will simply remain in the
+              host's memory space.
+
+            * The database moves your data when you call any "get_data" method.
+
+            * The database tracks where each data component is currently
+              located, see method "get_memory_space".
+
+        Argument memory_space is one of: "host", "cuda".
+
+        The term "host" refers to the python process which is currently running
+        and contains this database. Allocations in the "host" memory space use
+        numpy arrays and scipy sparse matrixes.
+
+        The "cuda" memory space is the default graphics card, as enumerated by
+        CUDA. Allocations in the "cuda" memory space use cupy for both arrays
+        and sparse matrices.
+
+        By default all data is stored on the host.
         """
         return memory_spaces.ContextManager(self, memory_space)
 

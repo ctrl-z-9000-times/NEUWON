@@ -12,7 +12,8 @@ def test_smoke_test():
     m.advance()
 
 def test_model_hh(debug=False):
-    dt = .01 * 4.56789 # Run faster with larger `dt`.
+    dt = .01
+    dt *= 4.56789 # Run faster with larger `dt`.
     m = Model(dt, celsius=6.3)
     na = m.add_species(Species("na", reversal_potential=40))
     k  = m.add_species(Species("k", reversal_potential=-80))
