@@ -112,3 +112,11 @@ class ElectricProperties:
         dv = current * clock.get_tick_period() / self.capacitance
         input_signal = TimeSeries().set_data([0, dv, dv, 0], [0, 0, duration, duration])
         input_signal.play(self, "voltage", clock=clock)
+
+    def get_time_constant(self):
+        return self.capacitance / self.sum_conductance
+
+    def get_length_constant(self):
+        rm = 1.0 / (self.sum_conductance / self.length)
+        ri = self.axial_resistance / self.length
+        return (rm / ri) ** 0.5
