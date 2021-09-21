@@ -44,7 +44,7 @@ class Model:
             max_outside_radius=20e-6,
             outside_volume_fraction=.20,
             outside_tortuosity=1.55,
-            cytoplasmic_resistance = 1000,
+            cytoplasmic_resistance = 100,
             membrane_capacitance = 1, # uf/cm^2
             initial_voltage = -70,):
         """

@@ -56,7 +56,7 @@ class ElectricProperties:
         capacitance         = db_cls.get_data("capacitance")
         voltage             = db_cls.get_data("voltage")
         integral_v          = db_cls.get_data("integral_voltage")
-        irm                 = db_cls.get("electric_propagator_matrix").to_csr().to_host().get_data()
+        irm                 = db_cls.get("electric_propagator_matrix").to_csr().get_data()
         # Update voltages.
         exponent        = -dt * sum_conductance / capacitance
         alpha           = np.exp(exponent)
@@ -99,7 +99,7 @@ class ElectricProperties:
         coef = scipy.sparse.csc_matrix(coef, shape=(len(db_cls), len(db_cls)), dtype=np.float64)
         matrix = scipy.sparse.linalg.expm(coef)
         # Prune the impulse response matrix.
-        matrix.data[np.abs(matrix.data) < epsilon] = 0
+        matrix.data[np.abs(matrix.data) < epsilon] = 0.0
         matrix.eliminate_zeros()
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._clean = True
@@ -112,3 +112,11 @@ class ElectricProperties:
         dv = current * clock.get_tick_period() / self.capacitance
         input_signal = TimeSeries().set_data([0, dv, dv, 0], [0, 0, duration, duration])
         input_signal.play(self, "voltage", clock=clock)
+
+    def get_time_constant(self):
+        return self.capacitance / self.sum_conductance
+
+    def get_length_constant(self):
+        rm = 1.0 / (self.sum_conductance / self.length)
+        ri = self.axial_resistance / self.length
+        return (rm / ri) ** 0.5

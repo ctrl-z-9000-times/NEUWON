@@ -1,8 +1,9 @@
 from collections.abc import Callable, Iterable, Mapping
-import math
-import neuwon.database
 import collections
+import functools
+import math
 import matplotlib.pyplot
+import neuwon.database
 import numpy as np
 import scipy.interpolate
 import weakref
@@ -76,6 +77,8 @@ class Clock:
                 self.callbacks[i] = self.callbacks[-1]
                 self.callbacks.pop()
 
+# TODO: Consider renaming "TimeSeries.timeseries" to "TimeSeries.data" for
+# bevity & conformity (its getter is named "get_data()")
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
     def __init__(self, *initial_data):
@@ -214,7 +217,7 @@ class TimeSeries:
         start = math.floor(self.timestamps[ 0] / self.clock.dt)
         end   = math.ceil( self.timestamps[-1] / self.clock.dt)
         timestamps = self.clock.get_tick_period() * np.arange(start, end)
-        self.play_data  = self.interpolate(timestamps).get_data()
+        self.play_data  = self.interpolate_function()(timestamps)
         self.play_index = 0
         self.play_loop  = bool(loop)
         self.mode       = str(mode)
@@ -222,6 +225,7 @@ class TimeSeries:
         return self
 
     def _play_implementation(self):
+        if self.play_data is None: return False
         value = self.play_data[self.play_index]
         if self.mode == "=":
             setattr(self.db_object, self.component_name, value)
@@ -238,24 +242,62 @@ class TimeSeries:
                 return False
         return True
 
-    def interpolate(self, timestamps) -> 'TimeSeries':
+    def interpolate(self, *timeseries):
+        """ Interpolate any number of TimeSeries to a common set of timestamps.
+
+        This method accepts any number of arguments which are either:
+          * Instances of TimeSeries to be interpolated.
+                This instance is automatically included.
+          * Lists of timestamps to interpolate at.
+
+        This method finds the union of all timestamps, including all timestamps
+        contained inside of TimeSeries as well as any lists of timestamps.
+
+        All TimeSeries are interpolated at the union of timestamps.
+        This modifies the TimeSeries in-place!
+
+        After calling this, all given TimeSeries have identical timestamps and
+        their data arrays can be directly compared.
         """
-        Interpolate the value of this timeseries at the given timestamps.
+        if isinstance(self, TimeSeries):
+            timeseries = [self] + list(timeseries)
+        else:
+            # In this case we were called as a classmethod.
+            timeseries = list(timeseries)
+        timestamps = []
+        for idx, ts in enumerate(timeseries):
+            if isinstance(ts, TimeSeries):
+                timestamps.append(ts.get_timestamps())
+            else:
+                timestamps.append(np.array(ts, dtype=float))
+                timeseries[idx] = None
+        timestamps = functools.reduce(np.union1d, timestamps)
+        for ts in timeseries:
+            if ts is not None:
+                ts.set_data(ts.interpolate_function()(timestamps), timestamps)
+
+    def interpolate_function(self) -> Callable:
+        """ Returns the function: interpolate(timestamp) -> value
+
         This uses linear interpolation.
         """
-        if isinstance(timestamps, TimeSeries):
-            timestamps = timestamps.get_timestamps()
-        min_t = self.timestamps[0]
-        max_t = self.timestamps[-1]
-        min_v = self.timeseries[0]
-        max_v = self.timeseries[-1]
+        assert self.is_stopped()
         f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
-                                        fill_value = (min_v, max_v),)
-        results = [f(t) for t in timestamps]
-        return TimeSeries().set_data(results, timestamps)
+                            fill_value = (self.timeseries[0], self.timeseries[-1]),
+                            bounds_error = False,)
+        return np.vectorize(f)
 
-    def plot(self, show=True):
-        """ Plot a line graph of the time series using matplotlib. """
+    def plot(self, *args, show:bool=True, **kwargs):
+        """ Plot a line graph of the time series using matplotlib.
+
+        Argument show causes this to immediately display the plot, which will
+                also block this thread of execution until the user closes the
+                plot's window. If false then the plot is not displayed until
+                the caller calls: `matplotlib.pyplot.show()`.
+
+        Extra positional and keyword arguments are passed through to the method
+                `matplotlib.pyplot.plot`.
+        """
         plt = matplotlib.pyplot
         name = getattr(self, "component_name", None)
         if name is not None:
@@ -264,7 +306,7 @@ class TimeSeries:
             self.label_axes()
         else:
             plt.figure()
-        plt.plot(self.get_timestamps(), self.get_data())
+        plt.plot(self.get_timestamps(), self.get_data(), *args, **kwargs)
         if show: plt.show()
 
     def label_axes(self, axes=None):
@@ -453,18 +495,7 @@ class Trace:
         else:
             return np.zeros(shape, dtype=dtype)
 
-    def _consolidate_memory_spaces(self):
-        if self.component.get_memory_space() == "host":
-            for comp in (self.mean, self.var, self.start):
-                if comp is not None:
-                    comp.to_host()
-        elif self.component.get_memory_space() == "cuda":
-            for comp in (self.mean, self.var, self.start):
-                if comp is not None:
-                    comp.to_device()
-
     def _attr_callback_nostart(self):
-        self._consolidate_memory_spaces()
         value = self.component.get_data()
         mean  = self.mean.get_data()
         diff  = value - mean
@@ -478,7 +509,8 @@ class Trace:
         return True
 
     def _attr_callback_start(self):
-        self._consolidate_memory_spaces()
+        # db = self.component.get_database()
+        # with db.using_memory_space(self.component.get_memory_space()):
         value  = self.component.get_data()
         mean   = self.mean.get_data()
         mean  += self.beta * (value - mean)
