@@ -11,16 +11,12 @@ from OpenGL.GLUT import *
 from neuwon.database import Database, Pointer, epsilon
 from neuwon.gui.primatives import *
 
-__all__ = ["Scene", "Viewport"]
-
-# MEMO: Don't optimize this code.
-
 class Scene:
     def __init__(self, database, lod=2.5):
         lod     = float(lod)
         if hasattr(database, "get_database"): database = database.get_database()
         Segment = database.get("Segment")
-        num_seg = len(Segment)
+        self.num_seg = num_seg = len(Segment)
         objects = np.zeros(num_seg, dtype=object)
         for seg in Segment.get_all_instances():
             idx = seg.get_unstable_index()
@@ -30,33 +26,45 @@ class Scene:
             elif seg.is_cylinder():
                 objects[idx] = Cylinder(seg.coordinates, seg.parent.coordinates,
                                         seg.diameter, nslices)
+            else: raise NotImplementedError
         vertices = [obj.get_vertices() for obj in objects]
         indices  = [obj.get_indices() for obj in objects]
+        num_v    = np.cumsum([len(x) for x in vertices])
+        for v_index, v_offset in zip(indices[1:], num_v):
+            v_index += v_offset
         self.vertices = np.vstack(vertices)
         self.indices  = np.vstack(indices)
         self.segments = np.empty(len(self.vertices), dtype=Pointer)
-        lower = 0
         for idx in range(num_seg):
-            upper = lower + len(vertices[idx])
+            lower = 0 if idx == 0 else num_v[idx-1]
+            upper = num_v[idx]
             self.segments[lower:upper] = idx
-            lower = upper
+
         # TODO: Move these arrays to the GPU now, instead of copying them at
         # render time. Use VBO's?
 
-    def draw(self, colors=None, interpolate=False):
+    def draw(self, colors, interpolate=False):
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
+        self.draw_colors(colors)
+        glDrawElements(GL_TRIANGLES, 3 * len(self.indices), GL_UNSIGNED_INT, self.indices)
 
-        if colors is None:
-            colors = np.tile([1.,1.,1.], len(self.vertices))
-        elif interpolate:
-            1/0
+    def draw_colors(self, colors):
+        if colors is None: colors = [1, 1, 1]
+        colors = np.array(colors, dtype=np.float32)
+        if colors.shape == (3,) or colors.shape == (4,):
+            colors = np.tile(colors, [len(self.vertices), 1])
         else:
-            colors = colors[self.segments]
-        glEnableClientState(GL_COLOR_ARRAY)
-        glColorPointer(3, GL_FLOAT, 0, colors)
+            assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
+            colors = np.take(colors, self.segments, axis=0)
 
-        glDrawElements(GL_TRIANGLES, 3 * len(self.indices), GL_UNSIGNED_INT, self.indices);
+        glEnableClientState(GL_COLOR_ARRAY)
+        color_depth = colors.shape[1]
+        if color_depth == 3:
+            glColorPointer(3, GL_FLOAT, 0, colors)
+        elif color_depth == 4:
+            glColorPointer(4, GL_FLOAT, 0, colors)
+        else: raise ValueError(color_depth)
 
 class Viewport:
     def __init__(self, window_size=(2*640,2*480), move_speed = .02):
@@ -152,58 +160,10 @@ class Viewport:
     def setup_camera(self):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity();
-        gluPerspective(self.fov, (self.window_size[0]/self.window_size[1]), 0.1, 10000.0)
+        max_view_dist = 10e3
+        gluPerspective(self.fov, (self.window_size[0]/self.window_size[1]), 0.1, max_view_dist)
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
         camera_lookat = self.camera_forward.dot(self.camera_rotation) + self.camera_pos
         gluLookAt(*self.camera_pos, *camera_lookat, *self.camera_up)
-
-def main():
-
-    from neuwon.segment import SegmentMethods
-    import neuwon.regions
-    import neuwon.growth
-
-    def ball_and_stick():
-        db = Database()
-        SegmentMethods._initialize(db)
-        Segment = db.get("Segment").get_instance_type()
-        ball = Segment(parent=None, coordinates=[0,0,0], diameter=12)
-        stick = []
-        tip = ball
-        for i in range(10):
-            tip = Segment(parent=tip, coordinates=[i+6+1,0,0], diameter=3)
-            stick.append(tip)
-        return db
-
-    def cell():
-        db = Database()
-        SegmentMethods._initialize(db)
-        Segment = db.get("Segment").get_instance_type()
-        region = neuwon.regions.Sphere([0,0,0], 100)
-        soma = Segment(None, [0,0,0], 8)
-        dendrites = neuwon.growth.Tree(soma, region, 0.0005,
-                balancing_factor = .7,
-                extension_distance = 40,
-                bifurcation_distance = 40,
-                extend_before_bifurcate = False,
-                only_bifurcate = True,
-                maximum_segment_length = 20,
-                diameter = 1.5,
-        )
-        dendrites.grow()
-        print("NUM SEGMENTS:", len(dendrites.get_segments()))
-        return db
-
-    db = cell()
-    # db = ball_and_stick()
-
-    view = Viewport()
-    view.set_scene(db)
-
-    while True:
-        view.tick()
-
-
-if __name__ == "__main__": main()

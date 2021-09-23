@@ -1,77 +1,86 @@
-""" Model of an action potential propagating through a large axonal arbor. """
+""" Model of an action potential propagating through an axonal arbor. """
 
-import numpy as np
-from neuwon.model import *
-from neuwon.regions import *
+from neuwon.database.time import TimeSeries
 from neuwon.growth import *
-min_v = -90e-3
-max_v = +70e-3
+from neuwon.model import *
+from neuwon.gui.viewport import *
+from neuwon.regions import *
+import numpy as np
 
-time_step= 100e-6
-model = Model(time_step)
-model.add_species("na")
-model.add_species("k")
-model.add_species(Species("L", transmembrane = True, reversal_potential = -54.3e-3,))
-model.add_reaction("hh")
-hh = model.get_reaction("hh")
+min_v = -90.
+max_v = +70.
 
-# Setup a neuron and its axonal arbor.
-r = 30e-6
-w = 100e-6
-soma = model.create_segment(None, [-w, -w-r/2, 0], 10e-6)
-rgn = Union([
-    Sphere(  [-w, -w, 0], r),
-    Cylinder([-w, -w, 0], [-w, w, 0], r),
-    Sphere(  [-w, w, 0], r),
-    Cylinder([-w, w, 0], [w, w, 0], r),
-    Sphere(  [w, w, 0], r),
-    Cylinder([w, w, 0], [w, -w, 0], r),
-    Sphere(  [w, -w, 0], r),
-    Cylinder([w, -w, 0], [0, -w, w*2], r),
-    Sphere(  [0, -w, w*2], r),
-    Cylinder([0, -w, w*2], [0, 0, w*6], r),
-    Sphere(  [0, 0, w*6], r),
-])
-axon = Growth(model, soma, rgn, 0.00025e18,
-    balancing_factor = .0,
-    extension_angle = np.pi / 6,
-    extension_distance = 60e-6,
-    bifurcation_angle = np.pi / 3,
-    bifurcation_distance = 40e-6,
-    extend_before_bifurcate = True,
-    maximum_segment_length = 30e-6,
-    diameter = .5e-6)
-locations = [x.index for x in soma + axon.segments]
-hh.new_instances(model.db, locations)
-print("Number of segments:", len(model))
+class main:
+    def __init__(self,
+            time_step = .1,):
+        self.time_step      = time_step
 
-# Run with no inputs until it reaches a steady state.
-for _ in range(int(20e-3 / time_step)):
-    model.advance()
+        self.make_model()
+        self.run_GUI()
 
-# Run the simulation.
-stimulus_tick = int(round(1e-3 / time_step))
-stimulus_current = 2e-9
-tick = 0
-t = None
-def text_function(database_access):
-    return "{:6.2f} milliseconds since onset of stimulus.".format(t)
-def color_function(database_access):
-    v = ((database_access("membrane/voltages") - min_v) / (max_v - min_v)).clip(0, 1).get()
-    return [(x, 0, 1-x) for x in v]
-r = 4 # Integer factor to control image resolution: lower to run faster.
-video_camera = Animation(model, color_function, text_function,
-        resolution = (int(640*r), int(480*r)),
-        skip = 0, # Skip rendering this many frames to make this program run faster.
-        scale = 0.3, # Shrink the image for githubs filesize limit.
-        camera_coordinates = (0, 0, -270e-6))
-for tick in range(int(100e-3 / time_step) + 1):
-    if tick == stimulus_tick:
-        soma[0].inject_current(stimulus_current, 2e-3)
-    t = (tick - stimulus_tick) * time_step * 1e3
-    model.advance()
-    print("t = %g"%t)
-    # Terminate the model after it reaches a post stimulation steady state.
-    if t > 3 and all(model.access("membrane/voltages").get() < -50e-3):
-        break
-video_camera.save('AP_Propagation.gif')
+    def make_region(self):
+        return Sphere([0, 0, 0], 500)
+        r = 30
+        w = 100
+        return Union([
+            Sphere(  [-w, -w, 0], r),
+            Cylinder([-w, -w, 0], [-w, w, 0], r),
+            Sphere(  [-w, w, 0], r),
+            Cylinder([-w, w, 0], [w, w, 0], r),
+            Sphere(  [w, w, 0], r),
+            Cylinder([w, w, 0], [w, -w, 0], r),
+            Sphere(  [w, -w, 0], r),
+            Cylinder([w, -w, 0], [0, -w, w*2], r),
+            Sphere(  [0, -w, w*2], r),
+            Cylinder([0, -w, w*2], [0, 0, w*6], r),
+            Sphere(  [0, 0, w*6], r),
+        ])
+
+    def make_model(self):
+        self.model = m = Model(self.time_step, celsius = 6.3)
+        m.add_species("na", reversal_potential = +60)
+        m.add_species("k",  reversal_potential = -88)
+        m.add_species("l",  reversal_potential = -54.3,)
+        HH = m.add_reaction("./nmodl_library/hh.mod")
+        self.soma = m.Segment(None, [0,0,0], 10)
+        self.axon = Tree(self.soma, self.make_region(), 0.000025,
+            balancing_factor = .0,
+            extension_angle = np.pi / 6,
+            extension_distance = 60,
+            bifurcation_angle = np.pi / 3,
+            bifurcation_distance = 40,
+            extend_before_bifurcate = True,
+            maximum_segment_length = 30,
+            diameter = .5)
+        self.axon.grow()
+        self.axon = self.axon.get_segments()
+        HH(self.soma, scale=1)
+        for seg in self.axon:
+            HH(seg)
+        if True:
+            print("Number of Locations:", len(self.model))
+            sa_units = self.soma.get_database_class().get("surface_area").get_units()
+            sa = self.soma.surface_area
+            print("Soma surface area:", sa, sa_units)
+            sa += sum(x.surface_area for x in self.axon)
+            print("Total surface area:", sa, sa_units)
+
+    def run_GUI(self):
+        view = Viewport()
+        view.set_scene(self.model)
+        voltage = self.model.Segment.get_database_class().get("voltage")
+
+        period = 30
+        cooldown = 0
+        while True:
+            if cooldown <= 0:
+                self.soma.inject_current(2e-9, 1)
+                cooldown = period / self.time_step
+            else:
+                cooldown -= 1
+            v = ((voltage.get_data() - min_v) / (max_v - min_v)).clip(0, 1)
+            colors = [(x, 0, 1-x) for x in v]
+            view.tick(colors)
+            self.model.advance()
+
+if __name__ == "__main__": main()
