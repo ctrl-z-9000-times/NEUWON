@@ -17,8 +17,10 @@ __all__ = ["Scene", "Viewport"]
 class Scene:
     def __init__(self, database, lod=2.5):
         lod     = float(lod)
+        if hasattr(database, "get_database"): database = database.get_database()
         Segment = database.get("Segment")
-        objects = np.zeros(len(Segment), dtype=object)
+        num_seg = len(Segment)
+        objects = np.zeros(num_seg, dtype=object)
         for seg in Segment.get_all_instances():
             idx = seg.get_unstable_index()
             nslices = max(3, int(lod * seg.diameter))
@@ -29,15 +31,14 @@ class Scene:
                                         seg.diameter, nslices)
         vertices = [obj.get_vertices() for obj in objects]
         indices  = [obj.get_indices() for obj in objects]
-        offsets  = np.cumsum([len(x) for x in vertices])
-        self.segments = np.empty(offsets[-1], dtype=Pointer)
-        for idx in range(len(Segment)):
-            lower = 0 if idx == 0 else offsets[idx-1]
-            upper = offsets[idx]
-            indices[idx] += lower
-            self.segments[lower:upper] = idx
         self.vertices = np.vstack(vertices)
         self.indices  = np.vstack(indices)
+        self.segments = np.empty(len(self.vertices), dtype=Pointer)
+        lower = 0
+        for idx in range(num_seg):
+            upper = lower + len(vertices[idx])
+            self.segments[lower:upper] = idx
+            lower = upper
         # TODO: Move these arrays to the GPU now, instead of copying them at
         # render time. Use VBO's?
 
@@ -168,13 +169,12 @@ class Viewport:
         glDisable(GL_CULL_FACE)
 
     def set_scene(self, scene_or_database, *args):
-        if isinstance(scene_or_database, Database):
-            self.scene = Scene(scene_or_database, *args)
-        elif isinstance(scene_or_database, Scene):
+        if isinstance(scene_or_database, Scene):
             self.scene = scene_or_database
-        else: raise TypeError(scene_or_database)
+        else:
+            self.scene = Scene(scene_or_database, *args)
 
-    def tick(self):
+    def tick(self, colors=None):
         dt = self.clock.tick(self.fps)
 
         for event in pygame.event.get():
@@ -187,7 +187,7 @@ class Viewport:
         self.setup_camera()
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         glClearColor(*self.background_color)
-        self.scene.draw()
+        self.scene.draw(colors=colors)
         pygame.display.flip()
         if False:
             print("Camera Position", self.camera_pos)
