@@ -1,3 +1,5 @@
+""" Hodgkin-Huxley Demonstration. """
+
 import neuwon.model
 
 min_v = -88.
@@ -10,3 +12,7 @@ def make_model_with_hh(time_step):
     m.add_species("l",  reversal_potential = -54.3,)
     m.add_reaction("./nmodl_library/hh.mod")
     return m
+
+if __name__ == '__main__':
+    from neuwon.examples.HH.__main__ import main
+    main()
