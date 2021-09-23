@@ -58,6 +58,8 @@ class Scene:
             assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
             colors = np.take(colors, self.segments, axis=0)
 
+        # TODO: assert all colors in range [0, 1]
+
         glEnableClientState(GL_COLOR_ARRAY)
         color_depth = colors.shape[1]
         if color_depth == 3:

@@ -1,5 +1,5 @@
 from neuwon.database.time import TimeSeries
-from neuwon.model import Model
+from neuwon.examples.HH import make_model_with_hh
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -29,17 +29,14 @@ class main:
 
     def make_model(self):
         """ Construct a soma with a single long axon. """
-        self.model = m = Model(self.time_step, celsius = 6.3)
-        na_cls  = m.add_species("na", reversal_potential = +60)
-        k_cls   = m.add_species("k",  reversal_potential = -88)
-        l_cls   = m.add_species("l",  reversal_potential = -54.3,)
-        hh_cls  = m.add_reaction("./nmodl_library/hh.mod")
+        self.model = m = make_model_with_hh(self.time_step)
+        hh        = m.get_reaction("hh")
         self.soma = m.Segment(None, [0,0,0], self.soma_diameter)
         self.axon = m.Segment.make_section(self.soma,
                 [0,0,self.axon_length], self.axon_diameter,
                 maximum_segment_length=self.length_step)
         self.segments = [self.soma] + self.axon
-        self.hh = [hh_cls(seg, scale=1) for seg in self.segments]
+        self.hh = [hh(seg, scale=1) for seg in self.segments]
         if True:
             print("Number of Locations:", len(self.model))
             sa_units = self.soma.get_database_class().get("surface_area").get_units()

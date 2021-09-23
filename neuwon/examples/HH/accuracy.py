@@ -1,6 +1,6 @@
 from neuwon.database.time import TimeSeries
+from neuwon.examples.HH import make_model_with_hh
 import matplotlib.pyplot as plt
-import neuwon.model
 import numpy as np
 
 class Model:
@@ -20,13 +20,10 @@ class Model:
         self.run_experiment()
 
     def make_model(self):
-        self.model = m = neuwon.model.Model(self.time_step, celsius=6.3)
-        na_cls  = m.add_species("na", reversal_potential = +60)
-        k_cls   = m.add_species("k",  reversal_potential = -88)
-        l_cls   = m.add_species("l",  reversal_potential = -54.3,)
-        hh_cls  = m.add_reaction("./nmodl_library/hh.mod")
-        self.soma = m.Segment(None, [0,0,0], self.soma_diameter)
-        self.hh = hh_cls(self.soma, scale=1)
+        self.model = m = make_model_with_hh(self.time_step)
+        hh         = m.get_reaction("hh")
+        self.soma  = m.Segment(None, [0,0,0], self.soma_diameter)
+        self.hh    = hh(self.soma, scale=1)
         if True:
             sa_units = self.soma.get_database_class().get("surface_area").get_units()
             print("Soma surface area:", self.soma.surface_area, sa_units)

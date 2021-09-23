@@ -104,6 +104,8 @@ class ElectricProperties:
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._clean = True
 
+    # TODO: Consider changing the default duration to just "1" so that it's a
+    # nice round number that's easy to remember.
     def inject_current(self, current, duration = 1.4):
         duration = float(duration)
         assert duration >= 0
