@@ -262,7 +262,7 @@ class DB_Class(_Documentation):
         self.components = dict()
         self.referenced_by = list()
         self.referenced_by_matrix_columns = list()
-        self.instances = weakref.WeakValueDictionary()
+        self.instances = []
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
         self._init_instance_type(base_class, doc)
@@ -306,9 +306,6 @@ class DB_Class(_Documentation):
                     self._cls._init_instance(self)
                     super().__init__(*args, **kwargs)
 
-                def __eq__(self, other):
-                    return (type(self) is type(other)) and (self._idx == other._idx)
-
                 def get_unstable_index(self):
                     \"\"\" TODO: Explain how / when this index changes. \"\"\"
                     return self._idx
@@ -325,7 +322,6 @@ class DB_Class(_Documentation):
     __init__.__doc__ += _Documentation._doc_doc
 
     def _init_instance(self, new_instance):
-        self.instances[id(new_instance)] = new_instance
         old_size  = self.size
         new_size  = old_size + 1
         self.size = new_size
@@ -337,6 +333,7 @@ class DB_Class(_Documentation):
             else: raise NotImplementedError(type(x))
         for x in self.referenced_by_matrix_columns: x._resize()
         new_instance._idx = old_size
+        self.instances.append(weakref.ref(new_instance))
 
     def get_instance_type(self) -> DB_Object:
         """ Get the public / external representation of this DB_Class. """
@@ -346,10 +343,13 @@ class DB_Class(_Documentation):
         """ Create a new DB_Object given its index. """
         idx = int(unstable_index)
         if idx == NULL: return None
-        assert 0 <= idx < len(self)
-        cls = self.instance_type
-        obj = cls.__new__(cls)
-        obj._idx = idx
+        obj = self.instances[idx]
+        obj = obj() # Unwrap the weakref.
+        if obj is None:
+            cls = self.instance_type
+            obj = cls.__new__(cls)
+            obj._idx = idx
+            self.instances[idx] = weakref.ref(obj)
         return obj
 
     def get(self, name: str) -> '_DataComponent':

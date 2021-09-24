@@ -93,6 +93,13 @@ def test_custom_classes():
 
     print(db)
 
+    seg_a = my_secs[7].segments[2]
+    seg_b = my_secs[7].segments[2]
+    assert seg_a == seg_b
+    assert seg_a is seg_b
+    assert seg_a != 3
+    hash(seg_a)
+
 def test_requires_slots():
     class NoSlots:
         pass
