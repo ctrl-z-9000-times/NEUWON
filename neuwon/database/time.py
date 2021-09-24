@@ -133,7 +133,7 @@ class TimeSeries:
         return self
 
     def _setup_pointers(self, db_object, component, clock):
-        assert isinstance(db_object, neuwon.database._DB_Object)
+        assert isinstance(db_object, neuwon.database.DB_Object)
         self.db_object  = db_object
         db_class        = self.db_object.get_database_class()
         if clock is not None:
@@ -148,7 +148,7 @@ class TimeSeries:
         # IDEA: If I dis-allow changing components then I can store the
         # component after first usage and make the argument optional therafter.
 
-    def record(self, db_object: neuwon.database._DB_Object, component: str,
+    def record(self, db_object: neuwon.database.DB_Object, component: str,
             record_duration:float=np.inf,
             discard_after:float=np.inf,
             clock:Clock=None,
@@ -187,7 +187,7 @@ class TimeSeries:
         self.record_duration -= self.clock.dt
         return True
 
-    def play(self, db_object: neuwon.database._DB_Object, component: str,
+    def play(self, db_object: neuwon.database.DB_Object, component: str,
             mode:str="+=",
             loop:bool=False,
             clock:Clock=None,
@@ -411,7 +411,7 @@ class Trace:
             self.component = db_value
         elif self.trace_obj:
             self.db_object, attribute = db_value
-            assert isinstance(self.db_object, neuwon.database._DB_Object)
+            assert isinstance(self.db_object, neuwon.database.DB_Object)
             self.component = self.db_object.get_database_class().get(attribute)
         # Save and check remaining arguments.
         self.period = float(period)

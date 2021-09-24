@@ -156,7 +156,7 @@ class Database:
               3) Sort segment by section & index on section,
               4) Sort ion channels by segment.
 
-        Be efficiency by updating pointers in a single batch.
+        Be efficient by updating pointers in a single batch.
 
         If users want to topological sort their data then they need to make an
         attribute to hold the topologically sorted order, and then use that
@@ -219,16 +219,10 @@ class _Documentation:
         Argument doc is an optional documentation string.
         """
 
-# TODO: Make this public for the docs, so that I have a way to refer to objects
-# that are managed by the DB...
-class _DB_Object:
-    """ Super class for the external representation of a class.
+class DB_Object:
+    """ Super class for all instance types.
 
-    Each instance of DB_Class creates a new subclass of this class, with the
-    purpose of linking all of the subclass instances to the database instance.
-
-    This class takes lower precedence in the method resolution order (MRO) than
-    the user's custom base_class, so they may override any/all of these methods.
+    User do NOT need to inherit from this class.
     """
     __slots__ = ()
 
@@ -270,7 +264,7 @@ class DB_Class(_Documentation):
         self.size = 0
         self.components = dict()
         self.referenced_by = list()
-        self.referenced_by_sparse_matrix_columns = list()
+        self.referenced_by_matrix_columns = list()
         self.instances = weakref.WeakValueDictionary()
         self.sort_key = tuple(self.database.get_component(x) for x in
                 (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
@@ -278,22 +272,22 @@ class DB_Class(_Documentation):
 
     def _init_instance_type(self, users_class, doc):
         """ Make a new subclass to represent instances which are part of *this* database. """
-        # Fixup the user's class to use "__slots__".
+        # Enforce that the user's class use "__slots__".
         if users_class:
             for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
                     raise TypeError(f"Class \"{cls.__name__}\" does not define __slots__!")
         # 
         if users_class:
-            super_classes = (users_class, _DB_Object)
+            super_classes = (users_class, DB_Object)
         else:
-            super_classes = (_DB_Object,)
+            super_classes = (DB_Object,)
         # 
         __slots__ = ("_idx",)
         if not hasattr(users_class, "__weakref__"):
             __slots__ += ("__weakref__",)
         # 
-        init_doc = _DB_Object.__init__.__doc__
+        init_doc = DB_Object.__init__.__doc__
         if users_class:
             user_init = users_class.__init__
             if user_init is not object.__init__:
@@ -344,15 +338,15 @@ class DB_Class(_Documentation):
             elif isinstance(x, Sparse_Matrix): x._resize()
             elif isinstance(x, ListAttribute): x._append(old_size, new_size)
             else: raise NotImplementedError(type(x))
-        for x in self.referenced_by_sparse_matrix_columns: x._resize()
+        for x in self.referenced_by_matrix_columns: x._resize()
         new_instance._idx = old_size
 
-    def get_instance_type(self) -> _DB_Object:
+    def get_instance_type(self) -> DB_Object:
         """ Get the public / external representation of this DB_Class. """
         return self.instance_type
 
-    def index_to_object(self, unstable_index: int) -> _DB_Object:
-        """ Create a new _DB_Object given its index. """
+    def index_to_object(self, unstable_index: int) -> DB_Object:
+        """ Create a new DB_Object given its index. """
         idx = int(unstable_index)
         if idx == NULL: return None
         assert 0 <= idx < len(self)
@@ -748,7 +742,7 @@ class Sparse_Matrix(_DataComponent):
     def __init__(self, db_class, name, column, dtype=Real, doc:str="", units:str="",
                 allow_invalid:bool=False, valid_range=(None, None),):
         """
-        Add a sparse matrix that is indexed by _DB_Objects. This is useful for
+        Add a sparse matrix that is indexed by DB_Objects. This is useful for
         implementing any-to-any connections between entities.
 
         This db_class is the index for the rows of the sparse matrix.
@@ -760,7 +754,7 @@ class Sparse_Matrix(_DataComponent):
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.column = self._cls.database.get_class(column)
-        self.column.referenced_by_sparse_matrix_columns.append(self)
+        self.column.referenced_by_matrix_columns.append(self)
         self.shape = (len(self._cls), len(self.column))
         self.fmt = 'lil'
         self.data = self._matrix_class(self.shape, dtype=self.dtype)
@@ -877,7 +871,7 @@ class Sparse_Matrix(_DataComponent):
         r = int(row)
         self.data.rows[r].clear()
         self.data.data[r].clear()
-        columns = [x._idx if isinstance(x, _DB_Object) else int(x) for x in columns]
+        columns = [x._idx if isinstance(x, DB_Object) else int(x) for x in columns]
         order = np.argsort(columns)
         self.data.rows[r].extend(np.take(columns, order))
         self.data.data[r].extend(np.take(values, order))
