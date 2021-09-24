@@ -51,6 +51,9 @@ class Clock:
         """
         Argument function will be called immediately after every clock tick.
 
+        Callbacks are guaranteed to be called in the order that they were
+        registered.
+
         The function must return a True value to keep the itself registered.
         """
         assert isinstance(function, Callable)
@@ -71,11 +74,11 @@ class Clock:
         self._call_callbacks()
 
     def _call_callbacks(self):
-        for i in reversed(range(len(self.callbacks))):
-            keep_alive = self.callbacks[i]()
+        for idx, callback in enumerate(self.callbacks):
+            keep_alive = callback()
             if not keep_alive:
-                self.callbacks[i] = self.callbacks[-1]
-                self.callbacks.pop()
+                self.callbacks[idx] = None
+        self.callbacks = [x for x in self.callbacks if x is not None]
 
 # TODO: Consider renaming "TimeSeries.timeseries" to "TimeSeries.data" for
 # bevity & conformity (its getter is named "get_data()")
