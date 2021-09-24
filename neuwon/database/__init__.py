@@ -220,10 +220,7 @@ class _Documentation:
         """
 
 class DB_Object:
-    """ Super class for all instance types.
-
-    User do NOT need to inherit from this class.
-    """
+    """ Super class for all instance types. """
     __slots__ = ()
 
     def __init__(self, **kwargs):
