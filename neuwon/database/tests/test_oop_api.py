@@ -47,6 +47,13 @@ def test_OOP_API():
         help(Foo)
         help(x)
 
+    y.ptr = x
+    assert not x.is_destroyed()
+    x.destroy()
+    assert x.is_destroyed()
+    with pytest.raises(Exception):
+        x.ptr
+    assert y.ptr is None
 
 def test_custom_classes():
 

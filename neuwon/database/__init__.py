@@ -313,6 +313,14 @@ class DB_Class(_Documentation):
                     self._cls._init_instance(self)
                     super().__init__(*args, **kwargs)
 
+                def destroy(self):
+                    \"\"\" \"\"\"
+                    type(self)._cls._destroy_instance(self)
+
+                def is_destroyed(self):
+                    \"\"\" \"\"\"
+                    return self._idx == {NULL}
+
                 def get_unstable_index(self):
                     \"\"\" TODO: Explain how / when this index changes. \"\"\"
                     return self._idx
@@ -343,6 +351,11 @@ class DB_Class(_Documentation):
         self.instances.append(weakref.ref(new_instance))
         if len(self.sort_key): self.is_sorted = False
 
+    def _destroy_instance(self, instance):
+        self.instances[instance._idx] = None
+        instance._idx = NULL
+        self.is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
+
     def get_instance_type(self) -> DB_Object:
         """ Get the public / external representation of this DB_Class. """
         return self.instance_type
@@ -352,6 +365,7 @@ class DB_Class(_Documentation):
         idx = int(unstable_index)
         if idx == NULL: return None
         obj = self.instances[idx]
+        if obj is None: return None # Object was destroyed.
         obj = obj() # Unwrap the weakref.
         if obj is None:
             cls = self.instance_type
@@ -386,7 +400,7 @@ class DB_Class(_Documentation):
         Returns a list containing every instance of this class which currently
         exists.
         """
-        return [self.index_to_object(idx) for idx in range(self.size)]
+        return list(filter(map(self.index_to_object, range(self.size))))
 
     def get_database(self) -> Database:
         return self.database
@@ -409,7 +423,7 @@ class DB_Class(_Documentation):
     def add_connectivity_matrix(self, name:str, column, doc=""):
         return Connectivity_Matrix(self, name, column, doc=doc)
 
-    def destroy(self):
+    def _destroy(self):
         """
         TODO: Explain how this determines which objects to destroy.
 
@@ -514,7 +528,16 @@ class _DataComponent(_Documentation):
         assert len(self.valid_range) == 2
         self.memory_space = self._cls.database.memory_space
         setattr(self._cls.instance_type, self.name,
-                property(self._getter, self._setter, doc=self.doc,))
+                property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
+
+    def _getter_wrapper(self, instance):
+        if instance._idx == NULL:
+            raise ValueError("Object was destroyed!")
+        return self._getter(instance)
+    def _setter_wrapper(self, instance, value):
+        if instance._idx == NULL:
+            raise ValueError("Object was destroyed!")
+        self._setter(instance, value)
 
     def _getter(self, instance):
         """ Get the instance's data value. """
