@@ -140,6 +140,9 @@ class Database:
         """
         return memory_spaces.ContextManager(self, memory_space)
 
+    def is_sorted(self):
+        return all(db_class.is_sorted for db_class in self.db_classes.values())
+
     def sort(self):
         """ Sort all DB_Classes according to their "sort_key" arguments. """
         1/0
@@ -266,8 +269,9 @@ class DB_Class(_Documentation):
         self.referenced_by = list()
         self.referenced_by_matrix_columns = list()
         self.instances = []
-        self.sort_key = tuple(self.database.get_component(x) for x in
-                (sort_key if isinstance(sort_key, Iterable) else (sort_key,)))
+        if not isinstance(sort_key, Iterable): sort_key = (sort_key,)
+        self.sort_key = tuple(self.database.get_component(x) for x in sort_key)
+        self.is_sorted = True
         self._init_instance_type(base_class, doc)
 
     def _init_instance_type(self, users_class, doc):
@@ -337,6 +341,7 @@ class DB_Class(_Documentation):
         for x in self.referenced_by_matrix_columns: x._resize()
         new_instance._idx = old_size
         self.instances.append(weakref.ref(new_instance))
+        if len(self.sort_key): self.is_sorted = False
 
     def get_instance_type(self) -> DB_Object:
         """ Get the public / external representation of this DB_Class. """
