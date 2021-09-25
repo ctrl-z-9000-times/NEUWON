@@ -546,7 +546,10 @@ class _DataComponent(_Documentation):
         Release the memory used by this data component. The next time the data
         is accessed it will be reallocated and set to its initial_value.
         """
-        # Abstract method, optional.
+        raise NotImplementedError(type(self))
+
+    def is_free(self):
+        return self.data is None
 
     def check(self):
         """ Check data for values which are: NaN, NULL, or Out of bounds. """
@@ -613,19 +616,27 @@ class Attribute(_DataComponent):
         _DataComponent.__init__(self, db_class, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
-        self.data = self._alloc(0)
-        self._append(0, len(self._cls))
+        self.data = self._alloc(len(self._cls))
+        if self.initial_value is not None: self.data.fill(self.initial_value)
 
     __init__.__doc__ += "".join((
-                _DataComponent._dtype_doc,
-                _DataComponent._shape_doc,
-                _Documentation._doc_doc,
-                _DataComponent._units_doc,
-                _DataComponent._allow_invalid_doc,
-                _DataComponent._valid_range_doc,
-        ))
+        _DataComponent._dtype_doc,
+        _DataComponent._shape_doc,
+        _Documentation._doc_doc,
+        _DataComponent._units_doc,
+        _DataComponent._allow_invalid_doc,
+        _DataComponent._valid_range_doc,))
+
+    def free(self):
+        self.data = None
+
+    def _alloc_if_free(self):
+        if self.data is None:
+            self.data = self._alloc(len(self._cls))
+            if self.initial_value is not None: self.data.fill(self.initial_value)
 
     def _getter(self, instance):
+        if self.data is None: return self.initial_value
         value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
@@ -633,6 +644,7 @@ class Attribute(_DataComponent):
         return value
 
     def _setter(self, instance, value):
+        self._alloc_if_free()
         if self.reference:
             if value is None:
                 value = NULL
@@ -643,8 +655,9 @@ class Attribute(_DataComponent):
 
     def _append(self, old_size, new_size):
         """ Prepare space for new instances at the end of the array. """
+        if self.data is None: return
         if len(self.data) < new_size:
-            new_data = self._alloc(new_size)
+            new_data = self._alloc(2 * new_size)
             new_data[:old_size] = self.data[:old_size]
             if self.initial_value is not None:
                 new_data[old_size:].fill(self.initial_value)
@@ -655,13 +668,15 @@ class Attribute(_DataComponent):
         # TODO: IIRC CuPy can not deal with numpy structured arrays...
         #       Detect this issue and revert to using numba arrays.
         #       numba.cuda.to_device(numpy.array(data, dtype=dtype))
-        shape = (2 * size,)
+        shape = (size,)
         if self.shape != (1,): # Don't append empty trailing dimension.
             shape += self.shape
         return self.memory_space.array_module.empty(shape, dtype=self.dtype)
 
     def _transfer(self, target_space):
-        if self.memory_space is not target_space:
+        if self.data is None:
+            self.memory_space = target_space
+        elif self.memory_space is not target_space:
             if self.memory_space is memory_spaces.host:
                 if target_space is memory_spaces.cuda:
                     self.data = memory_spaces.cuda.array(self.data)
@@ -676,6 +691,7 @@ class Attribute(_DataComponent):
     def get_data(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
         self._transfer(self._cls.database.memory_space)
+        self._alloc_if_free()
         return self.data[:len(self._cls)]
 
     def set_data(self, value):
@@ -685,6 +701,8 @@ class Attribute(_DataComponent):
             shape = (size,) # Don't append empty trailing dimension.
         else:
             shape = (size,) + self.shape
+        # TODO: This should accept whatever memory space it is given, and avoid
+        # transfering until someone calls "get_data".
         self.data = self.memory_space.array(value, dtype=self.dtype).reshape(shape)
 
 class ClassAttribute(_DataComponent):
@@ -728,6 +746,9 @@ class ClassAttribute(_DataComponent):
     def set_data(self, value):
         self.data = self.dtype.type(value)
 
+    def free(self):
+        self.data = self.initial_value
+
 class Sparse_Matrix(_DataComponent):
     """ """ # TODO-DOC
 
@@ -765,8 +786,7 @@ class Sparse_Matrix(_DataComponent):
         _Documentation._doc_doc,
         _DataComponent._units_doc,
         _DataComponent._allow_invalid_doc,
-        _DataComponent._valid_range_doc,
-    ))
+        _DataComponent._valid_range_doc,))
 
     @property
     def _matrix_class(self):
@@ -775,7 +795,16 @@ class Sparse_Matrix(_DataComponent):
         elif self.fmt == 'csr': return self.memory_space.matrix_module.csr_matrix
         else: raise NotImplementedError(self.fmt)
 
+    def free(self):
+        self.data = None
+        self._host_lil_mem = None
+
+    def _alloc_if_free(self):
+        if self.data is None:
+            1/0
+
     def _getter(self, instance):
+        if self.data is None: return ([], [])
         if self.fmt == 'coo': self.to_lil()
         if self.fmt == 'lil':
             lil_mat = self.data
@@ -786,9 +815,11 @@ class Sparse_Matrix(_DataComponent):
             return (cols, data)
         elif self.fmt == 'csr':
             help(self.data)
+            1/0
         else: raise NotImplementedError(self.fmt)
 
     def _setter(self, instance, value):
+        self._alloc_if_free()
         columns, data = value
         self.write_row(instance._idx, columns, data)
 

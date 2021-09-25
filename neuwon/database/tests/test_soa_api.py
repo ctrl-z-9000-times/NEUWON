@@ -24,6 +24,15 @@ def test_arrays():
         assert np.all(data == [2,3,4])
     assert bar_data.get_memory_space() is cuda
 
+    # Test free'ing attribute buffers.
+    assert not bar_data.is_free()
+    bar_data.free()
+    assert bar_data.is_free()
+    assert f.bar == 42
+    assert bar_data.is_free()
+    assert np.all(bar_data.get_data() == 42)
+    assert not bar_data.is_free()
+
     bar_data.set_data([4,3,2])
     with db.using_memory_space(host):
         assert np.all(bar_data.get_data() == [4,3,2])
