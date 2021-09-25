@@ -143,9 +143,10 @@ class Model:
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
         # self.database.to_device()
-        self._advance_species()
-        self._advance_reactions()
-        self._advance_species()
+        with self.database.using_memory_space('cuda'):
+            self._advance_species()
+            self._advance_reactions()
+            self._advance_species()
         self.clock.tick()
 
     def _advance_lockstep(self):

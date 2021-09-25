@@ -1,5 +1,6 @@
 from neuwon.database.time import TimeSeries
 from neuwon.examples.HH import make_model_with_hh
+from sys import argv
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -24,8 +25,9 @@ class main:
         self.init_steady_state()
         self.setup_measurements()
         self.run_experiment()
-        self.plot()
-        plt.show()
+        if '--noshow' not in argv:
+            self.plot()
+            plt.show()
 
     def make_model(self):
         """ Construct a soma with a single long axon. """

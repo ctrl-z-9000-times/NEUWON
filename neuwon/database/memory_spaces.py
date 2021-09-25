@@ -20,6 +20,8 @@ class MemorySpace:
     def __repr__(self):
         return f"<MemorySpace: {self.name}>"
 
+    # TODO: Make getter's so that the attributes show up in the docs?
+
 host = MemorySpace("host", numpy, scipy.sparse)
 cuda = MemorySpace("cuda", cupy, cupyx.scipy.sparse)
 

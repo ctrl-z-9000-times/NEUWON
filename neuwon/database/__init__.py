@@ -2,7 +2,6 @@
 
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import memory_spaces
-import collections
 import cupy
 import itertools
 import numpy as np
@@ -103,11 +102,15 @@ class Database:
         """ Get the default clock for this database. """
         return self.clock
 
+    def get_memory_space(self):
+        """ Returns the memory space that is currently in use. """
+        return self.memory_space
+
     def using_memory_space(self, memory_space:str):
         """
         Request that the database use a specific memory space.
 
-        Returns a context manager which must be used with the "with" statement.
+        Returns a context manager which must be used in a "with" statement.
 
         Example:
             >>> with database.using_memory_space('cuda'):
@@ -834,34 +837,44 @@ class Sparse_Matrix(_DataComponent):
         else: raise NotImplementedError(self.fmt)
 
     def _transfer(self, target_space):
-        if self.memory_space is not target_space:
-            if self.memory_space is memory_spaces.host:
-                if target_space is memory_spaces.cuda:
-                    if self.dtype.kind not in 'fc':
-                        # Cupy only supports float & complex types.
-                        # Silently refuse to transfer, leave data on host.
-                        return
-                    if self.fmt == 'lil':
-                        self.fmt = 'csr'
-                    if self.fmt == 'csr' or self.fmt == 'coo':
-                        self.data = self._matrix_class(self.data, dtype=self.dtype)
-                    else: raise NotImplementedError(self.fmt)
-                    self._host_lil_mem = None
-                else: raise NotImplementedError(target_space)
-            elif self.memory_space is memory_spaces.cuda:
-                if target_space is memory_spaces.host:
-                    self.data = self.data.get()
-                else: raise NotImplementedError(target_space)
-            else: raise NotImplementedError(self.memory_space)
-            self.memory_space = target_space
+        if self.memory_space is target_space: return
+        if self.memory_space is memory_spaces.host:
+            if target_space is memory_spaces.cuda:
+                if self.dtype.kind not in 'fc':
+                    # Cupy only supports float & complex types.
+                    # Silently refuse to transfer, leave data on host.
+                    return
+                self.memory_space = memory_spaces.cuda
+                if self.fmt == 'lil':
+                    self.fmt = 'csr'
+                if self.fmt == 'csr' or self.fmt == 'coo':
+                    self.data = self._matrix_class(self.data, dtype=self.dtype)
+                else: raise NotImplementedError(self.fmt)
+                self._host_lil_mem = None
+            else: raise NotImplementedError(target_space)
+        elif self.memory_space is memory_spaces.cuda:
+            if target_space is memory_spaces.host:
+                self.data = self.data.get()
+            else: raise NotImplementedError(target_space)
+            self.memory_space = memory_spaces.host
+        else: raise NotImplementedError(self.memory_space)
 
     def get_data(self):
         self._transfer(self._cls.database.memory_space)
         return self.data
 
-    def set_data(self, new_matrix):
-        assert new_matrix.shape == self.shape
-        self.data = self._matrix_class(new_matrix, dtype=self.dtype)
+    def set_data(self, matrix):
+        for mem in (memory_spaces.host, memory_spaces.cuda):
+            if isinstance(matrix, mem.matrix_module.spmatrix):
+                self.memory_space = mem
+                self.data         = matrix
+                break
+        else:
+            self.memory_space = memory_spaces.host
+            self.fmt = 'csr'
+            self.data = self._matrix_class(matrix, dtype=self.dtype)
+        assert self.data.shape == self.shape
+        assert self.data.dtype == self.dtype
 
     def write_row(self, row, columns, values):
         self.to_lil()

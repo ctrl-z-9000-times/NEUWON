@@ -51,6 +51,7 @@ class ElectricProperties:
             cls._compute_propagator_matrix(time_step)
         dt = time_step / 1000
         db_cls              = cls.get_database_class()
+        xp                  = db_cls.get_database().get_memory_space().array_module
         sum_conductance     = db_cls.get_data("sum_conductance")
         driving_voltage     = db_cls.get_data("driving_voltage")
         capacitance         = db_cls.get_data("capacitance")
@@ -59,7 +60,7 @@ class ElectricProperties:
         irm                 = db_cls.get("electric_propagator_matrix").to_csr().get_data()
         # Update voltages.
         exponent        = -dt * sum_conductance / capacitance
-        alpha           = np.exp(exponent)
+        alpha           = xp.exp(exponent)
         diff_v          = driving_voltage - voltage
         voltage[:]      = irm.dot(driving_voltage - diff_v * alpha)
         integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha
@@ -72,10 +73,11 @@ class ElectricProperties:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """
         db_cls = cls.get_database_class()
-        dt           = time_step / 1000
-        parents      = db_cls.get_data("parent")
-        resistances  = db_cls.get_data("axial_resistance")
-        capacitances = db_cls.get_data("capacitance")
+        dt     = time_step / 1000
+        with db_cls.get_database().using_memory_space('host'):
+            parents      = db_cls.get_data("parent")
+            resistances  = db_cls.get_data("axial_resistance")
+            capacitances = db_cls.get_data("capacitance")
         src = []; dst = []; coef = []
         for child, parent in enumerate(parents):
             if parent == NULL: continue
