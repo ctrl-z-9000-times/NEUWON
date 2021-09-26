@@ -13,7 +13,6 @@ epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
 
-# TODO: Implement method free().
 # TODO: Implement method sort().
 
 class Database:
@@ -39,6 +38,11 @@ class Database:
         >>> assert Foo == database.get("Foo")
         >>> assert bar == database.get("Foo.bar")
         """
+        if isinstance(name, type) and issubclass(name, DB_Object):
+            try:
+                name = name._cls
+            except AttributeError:
+                1/0 # How to explain what went wrong?
         if isinstance(name, DB_Class):
             assert name.database is self
             return name
@@ -509,6 +513,8 @@ class _DataComponent(_Documentation):
             self.shape = tuple(round(x) for x in shape)
         else:
             self.shape = (round(shape),)
+        if isinstance(dtype, type) and issubclass(dtype, DB_Object):
+            dtype = dtype.get_database_class()
         if isinstance(dtype, str) or isinstance(dtype, DB_Class):
             self.dtype = Pointer
             self.initial_value = NULL
@@ -523,6 +529,7 @@ class _DataComponent(_Documentation):
             self.reference = False
         self.units = str(units)
         self.allow_invalid = bool(allow_invalid)
+        if self.reference is self._cls: assert self.allow_invalid
         self.valid_range = tuple(valid_range)
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2
@@ -805,9 +812,8 @@ class Sparse_Matrix(_DataComponent):
         self.column = self._cls.database.get_class(column)
         self.column.referenced_by_matrix_columns.append(self)
         self.shape = (len(self._cls), len(self.column))
-        self.fmt = 'lil'
-        self.data = self._matrix_class(self.shape, dtype=self.dtype)
-        self._host_lil_mem = None
+        self.fmt = 'csr'
+        self.free()
 
     __init__.__doc__ += "".join((
         _DataComponent._dtype_doc,
@@ -829,36 +835,41 @@ class Sparse_Matrix(_DataComponent):
 
     def _alloc_if_free(self):
         if self.data is None:
-            1/0
+            self.data = self._matrix_class(self.shape, dtype=self.dtype)
 
     def _getter(self, instance):
         if self.data is None: return ([], [])
         if self.fmt == 'coo': self.to_lil()
+        matrix = self.data[instance._idx]
+        if self.memory_space is memory_spaces.cuda:
+            matrix = matrix.get()
         if self.fmt == 'lil':
-            lil_mat = self.data
-            index_to_object = self.column.index_to_object
-            cols = [index_to_object(x) for x in lil_mat.rows[instance._idx]]
-            data = list(lil_mat.data[instance._idx])
-            if self.reference: raise NotImplementedError("Implement maybe?")
-            return (cols, data)
+            index = matrix.rows[0]
         elif self.fmt == 'csr':
-            help(self.data)
-            1/0
+            index = matrix.indices
         else: raise NotImplementedError(self.fmt)
+        index_to_object = self.column.index_to_object
+        if self.reference: raise NotImplementedError("Implement maybe?")
+        return ([index_to_object(x) for x in index], list(matrix.data))
 
     def _setter(self, instance, value):
-        self._alloc_if_free()
         columns, data = value
         self.write_row(instance._idx, columns, data)
 
     def to_lil(self) -> 'self':
         self._transfer(memory_spaces.host)
+        if self.data is None:
+            self.fmt = "lil"
+            return
         if self.fmt != "lil":
             self.fmt = "lil"
             self.data = self._matrix_class(self.data, dtype=self.dtype)
         return self
 
     def to_coo(self) -> 'self':
+        if self.data is None:
+            self.fmt = "coo"
+            return
         if self.fmt != "coo":
             self.fmt = "coo"
             self._host_lil_mem = None
@@ -866,6 +877,9 @@ class Sparse_Matrix(_DataComponent):
         return self
 
     def to_csr(self) -> 'self':
+        if self.data is None:
+            self.fmt = "csr"
+            return
         if self.fmt != "csr":
             self.fmt = "csr"
             self._host_lil_mem = None
@@ -873,10 +887,11 @@ class Sparse_Matrix(_DataComponent):
         return self
 
     def _resize(self):
-        old_shape = self.data.shape
+        old_shape = self.shape
         new_shape = self.shape = (len(self._cls), len(self.column))
 
         if old_shape == new_shape: return
+        if self.data is None: return
 
         if self.fmt == 'csr': self.to_lil()
         if self.fmt == 'lil':
@@ -907,19 +922,22 @@ class Sparse_Matrix(_DataComponent):
                 if self.fmt == 'lil':
                     self.fmt = 'csr'
                 if self.fmt == 'csr' or self.fmt == 'coo':
-                    self.data = self._matrix_class(self.data, dtype=self.dtype)
+                    if self.data is not None:
+                        self.data = self._matrix_class(self.data, dtype=self.dtype)
                 else: raise NotImplementedError(self.fmt)
                 self._host_lil_mem = None
             else: raise NotImplementedError(target_space)
         elif self.memory_space is memory_spaces.cuda:
             if target_space is memory_spaces.host:
-                self.data = self.data.get()
+                if self.data is not None:
+                    self.data = self.data.get()
             else: raise NotImplementedError(target_space)
             self.memory_space = memory_spaces.host
         else: raise NotImplementedError(self.memory_space)
 
     def get_data(self):
         self._transfer(self._cls.database.memory_space)
+        self._alloc_if_free()
         return self.data
 
     def set_data(self, matrix):
@@ -937,6 +955,7 @@ class Sparse_Matrix(_DataComponent):
 
     def write_row(self, row, columns, values):
         self.to_lil()
+        self._alloc_if_free()
         r = int(row)
         self.data.rows[r].clear()
         self.data.data[r].clear()
@@ -947,8 +966,9 @@ class Sparse_Matrix(_DataComponent):
 
     def _type_info(self):
         s = super()._type_info()
-        try: nnz_per_row = self.data.nnz / self.data.shape[0]
-        except ZeroDivisionError: nnz_per_row = 0
+        if   self.is_free():     nnz_per_row = 0
+        elif self.shape[0] == 0: nnz_per_row = 0
+        else:                    nnz_per_row = self.data.nnz / self.shape[0]
         s += " nnz/row: %g"%nnz_per_row
         return s
 

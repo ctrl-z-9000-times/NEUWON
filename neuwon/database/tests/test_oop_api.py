@@ -24,7 +24,7 @@ def test_OOP_API():
 
     x.my_helper_method()
 
-    Foo.add_attribute("ptr", dtype="Foo")
+    Foo.add_attribute("ptr", dtype="Foo", allow_invalid=True)
     y = FooFactory()
     x.ptr = y
     x.ptr.bar = 5

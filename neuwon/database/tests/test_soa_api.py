@@ -41,6 +41,28 @@ def test_arrays():
     with db.using_memory_space('cuda'):
         Foo()
 
+def test_create_on_device():
+    db = Database()
+    with db.using_memory_space('cuda'):
+        Foo_data = db.add_class("Foo")
+        Foo = Foo_data.get_instance_type()
+
+    for i in range(3):
+        f = Foo()
+    with db.using_memory_space('cuda'):
+        bar_data = Foo_data.add_attribute("bar", 42)
+        sp_data  = Foo_data.add_sparse_matrix('sp', Foo)
+        ptr_data = Foo_data.add_connectivity_matrix('ptr', Foo_data)
+        f.ptr = [f]
+        assert isinstance(sp_data.get_data(), cuda.matrix_module.spmatrix)
+        f.sp = ([f,f], [3.4, 5.5])
+        assert isinstance(sp_data.get_data(), cuda.matrix_module.spmatrix)
+    assert f in f.ptr
+    cols, vals = f.sp
+    assert cols == [f, f]
+    assert vals == [3.4, 5.5]
+
+
 @pytest.mark.skip
 def test_matrixes():
     1/0 # TODO
