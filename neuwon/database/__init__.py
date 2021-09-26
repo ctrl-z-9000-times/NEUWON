@@ -400,7 +400,7 @@ class DB_Class(_Documentation):
         Returns a list containing every instance of this class which currently
         exists.
         """
-        return list(filter(map(self.index_to_object, range(self.size))))
+        return list(filter(None, map(self.index_to_object, range(self.size))))
 
     def get_database(self) -> Database:
         return self.database
@@ -669,7 +669,7 @@ class Attribute(_DataComponent):
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
             return self.reference.index_to_object(value)
-        return value
+        return self.dtype.type(value)
 
     def _setter(self, instance, value):
         self._alloc_if_free()
@@ -852,7 +852,7 @@ class Sparse_Matrix(_DataComponent):
         self.write_row(instance._idx, columns, data)
 
     def to_lil(self) -> 'self':
-        assert self.get_memory_space() is memory_spaces.host
+        self._transfer(memory_spaces.host)
         if self.fmt != "lil":
             self.fmt = "lil"
             self.data = self._matrix_class(self.data, dtype=self.dtype)
