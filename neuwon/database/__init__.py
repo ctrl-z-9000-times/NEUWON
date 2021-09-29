@@ -687,9 +687,9 @@ class Attribute(_DataComponent):
         if len(self.data) < new_size:
             new_data = self._alloc(2 * new_size)
             new_data[:old_size] = self.data[:old_size]
-            if self.initial_value is not None:
-                new_data[old_size:].fill(self.initial_value)
             self.data = new_data
+        if self.initial_value is not None:
+            self.data[old_size:new_size].fill(self.initial_value)
 
     def _alloc(self, size):
         """ Returns an empty array. """
