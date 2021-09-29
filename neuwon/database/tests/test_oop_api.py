@@ -54,6 +54,7 @@ def test_OOP_API():
     with pytest.raises(Exception):
         x.ptr
     assert y.ptr is None
+    db.sort()
 
 def test_custom_classes():
 

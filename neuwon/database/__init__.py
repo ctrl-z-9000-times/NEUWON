@@ -1,6 +1,7 @@
 """ A database for neural simulations. """
 
 from collections.abc import Callable, Iterable, Mapping
+from graph_algorithms import topological_sort
 from neuwon.database import memory_spaces
 import cupy
 import itertools
@@ -30,7 +31,7 @@ class Database:
 
         Argument name can refer to either:
             * A DB_Class
-            * An Attibute, ClassAttribute, or Sparse_Matrix
+            * An Attribute, ClassAttribute, or Sparse_Matrix
 
         Example:
         >>> Foo = database.add_class("Foo")
@@ -144,35 +145,81 @@ class Database:
         """
         return memory_spaces.ContextManager(self, memory_space)
 
+    def _remove_references_to_destroyed(self):
+        """ Remove all references from the living instances to the dead ones. """
+        # 
+        xp = self.memory_space.array_module
+        dead_maps = {}
+        for db_class in self.db_classes.values():
+            if db_class.destroyed_list:
+                dead_maps[db_class] = dead = xp.zeros(len(db_class), dtype=bool)
+                dead[db_class.destroyed_list] = True
+            else:
+                dead_maps[db_class] = None
+        # Determine an order to scan for destroyed references so that they don't
+        # need to be checked more than once.
+        def destructive_references(db_class) -> [DB_Class]:
+            for comp in db_class.components.values():
+                if comp.reference and not comp.allow_invalid:
+                    yield comp.reference
+        dependencies = topological_sort(self.db_classes.values(), destructive_references)
+        # First pass: destroy all instance with non-optional references to other
+        # instances which are destroyed.
+        done = set()
+        for db_class in reversed(dependencies):
+            for comp in destructive_references(db_class):
+                comp._remove_references_to_destroyed(dead_maps)
+                done.add(comp)
+        # Second pass: replace the remaining optional references with NULL.
+        for db_class in self.db_classes.values():
+            for comp in db_class.components.values():
+                if comp not in done:
+                    comp._remove_references_to_destroyed(dead_maps)
+
+        """ TODO: Where to put this doc so that its visible and useful?
+
+        If the dangling references are allow to be NULL then they are replaced
+        with NULL references. Otherwise the entity containing the reference is
+        destroyed. Destroying entities can cause a chain reaction of destruction.
+
+        Sparse matrices may contain references but they will not trigger a
+        recursive destruction of entities. Instead, references to destroyed
+        entities are simply removed from the sparse matrix.
+        """
+
     def is_sorted(self):
+        """ Is everything in this database sorted? """
         return all(db_class.is_sorted for db_class in self.db_classes.values())
 
     def sort(self):
-        """ Sort all DB_Classes according to their "sort_key" arguments. """
+        """ Sort everything in this database.
+
+        Also removes any holes in the arrays which were left behind by
+        destroyed instances.
+
+        Note: this operation invalidates all unstable_index's!
+        """
+        self._remove_references_to_destroyed()
+
+        # Resolve the sort keys from strings to DB_Classes.
+        for db_class in self.db_classes.values():
+            1/0
+
+        # Sort all data.
+        sort_order = topological_sort(self.db_classes.values(), lambda cls: cls.sort_key)
+        for db_class in reversed(sort_order):
+            # Sort out the dead instances and truncate them off of the end.
+            1/0
+            # Stable sort by each key, in reverse.
+            for key in reversed(self.sort_key):
+                1/0
+
+
+        # Update all references to point to their new locations.
         1/0
-        """
-        NOTES:
 
-        When classes use pointers to other classes as sort-keys then they create
-        a dependency in their sorting-order, which the database will need to
-        deal with. The database looks at each classes sorting function and
-        determines its dependencies (pointers which it uses as sort keys) and
-        makes a DAG of the dependencies. Then it flattens the DAG into a
-        topologically sorted order to sort the data in.
-
-        EXAMPLE OF SORT ORDER DEPENDENCIES:
-              1) Sort cells by their assigned CPU thread,
-              2) Sort sections by cell & topologically,
-              3) Sort segment by section & index on section,
-              4) Sort ion channels by segment.
-
-        Be efficient by updating pointers in a single batch.
-
-        If users want to topological sort their data then they need to make an
-        attribute to hold the topologically sorted order, and then use that
-        attribute as a sort_key.
-        """
-        raise NotImplementedError
+        for db_class in self.db_classes.values():
+            db_class.get("_dead").free()
 
     def check(self, name:str=None):
         """ Run all configured checks on the database.
@@ -277,6 +324,7 @@ class DB_Class(_Documentation):
         self.sort_key = tuple(self.database.get_component(x) for x in sort_key)
         self.is_sorted = True
         self._init_instance_type(base_class, doc)
+        self.destroyed_list = []
 
     def _init_instance_type(self, users_class, doc):
         """ Make a new subclass to represent instances which are part of *this* database. """
@@ -348,14 +396,14 @@ class DB_Class(_Documentation):
             if isinstance(x, Attribute): x._append(old_size, new_size)
             elif isinstance(x, ClassAttribute): pass
             elif isinstance(x, Sparse_Matrix): x._resize()
-            elif isinstance(x, ListAttribute): x._append(old_size, new_size)
             else: raise NotImplementedError(type(x))
         for x in self.referenced_by_matrix_columns: x._resize()
         new_instance._idx = old_size
         self.instances.append(weakref.ref(new_instance))
-        if len(self.sort_key): self.is_sorted = False
+        if self.sort_key: self.is_sorted = False
 
     def _destroy_instance(self, instance):
+        self.destroyed_list.append(instance._idx)
         self.instances[instance._idx] = None
         instance._idx = NULL
         self.is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
@@ -366,6 +414,7 @@ class DB_Class(_Documentation):
 
     def index_to_object(self, unstable_index: int) -> DB_Object:
         """ Create a new DB_Object given its index. """
+        if type(unstable_index) is self.instance_type: return unstable_index
         idx = int(unstable_index)
         if idx == NULL: return None
         obj = self.instances[idx]
@@ -426,66 +475,6 @@ class DB_Class(_Documentation):
 
     def add_connectivity_matrix(self, name:str, column, doc=""):
         return Connectivity_Matrix(self, name, column, doc=doc)
-
-    def _destroy(self):
-        """
-        TODO: Explain how this determines which objects to destroy.
-
-        If the dangling references are allow to be NULL then they are replaced
-        with NULL references. Otherwise the entity containing the reference is
-        destroyed. Destroying entities can cause a chain reaction of destruction.
-
-        Sparse matrices may contain references but they will not trigger a
-        recursive destruction of entities. Instead, references to destroyed
-        entities are simply removed from the sparse matrix.
-        """
-        # TODO: The "allow_invalid" flag should control whether destroying
-        # referenced entities causes recursive destruction of more entities.
-
-        # TODO: Consider how to rework this to instead of keeping lists of links
-        # to archetypes which need updating, to just scan through all of the
-        # archetypes (in a fixed number of passes). It would allow me to
-        # simplify the spiders web of lists of references.
-        if not instances: return
-        ark = self.archetypes[str(archetype_name)]
-        alive = {ark: np.ones(ark.size, dtype=np.bool)}
-        alive[ark][instances] = False
-        # Find all dangling references to dead instance of this archetype.
-        stack = list(ark.referenced_by)
-        while stack:
-            ref = stack.pop()
-            ark = ref.archetype
-            target = ref.reference
-            target_alive = alive[target]
-            if isinstance(ref, _Attribute):
-                if ark not in alive:
-                    alive[ark] = np.ones(ark.size, dtype=np.bool)
-                alive[ark][np.logical_not(target_alive[ref.data])] = False
-                stack.extend(ark.referenced_by)
-            elif isinstance(ref, _Sparse_Matrix):
-                pass # References in sparse matrices never cause recursive destruction.
-        # Compress destroyed instances out of the data arrays.
-        for ark, alive_mask in alive.items():
-            for x in ark.attributes:
-                x.data = x.data[alive_mask]
-            for x in ark.sparse_matrixes:
-                # Compress out dead rows, columns, and if its a reference matrix
-                # then remove entries which point to dead entities.
-                1/0
-        # Update references.
-        new_indexes = {ark: np.cumsum(alive_mask) - 1 for ark, alive_mask in alive.items()}
-        for x in alive:
-            if isinstance(ref, _Attribute):
-                x.data = new_indexes[ark][x.data]
-            elif isinstance(ref, _Sparse_Matrix):
-                x.data.data = new_indexes[ark][x.data.data]
-        updated_entities = []
-        for x in self.entities:
-            entity = x.get()
-            if entity is not None:
-                entity.index = entity.ark
-                updated_entities.append(entity)
-        self.entities = updated_entities
 
     def check(self, name:str=None):
         """ Run all configured checks on this class or on only the given data component. """
@@ -591,11 +580,10 @@ class _DataComponent(_Documentation):
         data = self.get_data()
         if isinstance(self, ClassAttribute):  data = np.array([data])
         elif isinstance(self, Sparse_Matrix): data = data.data
-        reference = getattr(self, 'reference', False)
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
-            if reference:
-                assert xp.all(xp.less(data, reference.size)), self.name + " is NULL"
+            if self.reference:
+                assert xp.all(xp.less(data, self.reference.size)), self.name + " is NULL"
             else:
                 if data.dtype.kind in ("f", "c"):
                     assert not xp.any(xp.isnan(data)), self.name + " is NaN"
@@ -604,6 +592,9 @@ class _DataComponent(_Documentation):
             assert xp.all(xp.less_equal(lower_bound, data)), self.name + " less than %g"%lower_bound
         if upper_bound is not None:
             assert xp.all(xp.greater_equal(upper_bound, data)), self.name + " greater than %g"%upper_bound
+
+    def _remove_references_to_destroyed(self, destroyed_maps):
+        raise NotImplementedError(type(self))
 
     def _type_info(self):
         s = ""
@@ -652,7 +643,8 @@ class Attribute(_DataComponent):
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self._alloc(len(self._cls))
-        if self.initial_value is not None: self.data.fill(self.initial_value)
+        if self.initial_value is not None:
+            self.data.fill(self.initial_value)
 
     __init__.__doc__ += "".join((
         _DataComponent._dtype_doc,
@@ -668,7 +660,8 @@ class Attribute(_DataComponent):
     def _alloc_if_free(self):
         if self.data is None:
             self.data = self._alloc(len(self._cls))
-            if self.initial_value is not None: self.data.fill(self.initial_value)
+            if self.initial_value is not None:
+                self.data.fill(self.initial_value)
 
     def _getter(self, instance):
         if self.data is None: return self.initial_value
@@ -740,6 +733,20 @@ class Attribute(_DataComponent):
         # transfering until someone calls "get_data".
         self.data = self.memory_space.array(value, dtype=self.dtype).reshape(shape)
 
+    def _remove_references_to_destroyed(self, dead_maps):
+        if not self.reference: return
+        if self.data is None: return
+        pointer_data = self.data[:len(self._cls)]
+        dead_map = dead_maps[self.reference]
+        if dead_map is None: return
+        xp = cupy.get_array_module(dead_map)
+        target_is_dead = xp.take(dead_map, pointer_data, axis=0)
+        if self.allow_invalid:
+            pointer_data[target_is_dead] = NULL
+        else:
+            for idx in xp.nonzero(target_is_dead)[0]:
+                self._cls.index_to_object(idx).destroy()
+
 class ClassAttribute(_DataComponent):
     """ This is the database's internal representation of a class variable. """
     def __init__(self, db_class, name:str, initial_value,
@@ -757,6 +764,7 @@ class ClassAttribute(_DataComponent):
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self.initial_value
         self.memory_space = memory_spaces.host
+        if self.reference: raise NotImplementedError("todo?")
 
     __init__.__doc__ += "".join((
         _DataComponent._dtype_doc,
@@ -768,11 +776,9 @@ class ClassAttribute(_DataComponent):
     ))
 
     def _getter(self, instance):
-        if self.reference: raise NotImplementedError("todo?")
         return self.data
 
     def _setter(self, instance, value):
-        if self.reference: raise NotImplementedError("todo?")
         self.data = self.dtype.type(value)
 
     def get_data(self):
@@ -783,6 +789,9 @@ class ClassAttribute(_DataComponent):
 
     def free(self):
         self.data = self.initial_value
+
+    def _remove_references_to_destroyed(self, destroyed_maps):
+        pass
 
 class Sparse_Matrix(_DataComponent):
     """ """ # TODO-DOC
