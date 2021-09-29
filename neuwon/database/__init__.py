@@ -175,17 +175,7 @@ class Database:
             for comp in db_class.components.values():
                 if comp not in done:
                     comp._remove_references_to_destroyed(dead_maps)
-
-        """ TODO: Where to put this doc so that its visible and useful?
-
-        If the dangling references are allow to be NULL then they are replaced
-        with NULL references. Otherwise the entity containing the reference is
-        destroyed. Destroying entities can cause a chain reaction of destruction.
-
-        Sparse matrices may contain references but they will not trigger a
-        recursive destruction of entities. Instead, references to destroyed
-        entities are simply removed from the sparse matrix.
-        """
+        return dead_maps
 
     def is_sorted(self):
         """ Is everything in this database sorted? """
@@ -199,7 +189,7 @@ class Database:
 
         Note: this operation invalidates all unstable_index's!
         """
-        self._remove_references_to_destroyed()
+        destroyed_maps = self._remove_references_to_destroyed()
 
         # Resolve the sort keys from strings to DB_Classes.
         for db_class in self.db_classes.values():
@@ -305,7 +295,17 @@ class DB_Class(_Documentation):
                 any data in the instance object. Docstrings attached to the
                 base_class will be made publicly visible.
 
-        Argument sort_key is unimplemented.
+        Argument sort_key is [TODO]
+        """
+        """ TODO: Use these docs:
+
+        If the dangling references are allow to be NULL then they are replaced
+        with NULL references. Otherwise the entity containing the reference is
+        destroyed. Destroying entities can cause a chain reaction of destruction.
+
+        Sparse matrices may contain references but they will not trigger a
+        recursive destruction of entities. Instead, references to destroyed
+        entities are simply removed from the sparse matrix.
         """
         if not doc:
             if base_class and base_class.__doc__:
@@ -746,6 +746,7 @@ class Attribute(_DataComponent):
         else:
             for idx in xp.nonzero(target_is_dead)[0]:
                 self._cls.index_to_object(idx).destroy()
+                dead_map[idx] = True
 
 class ClassAttribute(_DataComponent):
     """ This is the database's internal representation of a class variable. """
@@ -823,6 +824,7 @@ class Sparse_Matrix(_DataComponent):
         self.shape = (len(self._cls), len(self.column))
         self.fmt = 'csr'
         self.free()
+        if self.reference: raise NotImplementedError("todo?")
 
     __init__.__doc__ += "".join((
         _DataComponent._dtype_doc,
@@ -842,10 +844,21 @@ class Sparse_Matrix(_DataComponent):
         self.data = None
         self._host_lil_mem = None
 
+    def _remove_references_to_destroyed(self, destroyed_maps):
+        if self.data is None: return
+        dead_columns = destroyed_maps[self.column]
+        if dead_columns is None: return
+        self.to_csr()
+        column_indices = self.data.indices
+        dead_entries = np.nonzero(dead_columns[column_indices])[0]
+        self.data[dead_entries] = 0
+
     def _alloc_if_free(self):
         if self.data is None:
             self.data = self._matrix_class(self.shape, dtype=self.dtype)
 
+    # TODO: Should this filter out zeros?
+    #       Also, when should this compress out zeros?
     def _getter(self, instance):
         if self.data is None: return ([], [])
         if self.fmt == 'coo': self.to_lil()
@@ -858,7 +871,6 @@ class Sparse_Matrix(_DataComponent):
             index = matrix.indices
         else: raise NotImplementedError(self.fmt)
         index_to_object = self.column.index_to_object
-        if self.reference: raise NotImplementedError("Implement maybe?")
         return ([index_to_object(x) for x in index], list(matrix.data))
 
     def _setter(self, instance, value):
