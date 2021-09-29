@@ -231,25 +231,6 @@ class Database:
             except Exception as x: exceptions.append(str(x))
         if exceptions: raise AssertionError(",\n                ".join(sorted(exceptions))+".")
 
-    def _repr__(self): # TODO!
-        """ Table summarizing contents. """
-        return repr(super())
-        s = ""
-        case_insensitive = lambda kv_pair: kv_pair[0].lower()
-        components = sorted(self.components.items(), key=case_insensitive)
-        archetypes = sorted(self.archetypes.items(), key=case_insensitive)
-        for comp_name, comp in components:
-            try: self._get_archetype(comp_name)
-            except ValueError:
-                s += repr(comp) + "\n"
-        for ark_name, ark in archetypes:
-            s += "=" * 80 + "\n"
-            s += repr(ark) + "\n"
-            for comp_name, comp in components:
-                if not comp_name.startswith(ark_name): continue
-                s += repr(comp) + "\n"
-        return s
-
 class _Documentation:
     def __init__(self, name, doc):
         self.name = str(name)
