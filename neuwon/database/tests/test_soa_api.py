@@ -1,7 +1,7 @@
 from neuwon.database import *
 from neuwon.database.memory_spaces import *
-import pytest
 import cupy
+import pytest
 
 def test_repr():
     print(repr(host))
@@ -61,7 +61,6 @@ def test_create_on_device():
     cols, vals = f.sp
     assert cols == [f, f]
     assert vals == [3.4, 5.5]
-
 
 @pytest.mark.skip
 def test_matrixes():

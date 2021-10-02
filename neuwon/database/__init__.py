@@ -14,17 +14,16 @@ epsilon = np.finfo(Real).eps
 Pointer = np.dtype('u4')
 NULL    = np.iinfo(Pointer).max
 
-# TODO: Implement method sort().
-
 class Database:
     def __init__(self):
         """ Create a new empty database. """
         self.db_classes = dict()
         self.clock = None
         self.memory_space = memory_spaces.host
+        self.sort_order = None
 
-    def add_class(self, name: str, base_class:type=None, doc:str="") -> 'DB_Class':
-        return DB_Class(self, name, base_class=base_class, doc=doc)
+    def add_class(self, name: str, base_class:type=None, sort_key=tuple(), doc:str="") -> 'DB_Class':
+        return DB_Class(self, name, base_class=base_class, sort_key=sort_key, doc=doc)
 
     def get(self, name: str) -> 'DB_Class' or '_DataComponent':
         """ Get the database's internal representation of the named thing.
@@ -51,8 +50,7 @@ class Database:
             assert name._cls.database is self
             return name
         elif isinstance(name, str): pass
-        else:
-            name = str(name)
+        else: raise ValueError(f"Expected 'str' got '{type(name)}'")
         _cls, _, attr = name.partition('.')
         try:
             obj = self.db_classes[_cls]
@@ -147,35 +145,27 @@ class Database:
 
     def _remove_references_to_destroyed(self):
         """ Remove all references from the living instances to the dead ones. """
-        # 
-        xp = self.memory_space.array_module
-        dead_maps = {}
         for db_class in self.db_classes.values():
-            if db_class.destroyed_list:
-                dead_maps[db_class] = dead = xp.zeros(len(db_class), dtype=bool)
-                dead[db_class.destroyed_list] = True
-            else:
-                dead_maps[db_class] = None
+            db_class._set_destroyed_mask()
         # Determine an order to scan for destroyed references so that they don't
         # need to be checked more than once.
         def destructive_references(db_class) -> [DB_Class]:
-            for comp in db_class.components.values():
-                if comp.reference and not comp.allow_invalid:
-                    yield comp.reference
+            for component in db_class.components.values():
+                if component.reference and not component.allow_invalid:
+                    yield component.reference
         dependencies = topological_sort(self.db_classes.values(), destructive_references)
-        # First pass: destroy all instance with non-optional references to other
-        # instances which are destroyed.
-        done = set()
+        order = [] # First scan references according to the chain of dependencies.
+        order_does_not_matter = [] # Then scan the remaining references.
         for db_class in reversed(dependencies):
-            for comp in destructive_references(db_class):
-                comp._remove_references_to_destroyed(dead_maps)
-                done.add(comp)
-        # Second pass: replace the remaining optional references with NULL.
-        for db_class in self.db_classes.values():
-            for comp in db_class.components.values():
-                if comp not in done:
-                    comp._remove_references_to_destroyed(dead_maps)
-        return dead_maps
+            for component in db_class.components.values():
+                if component.reference and not component.allow_invalid:
+                    order.append(component)
+                else:
+                    order_does_not_matter.append(component)
+        order.extend(order_does_not_matter)
+        # 
+        for component in order:
+             component._remove_references_to_destroyed()
 
     def is_sorted(self):
         """ Is everything in this database sorted? """
@@ -187,29 +177,33 @@ class Database:
         Also removes any holes in the arrays which were left behind by
         destroyed instances.
 
-        Note: this operation invalidates all unstable_index's!
+        WARNING: This invalidates all unstable_index's!
         """
-        destroyed_maps = self._remove_references_to_destroyed()
-
+        self._remove_references_to_destroyed()
         # Resolve the sort keys from strings to DB_Classes.
         for db_class in self.db_classes.values():
-            1/0
-
-        # Sort all data.
-        sort_order = topological_sort(self.db_classes.values(), lambda cls: cls.sort_key)
-        for db_class in reversed(sort_order):
-            # Sort out the dead instances and truncate them off of the end.
-            1/0
-            # Stable sort by each key, in reverse.
-            for key in reversed(self.sort_key):
-                1/0
-
-
-        # Update all references to point to their new locations.
-        1/0
-
-        for db_class in self.db_classes.values():
-            db_class.get("_dead").free()
+            keys = db_class.sort_key
+            if any(not isinstance(k, _DataComponent) for k in keys):
+                db_class.sort_key = keys = tuple(db_class.get(k) for k in keys)
+                assert all(isinstance(x, Attribute) for x in keys)
+                self.sort_order = None # Sort order was invalidated by adding a new db_class.
+        # Sorting by classes by references to other classes introduces a
+        # dependency in the sort order.
+        def sort_order_dependencies(db_class):
+            """ Yields all db_classes which must be sorted before this db_class can be sorted. """
+            for component in db_class.sort_key:
+                if component.reference:
+                    yield component.reference
+        if self.sort_order is None:
+            self.sort_order = topological_sort(self.db_classes.values(), sort_order_dependencies)
+        # Propagate "is_sorted==False" through the dependencies.
+        for db_class in reversed(self.sort_order):
+            if not db_class.is_sorted: continue
+            if any(not x.is_sorted for x in sort_order_dependencies(db_class)):
+                db_class.is_sorted = False
+        # Sort all db_classes.
+        for db_class in reversed(self.sort_order):
+            db_class._sort()
 
     def check(self, name:str=None):
         """ Run all configured checks on the database.
@@ -301,11 +295,17 @@ class DB_Class(_Documentation):
         self.referenced_by = list()
         self.referenced_by_matrix_columns = list()
         self.instances = []
-        if not isinstance(sort_key, Iterable): sort_key = (sort_key,)
-        self.sort_key = tuple(self.database.get_component(x) for x in sort_key)
+        if isinstance(sort_key, str):
+            self.sort_key = (sort_key,)
+        else:
+            self.sort_key = tuple(sort_key)
+            for k in self.sort_key:
+                if not isinstance(k, str):
+                    raise ValueError(f"Expected 'str', got '{type(k)}'")
         self.is_sorted = True
         self._init_instance_type(base_class, doc)
         self.destroyed_list = []
+        self.destroyed_mask = None
 
     def _init_instance_type(self, users_class, doc):
         """ Make a new subclass to represent instances which are part of *this* database. """
@@ -348,14 +348,17 @@ class DB_Class(_Documentation):
 
                 def destroy(self):
                     \"\"\" \"\"\"
-                    type(self)._cls._destroy_instance(self)
+                    self._cls._destroy_instance(self)
 
                 def is_destroyed(self):
                     \"\"\" \"\"\"
                     return self._idx == {NULL}
 
                 def get_unstable_index(self):
-                    \"\"\" TODO: Explain how / when this index changes. \"\"\"
+                    \"\"\" Get the index into the database where this object is stored at.
+
+                    WARNING: Sorting the database will invalidate this index!
+                    \"\"\"
                     return self._idx
 
                 @classmethod
@@ -388,6 +391,14 @@ class DB_Class(_Documentation):
         self.instances[instance._idx] = None
         instance._idx = NULL
         self.is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
+
+    def _set_destroyed_mask(self):
+        if self.destroyed_list:
+            xp = self.database.memory_space.array_module
+            self.destroyed_mask = mask = xp.zeros(len(self), dtype=bool)
+            mask[self.destroyed_list] = True
+        else:
+            self.destroyed_mask = None
 
     def get_instance_type(self) -> DB_Object:
         """ Get the public / external representation of this DB_Class. """
@@ -456,6 +467,59 @@ class DB_Class(_Documentation):
 
     def add_connectivity_matrix(self, name:str, column, doc=""):
         return Connectivity_Matrix(self, name, column, doc=doc)
+
+    def _sort(self):
+        if self.is_sorted: return
+        xp = self.database.memory_space.array_module
+        # First compress out the dead instances.
+        new_to_old = xp.arange(len(self))
+        if self.destroyed_list:
+            new_to_old = xp.compress(xp.logical_not(self.destroyed_mask), new_to_old)
+        # Sort by each key.
+        for key in reversed(self.sort_key):
+            sort_key_data   = self.get(key).get_data()
+            rearranged      = sort_key_data[new_to_old]
+            sort_order      = xp.argsort(rearranged, kind='stable')
+            new_to_old      = new_to_old[sort_order]
+        # Make the forward transform map.
+        old_to_new = xp.empty(len(self), dtype=Pointer)
+        old_to_new[new_to_old] = xp.arange(len(new_to_old))
+        old_to_new[self.destroyed_list] = NULL
+        # Apply the sort to each data component.
+        for component in self.components.values():
+            if component.is_free(): continue
+            if isinstance(component, Attribute):
+                component.data = component.data[new_to_old]
+            elif isinstance(component, ClassAttribute):
+                pass
+            elif isinstance(component, Sparse_Matrix):
+                component.to_coo()
+                component.data.row = old_to_new[component.data.row]
+            else: raise NotImplementedError(type(component))
+        self.instances = list(np.take(self.instances, new_to_old))
+        for ref in self.instances:
+            inst = ref()
+            if inst:
+                inst._idx = old_to_new[inst._idx]
+        # Update all references to point to their new locations.
+        for component in self.referenced_by:
+            assert isinstance(component, Attribute)
+            assert component.reference is self
+            if component.is_free(): continue
+            data = component.get_data()
+            null_values = (data == NULL)
+            data = xp.take(old_to_new, data, mode='clip')
+            data[null_values] = NULL
+            component.data = data
+        for matrix in self.referenced_by_matrix_columns:
+            if matrix.is_free(): continue
+            matrix.to_coo()
+            matrix.data.col = old_to_new[matrix.data.col]
+        # Bookkeeping.
+        self.size = len(new_to_old)
+        self.destroyed_list = []
+        self.destroyed_mask = None
+        self.is_sorted = True
 
     def check(self, name:str=None):
         """ Run all configured checks on this class or on only the given data component. """
@@ -574,7 +638,7 @@ class _DataComponent(_Documentation):
         if upper_bound is not None:
             assert xp.all(xp.greater_equal(upper_bound, data)), self.name + " greater than %g"%upper_bound
 
-    def _remove_references_to_destroyed(self, destroyed_maps):
+    def _remove_references_to_destroyed(self):
         raise NotImplementedError(type(self))
 
     def _type_info(self):
@@ -714,20 +778,23 @@ class Attribute(_DataComponent):
         # transfering until someone calls "get_data".
         self.data = self.memory_space.array(value, dtype=self.dtype).reshape(shape)
 
-    def _remove_references_to_destroyed(self, dead_maps):
+    def _remove_references_to_destroyed(self):
         if not self.reference: return
         if self.data is None: return
         pointer_data = self.data[:len(self._cls)]
-        dead_map = dead_maps[self.reference]
-        if dead_map is None: return
-        xp = cupy.get_array_module(dead_map)
-        target_is_dead = xp.take(dead_map, pointer_data, axis=0)
-        if self.allow_invalid:
-            pointer_data[target_is_dead] = NULL
-        else:
-            for idx in xp.nonzero(target_is_dead)[0]:
-                self._cls.index_to_object(idx).destroy()
-                dead_map[idx] = True
+        destroyed_mask = self.reference.destroyed_mask
+        if destroyed_mask is None: return
+        xp = cupy.get_array_module(destroyed_mask)
+        target_is_dead = xp.take(destroyed_mask, pointer_data, axis=0, mode='clip')
+        target_is_dead[pointer_data == NULL] = True
+        target_is_dead = xp.nonzero(target_is_dead)[0]
+        pointer_data[target_is_dead] = NULL
+        if not self.allow_invalid:
+            for idx in target_is_dead:
+                db_obj = self._cls.index_to_object(idx)
+                if db_obj is not None:
+                    db_obj.destroy()
+                    destroyed_mask[idx] = True
 
 class ClassAttribute(_DataComponent):
     """ This is the database's internal representation of a class variable. """
@@ -746,7 +813,7 @@ class ClassAttribute(_DataComponent):
                 allow_invalid=allow_invalid, valid_range=valid_range)
         self.data = self.initial_value
         self.memory_space = memory_spaces.host
-        if self.reference: raise NotImplementedError("todo?")
+        if self.reference: raise NotImplementedError
 
     __init__.__doc__ += "".join((
         _DataComponent._dtype_doc,
@@ -772,7 +839,7 @@ class ClassAttribute(_DataComponent):
     def free(self):
         self.data = self.initial_value
 
-    def _remove_references_to_destroyed(self, destroyed_maps):
+    def _remove_references_to_destroyed(self):
         pass
 
 class Sparse_Matrix(_DataComponent):
@@ -805,7 +872,7 @@ class Sparse_Matrix(_DataComponent):
         self.shape = (len(self._cls), len(self.column))
         self.fmt = 'csr'
         self.free()
-        if self.reference: raise NotImplementedError("todo?")
+        if self.reference: raise NotImplementedError
 
     __init__.__doc__ += "".join((
         _DataComponent._dtype_doc,
@@ -825,14 +892,25 @@ class Sparse_Matrix(_DataComponent):
         self.data = None
         self._host_lil_mem = None
 
-    def _remove_references_to_destroyed(self, destroyed_maps):
+    def _remove_references_to_destroyed(self):
         if self.data is None: return
-        dead_columns = destroyed_maps[self.column]
-        if dead_columns is None: return
-        self.to_csr()
-        column_indices = self.data.indices
-        dead_entries = np.nonzero(dead_columns[column_indices])[0]
-        self.data[dead_entries] = 0
+        self.to_coo()
+        # Mask off the dead entries.
+        dead_rows = self._cls.destroyed_mask
+        dead_cols = self.column.destroyed_mask
+        masks = []
+        if dead_rows is not None:
+            masks.append(np.logical_not(dead_rows[self.data.row]))
+        if dead_cols is not None:
+            masks.append(np.logical_not(dead_cols[self.data.col]))
+        # Combine all of the masks into one.
+        if   len(masks) == 0: return
+        elif len(masks) == 1: alive_mask = masks.pop()
+        else:                 alive_mask = np.logical_and(*masks)
+        # Compress out the destroyed entries.
+        self.data.row  = self.data.row[alive_mask]
+        self.data.col  = self.data.col[alive_mask]
+        self.data.data = self.data.data[alive_mask]
 
     def _alloc_if_free(self):
         if self.data is None:
@@ -862,7 +940,7 @@ class Sparse_Matrix(_DataComponent):
         self._transfer(memory_spaces.host)
         if self.data is None:
             self.fmt = "lil"
-            return
+            return self
         if self.fmt != "lil":
             self.fmt = "lil"
             self.data = self._matrix_class(self.data, dtype=self.dtype)
@@ -871,7 +949,7 @@ class Sparse_Matrix(_DataComponent):
     def to_coo(self) -> 'self':
         if self.data is None:
             self.fmt = "coo"
-            return
+            return self
         if self.fmt != "coo":
             self.fmt = "coo"
             self._host_lil_mem = None
@@ -881,7 +959,7 @@ class Sparse_Matrix(_DataComponent):
     def to_csr(self) -> 'self':
         if self.data is None:
             self.fmt = "csr"
-            return
+            return self
         if self.fmt != "csr":
             self.fmt = "csr"
             self._host_lil_mem = None

@@ -14,9 +14,9 @@ def test_OOP_API():
             self.bar
 
     db = Database()
-    Foo = db.add_class("Foo", FooBaseClass)
-    Foo.add_attribute("bar")
-    FooFactory = Foo.get_instance_type()
+    FooClass = db.add_class("Foo", FooBaseClass)
+    FooClass.add_attribute("bar")
+    FooFactory = FooClass.get_instance_type()
 
     x = FooFactory()
     x.bar = 4
@@ -24,29 +24,31 @@ def test_OOP_API():
 
     x.my_helper_method()
 
-    Foo.add_attribute("ptr", dtype="Foo", allow_invalid=True)
+    FooClass.add_attribute("ptr", dtype="Foo", allow_invalid=True)
     y = FooFactory()
     x.ptr = y
     x.ptr.bar = 5
     assert y.bar == 5
-    Foo.add_class_attribute("shared_value", 77)
+    FooClass.add_class_attribute("shared_value", 77)
     assert x.shared_value == 77
     y.shared_value = 55
     assert x.shared_value == 55
 
-    Foo.add_sparse_matrix("connections", "Foo").to_lil()
+    FooClass.add_sparse_matrix("connections", "Foo").to_lil()
     print((x.connections))
     x.connections = ([y], [2.])
     print((x.connections))
 
-    Foo.add_connectivity_matrix("friends", Foo)
+    FooClass.add_connectivity_matrix("friends", FooFactory)
     x.friends.append(y)
 
     print(db)
     if False:
-        help(Foo)
+        help(FooClass)
         help(x)
 
+    z = FooFactory()
+    z.bar = 56
     y.ptr = x
     assert not x.is_destroyed()
     x.destroy()
@@ -55,6 +57,7 @@ def test_OOP_API():
         x.ptr
     assert y.ptr is None
     db.sort()
+    assert z.bar == 56
 
 def test_custom_classes():
 
