@@ -81,7 +81,7 @@ class Species:
     def __repr__(self):
         return "neuwon.species.Species(%s)"%self.name
 
-    def _initialize(self, database):
+    def _initialize(self, database, time_step, celsius, input_clock):
         inside_cls = database.get(self.inside_archetype)
         if self.inside_concentration is not None:
             if self.inside_global_const:
@@ -122,6 +122,7 @@ class Species:
                 segment_cls.add_attribute(f"{self.name}_reversal_potential",
                         initial_value=np.nan,
                         units="mV")
+            input_clock.register_callback(lambda: self._accumulate_conductance(database, celsius) or True)
 
     def _compute_reversal_potential(self, database, celsius):
         x = database.get_data(f"Segment.{self.name}_reversal_potential")
@@ -153,7 +154,6 @@ class Species:
             zero("outside/delta_concentrations/"+self.name)
 
     def _accumulate_conductance(self, database, celsius):
-        if not self.electric: return
         sum_conductance     = database.get_data("Segment.sum_conductance")
         driving_voltage     = database.get_data("Segment.driving_voltage")
         species_conductance = database.get_data(f"Segment.{self.name}_conductance")

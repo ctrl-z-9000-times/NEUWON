@@ -262,7 +262,7 @@ class DB_Object:
 
 class DB_Class(_Documentation):
     """ This is the database's internal representation of a class type. """
-    def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc="",):
+    def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc:str="",):
         """ Create a new class which is managed by the database.
 
         Argument base_class: The external representation will inherit from this
@@ -337,6 +337,7 @@ class DB_Class(_Documentation):
         pycode = textwrap.dedent(f"""
             class {self.name}(*super_classes):
                 \"\"\"{escape(doc)}\"\"\"
+                # TODO: Rename "_cls" to "_db_class".
                 _cls = self
                 __slots__ = {__slots__}
                 __module__ = super_classes[0].__module__
@@ -465,7 +466,7 @@ class DB_Class(_Documentation):
         return Sparse_Matrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_connectivity_matrix(self, name:str, column, doc=""):
+    def add_connectivity_matrix(self, name:str, column, doc:str=""):
         return Connectivity_Matrix(self, name, column, doc=doc)
 
     def _sort(self):
@@ -540,6 +541,7 @@ class _DataComponent(_Documentation):
         _Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
         assert self.name not in db_class.components
+        # TODO: Rename "_cls" to the full "db_class". Don't abbreviate it!
         self._cls = db_class
         self._cls.components[self.name] = self
         if shape is None: pass
@@ -1054,7 +1056,7 @@ class Sparse_Matrix(_DataComponent):
 
 class Connectivity_Matrix(Sparse_Matrix):
     """ """ # TODO-DOC
-    def __init__(self, db_class, name, column, doc=""):
+    def __init__(self, db_class, name, column, doc:str=""):
         """ """ # TODO-DOC
         super().__init__(db_class, name, column, doc=doc, dtype=bool,)
     

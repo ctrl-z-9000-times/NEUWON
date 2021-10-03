@@ -22,7 +22,7 @@ class Reaction:
             return type(self).__name__
 
     @classmethod
-    def initialize(self, database, time_step, celsius):
+    def initialize(self, database, time_step, celsius, input_clock):
         """
         Optional method.
         This method is called after the Model has been created.
@@ -107,7 +107,7 @@ class Model:
             species = Species(species, *args, **kwargs)
         assert species.name not in self.species
         self.species[species.name] = species
-        species._initialize(self.database)
+        species._initialize(self.database, self.time_step, self.celsius, self.input_clock)
         return species
 
     def get_species(self, species_name) -> Species:
@@ -115,9 +115,12 @@ class Model:
 
     def add_reaction(self, reaction: Reaction) -> Reaction:
         r = reaction
-        if isinstance(r, str) and r.endswith(".mod"):
-            from neuwon.nmodl import NmodlMechanism
-            r = NmodlMechanism(r)
+        if isinstance(r, str):
+            if r.endswith(".mod"):
+                from neuwon.nmodl import NmodlMechanism
+                r = NmodlMechanism(r)
+            else:
+                raise ValueError("File extension not understood")
         if hasattr(r, "initialize"):
             retval = r.initialize(self.database,
                     time_step=self.time_step,
@@ -142,7 +145,7 @@ class Model:
         For more information see: The NEURON Book, 2003.
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
-        # self.database.to_device()
+        self.database.sort()
         with self.database.using_memory_space('cuda'):
             self._advance_species()
             self._advance_reactions()
@@ -151,6 +154,7 @@ class Model:
 
     def _advance_lockstep(self):
         """ Naive integration strategy, for reference only. """
+        self.database.sort()
         self._advance_species()
         self._advance_species()
         self._advance_reactions()
@@ -158,15 +162,12 @@ class Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
-        self.input_clock.tick()
         dt = self.input_clock.get_tick_period()
-
         sum_conductance = self.database.get_data("Segment.sum_conductance")
         driving_voltage = self.database.get_data("Segment.driving_voltage")
         sum_conductance.fill(0.0) # Zero accumulator.
         driving_voltage.fill(0.0) # Zero accumulator.
-        for s in self.species.values():
-            s._accumulate_conductance(self.database, self.celsius)
+        self.input_clock.tick()
         driving_voltage /= sum_conductance
         xp = cp.get_array_module(driving_voltage)
         driving_voltage[:] = xp.nan_to_num(driving_voltage)

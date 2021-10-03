@@ -1,4 +1,5 @@
 from neuwon.database import Database
+from neuwon.database.time import Clock
 from neuwon.segment import SegmentMethods
 from neuwon.species import *
 
@@ -10,5 +11,7 @@ def test_init():
             membrane_capacitance = 1e-14,)
 
     s = Species("leak", reversal_potential = -60)
-    s._initialize(db)
+    inclock = Clock(.5)
+    s._initialize(db, .5, 8, inclock)
+    inclock.tick()
     s._advance(db)
