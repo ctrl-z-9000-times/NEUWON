@@ -26,7 +26,7 @@ class Clock:
 
         Argument units is the physical units for 'tick_period'. Optional.
         """
-        self.dt = float(tick_period)
+        self.dt = self.time_step = self.tick_period = float(tick_period)
         self.ticks = 0
         self.units = str(units)
         self.callbacks = []
