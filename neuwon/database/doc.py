@@ -1,7 +1,7 @@
 import textwrap
 
 class Documentation:
-    def __init__(self, name, doc):
+    def __init__(self, name:str, doc:str=""):
         self.name = str(name)
         self.doc = textwrap.dedent(str(doc)).strip()
 

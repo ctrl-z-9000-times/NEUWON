@@ -1,10 +1,10 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import memory_spaces
+from neuwon.database.database import DB_Class, DB_Object, Database
+from neuwon.database.doc import Documentation
+from neuwon.database.dtypes import *
 import cupy
 import numpy as np
-
-from neuwon.database.doc import Documentation
-from neuwon.database.database import *
 
 class DataComponent(Documentation):
     """ Abstract class for all types of data storage. """

@@ -1,6 +1,6 @@
-import numpy as np
+import numpy as _np
 
-Real    = np.dtype('f8')
-epsilon = np.finfo(Real).eps
-Pointer = np.dtype('u4')
-NULL    = np.iinfo(Pointer).max
+Real    = _np.dtype('f8')
+epsilon = _np.finfo(Real).eps
+Pointer = _np.dtype('u4')
+NULL    = _np.iinfo(Pointer).max
