@@ -9,10 +9,7 @@ import numpy as np
 import textwrap
 import weakref
 
-Real    = np.dtype('f8')
-epsilon = np.finfo(Real).eps
-Pointer = np.dtype('u4')
-NULL    = np.iinfo(Pointer).max
+from neuwon.database.dtypes import *
 
 class Database:
     def __init__(self):
