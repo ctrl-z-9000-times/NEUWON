@@ -388,8 +388,10 @@ class DB_Class(_Documentation):
         if self.sort_key: self.is_sorted = False
 
     def _destroy_instance(self, instance):
-        self.destroyed_list.append(instance._idx)
-        self.instances[instance._idx] = None
+        idx = instance._idx
+        self.destroyed_list.append(idx)
+        if self.destroyed_mask is not None: self.destroyed_mask[idx] = True
+        self.instances[idx] = None
         instance._idx = NULL
         self.is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
 
@@ -450,6 +452,10 @@ class DB_Class(_Documentation):
 
     def get_database(self) -> Database:
         return self.database
+
+    def get_database_class(self) -> 'self':
+        """ Returns self, since this is the database_class. """
+        return self
 
     def add_attribute(self, name:str, initial_value=None, dtype=Real, shape=(1,),
                 doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
