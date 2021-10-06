@@ -1,6 +1,7 @@
 from neuwon.database import *
 from neuwon.database.memory_spaces import *
 import cupy
+import numpy as np
 import pytest
 
 def test_repr():

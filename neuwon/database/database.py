@@ -1,13 +1,12 @@
 from collections.abc import Callable, Iterable, Mapping
 from graph_algorithms import topological_sort
 from neuwon.database import memory_spaces
+from neuwon.database.doc import Documentation
+from neuwon.database.dtypes import *
 import itertools
 import numpy as np
 import textwrap
 import weakref
-
-from neuwon.database.dtypes import *
-from neuwon.database.doc import Documentation
 
 class Database:
     def __init__(self):

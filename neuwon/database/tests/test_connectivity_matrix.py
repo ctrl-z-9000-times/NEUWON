@@ -1,4 +1,5 @@
 from neuwon.database import *
+import numpy as np
 import pytest
 import random
 
