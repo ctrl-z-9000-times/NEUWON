@@ -1,6 +1,6 @@
 import textwrap
 
-class _Documentation:
+class Documentation:
     def __init__(self, name, doc):
         self.name = str(name)
         self.doc = textwrap.dedent(str(doc)).strip()

@@ -407,7 +407,7 @@ class Trace:
                 expense of accuracy in the time immediately after creation.
         """
         # Determine which mode of operation to use.
-        self.trace_attr = isinstance(db_value, neuwon.database._DataComponent)
+        self.trace_attr = isinstance(db_value, neuwon.database.DataComponent)
         self.trace_obj  = not self.trace_attr
         # Get the data component.
         if self.trace_attr:
