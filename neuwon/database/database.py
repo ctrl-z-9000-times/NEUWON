@@ -287,11 +287,13 @@ class DB_Class(Documentation):
 
     def _init_instance_type(self, users_class, doc):
         """ Make a new subclass to represent instances which are part of *this* database. """
-        # Enforce that the user's class use "__slots__".
+        # Enforce that the user's class use "__slots__ = ()".
         if users_class:
             for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
                     raise TypeError(f"Class \"{cls.__name__}\" does not define __slots__!")
+                if len(cls.__slots__) != 0:
+                    raise TypeError(f"\"{cls.__name__}.__slots__\" is not empty!")
         # 
         if users_class:
             super_classes = (users_class, DB_Object)
