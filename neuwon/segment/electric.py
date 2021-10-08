@@ -108,6 +108,11 @@ class ElectricProperties:
 
     # TODO: Consider changing the default duration to just "1" so that it's a
     # nice round number that's easy to remember.
+    # 
+    # TODO:  Conisder switching inject current to units of nano-Amps.
+    #        Does anyone else use nA?
+    #        What does NEURON use?
+    #        Is nA actually a good unit? or is my using it a fluke?
     def inject_current(self, current, duration = 1.4):
         duration = float(duration)
         assert duration >= 0

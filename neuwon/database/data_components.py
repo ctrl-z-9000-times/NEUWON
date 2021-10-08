@@ -13,9 +13,8 @@ class DataComponent(Documentation):
         Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
         assert self.name not in db_class.components
-        # TODO: Rename "_cls" to the full "db_class". Don't abbreviate it!
-        self._cls = db_class
-        self._cls.components[self.name] = self
+        self.db_class = db_class
+        self.db_class.components[self.name] = self
         if shape is None: pass
         elif isinstance(shape, Iterable):
             self.shape = tuple(round(x) for x in shape)
@@ -26,7 +25,7 @@ class DataComponent(Documentation):
         if isinstance(dtype, str) or isinstance(dtype, DB_Class):
             self.dtype = Pointer
             self.initial_value = NULL
-            self.reference = self._cls.database.get_class(dtype)
+            self.reference = self.db_class.database.get_class(dtype)
             self.reference.referenced_by.append(self)
         else:
             self.dtype = np.dtype(dtype)
@@ -37,12 +36,12 @@ class DataComponent(Documentation):
             self.reference = False
         self.units = str(units)
         self.allow_invalid = bool(allow_invalid)
-        if self.reference is self._cls: assert self.allow_invalid
+        if self.reference is self.db_class: assert self.allow_invalid
         self.valid_range = tuple(valid_range)
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2
-        self.memory_space = self._cls.database.memory_space
-        setattr(self._cls.instance_type, self.name,
+        self.memory_space = self.db_class.database.memory_space
+        setattr(self.db_class.instance_type, self.name,
                 property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
 
     def _getter_wrapper(self, instance):
@@ -72,8 +71,8 @@ class DataComponent(Documentation):
     def get_dtype(self) -> np.dtype:        return self.dtype
     def get_shape(self) -> tuple:           return self.shape
     def get_initial_value(self) -> object:  return self.initial_value
-    def get_class(self) -> DB_Class:        return self._cls
-    def get_database(self) -> Database:     return self._cls.database
+    def get_class(self) -> DB_Class:        return self.db_class
+    def get_database(self) -> Database:     return self.db_class.database
 
     def get_memory_space(self) -> str:
         """
@@ -123,7 +122,7 @@ class DataComponent(Documentation):
         return s
 
     def __repr__(self):
-        return "<%s: %s.%s %s>"%(type(self).__name__, self._cls.name, self.name, self._type_info())
+        return "<%s: %s.%s %s>"%(type(self).__name__, self.db_class.name, self.name, self._type_info())
 
     _units_doc = """
         Argument units is an optional documentation string for physical units.
@@ -161,7 +160,7 @@ class Attribute(DataComponent):
         DataComponent.__init__(self, db_class, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
-        self.data = self._alloc(len(self._cls))
+        self.data = self._alloc(len(self.db_class))
         if self.initial_value is not None:
             self.data.fill(self.initial_value)
 
@@ -178,7 +177,7 @@ class Attribute(DataComponent):
 
     def _alloc_if_free(self):
         if self.data is None:
-            self.data = self._alloc(len(self._cls))
+            self.data = self._alloc(len(self.db_class))
             if self.initial_value is not None:
                 self.data.fill(self.initial_value)
 
@@ -237,12 +236,12 @@ class Attribute(DataComponent):
 
     def get_data(self):
         """ Returns either "numpy.ndarray" or "cupy.ndarray" """
-        self._transfer(self._cls.database.memory_space)
+        self._transfer(self.db_class.database.memory_space)
         self._alloc_if_free()
-        return self.data[:len(self._cls)]
+        return self.data[:len(self.db_class)]
 
     def set_data(self, value):
-        size = len(self._cls)
+        size = len(self.db_class)
         assert len(value) == size
         if self.shape == (1,):
             shape = (size,) # Don't append empty trailing dimension.
@@ -255,7 +254,7 @@ class Attribute(DataComponent):
     def _remove_references_to_destroyed(self):
         if not self.reference: return
         if self.data is None: return
-        pointer_data = self.data[:len(self._cls)]
+        pointer_data = self.data[:len(self.db_class)]
         destroyed_mask = self.reference.destroyed_mask
         if destroyed_mask is None: return
         xp = cupy.get_array_module(destroyed_mask)
@@ -265,7 +264,7 @@ class Attribute(DataComponent):
         pointer_data[target_is_dead] = NULL
         if not self.allow_invalid:
             for idx in target_is_dead:
-                db_obj = self._cls.index_to_object(idx)
+                db_obj = self.db_class.index_to_object(idx)
                 if db_obj is not None:
                     db_obj.destroy()
                     destroyed_mask[idx] = True
@@ -341,9 +340,9 @@ class Sparse_Matrix(DataComponent):
         DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=None, doc=doc, units=units, initial_value=0.,
                 allow_invalid=allow_invalid, valid_range=valid_range)
-        self.column = self._cls.database.get_class(column)
+        self.column = self.db_class.database.get_class(column)
         self.column.referenced_by_matrix_columns.append(self)
-        self.shape = (len(self._cls), len(self.column))
+        self.shape = (len(self.db_class), len(self.column))
         self.fmt = 'csr'
         self.free()
         if self.reference: raise NotImplementedError
@@ -370,7 +369,7 @@ class Sparse_Matrix(DataComponent):
         if self.data is None: return
         self.to_coo()
         # Mask off the dead entries.
-        dead_rows = self._cls.destroyed_mask
+        dead_rows = self.db_class.destroyed_mask
         dead_cols = self.column.destroyed_mask
         masks = []
         if dead_rows is not None:
@@ -442,7 +441,7 @@ class Sparse_Matrix(DataComponent):
 
     def _resize(self):
         old_shape = self.shape
-        new_shape = self.shape = (len(self._cls), len(self.column))
+        new_shape = self.shape = (len(self.db_class), len(self.column))
 
         if old_shape == new_shape: return
         if self.data is None: return
@@ -490,7 +489,7 @@ class Sparse_Matrix(DataComponent):
         else: raise NotImplementedError(self.memory_space)
 
     def get_data(self):
-        self._transfer(self._cls.database.memory_space)
+        self._transfer(self.db_class.database.memory_space)
         self._alloc_if_free()
         return self.data
 

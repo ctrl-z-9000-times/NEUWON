@@ -34,26 +34,26 @@ class Database:
         """
         if isinstance(name, type) and issubclass(name, DB_Object):
             try:
-                name = name._cls
+                name = name._db_class
             except AttributeError:
                 1/0 # How to explain what went wrong?
         if isinstance(name, DB_Class):
             assert name.database is self
             return name
         elif isinstance(name, DataComponent):
-            assert name._cls.database is self
+            assert name.db_class.database is self
             return name
         elif isinstance(name, str): pass
         else: raise ValueError(f"Expected 'str' got '{type(name)}'")
-        _cls, _, attr = name.partition('.')
+        db_class, _, attr = name.partition('.')
         try:
-            obj = self.db_classes[_cls]
+            obj = self.db_classes[db_class]
         except KeyError:
-            raise KeyError(f"No such DB_Class '{_cls}'")
+            raise KeyError(f"No such DB_Class '{db_class}'")
         try:
             if attr: obj = obj.components[attr]
         except KeyError:
-            raise AttributeError("'%s' object has no attribute '%s'"%(_cls, attr))
+            raise AttributeError("'%s' object has no attribute '%s'"%(db_class, attr))
         return obj
 
     def get_class(self, name: str):
@@ -61,9 +61,9 @@ class Database:
 
         Argument name can be anything which `self.get(name)` accepts.
         """
-        _cls = self.get(name)
-        if isinstance(_cls, DataComponent): _cls = _cls.get_class()
-        return _cls
+        db_class = self.get(name)
+        if isinstance(db_class, DataComponent): db_class = db_class.get_class()
+        return db_class
 
     def get_component(self, name: str):
         component = self.get(name)
@@ -236,17 +236,15 @@ class DB_Object:
             setattr(self, attribute, value)
 
     def __repr__(self):
-        return "<%s:%d>"%(self._cls.name, self._idx)
+        return "<%s:%d>"%(self._db_class.name, self._idx)
 
 class DB_Class(Documentation):
     """ This is the database's internal representation of a class type. """
     def __init__(self, database, name: str, base_class=None, sort_key=tuple(), doc:str="",):
         """ Create a new class which is managed by the database.
 
-        Argument base_class: The external representation will inherit from this
-                class. The base_class can implement methods but should not store
-                any data in the instance object. Docstrings attached to the
-                base_class will be made publicly visible.
+        Argument base_class is an optional superclass for the instance_type.
+                All base_classes must define "__slots__ = ()".
 
         Argument sort_key is [TODO]
         """
@@ -317,19 +315,18 @@ class DB_Class(Documentation):
         pycode = textwrap.dedent(f"""
             class {self.name}(*super_classes):
                 \"\"\"{escape(doc)}\"\"\"
-                # TODO: Rename "_cls" to "_db_class".
-                _cls = self
+                _db_class = self
                 __slots__ = {__slots__}
                 __module__ = super_classes[0].__module__
 
                 def __init__(self, *args, **kwargs):
                     \"\"\"{escape(init_doc)}\"\"\"
-                    self._cls._init_instance(self)
+                    self._db_class._init_instance(self)
                     super().__init__(*args, **kwargs)
 
                 def destroy(self):
                     \"\"\" \"\"\"
-                    self._cls._destroy_instance(self)
+                    self._db_class._destroy_instance(self)
 
                 def is_destroyed(self):
                     \"\"\" \"\"\"
@@ -345,7 +342,7 @@ class DB_Class(Documentation):
                 @classmethod
                 def get_database_class(cls):
                     \"\"\" Get the database's internal representation of this object's type. \"\"\"
-                    return cls._cls
+                    return cls._db_class
             """)
         if False: print(pycode)
         exec(pycode, locals())
