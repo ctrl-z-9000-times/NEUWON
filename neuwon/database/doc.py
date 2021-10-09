@@ -1,8 +1,9 @@
 import textwrap
 
 class Documentation:
-    def __init__(self, name:str, doc:str=""):
+    def __init__(self, name:str, doc:str=''):
         self.name = str(name)
+        if not doc: doc = ''
         self.doc = textwrap.dedent(str(doc)).strip()
 
     def get_name(self) -> str: return self.name
