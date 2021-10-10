@@ -13,6 +13,7 @@ class DataComponent(Documentation):
         Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
         assert self.name not in db_class.components
+        assert self.name not in db_class.methods
         self.db_class = db_class
         self.db_class.components[self.name] = self
         if shape is None: pass

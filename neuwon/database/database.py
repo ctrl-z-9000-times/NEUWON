@@ -268,6 +268,7 @@ class DB_Class(Documentation):
         self.database.db_classes[self.name] = self
         self.size = 0
         self.components = dict()
+        self.methods = dict()
         self.referenced_by = list()
         self.referenced_by_matrix_columns = list()
         self.instances = []
@@ -282,6 +283,7 @@ class DB_Class(Documentation):
         self._init_instance_type(base_class, doc)
         self.destroyed_list = []
         self.destroyed_mask = None
+        self._init_methods()
 
     def _init_instance_type(self, users_class, doc):
         """ Make a new subclass to represent instances which are part of *this* database. """
@@ -289,7 +291,7 @@ class DB_Class(Documentation):
         if users_class:
             for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
-                    raise TypeError(f"Class \"{cls.__name__}\" does not define __slots__!")
+                    raise TypeError(f"Class \"{cls.__name__}\" does not define \"__slots__ = ()\"!")
                 if len(cls.__slots__) != 0:
                     raise TypeError(f"\"{cls.__name__}.__slots__\" is not empty!")
         # 
@@ -348,6 +350,18 @@ class DB_Class(Documentation):
         exec(pycode, locals())
         self.instance_type = locals()[self.name]
 
+    def _init_methods(self):
+        """
+        Find all methods attached to the instance type and add them as methods.
+        """
+        from neuwon.database.callable import Function, Method
+        for attr_name in dir(self.instance_type):
+            if attr_name.startswith('__') and attr_name.endswith('__'): continue
+            attr = getattr(self.instance_type, attr_name)
+            if isinstance(attr, Function):
+                m = Method(attr)
+                m._register_method(self)
+
     __init__.__doc__ += Documentation._doc_doc
 
     def _init_instance(self, new_instance):
@@ -381,6 +395,7 @@ class DB_Class(Documentation):
     # But, on the other hand, if the user ever -god forbid- wrote to the
     # destroyed mask then the DB *will* implode. The OOP instances need to be
     # updated (BC the setter/getters to not check the flag).
+    #       Well, its private, so if they mess it up and die, thats really only their own fault.
     def _set_destroyed_mask(self):
         if self.destroyed_list:
             xp = self.database.memory_space.array_module
@@ -460,6 +475,13 @@ class DB_Class(Documentation):
 
     def add_connectivity_matrix(self, name:str, column, doc:str=""):
         return Connectivity_Matrix(self, name, column, doc=doc)
+
+    def add_method(self, name:str, function:Callable, doc:str=""):
+        # Note, the user can add methods but they will not show up in the
+        # instance_type unless they are defined in the class hierarchy.
+        # This prevents polluting the shared namespaces.
+        # Adding anonamous methods is still useful for running snippets of computation.
+        1/0
 
     def _sort(self):
         if self.is_sorted: return
