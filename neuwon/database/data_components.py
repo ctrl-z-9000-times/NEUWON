@@ -98,7 +98,7 @@ class DataComponent(Documentation):
         """ Check data for values which are: NaN, NULL, or Out of bounds. """
         data = self.get_data()
         if isinstance(self, ClassAttribute):  data = np.array([data])
-        elif isinstance(self, Sparse_Matrix): data = data.data
+        elif isinstance(self, SparseMatrix): data = data.data
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
             if self.reference:
@@ -316,7 +316,7 @@ class ClassAttribute(DataComponent):
     def _remove_references_to_destroyed(self):
         pass
 
-class Sparse_Matrix(DataComponent):
+class SparseMatrix(DataComponent):
     """ """ # TODO-DOC
 
     # TODO: Consider adding more write methods:
@@ -526,7 +526,7 @@ class Sparse_Matrix(DataComponent):
         s += " nnz/row: %g"%nnz_per_row
         return s
 
-class Connectivity_Matrix(Sparse_Matrix):
+class ConnectivityMatrix(SparseMatrix):
     """ """ # TODO-DOC
     def __init__(self, db_class, name, column, doc:str=""):
         """ """ # TODO-DOC
@@ -542,5 +542,5 @@ class Connectivity_Matrix(Sparse_Matrix):
 
 DB_Class.add_attribute.__doc__              = Attribute.__init__.__doc__
 DB_Class.add_class_attribute.__doc__        = ClassAttribute.__init__.__doc__
-DB_Class.add_sparse_matrix.__doc__          = Sparse_Matrix.__init__.__doc__
-DB_Class.add_connectivity_matrix.__doc__    = Connectivity_Matrix.__init__.__doc__
+DB_Class.add_sparse_matrix.__doc__          = SparseMatrix.__init__.__doc__
+DB_Class.add_connectivity_matrix.__doc__    = ConnectivityMatrix.__init__.__doc__

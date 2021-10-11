@@ -24,7 +24,7 @@ class Database:
 
         Argument name can refer to either:
             * A DB_Class
-            * An Attribute, ClassAttribute, or Sparse_Matrix
+            * An Attribute, ClassAttribute, or SparseMatrix
 
         Example:
         >>> Foo = database.add_class("Foo")
@@ -371,7 +371,7 @@ class DB_Class(Documentation):
         for x in self.components.values():
             if isinstance(x, Attribute): x._append(old_size, new_size)
             elif isinstance(x, ClassAttribute): pass
-            elif isinstance(x, Sparse_Matrix): x._resize()
+            elif isinstance(x, SparseMatrix): x._resize()
             else: raise NotImplementedError(type(x))
         for x in self.referenced_by_matrix_columns: x._resize()
         new_instance._idx = old_size
@@ -470,11 +470,11 @@ class DB_Class(Documentation):
 
     def add_sparse_matrix(self, name:str, column, dtype=Real,
                 doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
-        return Sparse_Matrix(self, name, column, dtype=dtype,
+        return SparseMatrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
     def add_connectivity_matrix(self, name:str, column, doc:str=""):
-        return Connectivity_Matrix(self, name, column, doc=doc)
+        return ConnectivityMatrix(self, name, column, doc=doc)
 
     def add_method(self, name:str, function:Callable, doc:str=""):
         # Note, the user can add methods but they will not show up in the
@@ -507,7 +507,7 @@ class DB_Class(Documentation):
                 component.data = component.data[new_to_old]
             elif isinstance(component, ClassAttribute):
                 pass
-            elif isinstance(component, Sparse_Matrix):
+            elif isinstance(component, SparseMatrix):
                 component.to_coo()
                 component.data.row = old_to_new[component.data.row]
             else: raise NotImplementedError(type(component))
