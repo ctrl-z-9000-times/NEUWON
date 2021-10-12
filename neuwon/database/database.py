@@ -50,10 +50,8 @@ class Database:
             obj = self.db_classes[db_class]
         except KeyError:
             raise KeyError(f"No such DB_Class '{db_class}'")
-        try:
-            if attr: obj = obj.components[attr]
-        except KeyError:
-            raise AttributeError("'%s' object has no attribute '%s'"%(db_class, attr))
+        if attr:
+            obj = obj.get(attr)
         return obj
 
     def get_class(self, name: str):
@@ -431,7 +429,11 @@ class DB_Class(Documentation):
         if isinstance(name, DataComponent):
             assert name.get_class() is self
             return name
-        return self.components[str(name)]
+        name = str(name)
+        try:
+            return self.components[name]
+        except KeyError:
+            raise AttributeError("'%s' object has no attribute '%s'"%(self.name, name))
 
     def get_data(self, name: str):
         """ Shortcut to: self.get(name).get_data() """
