@@ -1,6 +1,8 @@
 from neuwon.database import Database
 from neuwon.database.callable import Function
 import math
+import pytest
+import random
 
 
 def test_basic_function():
@@ -29,27 +31,32 @@ def test_basic_method():
     Seg = Seg_data.get_instance_type()
     my_seg = Seg()
     my_seg.bar()
+    assert my_seg.v == -74
     Seg.bar()
     assert my_seg.v == -78
 
 
+@Function
+def area_eq(r):
+    return math.pi * (r**2)
 
 class Segment:
-    def area(r):
-        return math.pi * (r**2)
-
     __slots__ = ()
     @classmethod
     def initialize(cls, db):
         seg_data = db.add_class("Segment", cls)
         seg_data.add_attribute("r", 33.3)
+        seg_data.add_attribute("area")
+        return seg_data.get_instance_type()
 
+    @Function
     def _compute_area(self):
-        self.area = area(self.r)
+        self.area = area_eq(self.r)
 
-
+@pytest.mark.skip
 def test_compile():
     db = Database()
-    Segment.initialize(db)
-
+    Seg = Segment.initialize(db)
+    for _ in range(99): Seg()
+    Seg._compute_area()
 

@@ -4,9 +4,11 @@ from neuwon.database.data_components import ClassAttribute, Attribute, SparseMat
 from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
 import ast
+import copy
 import inspect
 import io
 import numba
+import re
 import uncompyle6
 
 # uncompyle6.code_deparse(compile(ast_node, "filename", mode='exec'))
@@ -32,6 +34,7 @@ class Function(Documentation):
         uncompyle6.code_deparse(self.function.__code__, out=self.body_text)
         self.body_text = self.body_text.getvalue()
         self.body_ast  = ast.parse(self.body_text, self.filename)
+        self.globals   = self.function.__globals__
 
 class Method(Function):
     def __init__(self, function):
@@ -52,22 +55,10 @@ class Method(Function):
             setattr(self.db_class.instance_type, self.name, lambda inst=None: self.__call__(inst))
 
     def jit(self):
-        self.load = []
-        self.store = []
-        transform = _OOP_to_SoA(self)
-        self.body_ast = transform.body_ast
-        transform.loads
-        transform.stores
-        1/0
-
-        f = compile(self.body_ast, self.filename, mode='exec')
-
-
-        print("")
-        uncompyle6.code_deparse(f)
-        print("")
-        1/0
-        self.is_jited = True
+        transformer         = _OOP_to_SoA(self)
+        self.function       = numba.njit(transformer.function)
+        self.db_arguments   = transformer.arguments
+        self.is_jited       = True
 
     def __call__(self, instances=None, *args, **kwargs):
         """
@@ -79,80 +70,99 @@ class Method(Function):
         """
         assert self.db_class is not None
         if not self.is_jited: self.jit()
+        db_args = [self.db_class.get_data(x) for x in self.db_arguments]
         if instances is None:
             instances = range(0, len(self.db_class))
         if isinstance(instances, range):
             for idx in instances:
-                self.function(self.db_class.index_to_object(idx), *args, **kwargs)
+                self.function(idx, *db_args, *args, **kwargs)
         elif isinstance(instances, Iterable):
             1/0
         else:
             assert isinstance(instances, self.db_class.instance_type)
-            return self.function(instances, *args, **kwargs)
+            return self.function(instances._idx, *db_args, *args, **kwargs)
 
 
 class _OOP_to_SoA(ast.NodeTransformer):
-    """
-    Rewrite a method's AST to not use the 'self' argument, instead using the
-    database backend and an index to access all data & methods.
-    """
     def __init__(self, method):
         ast.NodeTransformer.__init__(self)
         self.method     = method
-        self.loads      = []
-        self.stores     = []
+        self.loads      = set()
+        self.stores     = set()
         self.body_ast   = self.visit(method.body_ast)
-        self.loads      = sorted(set(self.loads))
-        self.stores     = sorted(set(self.stores))
-        self.loads      = [method.db_class.get(x) for x in self.loads]
-        self.stores     = [method.db_class.get(x) for x in self.stores]
+        self.loads      = sorted(self.loads, key=lambda x: x.get_name())
+        self.stores     = sorted(self.stores, key=lambda x: x.get_name())
+        self.arguments  = sorted(set(self.loads + self.stores), key=lambda x: x.get_name())
         self.prepend_loads()
         self.append_stores()
-        self.rewrite_signature()
+        self.assemble_function()
 
     def local_name(self, attribute):
-        return f"{self.method.self_variable}_{attribute}"
+        return f"{attribute.get_class().get_name()}_{attribute.get_name()}"
 
     def arg_name(self, attribute):
-        return f"{self.method.self_variable}_{attribute}_array"
+        return f"{attribute.get_class().get_name()}_{attribute.get_name()}_array"
 
     def visit_Attribute(self, node):
-        value = node.value
-        attr  = node.attr
+        # Visit the syntax: "value.attr"
+        value   = node.value
+        ctx     = node.ctx
+        access  = [node.attr]
+        while isinstance(value, ast.Attribute):
+            access.append(value.attr)
+            value = value.value
+        access = tuple(reversed(access))
         if isinstance(value, ast.Name):
             if value.id != self.method.self_variable:
                 return node
         else: raise NotImplementedError(type(value))
-
-        if   node.ctx == ast.Load():  self.loads.add(attr)
-        elif node.ctx == ast.Store(): self.stores.add(attr)
-        elif node.ctx == ast.Del():
+        # Get all of the data components for this access.
+        components  = []
+        db_class    = self.method.db_class
+        for ptr in access:
+            components.append(db_class.get(ptr))
+            db_class = components[-1].reference
+        # Always load the data, regardless of the ctx flag, because augmenting
+        # assignment is labeled as just a store when in fact it is both a load
+        # and a store. The compiler should optimize out the unused loads.
+        self.loads.update(components)
+        if isinstance(ctx, ast.Store):
+            self.stores.update(components)
+        if isinstance(ctx, ast.Del):
             raise TypeError("Can not 'del' database attributes.")
-
-        return ast.copy_location(ast.Name(id=self.local_name(attr), ctx=node.ctx), node)
+        # Replace instance attribute access with a local variable.
+        new_node = ast.Name(id=self.local_name(components[-1]), ctx=ctx)
+        return ast.copy_location(new_node, node)
 
     def prepend_loads(self):
         load_stmts = []
         for attr in self.loads:
-            name = attr.get_name()
             if isinstance(attr, ClassAttribute):
-                load_stmts.append(f"{self.local_name(name)} = {self.arg_name(name)}")
-            else:
-                load_stmts.append(f"{self.local_name(name)} = {self.arg_name(name)}[_index]")
+                load_stmts.append(f"{self.local_name(attr)} = {self.arg_name(attr)}")
+            elif isinstance(attr, Attribute):
+                load_stmts.append(f"{self.local_name(attr)} = {self.arg_name(attr)}[_idx]")
+            else: raise NotImplementedError(type(attr))
         load_ast = ast.parse("\n".join(load_stmts))
         self.body_ast.body = load_ast.body + self.body_ast.body
 
     def append_stores(self):
         store_stmts = []
         for attr in self.stores:
-            store_stmts.append(f"{self.arg_name(attr)}[_index] = {self.local_name(attr)}")
+            store_stmts.append(f"{self.arg_name(attr)}[_idx] = {self.local_name(attr)}")
         store_ast = ast.parse("\n".join(store_stmts))
         self.body_ast.body.extend(store_ast.body)
 
-    def rewrite_signature(self):
-        """ fixup the parameters to include the loaded and stored data vectors. """
-        self.signature = self.method.signature
-        arguments = sorted(set(self.loads + self.stores))
-        for attr in arguments:
-            self.signature = self.signature.replace(1/0)
-        1/0
+    def assemble_function(self):
+        arguments = ['_idx']
+        arguments.extend(self.arg_name(x) for x in self.arguments)
+        signature = re.subn(rf'\b{self.method.self_variable}\b',
+                            ', '.join(arguments),
+                            str(self.method.signature), count = 1)[0]
+
+        template            = f"def {self.method.name}{signature}:\n pass\n"
+        module_ast          = ast.parse(template)
+        function_ast        = module_ast.body[0]
+        function_ast.body   = self.body_ast.body
+        module_scope        = self.method.globals
+        exec(compile(module_ast, self.method.filename, mode='exec'), module_scope)
+        self.function       = module_scope[self.method.name]
