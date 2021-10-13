@@ -16,6 +16,7 @@ class DataComponent(Documentation):
         assert self.name not in db_class.methods
         self.db_class = db_class
         self.db_class.components[self.name] = self
+        self.qualname = f'{self.db_class.name}.{self.name}'
         if shape is None: pass
         elif isinstance(shape, Iterable):
             self.shape = tuple(round(x) for x in shape)

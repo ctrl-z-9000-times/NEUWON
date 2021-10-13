@@ -48,6 +48,7 @@ class Method(Function):
         assert isinstance(db_class, DB_Class)
         assert self.db_class is None
         self.db_class = db_class
+        self.qualname = f'{self.db_class.name}.{self.name}'
         if add_attr:
             assert self.name not in self.db_class.components
             assert self.name not in self.db_class.methods
@@ -98,10 +99,14 @@ class _OOP_to_SoA(ast.NodeTransformer):
         self.assemble_function()
 
     def local_name(self, attribute):
-        return f"{attribute.get_class().get_name()}_{attribute.get_name()}"
+        return attribute.qualname.replace('.', '_')
 
-    def arg_name(self, attribute):
-        return f"{attribute.get_class().get_name()}_{attribute.get_name()}_array"
+    def global_name(self, attribute):
+        if isinstance(attribute, ClassAttribute):
+            return self.local_name(attribute)
+        elif isinstance(attribute, Attribute):
+            return f"{self.local_name(attribute)}_array"
+        else: raise NotImplementedError(type(attribute))
 
     def visit_Attribute(self, node):
         # Visit the syntax: "value.attr"
@@ -138,9 +143,9 @@ class _OOP_to_SoA(ast.NodeTransformer):
         load_stmts = []
         for attr in self.loads:
             if isinstance(attr, ClassAttribute):
-                load_stmts.append(f"{self.local_name(attr)} = {self.arg_name(attr)}")
+                pass
             elif isinstance(attr, Attribute):
-                load_stmts.append(f"{self.local_name(attr)} = {self.arg_name(attr)}[_idx]")
+                load_stmts.append(f"{self.local_name(attr)} = {self.global_name(attr)}[_idx]")
             else: raise NotImplementedError(type(attr))
         load_ast = ast.parse("\n".join(load_stmts))
         self.body_ast.body = load_ast.body + self.body_ast.body
@@ -148,13 +153,16 @@ class _OOP_to_SoA(ast.NodeTransformer):
     def append_stores(self):
         store_stmts = []
         for attr in self.stores:
-            store_stmts.append(f"{self.arg_name(attr)}[_idx] = {self.local_name(attr)}")
+            if isinstance(attr, Attribute):
+                store_stmts.append(f"{self.global_name(attr)}[_idx] = {self.local_name(attr)}")
+            else:
+                raise TypeError(f"Can not assign to '{attr.qualname}' in this context.")
         store_ast = ast.parse("\n".join(store_stmts))
         self.body_ast.body.extend(store_ast.body)
 
     def assemble_function(self):
-        arguments = ['_idx']
-        arguments.extend(self.arg_name(x) for x in self.arguments)
+        arguments = ['_idx:int']
+        arguments.extend(self.global_name(x) for x in self.arguments)
         signature = re.subn(rf'\b{self.method.self_variable}\b',
                             ', '.join(arguments),
                             str(self.method.signature), count = 1)[0]
