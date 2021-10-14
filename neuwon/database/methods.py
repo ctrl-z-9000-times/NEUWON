@@ -13,9 +13,6 @@ import uncompyle6
 
 # uncompyle6.code_deparse(compile(ast_node, "filename", mode='exec'))
 
-# TODO: Rename this file to something other than the builtin's name "callable"
-#       Maybe function.py
-
 class Function(Documentation):
     def __init__(self, function):
         assert isinstance(function, Callable)
