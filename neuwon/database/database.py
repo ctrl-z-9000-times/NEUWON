@@ -352,7 +352,6 @@ class DB_Class(Documentation):
         """
         Find all methods attached to the instance type and add them as methods.
         """
-        from neuwon.database.callable import Function, Method
         for attr_name in dir(self.instance_type):
             if attr_name.startswith('__') and attr_name.endswith('__'): continue
             attr = getattr(self.instance_type, attr_name)
@@ -551,4 +550,6 @@ class DB_Class(Documentation):
 
 Database.add_class.__doc__ = DB_Class.__init__.__doc__
 
-from neuwon.database.data_components import *
+from neuwon.database.data_components import (DataComponent, ClassAttribute, Attribute,
+                                            SparseMatrix, ConnectivityMatrix)
+from neuwon.database.methods import Function, Method

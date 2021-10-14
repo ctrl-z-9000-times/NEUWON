@@ -1,5 +1,4 @@
-from neuwon.database import Database
-from neuwon.database.callable import Function
+from neuwon.database import Database, Function, Method
 import math
 import pytest
 import random

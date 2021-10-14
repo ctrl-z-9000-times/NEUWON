@@ -16,22 +16,21 @@ import uncompyle6
 class Function(Documentation):
     def __init__(self, function):
         assert isinstance(function, Callable)
-        if isinstance(function, Function):
-            function = function.function
+        if isinstance(function, Function): function = function.original
         Documentation.__init__(self, function.__name__, inspect.getdoc(function))
-        self.function = function
+        self.original = function
 
     def __call__(self, *args, **kwargs):
-        return self.function(*args, **kwargs)
+        return self.original(*args, **kwargs)
 
     def _disassemble_function(self):
-        self.filename  = inspect.getsourcefile(self.function)
-        self.signature = inspect.signature(self.function)
+        self.filename  = inspect.getsourcefile(self.original)
+        self.signature = inspect.signature(self.original)
         self.body_text = io.StringIO()
-        uncompyle6.code_deparse(self.function.__code__, out=self.body_text)
+        uncompyle6.code_deparse(self.original.__code__, out=self.body_text)
         self.body_text = self.body_text.getvalue()
         self.body_ast  = ast.parse(self.body_text, self.filename)
-        self.globals   = self.function.__globals__
+        self.globals   = self.original.__globals__
 
 class Method(Function):
     def __init__(self, function):
@@ -89,7 +88,7 @@ class _OOP_to_SoA(ast.NodeTransformer):
         self.method_calls   = set()
         self.loads          = set()
         self.stores         = set()
-        self.body_ast       = self.visit(method.body_ast)
+        self.body_ast       = self.visit(copy.deepcopy(method.body_ast))
         self.inline_methods()
         self.loads          = sorted(self.loads, key=lambda x: x.get_name())
         self.stores         = sorted(self.stores, key=lambda x: x.get_name())
@@ -187,11 +186,13 @@ class _OOP_to_SoA(ast.NodeTransformer):
         module_ast              = ast.parse(template, filename=self.method.filename)
         self.function_ast       = module_ast.body[0]
         self.function_ast.body  = self.body_ast.body
-        self.module_scope       = self.method.globals
+        self.module_scope       = dict(self.method.globals)
         self.module_ast         = ast.fix_missing_locations(module_ast)
 
     def compile_function(self):
-        print(self.function_ast.body)
+        import astor
+        print(type(self), "Compiling AST ...")
+        print(astor.to_source(self.module_ast))
         exec(compile(self.module_ast, self.method.filename, mode='exec'), self.module_scope)
         self.function = self.module_scope[self.method.name]
 
