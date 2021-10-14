@@ -430,10 +430,9 @@ class DB_Class(Documentation):
             assert name.get_class() is self
             return name
         name = str(name)
-        try:
-            return self.components[name]
-        except KeyError:
-            raise AttributeError("'%s' object has no attribute '%s'"%(self.name, name))
+        if name in self.components: return self.components[name]
+        if name in self.methods:    return self.methods[name]
+        raise AttributeError("'%s' object has no attribute '%s'"%(self.name, name))
 
     def get_data(self, name: str):
         """ Shortcut to: self.get(name).get_data() """

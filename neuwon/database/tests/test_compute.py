@@ -36,6 +36,31 @@ def test_basic_method():
     assert my_seg.v == -78
 
 
+def test_calling_methods():
+    class Seg:
+        __slots__ = ()
+        @Function
+        def foo(self):
+            self.v += 4
+            self.bar()
+        @Function
+        def bar(self):
+            self.v -= 4
+
+    db = Database()
+    Seg_data = db.add_class("Seg", Seg)
+    Seg_data.add_attribute("v", -70)
+    Seg = Seg_data.get_instance_type()
+    for _ in range(6): Seg()
+    my_seg = Seg()
+    my_seg.foo()
+    assert my_seg.v == -70
+    Seg.foo()
+    assert my_seg.v == -70
+    my_seg.bar()
+    assert my_seg.v == -74
+
+
 @Function
 def area_eq(r):
     return math.pi * (r**2)
