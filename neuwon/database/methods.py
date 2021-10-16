@@ -14,19 +14,36 @@ import uncompyle6
 
 # uncompyle6.code_deparse(compile(ast_node, "filename", mode='exec'))
 
+# import astor
+# print(type(self), "Compiling AST ...")
+# print(astor.to_source(self.module_ast))
+
 class Function(Documentation):
     def __init__(self, function):
         assert isinstance(function, Callable)
         if isinstance(function, Function): function = function.original
         Documentation.__init__(self, function.__name__, inspect.getdoc(function))
-        self.original = function
-        self.host_jit = None
-        self.cuda_jit = None
+        self.original   = function
+        self.host_jit   = None
+        self.jit_cache  = {}
 
     def __call__(self, *args, **kwargs):
         if self.host_jit is None:
-            self.host_jit = _DisassembleFunction(self.original).jit('host')
+            self.host_jit = self._jit(host)
         return self.host_jit(*args, **kwargs)
+
+    def _jit(self, target):
+        cached = self.jit_cache.get(target, None)
+        if cached is not None: return cached
+        if isinstance(self, Method):
+            jit_method          = _JIT_Method(self.db_class, self, target)
+            function            = jit_method.function
+            self.db_arguments   = jit_method.arguments
+        elif isinstance(self, Function):
+            function = _JIT_Function(self.original, target).function
+        else: raise NotImplementedError(type(self))
+        self.jit_cache[target] = function
+        return function
 
 class Method(Function):
     def __init__(self, function):
@@ -56,32 +73,27 @@ class Method(Function):
         """
         assert self.db_class is not None
         target = self.db_class.database.memory_space
-        if target is host and self.host_jit is None:
-            1/0 # TODO: JIT!
-            dis = _MethodFunction(self.original, self.db_class)
-            dis.to_soa()
-            # dis.
-            self.db_arguments   = dis.arguments
+        function = self._jit(target)
 
-        elif target is cuda and self.cuda_jit is None:
-            1/0 # TODO: JIT!
         db_args = [self.db_class.get_data(x) for x in self.db_arguments]
         if instances is None:
             instances = range(0, len(self.db_class))
         if isinstance(instances, range):
             for idx in instances:
-                self.function(idx, *db_args, *args, **kwargs)
+                function(idx, *db_args, *args, **kwargs)
         elif isinstance(instances, Iterable):
             1/0
         else:
             assert isinstance(instances, self.db_class.instance_type)
-            return self.function(instances._idx, *db_args, *args, **kwargs)
+            return function(instances._idx, *db_args, *args, **kwargs)
 
-class _DisassembleFunction:
-    def __init__(self, function):
+class _JIT_Function:
+    """ Breakout a function into all of its constituent parts. """
+    def __init__(self, function, target):
         assert isinstance(function, Callable)
         assert not isinstance(function, Function)
         self.original  = function
+        self.target    = target
         self.name      = self.original.__name__.replace('<', '_').replace('>', '_')
         self.filename  = inspect.getsourcefile(self.original)
         self.signature = inspect.signature(self.original)
@@ -95,47 +107,55 @@ class _DisassembleFunction:
         self.closure.update(globals)
         self.closure.update(nonlocals)
 
-    def jit(self, target='host'):
-        for k, v in self.closure.items():
-            if isinstance(v, Function):
-                self.closure[k] = _DisassembleFunction(v.original).jit(target)
-
         self.assemble_function()
-
-        if target == 'host':
-            return numba.njit(self.function)
-        elif target == 'cuda':
-            return numba.cuda.njit(self.function)
+        if target == host:
+            self.function = numba.njit(self.py_function)
+        elif target == cuda:
+            self.function = numba.cuda.njit(self.py_function)
         else: raise NotImplementedError(target)
+
+    def jit_closure(self):
+        closure = dict(self.closure)
+        for name, value in closure.items():
+            if isinstance(value, Function):
+                closure[name] = _JIT_Function(value.original, self.target).function
+        return closure
 
     def assemble_function(self):
         template                = f"def {self.name}{self.signature}:\n pass\n"
         module_ast              = ast.parse(template, filename=self.filename)
         self.function_ast       = module_ast.body[0]
         self.function_ast.body  = self.body_ast.body
-        self.module_ast = ast.fix_missing_locations(module_ast)
-        exec(compile(self.module_ast, self.filename, mode='exec'), self.closure)
-        self.function = self.closure[self.name]
+        self.module_ast         = ast.fix_missing_locations(module_ast)
+        closure                 = self.jit_closure()
+        exec(compile(self.module_ast, self.filename, mode='exec'), closure)
+        self.py_function        = closure[self.name]
 
-
-class _DisassembleMethod(_DisassembleFunction, ast.NodeTransformer):
-    def __init__(self, method):
-        _DisassembleFunction.__init__(self, method, db_class)
+class _JIT_Method(_JIT_Function, ast.NodeTransformer):
+    def __init__(self, db_class, method, target):
+        _JIT_Function.__init__(self, method.original, target)
         ast.NodeTransformer.__init__(self)
+        self.db_class       = db_class
         self.method         = method
-        self.self_var  = next(iter(self.signature.parameters))
+        self.self_var       = next(iter(self.signature.parameters))
         self.method_calls   = set()
         self.loads          = set()
         self.stores         = set()
-        self.body_ast       = self.visit(copy.deepcopy(method.body_ast))
+        self.body_ast       = self.visit(copy.deepcopy(self.body_ast))
         self.inline_methods()
         self.loads          = sorted(self.loads, key=lambda x: x.get_name())
         self.stores         = sorted(self.stores, key=lambda x: x.get_name())
         self.arguments      = sorted(set(self.loads + self.stores), key=lambda x: x.get_name())
         self.prepend_loads()
         self.append_stores()
-        self.assemble_function()
-        self.compile_function()
+        self.assemble_method()
+        self.compile_method()
+
+        if self.target == host:
+            self.function = numba.njit(self.py_function)
+        elif self.target == cuda:
+            self.function = numba.cuda.njit(self.py_function)
+        else: raise NotImplementedError(target)
 
     def local_name(self, attribute):
         return attribute.qualname.replace('.', '_')
@@ -166,7 +186,7 @@ class _DisassembleMethod(_DisassembleFunction, ast.NodeTransformer):
         if isinstance(ctx, ast.Del):
             raise TypeError("Can not 'del' database attributes.")
         # Get all of the database components for this access.
-        db_class = self.method.db_class
+        db_class = self.db_class
         for ptr in access[1:]:
             component = db_class.get(ptr)
             if isinstance(ctx, ast.Store):
@@ -186,10 +206,11 @@ class _DisassembleMethod(_DisassembleFunction, ast.NodeTransformer):
 
     def inline_methods(self):
         for method in self.method_calls:
-            method = _MethodInMethod(method)
+            method = _MethodInMethod(self.db_class, method, self.target)
             self.stores.update(method.stores)
             self.loads.update(method.loads)
             self.body_ast.body.insert(0, method.function_ast)
+            # TODO: Include the method's closure into this one.
 
     def prepend_loads(self):
         load_stmts = []
@@ -217,26 +238,22 @@ class _DisassembleMethod(_DisassembleFunction, ast.NodeTransformer):
         arguments.extend(self.global_name(x) for x in self.arguments)
         return arguments
 
-    def assemble_function(self):
+    def assemble_method(self):
         signature = re.subn(rf'\b{self.self_var}\b',
                             ', '.join(self.get_arguments()),
-                            str(self.method.signature), count = 1)[0]
-        template                = f"def {self.method.name}{signature}:\n pass\n"
+                            str(self.signature), count = 1)[0]
+        template                = f"def {self.name}{signature}:\n pass\n"
         module_ast              = ast.parse(template, filename=self.filename)
         self.function_ast       = module_ast.body[0]
         self.function_ast.body  = self.body_ast.body
-        self.module_scope       = dict(self.method.globals)
         self.module_ast         = ast.fix_missing_locations(module_ast)
 
-    def compile_function(self):
-        import astor
-        print(type(self), "Compiling AST ...")
-        print(astor.to_source(self.module_ast))
-        exec(compile(self.module_ast, self.filename, mode='exec'), self.module_scope)
-        self.function = self.module_scope[self.method.name]
+    def compile_method(self):
+        closure = self.jit_closure()
+        exec(compile(self.module_ast, self.filename, mode='exec'), closure)
+        self.py_function = closure[self.name]
 
-
-class _MethodInMethod(_DisassembleMethod):
+class _MethodInMethod(_JIT_Method):
     """
     This class is used to inline methods by nesting them like:
     >>> def foo(_idx, ...):
@@ -260,9 +277,9 @@ class _MethodInMethod(_DisassembleMethod):
     def get_arguments(self):
         return []
 
-    def assemble_function(self):
-        super().assemble_function()
+    def assemble_method(self):
+        super().assemble_method()
         self.function_ast.name = self.local_name(self.method)
 
-    def compile_function(self):
+    def compile_method(self):
         pass
