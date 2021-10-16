@@ -3,7 +3,7 @@ from neuwon.database.database import DB_Class, DB_Object
 from neuwon.database.data_components import ClassAttribute, Attribute, SparseMatrix
 from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
-from neuwon.database.memory_spaces import host, cuda
+from neuwon.database.memory_spaces import host
 import ast
 import copy
 import inspect
@@ -108,11 +108,7 @@ class _JIT_Function:
         self.closure.update(nonlocals)
 
         self.assemble_function()
-        if target == host:
-            self.function = numba.njit(self.py_function)
-        elif target == cuda:
-            self.function = numba.cuda.njit(self.py_function)
-        else: raise NotImplementedError(target)
+        self.function = target.jit_wrapper(self.py_function)
 
     def jit_closure(self):
         closure = dict(self.closure)
@@ -150,12 +146,7 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
         self.append_stores()
         self.assemble_method()
         self.compile_method()
-
-        if self.target == host:
-            self.function = numba.njit(self.py_function)
-        elif self.target == cuda:
-            self.function = numba.cuda.njit(self.py_function)
-        else: raise NotImplementedError(target)
+        self.function = self.target.jit_wrapper(self.py_function)
 
     def local_name(self, attribute):
         return attribute.qualname.replace('.', '_')
