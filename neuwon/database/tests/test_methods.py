@@ -27,7 +27,6 @@ def test_functions_calling_functions():
     assert bar(4) == 1
 
 
-# @pytest.mark.skip
 def test_basic_method():
     class Seg:
         __slots__ = ()
@@ -46,7 +45,6 @@ def test_basic_method():
     assert my_seg.v == -78
 
 
-# @pytest.mark.skip
 def test_calling_methods():
     class Seg:
         __slots__ = ()
@@ -73,9 +71,7 @@ def test_calling_methods():
 
 
 x = 5
-# @pytest.mark.skip
 def test_calling_functions():
-    # y = 0
     @Function
     def area_eq(r):
         return math.pi * (r**2)
@@ -100,4 +96,19 @@ def test_calling_functions():
     for _ in range(9): Seg()
     Seg._compute_area()
     assert my_seg.area == pytest.approx(math.pi * 36)
+
+
+@pytest.mark.skip
+def test_pointer_chains():
+    # I want tests for reading, writing, and calling methods of objects behind
+    # several layers of DB-pointer indirection.
+    # Also test that the called methods retain their I/O & Closure.
+    class Syn:
+        1/0
+    class Seg:
+        @Method
+        def foo(self):
+            self.x.y.z = self.x.q
+            self.x.m()
+    1/0
 
