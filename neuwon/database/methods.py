@@ -179,7 +179,13 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
         # Get all of the database components for this access.
         db_class = self.db_class
         for ptr in access[1:]:
-            component = db_class.get(ptr)
+            try:
+                component = db_class.get(ptr)
+            except AttributeError as err:
+                if hasattr(db_class.get_instance_type(), ptr):
+                    raise AttributeError('Is that method missing its "@Method" decorator?') from err
+                else:
+                    raise err
             if isinstance(ctx, ast.Store):
                 self.stores.add(component)
             if isinstance(component, Method):
@@ -211,10 +217,14 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
             elif isinstance(attr, Attribute):
                 load_stmts.append(f"{self.local_name(attr)} = {self.global_name(attr)}[_idx]")
             else: raise NotImplementedError(type(attr))
+            if attr.reference:
+                var = self.local_name(attr)
+                load_stmts.append(f'if {var} == {NULL}: {var} = None')
         load_ast = ast.parse("\n".join(load_stmts), filename=self.filename)
         self.body_ast.body = load_ast.body + self.body_ast.body
 
     def append_stores(self):
+        # TODO: Also insert the stores infront of any explicit return stmt's.
         store_stmts = []
         for attr in self.stores:
             if isinstance(attr, Attribute):

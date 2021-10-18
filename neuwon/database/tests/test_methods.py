@@ -33,6 +33,8 @@ def test_basic_method():
         @Function
         def bar(self):
             self.v -= 4
+        def args(self, x):
+            return self.v * x
 
     db = Database()
     Seg_data = db.add_class("Seg", Seg)
@@ -43,6 +45,9 @@ def test_basic_method():
     assert my_seg.v == -74
     Seg.bar()
     assert my_seg.v == -78
+
+    assert my_seg.args(0) == 0
+    assert my_seg.args(1) == my_seg.v
 
 
 def test_calling_methods():
