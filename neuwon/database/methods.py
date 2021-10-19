@@ -149,13 +149,16 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
         self.function = self.target.jit_wrapper(self.py_function)
 
     def local_name(self, attribute):
+        if isinstance(attribute, ClassAttribute):
+            return self.global_name(attribute)
         return attribute.qualname.replace('.', '_')
 
     def global_name(self, attribute):
+        qualname = attribute.qualname.replace('.', '_')
         if isinstance(attribute, ClassAttribute):
-            return self.local_name(attribute)
+            return qualname
         elif isinstance(attribute, Attribute):
-            return f"{self.local_name(attribute)}_array"
+            return f"{qualname}_array"
         else: raise NotImplementedError(type(attribute))
 
     def visit_Attribute(self, node):
