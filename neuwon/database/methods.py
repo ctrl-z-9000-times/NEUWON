@@ -210,7 +210,11 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
             self.stores.update(method.stores)
             self.loads.update(method.loads)
             self.body_ast.body.insert(0, method.function_ast)
-            # TODO: Include the method's closure into this one.
+            # Include the method's closure into this one.
+            for k, v in method.jit_closure().items():
+                if k in self.closure and (self.closure[k] != v):
+                    raise ValueError(f"Found multiple different values for '{k}'!")
+                self.closure[k] = v
 
     def prepend_loads(self):
         load_stmts = []

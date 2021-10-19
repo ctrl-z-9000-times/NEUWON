@@ -129,8 +129,9 @@ def test_pointer_chains():
         @Method
         def advance(self):
             # Test reading through pointer indirection:
+            xx = self.post.v # Read from the correct instance, not this one.
             qq = int(self.pre.v >= self.pre.thresh)
-            xx = self.post.v
+            xy = self.post.v # Read from the correct instance, not this one.
             state += qq
             state *= state_decay
             # Test calling methods on pointers:
