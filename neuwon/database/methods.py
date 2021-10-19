@@ -227,7 +227,6 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
         self.body_ast.body = load_ast.body + self.body_ast.body
 
     def append_stores(self):
-        # TODO: Also insert the stores infront of any explicit return stmt's.
         store_stmts = []
         for attr in self.stores:
             if isinstance(attr, Attribute):
@@ -235,6 +234,15 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
             else:
                 raise TypeError(f"Can not assign to '{attr.qualname}' in this context.")
         store_ast = ast.parse("\n".join(store_stmts), filename=self.filename)
+        # Insert the stores in front of any explicit return statements.
+        for node in ast.walk(self.body_ast):
+            body = getattr(node, 'body', [])
+            for idx, return_stmt in enumerate(body):
+                if not isinstance(return_stmt, ast.Return): continue
+                for store_stmt in reversed(store_ast.body):
+                    body.insert(idx, store_stmt)
+                break
+        # Append the stores to the end of the method.
         self.body_ast.body.extend(store_ast.body)
 
     def get_arguments(self):
@@ -266,6 +274,7 @@ class _MethodInMethod(_JIT_Method):
     >>>         nonlocal self_x
     >>>         self_x += 1
     >>>     bar()
+    >>>     ... = self_x
     """
     def prepend_loads(self):
         # Declare variables as non-local's instead of reading from an array.
