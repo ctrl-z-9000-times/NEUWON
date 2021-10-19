@@ -59,9 +59,10 @@ class Method(Function):
             assert self.name not in self.db_class.components
             assert self.name not in self.db_class.methods
             self.db_class.methods[self.name] = self
-            setattr(self.db_class.instance_type, self.name, lambda inst=None: self.__call__(inst))
-            # TODO: This should use a property so that it can show documentation!
-            #       And maybe then I wont need the lambda?
+            _getter = lambda inst=None, *args, **kwargs: self.__call__(inst, *args, **kwargs)
+            _getter.__name__ = self.name
+            _getter.__doc__ = self.doc
+            setattr(self.db_class.instance_type, self.name, _getter)
 
     def __call__(self, instances=None, *args, **kwargs):
         """
@@ -76,16 +77,11 @@ class Method(Function):
         function = self._jit(target)
 
         db_args = [self.db_class.get_data(x) for x in self.db_arguments]
+        if isinstance(instances, self.db_class.instance_type):
+            return function(instances._idx, *db_args, *args, **kwargs)
         if instances is None:
             instances = range(0, len(self.db_class))
-        if isinstance(instances, range):
-            for idx in instances:
-                function(idx, *db_args, *args, **kwargs)
-        elif isinstance(instances, Iterable):
-            1/0
-        else:
-            assert isinstance(instances, self.db_class.instance_type)
-            return function(instances._idx, *db_args, *args, **kwargs)
+        return [function(idx, *db_args, *args, **kwargs) for idx in instances]
 
 class _JIT_Function:
     """ Breakout a function into all of its constituent parts. """

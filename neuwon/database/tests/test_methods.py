@@ -33,6 +33,7 @@ def test_basic_method():
         __slots__ = ()
         @Function
         def bar(self):
+            """ Hello Seg.Bar's Docs! """
             self.v -= 4
         def args(self, x):
             return self.v * x
@@ -42,6 +43,7 @@ def test_basic_method():
     Seg_data.add_attribute("v", -70)
     Seg = Seg_data.get_instance_type()
     my_seg = Seg()
+    help(my_seg.bar)
     my_seg.bar()
     assert my_seg.v == -74
     Seg.bar()
