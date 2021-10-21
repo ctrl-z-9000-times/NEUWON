@@ -57,9 +57,10 @@ def test_calling_methods():
     class Seg:
         __slots__ = ()
         @Method
-        def foo(self):
+        def foo(self, method_arg):
             self.v += 4
             self.bar()
+            return method_arg
         @Function
         def bar(self):
             self.v -= 4
@@ -71,13 +72,14 @@ def test_calling_methods():
     Seg = Seg_data.get_instance_type()
     for _ in range(6): Seg()
     my_seg = Seg()
-    my_seg.foo()
+    assert my_seg.foo(42) == 42
     assert my_seg.v == -70
-    Seg.foo()
     assert my_seg.v == -70
     my_seg.bar()
     assert my_seg.v == -74
     assert my_seg.bar() == my_seg.v
+    Seg.foo(None, 33.33) # Instance-arg required if there are further args.
+    Seg.bar() # No args so instance-arg is not required.
 
 
 x = 5

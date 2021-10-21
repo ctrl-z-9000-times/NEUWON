@@ -481,7 +481,7 @@ class DB_Class(Documentation):
         # instance_type unless they are defined in the class hierarchy.
         # This prevents polluting the shared namespaces.
         # Adding anonamous methods is still useful for running snippets of computation.
-        1/0
+        1/0 # TODO!
 
     def _sort(self):
         if self.is_sorted: return

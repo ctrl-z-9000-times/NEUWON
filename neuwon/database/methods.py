@@ -59,29 +59,27 @@ class Method(Function):
             assert self.name not in self.db_class.components
             assert self.name not in self.db_class.methods
             self.db_class.methods[self.name] = self
-            _getter = lambda inst=None, *args, **kwargs: self.__call__(inst, *args, **kwargs)
+            _getter = lambda instance=None, *args, **kwargs: self.__call__(instance, *args, **kwargs)
             _getter.__name__ = self.name
             _getter.__doc__ = self.doc
             setattr(self.db_class.instance_type, self.name, _getter)
 
-    def __call__(self, instances=None, *args, **kwargs):
+    def __call__(self, instance=None, *args, **kwargs):
         """
-        Argument instances is one of:
+        Argument instance can be:
                 * A single instance,
-                * A range of instances,
                 * An iterable of instances (or their unstable indexes),
                 * None, in which case this method is called on all instances.
         """
         assert self.db_class is not None
         target = self.db_class.database.memory_space
         function = self._jit(target)
-
         db_args = [self.db_class.get_data(x) for x in self.db_arguments]
-        if isinstance(instances, self.db_class.instance_type):
-            return function(instances._idx, *db_args, *args, **kwargs)
-        if instances is None:
-            instances = range(0, len(self.db_class))
-        return [function(idx, *db_args, *args, **kwargs) for idx in instances]
+        if isinstance(instance, self.db_class.instance_type):
+            return function(instance._idx, *db_args, *args, **kwargs)
+        if instance is None:
+            instance = range(0, len(self.db_class))
+        return [function(idx, *db_args, *args, **kwargs) for idx in instance]
 
 class _JIT_Function:
     """ Breakout a function into all of its constituent parts. """
