@@ -155,6 +155,7 @@ def test_pointer_chains():
         Neuron.advance()
         Syn.advance()
         Syn.neuron_ap_reset()
+        db.check()
     # Isolated synapse testcase.
     presyn = Neuron()
     postsyn = Neuron()

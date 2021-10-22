@@ -70,6 +70,8 @@ class Method(Function):
                 * A single instance,
                 * An iterable of instances (or their unstable indexes),
                 * None, in which case this method is called on all instances.
+
+        All additional arguments are passed through to the users method.
         """
         assert self.db_class is not None
         target = self.db_class.database.memory_space
@@ -105,6 +107,10 @@ class _JIT_Function:
         self.function = target.jit_wrapper(self.py_function)
 
     def jit_closure(self):
+        """
+        Returns a copy of this function's closure with all captured Functions
+        replaced by their JIT'ed versions.
+        """
         closure = dict(self.closure)
         for name, value in closure.items():
             if isinstance(value, Function):
@@ -201,7 +207,6 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
     def inline_methods(self):
         for method in self.method_calls:
             method = _MethodInMethod(self.db_class, method, self.target)
-            self.stores.update(method.stores)
             self.loads.update(method.loads)
             self.body_ast.body.insert(0, method.function_ast)
             # Include the method's closure into this one.
@@ -271,19 +276,14 @@ class _MethodInMethod(_JIT_Method):
     >>>     def bar():
     >>>         nonlocal self_x
     >>>         self_x += 1
+    >>>         ... = self_x
     >>>     bar()
-    >>>     ... = self_x
     """
     def prepend_loads(self):
         # Declare variables as non-local's instead of reading from an array.
-        load_stmts = []
-        for attr in self.loads:
-            load_stmts.append(f"nonlocal {self.local_name(attr)}")
-        load_ast = ast.parse("\n".join(load_stmts), filename=self.filename)
+        load_stmt = "nonlocal " + ", ".join(self.local_name(attr) for attr in self.loads)
+        load_ast  = ast.parse(load_stmt, filename=self.filename)
         self.body_ast.body = load_ast.body + self.body_ast.body
-
-    def append_stores(self):
-        pass
 
     def get_arguments(self):
         return []
