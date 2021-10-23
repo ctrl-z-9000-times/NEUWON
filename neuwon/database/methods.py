@@ -36,7 +36,7 @@ class Function(Documentation):
         cached = self.jit_cache.get(target, None)
         if cached is not None: return cached
         if isinstance(self, Method):
-            jit_method          = _JIT_Method(self.db_class, self, target)
+            jit_method          = _JIT_Method(self.db_class, self.original, target)
             function            = jit_method.function
             self.db_arguments   = jit_method.arguments
         elif isinstance(self, Function):
@@ -52,7 +52,7 @@ class Method(Function):
 
     def _register_method(self, db_class, add_attr=True):
         assert isinstance(db_class, DB_Class)
-        assert self.db_class is None
+        assert self.db_class is None, 'This method is already registered with a DB_Class!'
         self.db_class = db_class
         self.qualname = f'{self.db_class.name}.{self.name}'
         if add_attr:
@@ -84,12 +84,12 @@ class Method(Function):
         return [function(idx, *db_args, *args, **kwargs) for idx in instance]
 
 class _JIT_Function:
-    """ Breakout a function into all of its constituent parts. """
     def __init__(self, function, target):
         assert isinstance(function, Callable)
         assert not isinstance(function, Function)
         self.original  = function
         self.target    = target
+        # Breakout the function into all of its constituent parts.
         self.name      = self.original.__name__.replace('<', '_').replace('>', '_')
         self.filename  = inspect.getsourcefile(self.original)
         self.signature = inspect.signature(self.original)
@@ -102,7 +102,7 @@ class _JIT_Function:
         self.closure.update(builtins)
         self.closure.update(globals)
         self.closure.update(nonlocals)
-
+        # 
         self.assemble_function()
         self.function = target.jit_wrapper(self.py_function)
 
