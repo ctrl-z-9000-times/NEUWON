@@ -5,9 +5,9 @@ from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
 from neuwon.database.memory_spaces import host
 import ast
-import copy
 import inspect
 import io
+import itertools
 import numba
 import re
 import uncompyle6
@@ -127,93 +127,87 @@ class _JIT_Function:
         exec(compile(self.module_ast, self.filename, mode='exec'), closure)
         self.py_function        = closure[self.name]
 
-class _JIT_Method(_JIT_Function, ast.NodeTransformer):
-    def __init__(self, db_class, method, target):
-        _JIT_Function.__init__(self, method.original, target)
+################################################################################
+
+class _ReferenceRewriter(ast.NodeTransformer):
+    def __init__(self, db_class, reference_name, body_ast, top_level=True):
         ast.NodeTransformer.__init__(self)
         self.db_class       = db_class
-        self.method         = method
-        self.self_var       = next(iter(self.signature.parameters))
-        self.method_calls   = set()
-        self.loads          = set()
-        self.stores         = set()
-        self.body_ast       = self.visit(copy.deepcopy(self.body_ast))
-        self.inline_methods()
-        self.loads          = sorted(self.loads, key=lambda x: x.get_name())
-        self.stores         = sorted(self.stores, key=lambda x: x.get_name())
-        self.arguments      = sorted(set(self.loads + self.stores), key=lambda x: x.get_name())
-        self.prepend_loads()
-        self.append_stores()
-        self.assemble_method()
-        self.compile_method()
-        self.function = self.target.jit_wrapper(self.py_function)
+        self.reference_name = str(reference_name)
+        self.body_ast       = body_ast
+        self.loads          = []
+        self.stores         = []
+        self.methods        = set()
+        self.db_arguments   = set()
+        self.body_ast       = self.visit(self.body_ast)
 
-    def local_name(self, attribute):
-        if isinstance(attribute, ClassAttribute):
-            return self.global_name(attribute)
-        return attribute.qualname.replace('.', '_')
+        # Find all references which are exposed via this class and recursively rewrite them.
+        for db_attr in itertools.chain(self.loads, self.stores):
+            if db_attr.reference:
+                rr = _ReferenceRewriter(db_attr.reference, self.local_name(db_attr),
+                                        self.body_ast, top_level=False)
+            self.body_ast = rr.body_ast
+            self.loads.update(rr.loads)
+            self.stores.update(rr.stores)
+            self.methods.update(rr.methods)
 
-    def global_name(self, attribute):
-        qualname = attribute.qualname.replace('.', '_')
-        if isinstance(attribute, ClassAttribute):
-            return qualname
-        elif isinstance(attribute, Attribute):
-            return f"{qualname}_array"
-        else: raise NotImplementedError(type(attribute))
+        self.db_arguments = sorted(set(self.global_name(db_attribute)
+                            for db_attribute in itertools.chain(self.loads, self.stores)))
+
+        if top_level:
+            self.prepend_loads()
+            self.append_stores()
+
+    def local_name(self, db_attribute):
+        if (isinstance(db_attribute, ClassAttribute) or
+            isinstance(db_attribute, Method)):
+            return self.global_name(db_attribute)
+        else:
+            return f'{self.reference_name}_{db_attribute.name}'
+
+    def global_name(self, db_attribute):
+        return '_%s_' % db_attribute.qualname.replace('.', '_')
 
     def visit_Attribute(self, node):
         # Visit the syntax: "value.attr"
-        value   = node.value
-        ctx     = node.ctx
-        # Make a list of all names in the chain of attributes.
-        access  = [node.attr]
-        while isinstance(value, ast.Attribute):
-            access.append(value.attr)
-            value = value.value
-        if isinstance(value, ast.Name):
-            access.append(value.id)
-        else: raise NotImplementedError(type(value))
-        access = tuple(reversed(access))
-        # 
-        if access[0] != self.self_var:
-            return node
+        value = node.value
+        if not isinstance(value, ast.Name): return node
+        value = value.id
+        if value != self.reference_name: return node
+        ctx = node.ctx
         if isinstance(ctx, ast.Del):
             raise TypeError("Can not 'del' database attributes.")
-        # Get all of the database components for this access.
-        db_class = self.db_class
-        for ptr in access[1:]:
-            try:
-                component = db_class.get(ptr)
-            except AttributeError as err:
-                if hasattr(db_class.get_instance_type(), ptr):
-                    raise AttributeError('Is that method missing its "@Method" decorator?') from err
-                else:
-                    raise err
-            if isinstance(ctx, ast.Store):
-                self.stores.add(component)
-            if isinstance(component, Method):
-                self.method_calls.add(component)
+        # Get the database component for this access.
+        try:
+            db_attribute = self.db_class.get(node.attr)
+        except AttributeError as err:
+            if hasattr(self.db_class.get_instance_type(), node.attr):
+                raise AttributeError('Is that method missing its "@Method" decorator?') from err
             else:
-                # Always load the data, regardless of the ctx flag, because
-                # augmenting assignment is labeled as a store but implicitly
-                # requires a load. The compiler should optimize out the unused
-                # loads.
-                self.loads.add(component)
-            db_class = getattr(component, 'reference', False)
-        # Replace instance attribute access with a local variable.
-        new_node = ast.Name(id=self.local_name(component), ctx=ctx)
-        return ast.copy_location(new_node, node)
+                raise err
+        # 
+        if isinstance(ctx, ast.Store):
+            self.stores.add(db_attribute)
+        if isinstance(db_attribute, Method):
+            self.method_calls.add(db_attribute)
+        else:
+            # Always load the data, regardless of the ctx flag, because
+            # augmenting assignment is labeled as a store but implicitly
+            # requires a load. The compiler should optimize out the unused
+            # loads.
+            self.loads.add(db_attribute)
+        # Replace this attribute access with a local variable.
+        new_name = self.local_name(db_attribute)
+        return ast.copy_location(ast.Name(id=new_name, ctx=ctx), node)
 
-    def inline_methods(self):
-        for method in self.method_calls:
-            method = _MethodInMethod(self.db_class, method, self.target)
-            self.loads.update(method.loads)
-            self.body_ast.body.insert(0, method.function_ast)
-            # Include the method's closure into this one.
-            for k, v in method.jit_closure().items():
-                if k in self.closure and (self.closure[k] != v):
-                    raise ValueError(f"Found multiple different values for '{k}'!")
-                self.closure[k] = v
+    def visit_Call(self, node):
+        """
+        Replace: pointer.method(*args, **kwargs)
+        With:    global_name(method)(local_name(pointer), *args, **kwargs)
+        """
+        # TODO!!!
+
+        return node
 
     def prepend_loads(self):
         load_stmts = []
@@ -248,6 +242,26 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
         # Append the stores to the end of the method.
         self.body_ast.body.extend(store_ast.body)
 
+
+################################################################################
+
+class _JIT_Method(_JIT_Function):
+    def __init__(self, db_class, function, target):
+        _JIT_Function.__init__(self, function, target)
+        self.db_class   = db_class
+        self.self_var   = next(iter(self.signature.parameters))
+        rr = _ReferenceRewriter(self.db_class, self.self_var, self.body_ast)
+
+        for method in rr.methods:
+            self.closure[method.name] = method._jit(target)
+
+        # TODO: Rename this to 'db_arguments' for consistancy with the rest of the module.
+        self.arguments = sorted(set(self.loads + self.stores), key=lambda x: x.get_name())
+
+        self.assemble_method()
+        self.compile_method()
+        self.function = self.target.jit_wrapper(self.py_function)
+
     def get_arguments(self):
         arguments = ['_idx']
         arguments.extend(self.global_name(x) for x in self.arguments)
@@ -267,30 +281,3 @@ class _JIT_Method(_JIT_Function, ast.NodeTransformer):
         closure = self.jit_closure()
         exec(compile(self.module_ast, self.filename, mode='exec'), closure)
         self.py_function = closure[self.name]
-
-class _MethodInMethod(_JIT_Method):
-    """
-    This class is used to inline methods by nesting them like:
-    >>> def foo(_idx, ...):
-    >>>     self_x = ...
-    >>>     def bar():
-    >>>         nonlocal self_x
-    >>>         self_x += 1
-    >>>         ... = self_x
-    >>>     bar()
-    """
-    def prepend_loads(self):
-        # Declare variables as non-local's instead of reading from an array.
-        load_stmt = "nonlocal " + ", ".join(self.local_name(attr) for attr in self.loads)
-        load_ast  = ast.parse(load_stmt, filename=self.filename)
-        self.body_ast.body = load_ast.body + self.body_ast.body
-
-    def get_arguments(self):
-        return []
-
-    def assemble_method(self):
-        super().assemble_method()
-        self.function_ast.name = self.local_name(self.method)
-
-    def compile_method(self):
-        pass
