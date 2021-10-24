@@ -136,10 +136,10 @@ def test_pointer_chains():
             xx = self.post.v # Read from the correct instance, not this one.
             qq = int(self.pre.v >= self.pre.thresh)
             xy = self.post.v # Read from the correct instance, not this one.
-            state += qq
-            state *= state_decay
+            self.state += qq
+            self.state *= state_decay
             # Test calling methods on pointers:
-            self.post.postsyn_psp(state * strength)
+            self.post.postsyn_psp(self.state * self.strength)
         @Method
         def neuron_ap_reset(self):
             # Test writing data through pointer indirection:
