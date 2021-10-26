@@ -110,7 +110,7 @@ def test_calling_functions():
     assert my_seg.area == pytest.approx(math.pi * 36)
 
 
-leak_tau = 10 # Test reading Global in method-in-method closure.
+leak_tau = 5 # Test reading Global in method-in-method closure.
 def test_pointer_chains():
     db = Database()
     dt = 0.1 # Test reading Nonlocal in method-in-method closure.
@@ -122,7 +122,7 @@ def test_pointer_chains():
             self.v += dt * x # Integrate inputs.
         @Method
         def advance(self):
-            self.v -= (self.v + 70) * math.exp(-dt/leak_tau) # Leak.
+            self.v -= (self.v + 70) * (1 - math.exp(-dt/leak_tau)) # Leak.
     Neuron_data = db.add_class("Neuron", Neuron)
     Neuron_data.add_attribute("v", -70, valid_range=[-100,0])
     Neuron_data.add_class_attribute("thresh", -30)
@@ -163,7 +163,9 @@ def test_pointer_chains():
     for _ in range(round(1/dt)): advance()
     assert postsyn.v == -70
     presyn.v = -10
-    for _ in range(round(1/dt)): advance()
+    for _ in range(round(1/dt)):
+        print('exp decay', presyn.v)
+        advance()
     assert postsyn.v > -69.99
     # Construct a neural network.
     n = [Neuron() for _ in range(1000)]

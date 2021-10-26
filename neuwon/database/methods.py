@@ -106,6 +106,10 @@ class _JIT:
         # Transform and then reassemble the function.
         if method_db_class: self._rewrite_method(method_db_class)
         self.assemble_function()
+        if True:
+            print('def ' + self.name + str(self.signature) + ':', flush=True)
+            uncompyle6.code_deparse(self.py_function.__code__)
+            print("\n", flush=True)
         self.function = target.jit_wrapper(self.py_function)
 
     def _rewrite_method(self, db_class):
@@ -149,16 +153,20 @@ class _ReferenceRewriter(ast.NodeTransformer):
         """ Visit the syntax: "value.attr" """
         # Filter for references to this db_class.
         value = node.value
+        ignore_node = False
         if isinstance(value, ast.Name):
             if value.id != self.reference_name:
-                return node
-        elif isinstance(value, ast.Attribute):
+                ignore_node = True
+        elif isinstance(value, ast.Subscript):
             if getattr(value, 'db_reference', False):
                 if value.db_reference != self.db_class:
-                    return node
+                    ignore_node = True
             else:
-                return node
+                ignore_node = True
         else:
+            ignore_node = True
+        if ignore_node:
+            self.generic_visit(node)
             return node
         # Get the Load/Store/Del context flag.
         ctx = node.ctx
@@ -209,4 +217,8 @@ class _ReferenceRewriter(ast.NodeTransformer):
         self.db_arguments.update(db_method.db_arguments)
         for arg_name, db_attr in reversed(db_method.db_arguments):
             node.args.insert(1, ast.Name(id=arg_name, ctx=ast.Load()))
+        # Remove these tags so that this call will not be re-processed in any
+        # subsequent AST pass.
+        node.func.db_method   = None
+        node.func.db_instance = None
         return node
