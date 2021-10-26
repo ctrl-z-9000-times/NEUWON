@@ -5,9 +5,9 @@ from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
 from neuwon.database.memory_spaces import host
 import ast
+import collections
 import inspect
 import io
-import re
 import uncompyle6
 
 # uncompyle6.code_deparse(compile(ast_node, "filename", mode='exec'))
@@ -73,7 +73,7 @@ class Method(Function):
         assert self.db_class is not None
         target = self.db_class.database.memory_space
         function = self._jit(target)
-        db_args = [self.db.get_data(x) for x in self.db_arguments]
+        db_args = [db_attr.get_data() for _, db_attr in self.db_arguments]
         if isinstance(instance, self.db_class.instance_type):
             return function(instance._idx, *db_args, *args, **kwargs)
         if instance is None:
@@ -110,17 +110,15 @@ class _JIT:
 
     def _rewrite_method(self, db_class):
         self_var = next(iter(self.signature.parameters))
-        rr   = _ReferenceRewriter(db_class, self_var, self.body_ast)
-        args = [(name, db_attr.qualname) for name, db_attr in rr.db_arguments.items()]
-        args = sorted(args, key=lambda pair: pair[1])
-        arg_names = [self_var] + [argname for argname, qualname in args]
-        self.signature  = re.subn(rf'\b{self_var}\b',
-                                  (', '.join(arg_names)),
-                                  str(self.signature), count = 1)[0]
-        self.db_arguments = [qualname for argname, qualname in args]
-        self.body_ast     = rr.body_ast
-        for name, method in rr.method_names.items():
-            self.closure[name] = method._jit(target)
+        rr = _ReferenceRewriter(db_class, self_var, self.body_ast)
+        self.db_arguments = sorted(rr.db_arguments.items(), key=lambda pair: pair[1].qualname)
+        parameters = list(self.signature.parameters.values())
+        for arg_name, db_attr in reversed(self.db_arguments):
+            parameters.insert(1, inspect.Parameter(arg_name, inspect.Parameter.POSITIONAL_OR_KEYWORD))
+        self.signature = self.signature.replace(parameters=parameters)
+        self.body_ast = rr.body_ast
+        for name, method in rr.method_calls.items():
+            self.closure[name] = method._jit(self.target)
 
     def assemble_function(self):
         template                = f"def {self.name}{self.signature}:\n pass\n"
@@ -137,36 +135,50 @@ class _ReferenceRewriter(ast.NodeTransformer):
         self.db_class       = db_class
         self.reference_name = str(reference_name)
         self.db_arguments   = {} # Name -> DB-Attribute
-        self.method_names   = {} # Name -> Method-Instance
+        self.method_calls   = {} # Name -> Method-Instance
         self.body_ast       = self.visit(body_ast)
         # Find all references which are exposed via this class and recursively rewrite them.
         for name, db_attribute in list(self.db_arguments.items()):
             if db_attribute.reference:
                 rr = _ReferenceRewriter(db_attribute.reference, name, self.body_ast)
                 self.db_arguments.update(rr.db_arguments)
-                self.method_names.update(rr.method_names)
+                self.method_calls.update(rr.method_calls)
                 self.body_ast = rr.body_ast
 
     def visit_Attribute(self, node):
-        # Visit the syntax: "value.attr"
+        """ Visit the syntax: "value.attr" """
+        # Filter for references to this db_class.
         value = node.value
-        if not isinstance(value, ast.Name): return node
-        value = value.id
-        if value != self.reference_name: return node
+        if isinstance(value, ast.Name):
+            if value.id != self.reference_name:
+                return node
+        elif isinstance(value, ast.Attribute):
+            if getattr(value, 'db_reference', False):
+                if value.db_reference != self.db_class:
+                    return node
+            else:
+                return node
+        else:
+            return node
+        # Get the Load/Store/Del context flag.
         ctx = node.ctx
-        if isinstance(ctx, ast.Del): raise TypeError("Can not 'del' database attributes.")
+        if isinstance(ctx, ast.Del):
+            raise TypeError("Can not 'del' database attributes.")
         # Get the database component for this access.
-        try: db_attribute = self.db_class.get(node.attr)
+        try:
+            db_attribute = self.db_class.get(node.attr)
         except AttributeError as err:
             if hasattr(self.db_class.get_instance_type(), node.attr):
                 raise AttributeError('Is that method missing its "@Method" decorator?') from err
             else:
                 raise err
-        qualname = '_%s_' % db_attribute.qualname.replace('.', '_')
         # Replace this attribute access.
+        qualname = '_%s_' % db_attribute.qualname.replace('.', '_')
         if isinstance(db_attribute, Method):
-            self.method_names[qualname] = db_attribute
+            self.method_calls[qualname] = db_attribute
             replacement = ast.Name(id=qualname, ctx=ctx)
+            replacement.db_method   = db_attribute
+            replacement.db_instance = value
         else:
             self.db_arguments[qualname] = db_attribute
             if isinstance(db_attribute, ClassAttribute):
@@ -174,28 +186,27 @@ class _ReferenceRewriter(ast.NodeTransformer):
             elif isinstance(db_attribute, Attribute):
                 replacement = ast.Subscript(
                                 value=ast.Name(id=qualname, ctx=ast.Load()),
-                                slice=ast.Index(value=ast.Name(id=self.reference_name, ctx=ast.Load())),
-                                ctx=ctx)
+                                slice=ast.Index(value=value), ctx=ctx)
             else: raise NotImplementedError(type(db_attribute))
+            replacement.db_reference = db_attribute.reference
         return ast.copy_location(replacement, node)
 
     def visit_Call(self, node):
         """
         Fix-up method calls to include 'self' and the db_arguments.
         """
-        # Rewrite method accesses into local variables.
+        # First transform the attribute access from a method call into a global
+        # function call. This also stores the instance / 'self' variable inside
+        # the AST node.
         self.generic_visit(node)
-        # Now search for those local variables.
-        func_name = node.func
-        if not isinstance(func_name, ast.Name): return node
-        func_name = func_name.id
-        try:
-            db_method = self.method_names[func_name]
-        except KeyError:
+        db_method = getattr(node.func, 'db_method', None)
+        if db_method is None:
             return node
-        # Rewrite this method call.
-        
-        1/0
-        node.args = [self_arg] + db_args + node.args
-
+        node.args.insert(0, node.func.db_instance)
+        # Insert the method's db_arguments.
+        if not hasattr(db_method, 'db_arguments'):
+            db_method._jit(host)
+        self.db_arguments.update(db_method.db_arguments)
+        for arg_name, db_attr in reversed(db_method.db_arguments):
+            node.args.insert(1, ast.Name(id=arg_name, ctx=ast.Load()))
         return node
