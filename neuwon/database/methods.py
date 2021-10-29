@@ -8,15 +8,44 @@ import ast
 import collections
 import inspect
 import io
+import textwrap
 import uncompyle6
 
-# uncompyle6.code_deparse(compile(ast_node, "filename", mode='exec'))
+# IDEAS:
+#   db_class.add_method()
+#       Register an anonymous method? BC then you can write & change code as will.
+#       Ignore this in favor of the regular inheritance based API.
+# 
+#   Type annotations for passing multiple objects into a function/method?
+#       Without *something* like this there are fundamental limits on what a Method can do.
+#       Should be very simple to implement for Methods.
+#       Functions are not associated with any database, so I don't know how this would really worth with them?
+# 
+#   Coordinate Kernels for sparse matrixes.
+#       User writes func accepting (row, col, val) and returning the new value.
+#       Alternatrively, I could allow matrix access inside of the methods.
+#           But that's generally a bad design, since it encourages for-loops
+#           inside of the compute kernel, esp for GPUs.
 
-# import astor
-# print(type(self), "Compiling AST ...")
-# print(astor.to_source(self.module_ast))
+def _print_pycode(f):
+    """ Decompile and print python code, for debugging purposes. """
+    signature = inspect.signature(f)
+    body_text = io.StringIO()
+    uncompyle6.code_deparse(f.__code__, out=body_text)
+    body_text = body_text.getvalue()
+    body_text = textwrap.indent(body_text, ' '*4)
+    print(f'def {f.__name__}{signature}:\n{body_text}\n')
 
 class Function(Documentation):
+    """
+    A decorator for Just-In-Time compilation.
+
+    Functions may call other functions which are marked with this decorator.
+
+    Internally this uses numba to compile the python code into binary machine
+    code. All limitations and caveats of `numba.jit(nopython=True)` also apply
+    to this decorator.
+    """
     def __init__(self, function):
         assert isinstance(function, Callable)
         if isinstance(function, Function): function = function.original
@@ -42,6 +71,9 @@ class Function(Documentation):
         return function
 
 class Method(Function):
+    """
+    TODO: DOCS!
+    """
     def __init__(self, function):
         Function.__init__(self, function)
         self.db_class = None
@@ -106,10 +138,7 @@ class _JIT:
         # Transform and then reassemble the function.
         if method_db_class: self._rewrite_method(method_db_class)
         self.assemble_function()
-        if True:
-            print('def ' + self.name + str(self.signature) + ':', flush=True)
-            uncompyle6.code_deparse(self.py_function.__code__)
-            print("\n", flush=True)
+        if True: _print_pycode(self.py_function)
         self.function = target.jit_wrapper(self.py_function)
 
     def _rewrite_method(self, db_class):

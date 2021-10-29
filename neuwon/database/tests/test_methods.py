@@ -169,15 +169,21 @@ def test_pointer_chains():
     assert postsyn.v > -69.99
     # Construct a neural network.
     n = [Neuron() for _ in range(1000)]
-    s = []
     nsyn = 100 * len(n)
     for pre, post in zip(random.choices(n, k=nsyn), random.choices(n, k=nsyn)):
         s.append(Syn(pre=pre, post=post))
     db.check()
-    # TODO: Record from several of the neurons.
+    # Record from several of the neurons.
+    outputs = random.sample(n, 20)
+    probes  = [TimeSeries().record(x) for x in outputs]
+    # Run without inputs.
     1/0
-    # TODO: Setup network inputs.
+    # Check that network is silent.
     1/0
+    # Setup adn start the network inputs.
+    inputs  = random.sample(n, len(n) // 10)
+    for x in inputs:
+        TimeSeries.square_wave().play(x)
 
     # TODO: Run it through three periods: init-off, inputs-turn-it-on, sustained/recurrent activity.
     #       And check that it does the expected thing at each step.
