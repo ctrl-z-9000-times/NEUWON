@@ -26,6 +26,8 @@ import uncompyle6
 #       Alternatrively, I could allow matrix access inside of the methods.
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
+# 
+#   Consider redesigning this to have a single public symbol named 'Compute'.
 
 def _print_pycode(f):
     """ Decompile and print python code, for debugging purposes. """
@@ -72,6 +74,18 @@ class Function(Documentation):
 
 class Method(Function):
     """
+    A decorator for methods on database classes. This rewrites the given method
+    to access the database via the
+
+    This runs in the current memory space. host or gpu
+
+    talk about how this converts to the DB's datafmt
+    talk about how this can only handle direct references to thje DB
+    
+    All data access must be written as single syntactic expressions.
+        -> give an example of how to access data (and how NOT to do it too)
+
+
     TODO: DOCS!
     """
     def __init__(self, function):
