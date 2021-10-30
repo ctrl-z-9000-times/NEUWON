@@ -14,7 +14,7 @@ class Database:
         self.db_classes = dict()
         self.clock = None
         self.memory_space = memory_spaces.host
-        self.sort_order = None
+        self.sort_order = None # TODO: This should be private, and maybe append '_cache'
 
     def add_class(self, name: str, base_class:type=None, sort_key=tuple(), doc:str="") -> 'DB_Class':
         return DB_Class(self, name, base_class=base_class, sort_key=sort_key, doc=doc)
@@ -84,11 +84,12 @@ class Database:
                 x.components.values() for x in self.db_classes.values()))
 
     def add_clock(self, tick_period:float, units:str="") -> 'neuwon.database.time.Clock':
-        """ """
+        """ Set the default clock for this database. """
         from neuwon.database.time import Clock
         assert self.clock is None, "Database already has a Clock!"
         if isinstance(tick_period, Clock):
             self.clock = tick_period
+            assert not units, 'Unexpected argument.'
         else:
             self.clock = Clock(tick_period, units=units)
         return self.clock
@@ -355,8 +356,8 @@ class DB_Class(Documentation):
         for attr_name in dir(self.instance_type):
             if attr_name.startswith('__') and attr_name.endswith('__'): continue
             attr = getattr(self.instance_type, attr_name)
-            if isinstance(attr, Function):
-                m = Method(attr)
+            if isinstance(attr, Compute):
+                m = Compute(attr)
                 m._register_method(self)
 
     __init__.__doc__ += Documentation._doc_doc
@@ -552,4 +553,4 @@ Database.add_class.__doc__ = DB_Class.__init__.__doc__
 
 from neuwon.database.data_components import (DataComponent, ClassAttribute, Attribute,
                                             SparseMatrix, ConnectivityMatrix)
-from neuwon.database.methods import Function, Method
+from neuwon.database.compute import Compute

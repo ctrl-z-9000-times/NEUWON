@@ -1,40 +1,17 @@
-from neuwon.database import Database, Function, Method, TimeSeries
+from neuwon.database import Database, Compute, TimeSeries
 import math
-import random
 import pytest
-
-
-def test_basic_function():
-    @Function
-    def foo(x):
-        """ Foo's help message! """
-        return x + 3
-
-    help(foo)
-    assert foo(3) == 6
-
-    qq = Function(lambda: 42)
-    assert qq() == 42
-
-
-def test_functions_calling_functions():
-    @Function
-    def foo(x):
-        return bar(x) + 3
-    @Function
-    def bar(x):
-        return x - 3
-    assert foo(4) == 4
-    assert bar(4) == 1
+import random
 
 
 def test_basic_method():
     class Seg:
         __slots__ = ()
-        @Function
+        @Compute
         def bar(self):
             """ Hello Seg.Bar's Docs! """
             self.v -= 4
+        @Compute
         def args(self, x):
             return self.v * x
 
@@ -56,12 +33,12 @@ def test_basic_method():
 def test_calling_methods():
     class Seg:
         __slots__ = ()
-        @Method
+        @Compute
         def foo(self, method_arg):
             self.v += 4
             self.bar()
             return method_arg
-        @Function
+        @Compute
         def bar(self):
             self.v -= 4
             return self.v
@@ -84,7 +61,7 @@ def test_calling_methods():
 
 x = 5
 def test_calling_functions():
-    @Function
+    @Compute
     def area_eq(r):
         return math.pi * (r**2)
     class Segment:
@@ -95,7 +72,7 @@ def test_calling_functions():
             seg_data.add_attribute("d", 33.3)
             seg_data.add_attribute("area")
             return seg_data.get_instance_type()
-        @Method
+        @Compute
         def _compute_area(self):
             self.area = area_eq(self.d / 2 + x + y)
 
@@ -116,11 +93,11 @@ def test_pointer_chains():
     dt = 0.1 # Test reading Nonlocal in method-in-method closure.
     class Neuron:
         __slots__ = ()
-        @Method
+        @Compute
         def postsyn_psp(self, x):
             # Called methods must retain their I/O & Closure.
             self.v += dt * x # Integrate inputs.
-        @Method
+        @Compute
         def advance(self):
             self.v -= (self.v + 70) * (1 - math.exp(-dt/leak_tau)) # Leak.
     Neuron_data = db.add_class("Neuron", Neuron)
@@ -130,7 +107,7 @@ def test_pointer_chains():
     state_decay = math.exp(-dt / 4.0)
     class Syn:
         __slots__ = ()
-        @Method
+        @Compute
         def advance(self):
             # Test reading through pointer indirection:
             xx = self.post.v # Read from the correct instance, not this one.
@@ -140,7 +117,7 @@ def test_pointer_chains():
             self.state *= state_decay
             # Test calling methods on pointers:
             self.post.postsyn_psp(self.state * self.strength)
-        @Method
+        @Compute
         def neuron_ap_reset(self):
             # Test writing data through pointer indirection:
             if self.post.v >= self.post.thresh:
