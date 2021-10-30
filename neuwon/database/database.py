@@ -14,7 +14,7 @@ class Database:
         self.db_classes = dict()
         self.clock = None
         self.memory_space = memory_spaces.host
-        self.sort_order = None # TODO: This should be private, and maybe append '_cache'
+        self._sort_order = None
 
     def add_class(self, name: str, base_class:type=None, sort_key=tuple(), doc:str="") -> 'DB_Class':
         return DB_Class(self, name, base_class=base_class, sort_key=sort_key, doc=doc)
@@ -179,7 +179,7 @@ class Database:
             if any(not isinstance(k, DataComponent) for k in keys):
                 db_class.sort_key = keys = tuple(db_class.get(k) for k in keys)
                 assert all(isinstance(x, Attribute) for x in keys)
-                self.sort_order = None # Sort order was invalidated by adding a new db_class.
+                self._sort_order = None # Sort order was invalidated by adding a new db_class.
         # Sorting by classes by references to other classes introduces a
         # dependency in the sort order.
         def sort_order_dependencies(db_class):
@@ -187,15 +187,15 @@ class Database:
             for component in db_class.sort_key:
                 if component.reference:
                     yield component.reference
-        if self.sort_order is None:
-            self.sort_order = topological_sort(self.db_classes.values(), sort_order_dependencies)
+        if self._sort_order is None:
+            self._sort_order = topological_sort(self.db_classes.values(), sort_order_dependencies)
         # Propagate "is_sorted==False" through the dependencies.
-        for db_class in reversed(self.sort_order):
+        for db_class in reversed(self._sort_order):
             if not db_class.is_sorted: continue
             if any(not x.is_sorted for x in sort_order_dependencies(db_class)):
                 db_class.is_sorted = False
         # Sort all db_classes.
-        for db_class in reversed(self.sort_order):
+        for db_class in reversed(self._sort_order):
             db_class._sort()
 
     def check(self, name:str=None):
