@@ -178,6 +178,7 @@ class TimeSeries:
         """
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
+        assert self.clock, "Argument 'clock' not given and database has no default clock set."
         self.clock.register_callback(_weakref_wrapper(self._record_implementation))
         self.record_duration = float(record_duration)
         self.discard_after = float(discard_after)

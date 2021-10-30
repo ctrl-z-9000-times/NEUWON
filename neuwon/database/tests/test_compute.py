@@ -89,8 +89,13 @@ def test_calling_functions():
 
 leak_tau = 5 # Test reading Global in method-in-method closure.
 def test_pointer_chains():
+    """
+    This testcase constructs a network of spiking neurons.
+    However the code has been twisted to test various corner cases.
+    """
     db = Database()
     dt = 0.1 # Test reading Nonlocal in method-in-method closure.
+    db.add_clock(dt)
     class Neuron:
         __slots__ = ()
         @Compute
@@ -104,7 +109,7 @@ def test_pointer_chains():
     Neuron_data.add_attribute("v", -70, valid_range=[-100,0])
     Neuron_data.add_class_attribute("thresh", -30)
     Neuron = Neuron_data.get_instance_type()
-    state_decay = math.exp(-dt / 4.0)
+    state_decay = math.exp(-dt / 3.0)
     class Syn:
         __slots__ = ()
         @Compute
@@ -124,7 +129,7 @@ def test_pointer_chains():
                 self.post.v = -100
     Syn_data = db.add_class("Syn", Syn)
     Syn_data.add_attribute("state", 0.0)
-    Syn_data.add_attribute("strength", 0.01)
+    Syn_data.add_attribute("strength", 0.44)
     Syn_data.add_attribute("pre", dtype=Neuron)
     Syn_data.add_attribute("post", dtype=Neuron)
     Syn = Syn_data.get_instance_type()
@@ -133,11 +138,13 @@ def test_pointer_chains():
         Syn.advance()
         Syn.neuron_ap_reset()
         db.check()
+        db.clock.tick()
     # Isolated synapse testcase.
     presyn = Neuron()
     postsyn = Neuron()
     syn = Syn(pre=presyn,post=postsyn)
-    for _ in range(round(1/dt)): advance()
+    for _ in range(round(1/dt)):
+        advance()
     assert postsyn.v == -70
     presyn.v = -10
     for _ in range(round(1/dt)):
@@ -145,29 +152,49 @@ def test_pointer_chains():
         advance()
     assert postsyn.v > -69.99
     # Construct a neural network.
-    n = [Neuron() for _ in range(1000)]
-    nsyn = 100 * len(n)
+    n = [Neuron() for _ in range(50)]
+    s = []
+    nsyn = 50 * len(n)
     for pre, post in zip(random.choices(n, k=nsyn), random.choices(n, k=nsyn)):
         s.append(Syn(pre=pre, post=post))
     db.check()
     # Record from several of the neurons.
     outputs = random.sample(n, 20)
-    probes  = [TimeSeries().record(x) for x in outputs]
+    probes  = [TimeSeries().record(x, 'v') for x in outputs]
     # Run without inputs.
-    1/0
-    # Check that network is silent.
-    1/0
-    # Setup adn start the network inputs.
-    inputs  = random.sample(n, len(n) // 10)
-    for x in inputs:
-        TimeSeries.square_wave().play(x)
-
-    # TODO: Run it through three periods: init-off, inputs-turn-it-on, sustained/recurrent activity.
-    #       And check that it does the expected thing at each step.
-
-    for _ in range(round(100 / dt)):
+    for _ in range(round(3/dt)):
         advance()
-
-    # TODO: Check for sane recurrent activity.
-    1/0
+    # Check that network is silent.
+    for p in probes:
+        for x in p.get_data():
+            assert x == pytest.approx(-70)
+    # Setup and start the network inputs.
+    inputs  = random.sample(n, len(n) // 3)
+    inputs  = [n for n in inputs if n not in outputs]
+    def burst_of_inputs():
+        for x in inputs:
+            TimeSeries().square_wave(0, 60, period=1, duty_cycle=1).play(x, 'v')
+    burst_of_inputs()
+    for _ in range(round(20 / dt)):
+        advance()
+    # Check for received spikes.
+    for p in probes:
+        assert any(x > -69.99 for x in p.get_data())
+    # Check for silent network with no inputs.
+    probes = [TimeSeries().record(x, 'v') for x in outputs]
+    for _ in range(round(10 / dt)):
+        advance()
+    for p in probes:
+        assert all(x < -50 for x in p.get_data())
+    # Increase synapse strength and check for sustained recurrent activity.
+    stength_data = Syn_data.get_data('strength')
+    stength_data *= 3.33
+    burst_of_inputs()
+    for _ in range(round(10 / dt)):
+        advance()
+    probes = [TimeSeries().record(x, 'v') for x in outputs]
+    for _ in range(round(5 / dt)):
+        advance()
+    for p in probes:
+        assert any(x > -60 for x in p.get_data())
 

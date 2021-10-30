@@ -13,19 +13,14 @@ import uncompyle6
 
 # IDEAS:
 # 
-#   Consider redesigning this to have a single public symbol named 'Compute'.
-#       Also get rid of the plain Function jit. its useless. use methods instead.
-#       All that the Function annotation *should* be is a meta-data tag for the methods to use.
-#       Also then rename this module to 'compute.py'.
-# 
 #   Type annotations for passing multiple objects into a function/method?
 #       Without *something* like this there are fundamental limits on what a Method can do.
 #       Should be very simple to implement for Methods.
-#       Functions are not associated with any database, so I don't know how this would really worth with them?
+#       Functions are not associated with any database, so I don't know how this would really work with them?
 # 
 #   Coordinate Kernels for sparse matrixes.
 #       User writes func accepting (row, col, val) and returning the new value.
-#       Alternatrively, I could allow matrix access inside of the methods.
+#       Alternatively, I could allow matrix access inside of the methods.
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
 # 
@@ -144,12 +139,12 @@ class _JIT:
             if isinstance(value, Compute):
                 self.closure[name] = _JIT(value.original, self.target).function
         # Transform and then reassemble the function.
-        if method_db_class: self._rewrite_method(method_db_class)
+        if method_db_class: self.rewrite_method(method_db_class)
         self.assemble_function()
         if True: _print_pycode(self.py_function)
         self.function = target.jit_wrapper(self.py_function)
 
-    def _rewrite_method(self, db_class):
+    def rewrite_method(self, db_class):
         self_var = next(iter(self.signature.parameters))
         rr = _ReferenceRewriter(db_class, self_var, self.body_ast)
         self.db_arguments = sorted(rr.db_arguments.items(), key=lambda pair: pair[1].qualname)

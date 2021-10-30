@@ -477,7 +477,7 @@ class DB_Class(Documentation):
     def add_connectivity_matrix(self, name:str, column, doc:str=""):
         return ConnectivityMatrix(self, name, column, doc=doc)
 
-    def add_method(self, name:str, function:Callable, doc:str=""):
+    def _add_method(self, name:str, function:Callable, doc:str=""):
         # Note, the user can add methods but they will not show up in the
         # instance_type unless they are defined in the class hierarchy.
         # This prevents polluting the shared namespaces.
