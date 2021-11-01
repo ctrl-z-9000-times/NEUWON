@@ -257,6 +257,9 @@ class DB_Class(Documentation):
         recursive destruction of entities. Instead, references to destroyed
         entities are simply removed from the sparse matrix.
         """
+        if base_class is None and isinstance(name, type):
+            base_class = name
+            name = base_class.__name__
         if not doc:
             if base_class and base_class.__doc__:
                 doc = base_class.__doc__
@@ -476,13 +479,6 @@ class DB_Class(Documentation):
 
     def add_connectivity_matrix(self, name:str, column, doc:str=""):
         return ConnectivityMatrix(self, name, column, doc=doc)
-
-    def _add_method(self, name:str, function:Callable, doc:str=""):
-        # Note, the user can add methods but they will not show up in the
-        # instance_type unless they are defined in the class hierarchy.
-        # This prevents polluting the shared namespaces.
-        # Adding anonamous methods is still useful for running snippets of computation.
-        1/0 # TODO!
 
     def _sort(self):
         if self.is_sorted: return

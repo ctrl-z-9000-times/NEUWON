@@ -117,3 +117,12 @@ def test_requires_slots():
     db = Database()
     with pytest.raises(Exception):
         db.add_class("NoSlots", NoSlots)
+
+def test_shorthand_class_args():
+    class Foobar_cls:
+        __slots__ = ()
+    db = Database()
+    Foobar = db.add_class(Foobar_cls).get_instance_type()
+    assert isinstance(Foobar(), Foobar_cls)
+    assert Foobar.get_database_class().get_name() == 'Foobar_cls'
+

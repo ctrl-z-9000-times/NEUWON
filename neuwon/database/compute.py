@@ -16,18 +16,19 @@ import uncompyle6
 #   Type annotations for passing multiple objects into a function/method?
 #       Without *something* like this there are fundamental limits on what a Method can do.
 #       Should be very simple to implement for Methods.
-#       Functions are not associated with any database, so I don't know how this would really work with them?
+# 
+#   Database.add_function()
+#       Register an anonymous function.
+#       This allows users to define & change code at run time.
+#       This will also be needed for processing the type-annotations of functions.
+#       Note: this will broadcast its inputs like numpy does
+#               Can broadcast function over array of pointers, for method-like behavior.
 # 
 #   Coordinate Kernels for sparse matrixes.
 #       User writes func accepting (row, col, val) and returning the new value.
 #       Alternatively, I could allow matrix access inside of the methods.
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
-# 
-#   db_class.add_method()
-#       Register an anonymous method? BC then you can write & change code as will.
-#       This would allow users to define & change code at run time.
-#       Ignore this in favor of the regular inheritance based API.
 # 
 # TODO:
 #       NULL Pointers become integers, not None. Document this somewhere?
