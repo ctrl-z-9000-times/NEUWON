@@ -15,9 +15,11 @@ def test_ball_and_stick():
     ball  = Segment(parent=None, coordinates=[0,0,0], diameter=42)
     stick = []
     tip   = ball
+    assert ball.is_root()
     for i in range(10):
         tip = Segment(parent=tip, coordinates=[i+22,0,0], diameter=3)
         stick.append(tip)
+    assert not tip.is_root()
     for x in db.get("Segment").get_all_instances():
-        print(x.volume)
+        print(f'l: {x.length}, v: {x.volume}')
     db.check()

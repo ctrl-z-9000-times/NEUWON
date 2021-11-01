@@ -29,6 +29,8 @@ import uncompyle6
 #       This would allow users to define & change code at run time.
 #       Ignore this in favor of the regular inheritance based API.
 # 
+# TODO:
+#       NULL Pointers become integers, not None. Document this somewhere?
 
 def _print_pycode(f):
     """ Decompile and print a python function, for debugging purposes. """

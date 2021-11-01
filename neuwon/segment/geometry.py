@@ -1,35 +1,40 @@
 """ Private module. """
 __all__ = []
 
-from neuwon.database import epsilon
+from neuwon.database import epsilon, Compute, NULL
 import numpy as np
 
-class surface_area:
-    def disk(diameter):
-        """ Surface area of one side only, area of circle. """
-        return 0.25 * np.pi * (diameter ** 2)
+@Compute
+def surface_area_disk(diameter):
+    """ Surface area of one side only, area of circle. """
+    return 0.25 * np.pi * (diameter ** 2)
 
-    def sphere(diameter):
-        return np.pi * (diameter ** 2)
+@Compute
+def surface_area_sphere(diameter):
+    return np.pi * (diameter ** 2)
 
-    def cylinder(diameter, length):
-        """ Lateral surface area, does not include the end caps. """
-        return np.pi * diameter * length
+@Compute
+def surface_area_cylinder(diameter, length):
+    """ Lateral surface area, does not include the end caps. """
+    return np.pi * diameter * length
 
-    def frustum(radius_1, radius_2, length):
-        """ Lateral surface area, does not include the end caps. """
-        s = sqrt((radius_1 - radius_2) ** 2 + length ** 2)
-        return np.pi * (radius_1 + radius_2) * s
+@Compute
+def surface_area_frustum(radius_1, radius_2, length):
+    """ Lateral surface area, does not include the end caps. """
+    s = sqrt((radius_1 - radius_2) ** 2 + length ** 2)
+    return np.pi * (radius_1 + radius_2) * s
 
-class volume:
-    def sphere(diameter):
-        return (4.0 / 3.0 ) * np.pi * (0.5 * diameter) ** 3
+@Compute
+def volume_sphere(diameter):
+    return (4.0 / 3.0 ) * np.pi * (0.5 * diameter) ** 3
 
-    def cylinder(diameter, length):
-        return surface_area.disk(diameter) * length
+@Compute
+def volume_cylinder(diameter, length):
+    return surface_area_disk(diameter) * length
 
-    def frustum(radius_1, radius_2, length):
-        return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
+@Compute
+def volume_frustum(radius_1, radius_2, length):
+    return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
 
 class Tree:
     """
@@ -50,8 +55,9 @@ class Tree:
             siblings.append(self)
             parent.children = siblings
 
+    @Compute
     def is_root(self):
-        return self.parent is None
+        return self.parent == NULL
 
 class SegmentGeometry(Tree):
     """
@@ -113,12 +119,15 @@ class SegmentGeometry(Tree):
         self._compute_cross_sectional_area()
         self._compute_intracellular_volume()
 
+    @Compute
     def is_sphere(self):
         return self.is_root()
 
+    @Compute
     def is_cylinder(self):
         return not self.is_sphere()
 
+    @Compute
     def _compute_length(self):
         if self.is_sphere():
             # Spheres have no defined length, so make one up instead instead.
@@ -126,6 +135,7 @@ class SegmentGeometry(Tree):
         else:
             self.length = np.linalg.norm(self.coordinates - self.parent.coordinates)
 
+    @Compute
     def _secondary_length(self):
         """
         Subtract the parent's radius from the secondary nodes length,
@@ -147,24 +157,26 @@ class SegmentGeometry(Tree):
         children = self.children
         diameter = self.diameter
         if self.is_sphere():
-            area = surface_area.sphere(diameter)
+            area = surface_area_sphere(diameter)
         else:
-            area = surface_area.cylinder(diameter, self._secondary_length())
+            area = surface_area_cylinder(diameter, self._secondary_length())
             # Account for the surface area on the tips of terminal/leaf segments.
             if len(children) == 0:
-                area += surface_area.disk(diameter)
+                area += surface_area_disk(diameter)
         # Account for the surface area covered by children.
         for child in children:
             if not child._primary:
                 attachment_diameter = min(diameter, child.diameter)
-                area -= surface_area.disk(attachment_diameter)
+                area -= surface_area_disk(attachment_diameter)
         self.surface_area = area
 
+    @Compute
     def _compute_cross_sectional_area(self):
-        self.cross_sectional_area = surface_area.disk(self.diameter)
+        self.cross_sectional_area = surface_area_disk(self.diameter)
 
+    @Compute
     def _compute_intracellular_volume(self):
         if self.is_sphere():
-            self.volume = volume.sphere(self.diameter)
+            self.volume = volume_sphere(self.diameter)
         else:
-            self.volume = volume.cylinder(self.diameter, self._secondary_length())
+            self.volume = volume_cylinder(self.diameter, self._secondary_length())
