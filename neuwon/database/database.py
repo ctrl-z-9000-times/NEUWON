@@ -1,4 +1,3 @@
-from collections.abc import Callable, Iterable, Mapping
 from graph_algorithms import topological_sort
 from neuwon.database import memory_spaces
 from neuwon.database.doc import Documentation
@@ -291,6 +290,7 @@ class DB_Class(Documentation):
         """ Make a new subclass to represent instances which are part of *this* database. """
         # Enforce that the user's class use "__slots__ = ()".
         if users_class:
+            assert isinstance(users_class, type)
             for cls in users_class.mro()[:-1]:
                 if "__slots__" not in vars(cls):
                     raise TypeError(f"Class \"{cls.__name__}\" does not define \"__slots__ = ()\"!")

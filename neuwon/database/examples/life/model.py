@@ -1,27 +1,51 @@
-from neuwon.database import Database
+""" Implements the game logic for Conways Game of Life. """
+from neuwon.database import Database, Compute
 import numpy as np
 import numba
 
+class Cell:
+    """ This class represents a square on the game board. """
+    __slots__ = ()
+    @classmethod
+    def initialize(cls, database):
+        cell_data = database.add_class(cls)
+        cell_data.add_attribute("coordinates", shape=(2,), dtype=np.int32)
+        cell_data.add_attribute("alive", False, dtype=np.int8)
+        cell_data.add_connectivity_matrix("neighbors", "Cell")
+        cell_data.add_attribute("count", dtype=np.int8,
+                    doc="The number of living neighbors for this cell.")
+        return cell_data.get_instance_type()
+
+    @classmethod
+    def advance(cls):
+        cell_data = cls.get_database_class()
+        a = cell_data.get_data("alive")
+        n = cell_data.get_data("neighbors")
+        c = cell_data.get_data("count")
+        c[:] = n * a
+        cls.advance_kernel() # Calls the kernel on all instances of the cell class.
+
+    @Compute
+    def advance_kernel(self):
+        if self.alive:
+            if self.count not in range(2, 4):
+                self.alive = False
+        else:
+            if self.count == 3:
+                self.alive = True
+
+
 class GameOfLife:
-
-    class _CellBaseClass:
-        __slots__ = ()
-        @classmethod
-        def _add_to_database(cls, database):
-            cell_data = database.add_class("Cell", cls)
-            cell_data.add_attribute("coordinates", shape=(2,), dtype=np.int32)
-            cell_data.add_attribute("alive", False, dtype=np.bool)
-            cell_data.add_connectivity_matrix("neighbors", "Cell")
-            return cell_data.get_instance_type()
-
     def __init__(self, shape):
         self.db = Database()
-        self.Cell = self._CellBaseClass._add_to_database(self.db)
+        self.Cell = Cell.initialize(self.db)
         self.shape = shape
+        # Make all of the game Cells.
         self.grid = np.empty(self.shape, dtype=object)
         for x in range(self.shape[0]):
             for y in range(self.shape[1]):
                 self.grid[x,y] = self.Cell(coordinates=(x,y))
+        # Setup the neighbors sparse-matrix.
         for x in range(self.shape[0]):
             for y in range(self.shape[1]):
                 cell = self.grid[x,y]
@@ -40,28 +64,14 @@ class GameOfLife:
                 cell.neighbors = neighbors
         self.db.get("Cell.neighbors").to_csr()
 
-    def randomize(self, alive_fraction):
+    def randomize(self, fraction_alive):
         a = self.db.get_data("Cell.alive")
         a.fill(False)
-        a[np.random.uniform(size=a.shape) < alive_fraction] = True
+        a[np.random.uniform(size=a.shape) < fraction_alive] = True
 
     def get_num_alive(self):
         return sum(self.db.get_data("Cell.alive"))
 
     def advance(self):
-        a = self.db.get_data("Cell.alive")
-        n = self.db.get_data("Cell.neighbors")
-        # C is the number of living neighbors for each cell.
-        c = n * np.array(a, dtype=np.int32)
-        _advance(a, c)
+        self.Cell.advance()
 
-@numba.njit(parallel=True)
-def _advance(a, c):
-    for idx in numba.prange(len(a)):
-        ci = c[idx]
-        if a[idx]:
-            if ci not in range(2, 4):
-                a[idx] = False
-        else:
-            if ci == 3:
-                a[idx] = True

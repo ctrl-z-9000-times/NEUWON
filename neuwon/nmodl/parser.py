@@ -1,7 +1,6 @@
 """ Private module. """
 __all__ = []
 
-import copy
 import itertools
 import nmodl
 import nmodl.ast
