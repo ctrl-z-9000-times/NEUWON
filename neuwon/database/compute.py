@@ -97,8 +97,7 @@ class Compute(Documentation):
         All additional arguments are passed through to the users method.
         """
         assert self.db_class is not None
-        target = self.db_class.database.memory_space
-        function = self._jit(target)
+        function = self._jit(self.db_class.database.memory_space)
         db_args = [db_attr.get_data() for _, db_attr in self.db_arguments]
         if isinstance(instance, self.db_class.instance_type):
             instance = instance._idx
@@ -124,6 +123,7 @@ class _JIT:
         assert not isinstance(function, Compute)
         self.original  = function
         self.target    = target
+        self.db_class  = method_db_class
         # Breakout the function into all of its constituent parts.
         self.name      = self.original.__name__.replace('<', '_').replace('>', '_')
         self.filename  = inspect.getsourcefile(self.original)
@@ -137,29 +137,37 @@ class _JIT:
         self.closure.update(builtins)
         self.closure.update(globals)
         self.closure.update(nonlocals)
+        self.db_arguments = {}
         # Replace all Compute's captured in this closure with their JIT'ed versions.
         for name, value in self.closure.items():
             if isinstance(value, Compute):
                 self.closure[name] = _JIT(value.original, self.target).function
         # Transform and then reassemble the function.
-        if method_db_class: self.rewrite_method(method_db_class)
+        if self.db_class: self.rewrite_method_self()
         self.assemble_function()
         if True: _print_pycode(self.py_function)
         self.function = target.jit_wrapper(self.py_function)
 
-    def rewrite_method(self, db_class):
+    def rewrite_method_self(self):
         self_var = next(iter(self.signature.parameters))
-        rr = _ReferenceRewriter(db_class, self_var, self.body_ast)
-        self.db_arguments = sorted(rr.db_arguments.items(), key=lambda pair: pair[1].qualname)
-        parameters = list(self.signature.parameters.values())
-        for arg_name, db_attr in reversed(self.db_arguments):
-            parameters.insert(1, inspect.Parameter(arg_name, inspect.Parameter.POSITIONAL_OR_KEYWORD))
-        self.signature = self.signature.replace(parameters=parameters)
+        self.rewrite_reference(self.db_class, self_var)
+
+    def rewrite_reference(self, ref_class, ref_name):
+        rr = _ReferenceRewriter(ref_class, ref_name, self.body_ast)
         self.body_ast = rr.body_ast
+        self.db_arguments.update(rr.db_arguments)
         for name, method in rr.method_calls.items():
             self.closure[name] = method._jit(self.target)
 
     def assemble_function(self):
+        # Give the db_arguments a stable ordering and fixup the functions signature.
+        self.db_arguments = sorted(self.db_arguments.items(),
+                                    key=lambda pair: pair[1].qualname)
+        parameters = list(self.signature.parameters.values())
+        for arg_name, db_attr in reversed(self.db_arguments):
+            parameters.insert(1, inspect.Parameter(arg_name, inspect.Parameter.POSITIONAL_OR_KEYWORD))
+        self.signature = self.signature.replace(parameters=parameters)
+        # Assemble a new AST for the JIT'ed function.
         template                = f"def {self.name}{self.signature}:\n pass\n"
         module_ast              = ast.parse(template, filename=self.filename)
         self.function_ast       = module_ast.body[0]
