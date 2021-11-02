@@ -87,6 +87,26 @@ def test_calling_functions():
     assert my_seg.area == pytest.approx(math.pi * 36)
 
 
+def test_compute_on_memory_space():
+    class Foo:
+        __slots__ = ()
+        @Compute
+        def bar(self):
+            self.x += 1
+
+    db = Database()
+    Foo = db.add_class(Foo)
+    Foo.add_attribute('x', 0)
+    Foo = Foo.get_instance_type()
+    Foo.bar() # Test calling with no instances, on host.
+    with db.using_memory_space('cuda'):
+        Foo.bar() # Test calling with no instances, on CUDA.
+        Foo() # Test making a new instance inside in CUDA's context.
+        Foo.bar() # Test "normal" Compute on CUDA.
+    Foo.bar()
+    assert all(x == 2 for x in db.get_data("Foo.x"))
+
+
 leak_tau = 5 # Test reading Global in method-in-method closure.
 def test_pointer_chains():
     """
