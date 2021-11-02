@@ -466,7 +466,8 @@ class SparseMatrix(DataComponent):
         else: raise NotImplementedError(self.fmt)
 
     def _transfer(self, target_space):
-        if self.memory_space is target_space: return
+        if self.memory_space is target_space:
+            return
         if self.memory_space is memory_spaces.host:
             if target_space is memory_spaces.cuda:
                 if self.dtype.kind not in 'fc':
@@ -479,16 +480,20 @@ class SparseMatrix(DataComponent):
                 if self.fmt == 'csr' or self.fmt == 'coo':
                     if self.data is not None:
                         self.data = self._matrix_class(self.data, dtype=self.dtype)
-                else: raise NotImplementedError(self.fmt)
+                else:
+                    raise NotImplementedError(self.fmt)
                 self._host_lil_mem = None
-            else: raise NotImplementedError(target_space)
+            else:
+                raise NotImplementedError(target_space)
         elif self.memory_space is memory_spaces.cuda:
             if target_space is memory_spaces.host:
                 if self.data is not None:
                     self.data = self.data.get()
-            else: raise NotImplementedError(target_space)
-            self.memory_space = memory_spaces.host
-        else: raise NotImplementedError(self.memory_space)
+                self.memory_space = target_space
+            else:
+                raise NotImplementedError(target_space)
+        else:
+            raise NotImplementedError(self.memory_space)
 
     def get_data(self):
         self._transfer(self.db_class.database.memory_space)

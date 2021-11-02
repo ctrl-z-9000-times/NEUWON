@@ -360,8 +360,7 @@ class DB_Class(Documentation):
             if attr_name.startswith('__') and attr_name.endswith('__'): continue
             attr = getattr(self.instance_type, attr_name)
             if isinstance(attr, Compute):
-                m = Compute(attr)
-                m._register_method(self)
+                attr._register_method(self)
 
     __init__.__doc__ += Documentation._doc_doc
 

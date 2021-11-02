@@ -19,6 +19,7 @@ def test_basic_method():
     Seg_data = db.add_class("Seg", Seg)
     Seg_data.add_attribute("v", -70)
     Seg = Seg_data.get_instance_type()
+    Seg.bar()
     my_seg = Seg()
     help(my_seg.bar)
     my_seg.bar()
@@ -149,7 +150,7 @@ def test_pointer_chains():
                 self.post.v = -100
     Syn_data = db.add_class("Syn", Syn)
     Syn_data.add_attribute("state", 0.0)
-    Syn_data.add_attribute("strength", 0.44)
+    Syn_data.add_attribute("strength", 0.77)
     Syn_data.add_attribute("pre", dtype=Neuron)
     Syn_data.add_attribute("post", dtype=Neuron)
     Syn = Syn_data.get_instance_type()

@@ -3,7 +3,7 @@ from neuwon.database.database import DB_Class, DB_Object
 from neuwon.database.data_components import ClassAttribute, Attribute, SparseMatrix
 from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
-from neuwon.database.memory_spaces import host
+from neuwon.database.memory_spaces import host, cuda
 import ast
 import collections
 import inspect
@@ -97,15 +97,29 @@ class Compute(Documentation):
         All additional arguments are passed through to the users method.
         """
         assert self.db_class is not None
-        function = self._jit(self.db_class.database.memory_space)
+        target = self.db_class.database.memory_space
+        function = self._jit(target)
         db_args = [db_attr.get_data() for _, db_attr in self.db_arguments]
+        if instance is None:
+            instance = range(0, len(self.db_class))
         if isinstance(instance, self.db_class.instance_type):
             instance = instance._idx
         if isinstance(instance, int):
-            return function(instance, *db_args, *args, **kwargs)
-        if instance is None:
-            instance = range(0, len(self.db_class))
-        return [function(idx, *db_args, *args, **kwargs) for idx in instance]
+            instance = range(instance, instance + 1)
+            single_input = True
+        else:
+            single_input = False
+
+        if target is host:
+            retval = [function(idx, *db_args, *args, **kwargs) for idx in instance]
+            if single_input:
+                return retval[0]
+            else:
+                return retval
+        elif target is cuda:
+            threadsperblock = 32
+            blockspergrid = (len(instance) + (threadsperblock - 1)) // threadsperblock
+            function[blockspergrid, threadsperblock](*db_args, *args, **kwargs)
 
     def _jit(self, target):
         cached = self._jit_cache.get(target, None)
@@ -138,12 +152,13 @@ class _JIT:
         self.closure.update(globals)
         self.closure.update(nonlocals)
         self.db_arguments = {}
-        # Replace all Compute's captured in this closure with their JIT'ed versions.
+        if self.db_class is not None: self.rewrite_method_self()
+        # Replace all captured functions in this closure with their JIT'ed versions.
         for name, value in self.closure.items():
             if isinstance(value, Compute):
                 self.closure[name] = _JIT(value.original, self.target).function
         # Transform and then reassemble the function.
-        if self.db_class: self.rewrite_method_self()
+        # if self.target is cuda: self.cuda_fixups()
         self.assemble_function()
         if True: _print_pycode(self.py_function)
         self.function = target.jit_wrapper(self.py_function)
@@ -158,6 +173,13 @@ class _JIT:
         self.db_arguments.update(rr.db_arguments)
         for name, method in rr.method_calls.items():
             self.closure[name] = method._jit(self.target)
+
+    def cuda_fixups(self):
+        # TODO: Replace the 'self' argument with an array of instance indexes.
+        # TODO: Insert statements to read:
+        #       >>> self_var = instances_array[numba.cuda.grid(1)]
+        #       >>> if self_var >= instances_array.size: return
+        1/0
 
     def assemble_function(self):
         # Give the db_arguments a stable ordering and fixup the functions signature.
