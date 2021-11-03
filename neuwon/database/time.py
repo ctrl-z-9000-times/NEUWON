@@ -332,7 +332,12 @@ class TimeSeries:
         """ Returns the number of data samples in this buffer. """
         return len(self.timeseries)
 
+    def constant_wave(self, value, duration) -> 'self':
+        """ Overwrite this buffer with the given function. """
+        return self.set_data([value, value], [0, duration])
+
     def square_wave(self, minimum, maximum, period, duty_cycle=0.5) -> 'self':
+        """ Overwrite this buffer with one cycle of the given periodic function. """
         min_        = float(minimum)
         max_        = float(maximum)
         period      = float(period)
@@ -344,6 +349,7 @@ class TimeSeries:
         return self.set_data([max_, max_, min_, min_], [start, mid, mid, end])
 
     def sine_wave(self, minimum, maximum, period) -> 'self':
+        """ Overwrite this buffer with one cycle of the given periodic function. """
         min_        = float(minimum)
         max_        = float(maximum)
         period      = float(period)
@@ -355,12 +361,14 @@ class TimeSeries:
                 np.linspace(0, period, n))
 
     def triangle_wave(self, minimum, maximum, period) -> 'self':
+        """ Overwrite this buffer with one cycle of the given periodic function. """
         min_        = float(minimum)
         max_        = float(maximum)
         period      = float(period)
         return self.set_data([min_, max_, min_], [0.0, 0.5 * period, period])
 
     def sawtooth_wave(self, minimum, maximum, period) -> 'self':
+        """ Overwrite this buffer with one cycle of the given periodic function. """
         min_        = float(minimum)
         max_        = float(maximum)
         period      = float(period)
