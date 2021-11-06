@@ -6,6 +6,7 @@ This file provides tools for performing constructive solid geometry:
   * The abstract class "Region" allows for defining new types of 3-D volumes.
 """
 import numpy as np
+from collections.abc import Callable, Iterable, Mapping
 
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
@@ -41,9 +42,8 @@ class Region:
 
 class Intersection(Region):
     """ Intersection of regions """
-    def __init__(self, regions):
-        """ Argument regions is an iterable of Region instances. """
-        self.regions = tuple(regions)
+    def __init__(self, *regions):
+        self.regions = regions
         assert(all(isinstance(rgn, Region) for rgn in self.regions))
         low, high = zip(*(rgn.aabb() for rgn in self.regions))
         self.lower_corner = np.max(low, axis=0)
@@ -55,9 +55,8 @@ class Intersection(Region):
 
 class Union(Region):
     """ Union of regions """
-    def __init__(self, regions):
-        """ Argument regions is an iterable of Region instances. """
-        self.regions = tuple(regions)
+    def __init__(self, *regions):
+        self.regions = regions
         assert(all(isinstance(rgn, Region) for rgn in self.regions))
         low, high = zip(*(rgn.aabb() for rgn in self.regions))
         self.lower_corner = np.min(low, axis=0)
@@ -197,3 +196,43 @@ class _ImageStack:
 
     def contains(self, coordinates):
         return self.stack.contains(coordinates)
+
+
+class _RegionFactory(dict):
+
+    _region_types = {cls.__name__: cls for cls in
+            (Intersection, Union, Not,
+            Rectangle, Sphere, Cylinder)}
+
+    def __init__(self, parameters):
+        self.add_parameters(parameters)
+
+    def add_parameters(self, parameters: dict):
+        self.parameters = parameters
+        for name, rgn in self.parameters.items():
+            if name not in self:
+                self.add_region(name, rgn)
+        del self.parameters
+
+    def add_region(self, name: str, region_parameters) -> Region:
+        assert name not in self
+        self[name] = rgn = self.make_region(region_parameters)
+        return rgn
+
+    def make_region(self, args) -> Region:
+        if isinstance(args, Region):
+            return args
+        elif isinstance(args, str):
+            region_name = args
+            if region_name not in self:
+                region_parameters = self.parameters[region_name]
+                self.add_region(region_name, region_parameters)
+            return self[region_name]
+        elif isinstance(args, Iterable):
+            region_type, *args = args
+            if region_type in ('Intersection', 'Union', 'Not'):
+                args = [self.make_region(r) for r in args]
+            return self._region_types[region_type](*args)
+        else:
+            raise ValueError(args)
+
