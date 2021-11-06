@@ -197,27 +197,25 @@ class _ImageStack:
     def contains(self, coordinates):
         return self.stack.contains(coordinates)
 
-
 class _RegionFactory(dict):
-
-    _region_types = {cls.__name__: cls for cls in
-            (Intersection, Union, Not,
-            Rectangle, Sphere, Cylinder)}
-
     def __init__(self, parameters):
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
         self.parameters = parameters
         for name, rgn in self.parameters.items():
-            if name not in self:
-                self.add_region(name, rgn)
+            self.add_region(name, rgn)
         del self.parameters
 
     def add_region(self, name: str, region_parameters) -> Region:
-        assert name not in self
+        if name in self:
+            return self[name]
         self[name] = rgn = self.make_region(region_parameters)
         return rgn
+
+    _region_types = {cls.__name__: cls for cls in
+            (Intersection, Union, Not,
+            Rectangle, Sphere, Cylinder)}
 
     def make_region(self, args) -> Region:
         if isinstance(args, Region):
@@ -235,4 +233,3 @@ class _RegionFactory(dict):
             return self._region_types[region_type](*args)
         else:
             raise ValueError(args)
-
