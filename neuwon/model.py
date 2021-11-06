@@ -110,8 +110,11 @@ class Model:
         species._initialize(self.database, self.time_step, self.celsius, self.input_clock)
         return species
 
-    def get_species(self, species_name) -> Species:
+    def get_species(self, species_name:str) -> Species:
         return self.species[str(species_name)]
+
+    def get_all_species(self) -> [Species]:
+        return list(self.species.values())
 
     def add_reaction(self, reaction: Reaction) -> Reaction:
         r = reaction
@@ -133,6 +136,9 @@ class Model:
 
     def get_reaction(self, reaction_name:str) -> Reaction:
         return self.reactions[str(reaction_name)]
+
+    def get_all_reactions(self) -> [Reaction]:
+        return list(self.reactions.values())
 
     def advance(self):
         """

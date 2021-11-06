@@ -30,6 +30,11 @@ import uncompyle6
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
 # 
+#   Return arrays, instead of lists.
+#       Will need to determine the return value's dtype. (or accept an annotation?)
+#       Replace return stmt's with a write to the array, and pass the array in to the function.
+#           ** This strategy should work with both host and cuda code.
+# 
 # TODO:
 #       NULL Pointers become integers, not None. Document this somewhere?
 

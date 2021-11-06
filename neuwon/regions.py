@@ -5,8 +5,8 @@ This file provides tools for performing constructive solid geometry:
   * Logical operators for combining regions: Intersection, Union, Not.
   * The abstract class "Region" allows for defining new types of 3-D volumes.
 """
-import numpy as np
 from collections.abc import Callable, Iterable, Mapping
+import numpy as np
 
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.

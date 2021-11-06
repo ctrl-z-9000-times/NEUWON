@@ -328,6 +328,19 @@ class SparseMatrix(DataComponent):
 
     # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
 
+    # I really want to like to use enums, and they are great an all....
+    #       But strings are a lot shorter on the page.
+    #               "lil" vs SparseMatrix.Format.lil
+    #       Pros & Cons:
+    #           + faster to check pointer identity than string equality.
+    #           - more verbose.
+    #           + more elegant / readable / organized?
+    #               -> Can attach methods to enum. start with: _matrix_class
+    # class Format(enum.Enum):
+    #     lil = object()
+    #     coo = object()
+    #     csr = object()
+
     def __init__(self, db_class, name, column, dtype=Real, doc:str="", units:str="",
                 allow_invalid:bool=False, valid_range=(None, None),):
         """
@@ -474,7 +487,10 @@ class SparseMatrix(DataComponent):
                     # Cupy only supports float & complex types.
                     # Silently refuse to transfer, leave data on host.
                     return
-                self.memory_space = memory_spaces.cuda
+                    # Alternatively I could upcast the users data to float32 or
+                    # float64 in a loss-less way. Its more important that the
+                    # all data ends up in the right place than memory efficency. 
+                self.memory_space = target_space
                 if self.fmt == 'lil':
                     self.fmt = 'csr'
                 if self.fmt == 'csr' or self.fmt == 'coo':
