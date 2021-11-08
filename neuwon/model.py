@@ -1,8 +1,9 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
+from neuwon.parameters import Parameters
 from neuwon.segment import SegmentMethods
-from neuwon.mechanism import MechanismFactory
+from neuwon.mechanisms import MechanismsFactory
 from neuwon.species import SpeciesFactory
 import cupy as cp
 import numpy as np

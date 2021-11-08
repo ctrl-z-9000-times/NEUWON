@@ -1,4 +1,4 @@
-from neuwon.nmodl import NmodlMechanism
+import neuwon.nmodl
 
 class Mechanism:
     """ Abstract class for specifying chemical reactions and mechanisms. """
@@ -25,7 +25,7 @@ class Mechanism:
 
     @classmethod
     def advance(self):
-        """ Advance all instances of this reaction. """
+        """ Advance all instances of this mechanism. """
         raise TypeError(f"Abstract method called by {self.get_name()}.")
 
 class MechanismsFactory(dict):
@@ -45,7 +45,7 @@ class MechanismsFactory(dict):
             return self[name]
         if isinstance(mechanism, str):
             if mechanism.endswith(".mod"):
-                mechanism = NmodlMechanism(mechanism)
+                mechanism = neuwon.nmodl.NmodlMechanism(mechanism)
             else:
                 raise ValueError("File extension not understood")
         if hasattr(mechanism, "initialize"):

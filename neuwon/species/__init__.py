@@ -1,6 +1,7 @@
 from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
+from neuwon.database import Clock
 import cupy as cp
 import math
 import neuwon.species.voronoi
@@ -160,6 +161,7 @@ class Species:
         reversal_potential  = self._compute_reversal_potential(database, celsius)
         sum_conductance += species_conductance
         driving_voltage += species_conductance * reversal_potential
+        return True
 
     def _advance(self, database):
         # Calculate the transmembrane ion flows.

@@ -1,6 +1,6 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real
-from neuwon.model import Reaction
+from neuwon.mechanisms import Mechanism
 from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
 from neuwon.nmodl.pointers import PointerTable, Pointer
@@ -34,7 +34,7 @@ def eprint(*args, **kwargs):
 #                     AssignStatement(variable, variable, pointer=pointer))
 
 # TODO: Consider renamining this to "NMODL_Factory"
-class NmodlMechanism(Reaction):
+class NmodlMechanism(Mechanism):
     def __init__(self, filename, pointers={}, parameters={}, use_cache=True):
         """
         Argument filename is an NMODL file to load.
@@ -260,7 +260,7 @@ class NmodlMechanism(Reaction):
         self._breakpoint_pycode = py # Save this for debugging purposes.
         self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
-class NMODL(Reaction):
+class NMODL(Mechanism):
     __slots__ = ()
     def __init__(self, segment, scale=1.0):
         self.segment = segment
