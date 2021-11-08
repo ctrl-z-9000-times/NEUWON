@@ -2,40 +2,22 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
 from neuwon.segment import SegmentMethods
-from neuwon.species import Species
+from neuwon.mechanism import MechanismFactory
+from neuwon.species import SpeciesFactory
 import cupy as cp
 import numpy as np
 
-class Reaction:
-    """ Abstract class for specifying reactions and mechanisms. """
-    __slots__ = ()
-    @classmethod
-    def get_name(self):
-        """ A unique name for this reaction and all of its instances. """
-        name = getattr(self, "name", False)
-        if name:
-            return name
-        # Return class name.
-        if isinstance(self, type):
-            return self.__name__
-        else:
-            return type(self).__name__
-
-    @classmethod
-    def initialize(self, database, time_step, celsius, input_clock):
-        """
-        Optional method.
-        This method is called after the Model has been created.
-
-        (Optional) Returns a new Reaction object to use in place of this one. """
-        pass
-
-    # TODO: Consider passing advance the same args as for initialize, BC it
-    # might be useful for the end user?
-    @classmethod
-    def advance(self):
-        """ Advance all instances of this reaction. """
-        raise TypeError("Abstract method called by %s."%repr(self))
+default_simulation_parameters = {
+    'time_step': 0.1,
+    'celsius': 37,
+    'fh_space': 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
+    'max_outside_radius':20e-6,
+    'outside_volume_fraction':.20,
+    'outside_tortuosity':1.55,
+    'cytoplasmic_resistance': 100,
+    'membrane_capacitance': 1, # uf/cm^2
+    'initial_voltage': -70,
+}
 
 class Model:
     def __init__(self, time_step,
