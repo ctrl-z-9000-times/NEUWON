@@ -12,105 +12,51 @@ F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
-class Species:
-    """ """
-    def __init__(self, name,
-            charge = 0,
-            reversal_potential    = None,
-            inside_concentration: "millimolar"  = None,
-            outside_concentration: "millimolar" = None,
-            inside_diffusivity    = None,
-            outside_diffusivity   = None,
-            inside_decay_period   = float("inf"),
-            outside_decay_period  = float("inf"),
-            use_shells = False,
-            outside_grid = None,):
-        """
-        Arguments
-        * inside_concentration:  initial value.
-        * outside_concentration: initial value.
-        * reversal_potential: is one of: number, "nerst", "goldman_hodgkin_katz"
+"""
+Parameters
+* concentration: initial value.
+* reversal_potential: is one of: number, "nerst", "goldman_hodgkin_katz"
 
-        If diffusivity is not given, then the concentration is a global constant.
-        """
+If diffusivity is not given, then the concentration is a global constant.
+"""
+
+
+class SpeciesFactory(dict):
+    def __init__(self, parameters: dict, database, time_step, celsius):
+        super().__init__()
+        self.database   = database
+        self.time_step  = time_step
+        self.celsius    = celsius
+        self.input_clock = Clock(time_step)
+        self.add_parameters(parameters)
+
+    def add_parameters(self, parameters:dict):
+        for name, species in parameters.items():
+            self.add_species(name, species)
+
+    def add_species(self, name, species) -> 'Species':
+        if name in self:
+            return self[name]
+        if not isinstance(species, Species):
+            species = Species(name, species, self)
+        self.species[species.name] = species
+        return species
+
+class Species:
+    def __init__(self, name, parameters, factory):
         self.name = str(name)
-        self.charge = int(charge)
-        if reversal_potential is None:
-            self.reversal_potential = None
-        else:
+        self.charge = int(parameters['charge'])
+        self.reversal_potential = parameters['reversal_potential']
+        if self.reversal_potential is not None:
             try:
                 self.reversal_potential = float(reversal_potential)
             except ValueError:
                 self.reversal_potential = str(reversal_potential)
                 assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
         self.electric = (self.charge != 0) or (self.reversal_potential is not None)
-        if self.electric: assert self.reversal_potential is not None
-        self.inside_global_const    = inside_diffusivity is None
-        self.outside_global_const   = outside_diffusivity is None
-        self.inside_diffusivity     = float(inside_diffusivity) if not self.inside_global_const else 0.0
-        self.outside_diffusivity    = float(outside_diffusivity) if not self.outside_global_const else 0.0
-        self.inside_decay_period    = float(inside_decay_period)
-        self.outside_decay_period   = float(outside_decay_period)
-        self.use_shells             = bool(use_shells)
-        self.inside_archetype       = "Inside" if self.use_shells else "Segment"
-        self.outside_grid           = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
-        if inside_concentration is not None:
-            self.inside_concentration = float(inside_concentration)
-            assert self.inside_concentration  >= 0.0
-        else:
-            self.inside_concentration = None
-            assert self.inside_global_const
-            assert self.inside_decay_period == float('inf')
-        if outside_concentration is not None:
-            self.outside_concentration = float(outside_concentration)
-            assert self.outside_concentration >= 0.0
-        else:
-            self.outside_concentration = None
-            assert self.outside_global_const
-            assert self.outside_decay_period == float('inf')
-        assert self.inside_diffusivity    >= 0
-        assert self.outside_diffusivity   >= 0
-        assert self.inside_decay_period   > 0.0
-        assert self.outside_decay_period  > 0.0
-        if self.inside_global_const:  assert self.inside_decay_period == np.inf
-        if self.inside_global_const:  assert not self.use_shells
-        if self.outside_global_const: assert self.outside_decay_period == np.inf
-
-    def get_name(self) -> str:
-        return self.name
-
-    def __repr__(self):
-        return "neuwon.species.Species(%s)"%self.name
-
-    def _initialize(self, database, time_step, celsius, input_clock):
-        inside_cls = database.get(self.inside_archetype)
-        if self.inside_concentration is not None:
-            if self.inside_global_const:
-                inside_cls.add_class_attribute(f"{self.name}_concentration",
-                        initial_value=self.inside_concentration,
-                        units="millimolar")
-            else:
-                inside_cls.add_attribute(f"{self.name}_concentration",
-                        initial_value=self.inside_concentration,
-                        units="millimolar")
-                inside_cls.add_attribute(f"{self.name}_delta_concentration",
-                        initial_value=0.0,
-                        units="millimolar / timestep")
-        if self.outside_concentration is not None:
-            outside_cls = database.get("Outside")
-            if self.outside_global_const:
-                outside_cls.add_class_attribute(f"{self.name}_concentration",
-                        self.outside_concentration,
-                        units="millimolar")
-            else:
-                outside_cls.add_attribute(f"{self.name}_concentration",
-                        initial_value=self.outside_concentration,
-                        units="millimolar")
-                outside_cls.add_attribute(f"{self.name}_delta_concentration",
-                        initial_value=0.0,
-                        units="millimolar / timestep")
         if self.electric:
-            segment_cls = database.get("Segment")
+            assert self.reversal_potential is not None
+            segment_cls = factory.database.get("Segment")
             segment_cls.add_attribute(f"{self.name}_conductance",
                     initial_value=0.0,
                     valid_range=(0, np.inf),
@@ -121,9 +67,29 @@ class Species:
                         units="mV")
             else:
                 segment_cls.add_attribute(f"{self.name}_reversal_potential",
-                        initial_value=np.nan,
                         units="mV")
-            input_clock.register_callback(lambda: self._accumulate_conductance(database, celsius) or True)
+            factory.input_clock.register_callback(
+                    lambda: self._accumulate_conductance(factory.database, celsius))
+
+        if 'inside' in parameters:
+            1/0
+            self.use_shells         = bool(use_shells)
+            self.inside_archetype   = "Inside" if self.use_shells else "Segment"
+            self.inside = SpeciesOnRegion(**parameters['inside'])
+        else:
+            self.inside = None
+        if 'outside' in parameters:
+            1/0
+            self.outside_grid       = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
+            self.outside = SpeciesOnRegion(**parameters['outside'])
+        else:
+            self.outside = None
+
+    def get_name(self) -> str:
+        return self.name
+
+    def __repr__(self):
+        return f"<Species: {self.name}>"
 
     def _compute_reversal_potential(self, database, celsius):
         x = database.get_data(f"Segment.{self.name}_reversal_potential")
@@ -165,8 +131,7 @@ class Species:
 
     def _advance(self, database):
         # Calculate the transmembrane ion flows.
-        if self.inside_global_const and self.outside_global_const: return
-        if not (self.electric and self.charge != 0): return
+        # if (self.electric and self.charge != 0):
         reversal_potential = access("membrane/reversal_potentials/"+self.name)
         g = access("membrane/conductances/"+self.name)
         millimoles = g * (dt * reversal_potential - integral_v) / (self.charge * F)
@@ -268,6 +233,48 @@ def _efun(z):
         return 1 - z / 2
     else:
         return z / (math.exp(z) - 1)
+
+
+
+
+
+
+class SpeciesOnRegion:
+    def __init__(self, db_class, geometry_component,
+                 concentration=None, diffusivity=None, decay_period=float('inf')):
+        """ Argument geometry refers to the ratio of: (length / x-area)??? """
+        self.global_const   = diffusivity is None
+        self.diffusivity    = None if self.global_const else float(diffusivity)
+        self.decay_period   = float(decay_period)
+        if concentration is None:
+            self.concentration = None
+            assert self.global_const
+        else:
+            self.concentration = float(concentration)
+
+            assert self.concentration >= 0.0
+            if self.outside_global_const:
+                db_class.add_class_attribute(f"{self.name}_concentration",
+                        self.outside_concentration,
+                        units="millimolar")
+            else:
+                db_class.add_attribute(f"{self.name}_concentration",
+                        initial_value=self.outside_concentration,
+                        units="millimolar")
+                db_class.add_attribute(f"{self.name}_delta_concentration",
+                        initial_value=0.0,
+                        units="millimolar / timestep")
+
+        assert self.diffusivity >= 0
+        assert self.decay_period > 0.0
+        if self.global_const: assert self.decay_period == float('inf')
+        1/0
+
+
+
+
+
+
 
 class InsideMethods:
     @classmethod
