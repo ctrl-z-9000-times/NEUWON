@@ -81,48 +81,6 @@ class Model:
     def check(self):
         self.database.check()
 
-    def add_species(self, species, *args, **kwargs) -> Species:
-        """
-        Accepts either a Species object or the arguments to create one.
-                See 'neuwon.species.Species.__init__' for function signature.
-        """
-        if not isinstance(species, Species):
-            species = Species(species, *args, **kwargs)
-        assert species.name not in self.species
-        self.species[species.name] = species
-        species._initialize(self.database, self.time_step, self.celsius, self.input_clock)
-        return species
-
-    def get_species(self, species_name:str) -> Species:
-        return self.species[str(species_name)]
-
-    def get_all_species(self) -> [Species]:
-        return list(self.species.values())
-
-    def add_reaction(self, reaction: Reaction) -> Reaction:
-        r = reaction
-        if isinstance(r, str):
-            if r.endswith(".mod"):
-                from neuwon.nmodl import NmodlMechanism
-                r = NmodlMechanism(r)
-            else:
-                raise ValueError("File extension not understood")
-        if hasattr(r, "initialize"):
-            retval = r.initialize(self.database,
-                    time_step=self.time_step,
-                    celsius=self.celsius,)
-            if retval is not None: r = retval
-        name = str(r.get_name())
-        assert name not in self.reactions
-        self.reactions[name] = r
-        return r
-
-    def get_reaction(self, reaction_name:str) -> Reaction:
-        return self.reactions[str(reaction_name)]
-
-    def get_all_reactions(self) -> [Reaction]:
-        return list(self.reactions.values())
-
     def advance(self):
         """
         All systems (reactions & mechanisms, diffusions & electrics) are
