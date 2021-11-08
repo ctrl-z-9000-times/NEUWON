@@ -20,7 +20,24 @@ class Parameters(dict):
         else: raise ValueError(f"Bad parameter value: '{value}'")
 
     def __repr__(self):
-        return pformat(self)
+        return pformat(dict(self))
+
+    def update_with_defaults(self, default_parameters):
+        """
+        Merge the given default_parameters into this dictionary, without
+        overwritting any existing entries.
+        """
+        for name, default_value in default_parameters.items():
+            if name not in self:
+                self[name] = default_value
+            else:
+                parameter_value = self[name]
+                if isinstance(default_value, Mapping) and not isinstance(parameter_value, Mapping):
+                    raise ValueError(f'Expected parameter {name} to be a dictionary!')
+                if isinstance(parameter_value, Parameters):
+                    if not isinstance(default_value, Mapping):
+                        raise ValueError(f'Expected parameter {name} to be a value, not a dictionary!')
+                    parameter_value.update_with_defaults(default_value)
 
     @classmethod
     def combine(cls, parents) -> 'Parameters':
