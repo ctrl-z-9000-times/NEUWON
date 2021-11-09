@@ -4,7 +4,6 @@ from scipy.sparse.linalg import expm
 from neuwon.database import Clock
 import cupy as cp
 import math
-import neuwon.species.voronoi
 import numba.cuda
 import numpy as np
 
@@ -150,74 +149,9 @@ class SpeciesType:
         if self.outside_diffusivity != 0:
             volumes = access("outside/volumes")
             self.outside.concentrations -= millimoles / self.geometry.outside_volumes
-        # Update chemical concentrations with local changes and diffusion.
-        if not self.inside_global_const:
-            x    = access("membrane/inside/concentrations/"+self.name)
-            rr   = access("membrane/inside/delta_concentrations/"+self.name)
-            irm  = access("membrane/inside/diffusions/"+self.name)
-            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
-        if not self.outside_global_const:
-            x    = access("outside/concentrations/"+self.name)
-            rr   = access("outside/delta_concentrations/"+self.name)
-            irm  = access("outside/diffusions/"+self.name)
-            x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
 
-    def _inside_diffusion_coefficients(self, access):
-        dt      = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
-        parents = access("membrane/parents").get()
-        lengths = access("membrane/lengths").get()
-        xareas  = access("membrane/cross_sectional_areas").get()
-        volumes = access("membrane/inside/volumes").get()
-        if self.use_shells: raise NotImplementedError
-        src = []; dst = []; coef = []
-        for location in range(len(parents)):
-            parent = parents[location]
-            if parent == NULL: continue
-            flux = self.inside_diffusivity * xareas[location] / lengths[location]
-            src.append(location)
-            dst.append(parent)
-            coef.append(+dt * flux / volumes[parent])
-            src.append(location)
-            dst.append(location)
-            coef.append(-dt * flux / volumes[location])
-            src.append(parent)
-            dst.append(location)
-            coef.append(+dt * flux / volumes[location])
-            src.append(parent)
-            dst.append(parent)
-            coef.append(-dt * flux / volumes[parent])
-        for location in range(len(parents)):
-            src.append(location)
-            dst.append(location)
-            coef.append(-dt / self.inside_decay_period)
-        return (coef, (dst, src))
-
-    def _outside_diffusion_coefficients(self, access):
-        extracellular_tortuosity = 1.4 # TODO: FIXME: put this one back in the db?
-        D = self.outside_diffusivity / extracellular_tortuosity ** 2
-        dt          = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
-        decay       = -dt / self.outside_decay_period
-        recip_vol   = (1.0 / access("outside/volumes")).get()
-        area        = access("outside/neighbor_border_areas")
-        dist        = access("outside/neighbor_distances")
-        flux_data   = D * area.data / dist.data
-        src         = np.empty(2*len(flux_data))
-        dst         = np.empty(2*len(flux_data))
-        coef        = np.empty(2*len(flux_data))
-        write_idx   = 0
-        for location in range(len(recip_vol)):
-            for ii in range(area.indptr[location], area.indptr[location+1]):
-                neighbor = area.indices[ii]
-                flux     = flux_data[ii]
-                src[write_idx] = location
-                dst[write_idx] = neighbor
-                coef[write_idx] = +dt * flux * recip_vol[neighbor]
-                write_idx += 1
-                src[write_idx] = location
-                dst[write_idx] = location
-                coef[write_idx] = -dt * flux * recip_vol[location] + decay
-                write_idx += 1
-        return (coef, (dst, src))
+        if self.inside: self.inside._advance()
+        if self.outside: self.outside._advance()
 
 def _nerst_potential(charge, T, inside_concentration, outside_concentration):
     xp = cp.get_array_module(inside_concentration)
@@ -238,8 +172,6 @@ def _efun(z):
         return 1 - z / 2
     else:
         return z / (math.exp(z) - 1)
-
-
 
 class SpeciesInstance:
     def __init__(self, db_class,
@@ -274,70 +206,10 @@ class SpeciesInstance:
     def _zero_accumulators(self):
         self.delta.get_data().fill(0.0)
 
-
-
-
-
-class InsideMethods:
-    @classmethod
-    def _initialize(cls):
-        db.add_archetype("inside", doc="Intracellular space.")
-        db.add_attribute("membrane/inside", dtype="inside", doc="""
-                A reference to the outermost shell.
-                The shells and the innermost core are allocated in a contiguous block
-                with this referencing the start of range of length "membrane/shells" + 1.
-                """)
-        db.add_attribute("membrane/shells", dtype=np.uint8)
-        db.add_attribute("inside/membrane", dtype="membrane")
-        db.add_attribute("inside/shell_radius", units="μm")
-        db.add_attribute("inside/volumes",
-                # bounds=(epsilon * (1e-6)**3, None),
-                allow_invalid=True,
-                units="Liters")
-        db.add_sparse_matrix("inside/neighbor_distances", "inside")
-        db.add_sparse_matrix("inside/neighbor_border_areas", "inside")
-
-class OutsideMethods:
-    @classmethod
-    def _initialize(cls):
-        db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
-        db.add_attribute("membrane/outside", dtype="outside", doc="")
-        db.add_attribute("outside/coordinates", shape=(3,), units="μm")
-        db.add_kd_tree(  "outside/tree", "outside/coordinates")
-        db.add_attribute("outside/volumes", units="Liters")
-        db.add_sparse_matrix("outside/neighbor_distances", "outside")
-        db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
-
-
-    def _initialize_outside(self, locations):
-        self._initialize_outside_inner(locations)
-        touched = set()
-        for neighbors in self.db.access("outside/neighbor_distances")[locations]:
-            touched.update(neighbors.indices)
-        touched.difference_update(set(locations))
-        self._initialize_outside_inner(list(touched))
-
-        outside_volumes = access("outside/volumes")
-        fh_space = self.fh_space * s_areas[membrane_idx] * 1000
-        outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
-
-    def _initialize_outside_inner(self, locations):
-        # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
-        coordinates     = self.db.access("outside/coordinates").get()
-        tree            = self.db.access("outside/tree")
-        write_neighbor_cols = []
-        write_neighbor_dist = []
-        write_neighbor_area = []
-        for location in locations:
-            coords = coordinates[location]
-            potential_neighbors = tree.query_ball_point(coords, 2 * self.max_outside_radius)
-            potential_neighbors.remove(location)
-            volume, neighbors = neuwon.species.voronoi.voronoi_cell(location,
-                    self.max_outside_radius, np.array(potential_neighbors, dtype=Pointer), coordinates)
-            write_neighbor_cols.append(list(neighbors['location']))
-            write_neighbor_dist.append(list(neighbors['distance']))
-            write_neighbor_area.append(list(neighbors['border_surface_area']))
-        self.db.access("outside/neighbor_distances",
-                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_dist))
-        self.db.access("outside/neighbor_border_areas",
-                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_area))
+    def _advance(self):
+        """ Update the chemical concentrations with local changes and diffusion. """
+        1/0
+        x    = access("concentrations/"+self.name)
+        rr   = access("delta_concentrations/"+self.name)
+        irm  = access("diffusions/"+self.name)
+        x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
