@@ -88,6 +88,25 @@ def test_calling_functions():
     assert my_seg.area == pytest.approx(math.pi * 36)
 
 
+@pytest.mark.skip
+def test_compute_init():
+    class MyClass:
+        __slots__ = ()
+        @classmethod
+        def initialize(cls, db):
+            myclass_data = db.add_class(cls)
+            myclass_data.add_attribute("x", float('nan'))
+            return myclass_data.get_instance_type()
+        @Compute
+        def __init__(self):
+            self.x = 3
+
+    db = Database()
+    MyClass = MyClass.initialize(db)
+    assert MyClass().x == 3
+
+
+@pytest.mark.skip
 def test_compute_on_memory_space():
     class Foo:
         __slots__ = ()

@@ -35,6 +35,8 @@ import uncompyle6
 #       Replace return stmt's with a write to the array, and pass the array in to the function.
 #           ** This strategy should work with both host and cuda code.
 # 
+#   Special case for @compute on __init__, add class method `batch_init(num, *,**)`.
+# 
 # TODO:
 #       NULL Pointers become integers, not None. Document this somewhere?
 
@@ -68,8 +70,8 @@ class Compute(Documentation):
     TODO: DOCS!
     """
     def __init__(self, function):
-        assert isinstance(function, Callable)
         if isinstance(function, Compute): function = function.original
+        assert isinstance(function, Callable)
         Documentation.__init__(self, function.__name__, inspect.getdoc(function))
         self.original = function
 
