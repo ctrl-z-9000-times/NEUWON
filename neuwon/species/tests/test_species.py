@@ -7,8 +7,8 @@ def test_init():
     db = Database()
     SegmentMethods._initialize(db,
             initial_voltage = -70,
-            cytoplasmic_resistance = 1e6,
-            membrane_capacitance = 1e-14,)
+            cytoplasmic_resistance = 100,
+            membrane_capacitance = 1,)
 
     s = Species("leak", reversal_potential = -60)
     inclock = Clock(.5)

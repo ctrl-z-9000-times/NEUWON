@@ -42,10 +42,17 @@ class SpeciesFactory(dict):
         self.species[species.name] = species
         return species
 
-class Species:
+default_species_type_parameters = {
+    'charge': 0,
+    'reversal_potential': None,
+}
+
+class SpeciesType:
     def __init__(self, name, parameters, factory):
-        self.name = str(name)
-        self.charge = int(parameters['charge'])
+        parameters.update_with_defaults(default_species_type_parameters)
+        self.name       = str(name)
+        self.celsius    = factory.celsius
+        self.charge     = int(parameters['charge'])
         self.reversal_potential = parameters['reversal_potential']
         if self.reversal_potential is not None:
             try:
@@ -57,42 +64,57 @@ class Species:
         if self.electric:
             assert self.reversal_potential is not None
             segment_cls = factory.database.get("Segment")
-            segment_cls.add_attribute(f"{self.name}_conductance",
+            self.conductance = segment_cls.add_attribute(f"{self.name}_conductance",
                     initial_value=0.0,
                     valid_range=(0, np.inf),
                     units="Siemens")
             if isinstance(self.reversal_potential, float):
-                segment_cls.add_class_attribute(f"{self.name}_reversal_potential",
+                self.reversal_potential_data = segment_cls.add_class_attribute(
+                        f"{self.name}_reversal_potential",
                         initial_value=self.reversal_potential,
                         units="mV")
             else:
-                segment_cls.add_attribute(f"{self.name}_reversal_potential",
+                self.reversal_potential_data = segment_cls.add_attribute(
+                        f"{self.name}_reversal_potential",
+                        initial_value=0.0,
                         units="mV")
-            factory.input_clock.register_callback(
-                    lambda: self._accumulate_conductance(factory.database, celsius))
+            factory.input_clock.register_callback(self._accumulate_conductance)
 
+        self.inside = None
+        self.outside = None
         if 'inside' in parameters:
             1/0
             self.use_shells         = bool(use_shells)
             self.inside_archetype   = "Inside" if self.use_shells else "Segment"
-            self.inside = SpeciesOnRegion(**parameters['inside'])
-        else:
-            self.inside = None
+            self.inside = SpeciesInstance(**parameters['inside'])
         if 'outside' in parameters:
             1/0
             self.outside_grid       = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
-            self.outside = SpeciesOnRegion(**parameters['outside'])
-        else:
-            self.outside = None
+            self.outside = SpeciesInstance(**parameters['outside'])
 
     def get_name(self) -> str:
         return self.name
 
     def __repr__(self):
-        return f"<Species: {self.name}>"
+        return f"<{type(self).__name__}: {self.name}>"
 
-    def _compute_reversal_potential(self, database, celsius):
-        x = database.get_data(f"Segment.{self.name}_reversal_potential")
+    def _zero_accumulators(self):
+        if self.electric:
+            self.conductance.get_data().fill(0.0)
+        for instance in (self.inside, self.outside):
+            instance._zero_accumulators()
+
+    def _accumulate_conductance(self):
+        sum_conductance     = database.get_data("Segment.sum_conductance")
+        driving_voltage     = database.get_data("Segment.driving_voltage")
+        species_conductance = database.get_data(f"Segment.{self.name}_conductance")
+        reversal_potential  = self._compute_reversal_potential()
+        sum_conductance += species_conductance
+        driving_voltage += species_conductance * reversal_potential
+        return True
+
+    def _compute_reversal_potential(self):
+        x = self.reversal_potential_data.get_data()
         if isinstance(x, float): return x
         1/0 # The following code needs to be rewritten for the new database & schema.
         inside  = access(self.inside_archetype+"/concentrations/"+self.name)
@@ -110,26 +132,9 @@ class Species:
         else: raise NotImplementedError(self.reversal_potential)
         return x
 
-    def _zero_accumulators(self, database):
-        def zero(component_name):
-            database.get_data(component_name).fill(0.0)
-        if self.electric:
-            zero(f"Segment.{self.name}_conductance")
-        if self.inside_diffusivity != 0.0:
-            zero(self.inside_archetype + "/delta_concentrations/"+self.name)
-        if self.outside_diffusivity != 0.0:
-            zero("outside/delta_concentrations/"+self.name)
+    def _advance(self):
+        return # This function is not needed yet.
 
-    def _accumulate_conductance(self, database, celsius):
-        sum_conductance     = database.get_data("Segment.sum_conductance")
-        driving_voltage     = database.get_data("Segment.driving_voltage")
-        species_conductance = database.get_data(f"Segment.{self.name}_conductance")
-        reversal_potential  = self._compute_reversal_potential(database, celsius)
-        sum_conductance += species_conductance
-        driving_voltage += species_conductance * reversal_potential
-        return True
-
-    def _advance(self, database):
         # Calculate the transmembrane ion flows.
         # if (self.electric and self.charge != 0):
         reversal_potential = access("membrane/reversal_potentials/"+self.name)
@@ -236,32 +241,28 @@ def _efun(z):
 
 
 
-
-
-
-class SpeciesOnRegion:
-    def __init__(self, db_class, geometry_component,
-                 concentration=None, diffusivity=None, decay_period=float('inf')):
-        """ Argument geometry refers to the ratio of: (length / x-area)??? """
+class SpeciesInstance:
+    def __init__(self, db_class,
+            geometry_component=None,
+            concentration=None,
+            diffusivity=None,
+            decay_period=float('inf')):
+        """ Argument geometry_component refers to the ratio of: (length / x-area)??? """
         self.global_const   = diffusivity is None
         self.diffusivity    = None if self.global_const else float(diffusivity)
         self.decay_period   = float(decay_period)
         if concentration is None:
             self.concentration = None
-            assert self.global_const
+            assert self.diffusivity is None
         else:
             self.concentration = float(concentration)
-
             assert self.concentration >= 0.0
-            if self.outside_global_const:
-                db_class.add_class_attribute(f"{self.name}_concentration",
-                        self.outside_concentration,
-                        units="millimolar")
-            else:
-                db_class.add_attribute(f"{self.name}_concentration",
-                        initial_value=self.outside_concentration,
-                        units="millimolar")
-                db_class.add_attribute(f"{self.name}_delta_concentration",
+            add_attr = db_class.add_class_attribute if self.global_const else db_class.add_attribute
+            add_attr(f"{self.name}_concentration",
+                    self.concentration,
+                    units="millimolar")
+            if not self.global_const:
+                self.delta = db_class.add_attribute(f"{self.name}_delta_concentration",
                         initial_value=0.0,
                         units="millimolar / timestep")
 
@@ -270,7 +271,8 @@ class SpeciesOnRegion:
         if self.global_const: assert self.decay_period == float('inf')
         1/0
 
-
+    def _zero_accumulators(self):
+        self.delta.get_data().fill(0.0)
 
 
 
@@ -339,34 +341,3 @@ class OutsideMethods:
                 sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_dist))
         self.db.access("outside/neighbor_border_areas",
                 sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_area))
-
-
-
-class _Linear_System:
-    def __init__(self, class_type, name, function, epsilon, doc="", allow_invalid=False,):
-        """ Add a system of linear & time-invariant differential equations.
-
-        Argument function(database_access) -> coefficients
-
-        For equations of the form: dX/dt = C * X
-        Where X is a component, of the same archetype as this linear system.
-        Where C is a matrix of coefficients, returned by the argument "function".
-
-        The database computes the propagator matrix but does not apply it.
-        The matrix is updated after any of the entity are created or destroyed.
-        """
-        _Component.__init__(self, class_type, name, doc, allow_invalid=allow_invalid)
-        self.function   = function
-        self.epsilon    = float(epsilon)
-        self.data       = None
-
-        coef = self.function(self.cls.database)
-        coef = scipy.sparse.csc_matrix(coef, shape=(self.archetype.size, self.archetype.size))
-        # Note: always use double precision floating point for building the impulse response matrix.
-        # TODO: Detect if the user returns f32 and auto-convert it to f64.
-        matrix = scipy.sparse.linalg.expm(coef)
-        # Prune the impulse response matrix.
-        matrix.data[np.abs(matrix.data) < self.epsilon] = 0
-        matrix.eliminate_zeros()
-        self.data = cupyx.scipy.sparse.csr_matrix(matrix, dtype=Real)
-
