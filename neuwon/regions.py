@@ -8,6 +8,8 @@ This file provides tools for performing constructive solid geometry:
 from collections.abc import Callable, Iterable, Mapping
 import numpy as np
 
+__all__ = 'Region Intersection Union Not Rec angle Sphere Cylinder'.split()
+
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
 
@@ -197,7 +199,7 @@ class _ImageStack:
     def contains(self, coordinates):
         return self.stack.contains(coordinates)
 
-class _RegionFactory(dict):
+class RegionFactory(dict):
     def __init__(self, parameters: dict):
         super().__init__()
         self.add_parameters(parameters)

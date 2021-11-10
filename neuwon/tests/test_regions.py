@@ -6,6 +6,6 @@ test_parameters = {
 }
 
 def test_region_factory():
-    r = neuwon.regions._RegionFactory(test_parameters)
+    r = neuwon.regions.RegionFactory(test_parameters)
     assert r['foo'].radius == 4
     assert not r['bar'].contains([1.1, 1.1, 1.1])
