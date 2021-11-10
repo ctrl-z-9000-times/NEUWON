@@ -8,7 +8,7 @@ from neuwon.species import SpeciesFactory
 import cupy as cp
 import numpy as np
 
-default_simulation_parameters = {
+default_simulation_parameters = Parameters({
     'time_step': 0.1,
     'celsius': 37,
     'fh_space': 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
@@ -18,56 +18,25 @@ default_simulation_parameters = {
     'cytoplasmic_resistance': 100,
     'membrane_capacitance': 1, # uf/cm^2
     'initial_voltage': -70,
-}
+})
 
 class Model:
-    def __init__(self, time_step,
-            celsius = 37,
-            fh_space = 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
-            max_outside_radius=20e-6,
-            outside_volume_fraction=.20,
-            outside_tortuosity=1.55,
-            cytoplasmic_resistance = 100,
-            membrane_capacitance = 1, # uf/cm^2
-            initial_voltage = -70,):
-        """
-        Argument cytoplasmic_resistance
-
-        Argument outside_volume_fraction
-
-        Argument outside_tortuosity
-
-        Argument max_outside_radius
-
-        Argument membrane_capacitance
-
-        Argument initial_voltage, units: millivolts
-        """
-        self.species = {}
-        self.reactions = {}
-        self.database = db = Database()
-        self.clock = Clock(time_step, units="ms")
-        self.database.add_clock(self.clock)
-        self.time_step = self.clock.get_tick_period()
-        self.input_clock = Clock(0.5 * self.time_step, units="ms")
-        self.celsius = float(celsius)
-        self.Segment = SegmentMethods._initialize(db,
-                initial_voltage=initial_voltage,
-                cytoplasmic_resistance=cytoplasmic_resistance,
-                membrane_capacitance=membrane_capacitance,)
+    def __init__(self, parameters):
+        self.parameters = Parameters(parameters)
+        self.parameters['simulation'].update_with_defaults(default_simulation_parameters)
+        self.database   = db = Database()
+        simulation      = self.parameters['simulation']
+        self.clock      = db.add_clock(simulation['time_step'], units='ms')
+        self.time_step  = self.clock.get_tick_period()
+        self.celsius    = float(simulation['celsius'])
+        self.Segment    = SegmentMethods._initialize(db,
+                initial_voltage         = simulation['initial_voltage'],
+                cytoplasmic_resistance  = simulation['cytoplasmic_resistance'],
+                membrane_capacitance    = simulation['membrane_capacitance'],)
         self.Segment._model = self
-        # self.Section = ditto
-        # self.Inside = ditto
-        # self.Outside = ditto
-
-        self.fh_space = float(fh_space)
-        self.max_outside_radius = float(max_outside_radius)
-        self.outside_tortuosity = float(outside_tortuosity)
-        self.outside_volume_fraction = float(outside_volume_fraction)
-        assert(self.fh_space >= epsilon * 1e-10)
-        assert(self.max_outside_radius >= epsilon * 1e-6)
-        assert(self.outside_tortuosity >= 1.0)
-        assert(1.0 >= self.outside_volume_fraction >= 0.0)
+        self.regions = RegionFactory(self.parameters['regions'])
+        self.species = SpeciesFactory(self.parameters['species'], db, 0.5 * self.time_step, self.celsius)
+        self.mechanisms = MechanismsFactory(self.parameters['mechanisms'], db, self.time_step, self.celsius)
 
     def __len__(self):
         return len(self.Segment.get_database_class())
@@ -82,12 +51,12 @@ class Model:
         self.database.check()
 
     def advance(self):
+        """ Advance the state of the model by one time_step. """
         """
-        All systems (reactions & mechanisms, diffusions & electrics) are
-        integrated using input values from halfway through their time step.
-        Tracing through the exact sequence of operations is difficult because
-        both systems see the other system as staggered halfway through their
-        time step.
+        Both systems (mechanisms & electrics) are integrated using input values
+        from halfway through their time step. Tracing through the exact
+        sequence of operations is difficult because both systems see the other
+        system as staggered halfway through their time step.
 
         For more information see: The NEURON Book, 2003.
         Chapter 4, Section: Efficient handling of nonlinearity.
@@ -95,7 +64,7 @@ class Model:
         self.database.sort()
         with self.database.using_memory_space('cuda'):
             self._advance_species()
-            self._advance_reactions()
+            self._advance_mechanisms()
             self._advance_species()
         self.clock.tick()
 
@@ -104,17 +73,19 @@ class Model:
         self.database.sort()
         self._advance_species()
         self._advance_species()
-        self._advance_reactions()
+        self._advance_mechanisms()
         self.clock.tick()
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
-        dt = self.input_clock.get_tick_period()
+        dt = self.species.input_hook.get_tick_period()
         sum_conductance = self.database.get_data("Segment.sum_conductance")
         driving_voltage = self.database.get_data("Segment.driving_voltage")
-        sum_conductance.fill(0.0) # Zero accumulator.
-        driving_voltage.fill(0.0) # Zero accumulator.
-        self.input_clock.tick()
+        # Zero the accumulators.
+        sum_conductance.fill(0.0)
+        driving_voltage.fill(0.0)
+        # Sum the species conductances & driving-voltages into the accumulators.
+        self.species.input_hook.tick()
         driving_voltage /= sum_conductance
         xp = cp.get_array_module(driving_voltage)
         driving_voltage[:] = xp.nan_to_num(driving_voltage)
@@ -124,9 +95,8 @@ class Model:
         for s in self.species.values():
             s._advance(dt)
 
-    def _advance_reactions(self):
-        for name, species in self.species.items():
-            species._zero_accumulators(self.database)
-        for name, r in self.reactions.items():
-            try: r.advance(self)
-            except Exception: raise RuntimeError("in reaction " + name)
+    def _advance_mechanisms(self):
+        self.species._zero_accumulators()
+        for name, m in self.mechanisms.items():
+            try: m.advance(self)
+            except Exception: raise RuntimeError("in mechanism " + name)

@@ -41,6 +41,11 @@ class SpeciesFactory(dict):
         self.species[species.name] = species
         return species
 
+    def _zero_accumulators(self):
+        """ Zero all data buffers which the mechanisms can write to. """
+        for species in self.values():
+            species._zero_accumulators()
+
 default_species_type_parameters = {
     'charge': 0,
     'reversal_potential': None,
@@ -50,7 +55,7 @@ class SpeciesType:
     def __init__(self, name, parameters, factory):
         parameters.update_with_defaults(default_species_type_parameters)
         self.name       = str(name)
-        self.celsius    = factory.celsius
+        self.factory    = factory
         self.charge     = int(parameters['charge'])
         self.reversal_potential = parameters['reversal_potential']
         if self.reversal_potential is not None:
