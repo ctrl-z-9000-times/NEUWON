@@ -33,18 +33,28 @@ class SpeciesFactory(dict):
         for name, species in parameters.items():
             self.add_species(name, species)
 
-    def add_species(self, name, species) -> 'Species':
+    def add_species(self, name, species) -> 'SpeciesType':
         if name in self:
             return self[name]
-        if not isinstance(species, Species):
-            species = Species(name, species, self)
-        self.species[species.name] = species
+        if not isinstance(species, SpeciesType):
+            species = SpeciesType(name, species, self)
+        self[species.name] = species
         return species
 
     def _zero_accumulators(self):
         """ Zero all data buffers which the mechanisms can write to. """
         for species in self.values():
             species._zero_accumulators()
+
+    def _accumulate_conductance(self):
+        """ """
+        for species in self.values():
+            species._accumulate_conductance()
+
+    def _advance(self):
+        """ """
+        for species in self.values():
+            species._advance()
 
 default_species_type_parameters = {
     'charge': 0,
@@ -60,9 +70,9 @@ class SpeciesType:
         self.reversal_potential = parameters['reversal_potential']
         if self.reversal_potential is not None:
             try:
-                self.reversal_potential = float(reversal_potential)
+                self.reversal_potential = float(self.reversal_potential)
             except ValueError:
-                self.reversal_potential = str(reversal_potential)
+                self.reversal_potential = str(self.reversal_potential)
                 assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
         self.electric = (self.charge != 0) or (self.reversal_potential is not None)
         if self.electric:
@@ -106,12 +116,14 @@ class SpeciesType:
         if self.electric:
             self.conductance.get_data().fill(0.0)
         for instance in (self.inside, self.outside):
-            instance._zero_accumulators()
+            if instance is not None:
+                instance._zero_accumulators()
 
     def _accumulate_conductance(self):
+        database            = self.factory.database
         sum_conductance     = database.get_data("Segment.sum_conductance")
         driving_voltage     = database.get_data("Segment.driving_voltage")
-        species_conductance = database.get_data(f"Segment.{self.name}_conductance")
+        species_conductance = self.conductance.get_data()
         reversal_potential  = self._compute_reversal_potential()
         sum_conductance += species_conductance
         driving_voltage += species_conductance * reversal_potential
