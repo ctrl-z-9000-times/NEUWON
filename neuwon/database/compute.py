@@ -88,10 +88,10 @@ class Compute(Documentation):
             assert self.name not in self.db_class.components
             assert self.name not in self.db_class.methods
             self.db_class.methods[self.name] = self
-            _getter = lambda instance=None, *args, **kwargs: self._jit_call(instance, *args, **kwargs)
-            _getter.__name__ = self.name
-            _getter.__doc__  = self.doc
-            setattr(self.db_class.instance_type, self.name, _getter)
+            wrapper = lambda instance=None, *args, **kwargs: self._jit_call(instance, *args, **kwargs)
+            wrapper.__name__ = self.name
+            wrapper.__doc__  = self.doc
+            setattr(self.db_class.instance_type, self.name, wrapper)
         return self
 
     def _jit_call(self, instance, *args, **kwargs):

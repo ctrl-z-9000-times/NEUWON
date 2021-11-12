@@ -89,6 +89,34 @@ def test_calling_functions():
 
 
 @pytest.mark.skip
+def test_annotations():
+    class Foo:
+        __slots__ = ()
+        @classmethod
+        def initialize(cls, db):
+            foo_data = db.add_class(cls)
+            foo_data.add_attribute('bar', 0)
+            return foo_data.get_instance_type()
+        @Compute
+        def do(self, x: 'Foo'):
+            self.bar += 1
+            x.bar += self.bar
+            undo(self)
+    @Compute
+    def undo(qq: 'Foo'):
+        qq.bar -= 1
+    db = Database()
+    Foo = Foo.initialize(db)
+    thing1 = Foo()
+    thing2 = Foo()
+    thing1.do(thing1)
+    assert thing1.bar == 1
+    thing1.do(thing2)
+    assert thing1.bar == 1
+    assert thing2.bar == 2
+
+
+@pytest.mark.skip
 def test_compute_init():
     class MyClass:
         __slots__ = ()
