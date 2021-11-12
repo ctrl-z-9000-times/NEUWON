@@ -483,19 +483,23 @@ class SparseMatrix(DataComponent):
             return
         if self.memory_space is memory_spaces.host:
             if target_space is memory_spaces.cuda:
-                if self.dtype.kind not in 'fc':
-                    # Cupy only supports float & complex types.
+                # Python-CUDA only supports floating-point and complex numbers.
+                dtype = self.dtype
+                if dtype.kind in 'bui':
+                    if dtype.itemsize <= 2:
+                        dtype = np.dtype('f4')
+                    else:
+                        dtype = np.dtype('f8')
+                if dtype.kind not in 'fc':
+                    # Unsupported data type.
                     # Silently refuse to transfer, leave data on host.
                     return
-                    # Alternatively I could upcast the users data to float32 or
-                    # float64 in a loss-less way. Its more important that the
-                    # all data ends up in the right place than memory efficency. 
                 self.memory_space = target_space
                 if self.fmt == 'lil':
                     self.fmt = 'csr'
                 if self.fmt == 'csr' or self.fmt == 'coo':
                     if self.data is not None:
-                        self.data = self._matrix_class(self.data, dtype=self.dtype)
+                        self.data = self._matrix_class(self.data, dtype=dtype)
                 else:
                     raise NotImplementedError(self.fmt)
                 self._host_lil_mem = None
