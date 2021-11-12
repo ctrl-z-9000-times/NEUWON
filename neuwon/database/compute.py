@@ -164,20 +164,47 @@ class _JIT:
         self.closure.update(globals)
         self.closure.update(nonlocals)
         self.db_arguments = {}
-        if self.db_class is not None: self.rewrite_method_self()
+        if self.is_method():
+            self.rewrite_method_self()
+        self.rewrite_annotated_references()
         # Replace all captured functions in this closure with their JIT'ed versions.
         for name, value in self.closure.items():
             if isinstance(value, Compute):
-                self.closure[name] = _JIT(value.original, self.target, self.database).function
+                called_func_jit     = _JIT(value.original, self.target, self.database)
+                self.closure[name]  = called_func_jit.function
+                self.db_arguments.update(called_func_jit.db_arguments)
+                # Insert this function's db_arguments into all calls to it.
+                1/0 # TODO!
+
         # Transform and then reassemble the function.
-        # if self.target is cuda: self.cuda_fixups()
+        if self.target is cuda:
+            self.rewrite_cuda_self()
         self.assemble_function()
         if True: _print_pycode(self.py_function)
         self.function = target.jit_wrapper(self.py_function)
 
+    def is_method(self):
+        return self.db_class is not None
+
+    def is_function(self):
+        return not self.is_method()
+
     def rewrite_method_self(self):
         self_var = next(iter(self.signature.parameters))
         self.rewrite_reference(self.db_class, self_var)
+
+    def rewrite_annotated_references(self):
+        parameters = list(self.signature.parameters.values())
+        if self.is_method():
+            parameters = parameters[1:]
+        for p in parameters:
+            if p.annotation == inspect.Parameter.empty:
+                continue
+            try:
+                db_class = self.database.get_class(p.annotation)
+            except KeyError:
+                continue
+            self.rewrite_reference(db_class, p.name)
 
     def rewrite_reference(self, ref_class, ref_name):
         rr = _ReferenceRewriter(ref_class, ref_name, self.body_ast)
@@ -186,7 +213,7 @@ class _JIT:
         for name, method in rr.method_calls.items():
             self.closure[name] = method._jit(self.target)
 
-    def cuda_fixups(self):
+    def rewrite_cuda_self(self):
         # TODO: Replace the 'self' argument with an array of instance indexes.
         # TODO: Insert statements to read:
         #       >>> self_var = instances_array[numba.cuda.grid(1)]
@@ -198,8 +225,10 @@ class _JIT:
         self.db_arguments = sorted(self.db_arguments.items(),
                                     key=lambda pair: pair[1].qualname)
         parameters = list(self.signature.parameters.values())
+        start = 1 if self.is_method() else 0
         for arg_name, db_attr in reversed(self.db_arguments):
-            parameters.insert(1, inspect.Parameter(arg_name, inspect.Parameter.POSITIONAL_OR_KEYWORD))
+            parameters.insert(start, inspect.Parameter(arg_name,
+                                        inspect.Parameter.POSITIONAL_OR_KEYWORD))
         self.signature = self.signature.replace(parameters=parameters)
         # Assemble a new AST for the JIT'ed function.
         template                = f"def {self.name}{self.signature}:\n pass\n"
@@ -284,9 +313,11 @@ class _ReferenceRewriter(ast.NodeTransformer):
         # function call. This also stores the instance / 'self' variable inside
         # the AST node.
         self.generic_visit(node)
+        # Filter for methods that the database recognizes.
         db_method = getattr(node.func, 'db_method', None)
         if db_method is None:
             return node
+        # Pass the instance as the methods 'self' argument.
         node.args.insert(0, node.func.db_instance)
         # Insert the method's db_arguments.
         if not hasattr(db_method, 'db_arguments'):

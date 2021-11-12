@@ -96,23 +96,30 @@ def test_annotations():
         def initialize(cls, db):
             foo_data = db.add_class(cls)
             foo_data.add_attribute('bar', 0)
+            foo_data.add_attribute('ref', dtype='Foo', allow_invalid=True)
             return foo_data.get_instance_type()
         @Compute
-        def do(self, x: 'Foo'):
-            self.bar += 1
-            x.bar += self.bar
-            undo(self)
+        def do(self):
+            add(self, self.ref)
+        def do2(self, other: 'Foo'):
+            add(self, other)
     @Compute
-    def undo(qq: 'Foo'):
-        qq.bar -= 1
+    def add(q: 'Foo', qq: 'Foo'):
+        q.bar += qq.bar
     db = Database()
     Foo = Foo.initialize(db)
     thing1 = Foo()
     thing2 = Foo()
-    thing1.do(thing1)
-    assert thing1.bar == 1
-    thing1.do(thing2)
-    assert thing1.bar == 1
+    thing1.ref = thing1
+    thing2.ref = thing1
+    thing1.do()
+    assert thing1.bar == 0
+    thing1.bar = 1
+    thing1.do()
+    assert thing1.bar == 2
+    thing1.do2(thing2)
+    assert thing1.bar == 2
+    thing2.do2(thing1)
     assert thing2.bar == 2
 
 
