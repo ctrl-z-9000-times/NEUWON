@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database.database import DB_Class, DB_Object
+from neuwon.database.database import Database, DB_Class, DB_Object
 from neuwon.database.data_components import ClassAttribute, Attribute, SparseMatrix
 from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
@@ -139,12 +139,17 @@ class Compute(Documentation):
         return function
 
 class _JIT:
-    def __init__(self, function, target, method_db_class=None):
+    def __init__(self, function, target, db_something):
         assert isinstance(function, Callable)
         assert not isinstance(function, Compute)
         self.original  = function
         self.target    = target
-        self.db_class  = method_db_class
+        if isinstance(db_something, DB_Class):
+            self.db_class   = db_something
+            self.database   = self.db_class.get_database()
+        elif isinstance(db_something, Database):
+            self.db_class   = None
+            self.database   = db_something
         # Breakout the function into all of its constituent parts.
         self.name      = self.original.__name__.replace('<', '_').replace('>', '_')
         self.filename  = inspect.getsourcefile(self.original)
@@ -163,7 +168,7 @@ class _JIT:
         # Replace all captured functions in this closure with their JIT'ed versions.
         for name, value in self.closure.items():
             if isinstance(value, Compute):
-                self.closure[name] = _JIT(value.original, self.target).function
+                self.closure[name] = _JIT(value.original, self.target, self.database).function
         # Transform and then reassemble the function.
         # if self.target is cuda: self.cuda_fixups()
         self.assemble_function()
