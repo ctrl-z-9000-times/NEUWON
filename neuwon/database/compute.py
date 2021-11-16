@@ -84,13 +84,13 @@ class Compute(Documentation):
             assert self.name not in self.db_class.components
             assert self.name not in self.db_class.methods
             self.db_class.methods[self.name] = self
-            wrapper = lambda instance=None, *args, **kwargs: self._jit_call(instance, *args, **kwargs)
+            wrapper = lambda instance=None, *args, **kwargs: self._call(instance, *args, **kwargs)
             wrapper.__name__ = self.name
             wrapper.__doc__  = self.doc
             setattr(self.db_class.instance_type, self.name, wrapper)
         return self
 
-    def _jit_call(self, instance, *args, **kwargs):
+    def _call(self, instance, *args, **kwargs):
         """
         Argument instance can be:
                 * A single instance,
@@ -169,7 +169,10 @@ class _JIT:
             self.rewrite_cuda_self()
         self.assemble_function()
         if True: _print_pycode(self.py_function)
-        self.function = target.jit_wrapper(self.py_function)
+        if self.target is host:
+            self.function = target.jit_wrapper(self.py_function)
+        elif self.target is host:
+            self.function = target.jit_wrapper(self.py_function, device=True)
 
     def is_method(self):
         return self.db_class is not None
