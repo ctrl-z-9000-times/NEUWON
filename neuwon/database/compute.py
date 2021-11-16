@@ -13,10 +13,6 @@ import uncompyle6
 
 # IDEAS:
 # 
-#   Type annotations for passing multiple objects into a function/method?
-#       Without *something* like this there are fundamental limits on what a Method can do.
-#       Should be very simple to implement for Methods.
-# 
 #   Database.add_function()
 #       Register an anonymous function.
 #       This allows users to define & change code at run time.
@@ -167,15 +163,7 @@ class _JIT:
         if self.is_method():
             self.rewrite_method_self()
         self.rewrite_annotated_references()
-        # Replace all captured functions in this closure with their JIT'ed versions.
-        for name, value in self.closure.items():
-            if isinstance(value, Compute):
-                called_func_jit     = _JIT(value.original, self.target, self.database)
-                self.closure[name]  = called_func_jit.function
-                self.db_arguments.update(called_func_jit.db_arguments)
-                # Insert this function's db_arguments into all calls to it.
-                1/0 # TODO!
-
+        self.rewrite_functions()
         # Transform and then reassemble the function.
         if self.target is cuda:
             self.rewrite_cuda_self()
@@ -190,8 +178,8 @@ class _JIT:
         return not self.is_method()
 
     def rewrite_method_self(self):
-        self_var = next(iter(self.signature.parameters))
-        self.rewrite_reference(self.db_class, self_var)
+        self.self_variable = next(iter(self.signature.parameters))
+        self.rewrite_reference(self.db_class, self.self_variable)
 
     def rewrite_annotated_references(self):
         parameters = list(self.signature.parameters.values())
@@ -212,6 +200,17 @@ class _JIT:
         self.db_arguments.update(rr.db_arguments)
         for name, method in rr.method_calls.items():
             self.closure[name] = method._jit(self.target)
+
+    def rewrite_functions(self):
+        """ Replace all functions captured in this closure with their JIT'ed versions. """
+        for name, value in self.closure.items():
+            if not isinstance(value, Compute):
+                continue
+            called_func_jit     = _JIT(value.original, self.target, self.database)
+            self.closure[name]  = called_func_jit.function
+            self.db_arguments.update(called_func_jit.db_arguments)
+            # Insert this function's db_arguments into all calls to it.
+            self.body_ast = _FuncCallRewriter(name, called_func_jit).visit(self.body_ast)
 
     def rewrite_cuda_self(self):
         # TODO: Replace the 'self' argument with an array of instance indexes.
@@ -329,4 +328,18 @@ class _ReferenceRewriter(ast.NodeTransformer):
         # subsequent AST pass.
         node.func.db_method   = None
         node.func.db_instance = None
+        return node
+
+class _FuncCallRewriter(ast.NodeTransformer):
+    """ Inserts a function's db_arguments into all calls to it. """
+    def __init__(self, func_name, func_jit):
+        ast.NodeTransformer.__init__(self)
+        self.func_name = func_name
+        self.func_jit  = func_jit
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == self.func_name:
+            for arg_name, db_attr in reversed(self.func_jit.db_arguments):
+                node.args.insert(0, ast.Name(id=arg_name, ctx=ast.Load()))
+        self.generic_visit(node)
         return node

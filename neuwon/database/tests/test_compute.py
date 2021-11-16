@@ -77,6 +77,7 @@ def test_calling_functions():
         def _compute_area(self):
             self.area = area_eq(self.d / 2 + x + y)
 
+    assert area_eq(1) == pytest.approx(math.pi)
     db = Database()
     Seg = Segment.initialize(db)
     y = -5 # Test late initialize/JIT.
@@ -88,7 +89,6 @@ def test_calling_functions():
     assert my_seg.area == pytest.approx(math.pi * 36)
 
 
-@pytest.mark.skip
 def test_annotations():
     class Foo:
         __slots__ = ()
@@ -121,6 +121,8 @@ def test_annotations():
     assert thing1.bar == 2
     thing2.do2(thing1)
     assert thing2.bar == 2
+    add(thing1, thing2) # No compute acceleration, identical semantics.
+    assert thing1.bar == 4
 
 
 @pytest.mark.skip
