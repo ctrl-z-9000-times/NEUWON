@@ -24,6 +24,9 @@ import numpy as np
 
 
 
+# THought, a quick AST search could check for missing return-type annotations,
+# and give a helpful error message...
+
 
 # IDEAS:
 # 
@@ -128,8 +131,10 @@ class Compute(Documentation):
             single_input = False
 
         if target is host:
+            _print_pycode(function)
+            instance = np.array(instance, dtype=Pointer)
             retval = function(instance, *db_args, *args, **kwargs)
-            if single_input:
+            if single_input and retval is not None:
                 return retval[0]
             else:
                 return retval
@@ -189,6 +194,15 @@ class _JIT:
         self.closure.update(builtins)
         self.closure.update(globals)
         self.closure.update(nonlocals)
+        self.parameters = []
+        parameters_iter = iter(self.signature.parameters.items())
+        if self.is_method(): next(parameters_iter)
+        for name, parameter in parameters_iter:
+            if parameter.kind == inspect.Parameter.KEYWORD_ONLY:
+                self.parameters.append(f'{name}={name}')
+            else:
+                self.parameters.append(name)
+        self.parameters = ', '.join(self.parameters)
 
     def is_method(self):
         return self.db_class is not None
@@ -263,25 +277,36 @@ class _JIT:
             self.return_type = return_type = None
         else:
             self.return_type = return_type = np.dtype(return_type)
-        f = self.jit_function
-        # 
+        exec_scope = {
+                'function': self.jit_function,
+                'return_type': return_type,
+                'np': np,
+                'numba': numba,
+        }
+        arguments = ''.join(f'{arg_name}, ' for arg_name, db_attr in self.db_arguments)
+        arguments += self.parameters
         if self.target is host:
             if return_type is None:
-                @numba.njit(parallel=True)
-                def entry_point(instances, *args, **kwargs):
+                py_code = f'''
+                @numba.njit()
+                def entry_point(instances, {arguments}):
                     for index in numba.prange(len(instances)):
                         self = instances[index]
-                        f(self, *args, **kwargs)
+                        function(self, {arguments})
+                '''
             else:
+                py_code = f'''
                 @numba.njit()
-                def njit_entry_point(instances, *args, **kwargs):
+                def njit_entry_point(instances, return_array, {arguments}):
                     for index in numba.prange(len(instances)):
-                        f(instances[index], *args, **kwargs)
+                        self = instances[index]
+                        return_array[self] = function(self, {arguments})
                 @numba.jit()
-                def entry_point(instances, *args, **kwargs):
+                def entry_point(instances, {arguments}):
                     return_array = np.zeros(len(instances), dtype=return_type)
-                    njit_entry_point(instances, return_array, *args, **kwargs)
+                    njit_entry_point(instances, return_array, {arguments})
                     return return_array
+                '''
         elif self.target is cuda:
             1/0
             @numba.cuda.jit()
@@ -291,15 +316,8 @@ class _JIT:
                     self = instances[index]
                     call_inner(self, *args, **kwargs)
 
-        self.entry_point = entry_point
-
-    def rewrite_cuda_self(self):
-        # TODO: Replace the 'self' argument with an array of instance indexes.
-        # TODO: Insert statements to read:
-        #       >>> self_var = instances_array[numba.cuda.grid(1)]
-        #       >>> if self_var >= instances_array.size: return
-        self.signature.parameters
-        1/0
+        exec(textwrap.dedent(py_code), exec_scope)
+        self.entry_point = exec_scope['entry_point']
 
 class _ReferenceRewriter(ast.NodeTransformer):
     def __init__(self, db_class, reference_name, body_ast):
