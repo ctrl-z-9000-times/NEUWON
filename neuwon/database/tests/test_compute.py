@@ -125,6 +125,26 @@ def test_annotations():
     assert thing1.bar == 4
 
 
+def test_return_value():
+    class Foo:
+        __slots__ = ()
+        @Compute
+        def bar(self) -> int:
+            return self.data
+    db = Database()
+    foo_data = db.add_class(Foo)
+    foo_data.add_attribute('data', 1234)
+    Foo = foo_data.get_instance_type()
+    for _ in range(77): Foo()
+    assert Foo().bar() == 1234
+    host_data = Foo.bar()
+    print(host_data)
+    with db.using_memory_space('cuda'):
+        cuda_data = Foo.bar()
+    print(cuda_data)
+    1/0
+
+
 @pytest.mark.skip
 def test_compute_init():
     class MyClass:
