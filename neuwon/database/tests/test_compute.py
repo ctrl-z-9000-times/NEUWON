@@ -12,7 +12,7 @@ def test_basic_method():
             """ Hello Seg.Bar's Docs! """
             self.v -= 4
         @Compute
-        def args(self, x):
+        def args(self, x) -> float:
             return self.v * x
 
     db = Database()
@@ -35,12 +35,12 @@ def test_calling_methods():
     class Seg:
         __slots__ = ()
         @Compute
-        def foo(self, method_arg):
+        def foo(self, method_arg) -> float:
             self.v += 4
             self.bar()
             return method_arg
         @Compute
-        def bar(self):
+        def bar(self) -> float:
             self.v -= 4
             return self.v
 

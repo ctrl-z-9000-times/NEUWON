@@ -17,16 +17,6 @@ import numpy as np
 
 # TODO: CUDA!
 
-# And also retval, and i think that these two things need to be done by the same shim?
-# 
-# Yes, because both need to see the instances list, as opposed to the normal JIT
-# function which only sees the 'self' index.
-
-
-
-# THought, a quick AST search could check for missing return-type annotations,
-# and give a helpful error message...
-
 
 # IDEAS:
 # 
@@ -43,10 +33,8 @@ import numpy as np
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
 # 
-#   Return arrays, instead of lists.
-#       Will need to determine the return value's dtype. (or accept an annotation?)
-#       Replace return stmt's with a write to the array, and pass the array in to the function.
-#           ** This strategy should work with both host and cuda code.
+#   Allow returning pointers?
+#       Start with a few test cases.
 # 
 #   Special case for @compute on __init__, add class method `batch_init(num, *,**)`.
 # 
@@ -314,7 +302,7 @@ class _JIT:
                 def njit_entry_point(instances, return_array, {arguments}):
                     for index in numba.prange(len(instances)):
                         self = instances[index]
-                        return_array[self] = function(self, {arguments})
+                        return_array[index] = function(self, {arguments})
                 @numba.jit()
                 def entry_point(instances, {arguments}):
                     return_array = np.empty(len(instances), dtype=return_type)
