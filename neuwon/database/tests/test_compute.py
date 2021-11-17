@@ -2,6 +2,8 @@ from neuwon.database import Database, Compute, TimeSeries
 import math
 import pytest
 import random
+import numpy as np
+import cupy
 
 
 def test_basic_method():
@@ -139,10 +141,14 @@ def test_return_value():
     assert Foo().bar() == 1234
     host_data = Foo.bar()
     print(host_data)
+    assert all(x == 1234 for x in host_data)
+    # Note, the exact return type is not important as long as its an efficient array.
+    assert isinstance(host_data, np.ndarray)
     with db.using_memory_space('cuda'):
         cuda_data = Foo.bar()
     print(cuda_data)
-    1/0
+    assert all(x == 1234 for x in cuda_data)
+    assert isinstance(cuda_data, cupy.ndarray) # Exact type can change, as long as its a GPU array.
 
 
 @pytest.mark.skip
@@ -163,7 +169,6 @@ def test_compute_init():
     assert MyClass().x == 3
 
 
-@pytest.mark.skip
 def test_compute_on_memory_space():
     class Foo:
         __slots__ = ()
@@ -172,9 +177,9 @@ def test_compute_on_memory_space():
             self.x += 1
 
     db = Database()
-    Foo = db.add_class(Foo)
-    Foo.add_attribute('x', 0)
-    Foo = Foo.get_instance_type()
+    foo_data = db.add_class(Foo)
+    foo_data.add_attribute('x', 0)
+    Foo = foo_data.get_instance_type()
     Foo.bar() # Test calling with no instances, on host.
     with db.using_memory_space('cuda'):
         Foo.bar() # Test calling with no instances, on CUDA.

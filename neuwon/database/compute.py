@@ -162,8 +162,6 @@ class _JIT:
             self.rewrite_method_self()
         self.rewrite_annotated_references()
         self.rewrite_functions()
-        if self.target is cuda:
-            self.rewrite_cuda_self()
         self.assemble_function()
         if self.entry_point:
             self.write_entry_point()
@@ -275,7 +273,7 @@ class _JIT:
         # Apply JIT compilation to the function.
         if self.target is host:
             self.jit_function = numba.njit(self.py_function)
-        elif self.target is host:
+        elif self.target is cuda:
             self.jit_function = numba.cuda.jit(self.py_function, device=True)
 
     def write_entry_point(self):
