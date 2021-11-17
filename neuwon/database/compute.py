@@ -131,7 +131,6 @@ class Compute(Documentation):
             single_input = False
 
         if target is host:
-            _print_pycode(function)
             instance = np.array(instance, dtype=Pointer)
             retval = function(instance, *db_args, *args, **kwargs)
             if single_input and retval is not None:
@@ -168,6 +167,7 @@ class _JIT:
             self.database = db_something
         self.entry_point = bool(entry_point)
         self.deconstruct_function(self.original)
+        self.check_for_missing_return_type_annotation()
         # Transform and then reassemble the function.
         self.db_arguments = {}
         if self.is_method():
@@ -203,12 +203,31 @@ class _JIT:
             else:
                 self.parameters.append(name)
         self.parameters = ', '.join(self.parameters)
+        if self.signature.return_annotation == inspect.Signature.empty:
+            self.return_type = None
+        else:
+            self.return_type = np.dtype(self.signature.return_annotation)
 
     def is_method(self):
         return self.db_class is not None
 
     def is_function(self):
         return not self.is_method()
+
+    def check_for_missing_return_type_annotation(self):
+        if not self.entry_point:
+            return
+        if self.return_type is not None:
+            return
+        for node in ast.walk(self.body_ast):
+            if isinstance(node, ast.Return):
+                if node.value is None:
+                    continue
+                elif (isinstance(node.value, ast.Constant) or
+                      isinstance(node.value, ast.NameConstant)):
+                    if node.value.value is None:
+                        continue
+                raise TypeError(f"Method '{self.name}' is missing return type annotations")
 
     def rewrite_method_self(self):
         self.self_variable = next(iter(self.signature.parameters))
@@ -232,7 +251,7 @@ class _JIT:
         self.body_ast = rr.body_ast
         self.db_arguments.update(rr.db_arguments)
         for name, method in rr.method_calls.items():
-            jit_data = _JIT(method.original, self.target, ref_class)
+            jit_data = _JIT(method.original, self.target, method.db_class)
             self.closure[name] = jit_data.jit_function
 
     def rewrite_functions(self):
@@ -272,21 +291,16 @@ class _JIT:
             self.jit_function = numba.cuda.jit(self.py_function, device=True)
 
     def write_entry_point(self):
-        return_type = self.signature.return_annotation
-        if return_type == inspect.Signature.empty:
-            self.return_type = return_type = None
-        else:
-            self.return_type = return_type = np.dtype(return_type)
         exec_scope = {
                 'function': self.jit_function,
-                'return_type': return_type,
+                'return_type': self.return_type,
                 'np': np,
                 'numba': numba,
         }
         arguments = ''.join(f'{arg_name}, ' for arg_name, db_attr in self.db_arguments)
         arguments += self.parameters
         if self.target is host:
-            if return_type is None:
+            if self.return_type is None:
                 py_code = f'''
                 @numba.njit()
                 def entry_point(instances, {arguments}):
@@ -303,7 +317,7 @@ class _JIT:
                         return_array[self] = function(self, {arguments})
                 @numba.jit()
                 def entry_point(instances, {arguments}):
-                    return_array = np.zeros(len(instances), dtype=return_type)
+                    return_array = np.empty(len(instances), dtype=return_type)
                     njit_entry_point(instances, return_array, {arguments})
                     return return_array
                 '''
