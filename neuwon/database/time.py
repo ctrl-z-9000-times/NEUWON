@@ -77,6 +77,7 @@ class Clock:
     def _call_callbacks(self):
         any_dead = False
         for idx, callback in enumerate(self.callbacks):
+            # TODO: Consider more verbose error messages when a callback fails?
             keep_alive = callback()
             if not keep_alive:
                 self.callbacks[idx] = None
