@@ -10,6 +10,20 @@ import inspect
 import io
 import textwrap
 import uncompyle6
+import numba
+import numba.cuda
+import numpy as np
+
+
+# TODO: CUDA!
+
+# And also retval, and i think that these two things need to be done by the same shim?
+# 
+# Yes, because both need to see the instances list, as opposed to the normal JIT
+# function which only sees the 'self' index.
+
+
+
 
 # IDEAS:
 # 
@@ -114,7 +128,7 @@ class Compute(Documentation):
             single_input = False
 
         if target is host:
-            retval = [function(idx, *db_args, *args, **kwargs) for idx in instance]
+            retval = function(instance, *db_args, *args, **kwargs)
             if single_input:
                 return retval[0]
             else:
@@ -128,51 +142,53 @@ class Compute(Documentation):
         cached = self._jit_cache.get(target, None)
         if cached is not None: return cached
         assert self.db_class is not None, "Method not registered with a 'DB_Class'!"
-        jit_data                = _JIT(self.original, target, self.db_class)
-        function                = jit_data.function
+        jit_data = _JIT(self.original, target, self.db_class, entry_point=True)
+        self._jit_cache[target] = function = jit_data.entry_point
         self.db_arguments       = jit_data.db_arguments
-        self._jit_cache[target] = function
         return function
 
 class _JIT:
-    def __init__(self, function, target, db_something):
+    def __init__(self, function, target,
+                db_something: 'Database or DB_Class',
+                entry_point=False):
         assert isinstance(function, Callable)
         assert not isinstance(function, Compute)
         self.original  = function
         self.target    = target
         if isinstance(db_something, DB_Class):
-            self.db_class   = db_something
-            self.database   = self.db_class.get_database()
+            self.db_class = db_something
+            self.database = self.db_class.get_database()
         elif isinstance(db_something, Database):
-            self.db_class   = None
-            self.database   = db_something
-        # Breakout the function into all of its constituent parts.
-        self.name      = self.original.__name__.replace('<', '_').replace('>', '_')
-        self.filename  = inspect.getsourcefile(self.original)
-        self.signature = inspect.signature(self.original)
-        self.body_text = io.StringIO()
-        uncompyle6.code_deparse(self.original.__code__, out=self.body_text)
-        self.body_text = self.body_text.getvalue()
-        self.body_ast  = ast.parse(self.body_text, self.filename)
-        nonlocals, globals, builtins, unbound = inspect.getclosurevars(self.original)
-        self.closure = {}
-        self.closure.update(builtins)
-        self.closure.update(globals)
-        self.closure.update(nonlocals)
+            self.db_class = None
+            self.database = db_something
+        self.entry_point = bool(entry_point)
+        self.deconstruct_function(self.original)
+        # Transform and then reassemble the function.
         self.db_arguments = {}
         if self.is_method():
             self.rewrite_method_self()
         self.rewrite_annotated_references()
         self.rewrite_functions()
-        # Transform and then reassemble the function.
         if self.target is cuda:
             self.rewrite_cuda_self()
         self.assemble_function()
-        if True: _print_pycode(self.py_function)
-        if self.target is host:
-            self.function = target.jit_wrapper(self.py_function)
-        elif self.target is host:
-            self.function = target.jit_wrapper(self.py_function, device=True)
+        if self.entry_point:
+            self.write_entry_point()
+
+    def deconstruct_function(self, function):
+        """ Breakout the function into all of its constituent parts. """
+        self.name      = function.__name__.replace('<', '_').replace('>', '_')
+        self.filename  = inspect.getsourcefile(function)
+        self.signature = inspect.signature(function)
+        self.body_text = io.StringIO()
+        uncompyle6.code_deparse(function.__code__, out=self.body_text)
+        self.body_text = self.body_text.getvalue()
+        self.body_ast  = ast.parse(self.body_text, self.filename)
+        nonlocals, globals, builtins, unbound = inspect.getclosurevars(function)
+        self.closure = {}
+        self.closure.update(builtins)
+        self.closure.update(globals)
+        self.closure.update(nonlocals)
 
     def is_method(self):
         return self.db_class is not None
@@ -202,7 +218,8 @@ class _JIT:
         self.body_ast = rr.body_ast
         self.db_arguments.update(rr.db_arguments)
         for name, method in rr.method_calls.items():
-            self.closure[name] = method._jit(self.target)
+            jit_data = _JIT(method.original, self.target, ref_class)
+            self.closure[name] = jit_data.jit_function
 
     def rewrite_functions(self):
         """ Replace all functions captured in this closure with their JIT'ed versions. """
@@ -210,17 +227,10 @@ class _JIT:
             if not isinstance(value, Compute):
                 continue
             called_func_jit     = _JIT(value.original, self.target, self.database)
-            self.closure[name]  = called_func_jit.function
+            self.closure[name]  = called_func_jit.jit_function
             self.db_arguments.update(called_func_jit.db_arguments)
             # Insert this function's db_arguments into all calls to it.
             self.body_ast = _FuncCallRewriter(name, called_func_jit).visit(self.body_ast)
-
-    def rewrite_cuda_self(self):
-        # TODO: Replace the 'self' argument with an array of instance indexes.
-        # TODO: Insert statements to read:
-        #       >>> self_var = instances_array[numba.cuda.grid(1)]
-        #       >>> if self_var >= instances_array.size: return
-        1/0
 
     def assemble_function(self):
         # Give the db_arguments a stable ordering and fixup the functions signature.
@@ -232,7 +242,7 @@ class _JIT:
             parameters.insert(start, inspect.Parameter(arg_name,
                                         inspect.Parameter.POSITIONAL_OR_KEYWORD))
         self.signature = self.signature.replace(parameters=parameters)
-        # Assemble a new AST for the JIT'ed function.
+        # Assemble a new AST for the function.
         template                = f"def {self.name}{self.signature}:\n pass\n"
         module_ast              = ast.parse(template, filename=self.filename)
         self.function_ast       = module_ast.body[0]
@@ -240,6 +250,56 @@ class _JIT:
         self.module_ast         = ast.fix_missing_locations(module_ast)
         exec(compile(self.module_ast, self.filename, mode='exec'), self.closure)
         self.py_function        = self.closure[self.name]
+        if True: _print_pycode(self.py_function)
+        # Apply JIT compilation to the function.
+        if self.target is host:
+            self.jit_function = numba.njit(self.py_function)
+        elif self.target is host:
+            self.jit_function = numba.cuda.jit(self.py_function, device=True)
+
+    def write_entry_point(self):
+        return_type = self.signature.return_annotation
+        if return_type == inspect.Signature.empty:
+            self.return_type = return_type = None
+        else:
+            self.return_type = return_type = np.dtype(return_type)
+        f = self.jit_function
+        # 
+        if self.target is host:
+            if return_type is None:
+                @numba.njit(parallel=True)
+                def entry_point(instances, *args, **kwargs):
+                    for index in numba.prange(len(instances)):
+                        self = instances[index]
+                        f(self, *args, **kwargs)
+            else:
+                @numba.njit()
+                def njit_entry_point(instances, *args, **kwargs):
+                    for index in numba.prange(len(instances)):
+                        f(instances[index], *args, **kwargs)
+                @numba.jit()
+                def entry_point(instances, *args, **kwargs):
+                    return_array = np.zeros(len(instances), dtype=return_type)
+                    njit_entry_point(instances, return_array, *args, **kwargs)
+                    return return_array
+        elif self.target is cuda:
+            1/0
+            @numba.cuda.jit()
+            def _cuda_call_shim(instances, *args, **kwargs):
+                index = cuda.grid(1)
+                if index < instances.shape[0]:
+                    self = instances[index]
+                    call_inner(self, *args, **kwargs)
+
+        self.entry_point = entry_point
+
+    def rewrite_cuda_self(self):
+        # TODO: Replace the 'self' argument with an array of instance indexes.
+        # TODO: Insert statements to read:
+        #       >>> self_var = instances_array[numba.cuda.grid(1)]
+        #       >>> if self_var >= instances_array.size: return
+        self.signature.parameters
+        1/0
 
 class _ReferenceRewriter(ast.NodeTransformer):
     def __init__(self, db_class, reference_name, body_ast):
