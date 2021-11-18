@@ -8,24 +8,14 @@ import ast
 import collections
 import inspect
 import io
-import textwrap
-import uncompyle6
 import numba
 import numba.cuda
-import numpy as np
-
-
-# TODO: CUDA!
+import numpy
+import textwrap
+import uncompyle6
 
 
 # IDEAS:
-# 
-#   Database.add_function()
-#       Register an anonymous function.
-#       This allows users to define & change code at run time.
-#       This will also be needed for processing the type-annotations of functions.
-#       Note: this will broadcast its inputs like numpy does
-#               Can broadcast function over array of pointers, for method-like behavior.
 # 
 #   Coordinate Kernels for sparse matrixes.
 #       User writes func accepting (row, col, val) and returning the new value.
@@ -33,13 +23,25 @@ import numpy as np
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
 # 
+#   Database.add_function()
+#       Register an anonymous function.
+#       This allows users to define & change code at run time.
+#       This will also be needed for processing the type-annotations of functions.
+#       Note: this will broadcast its inputs like numpy does
+#               Can broadcast function over array of pointers, for method-like behavior.
+#       - This seems like a lot of work for a minor gain.
+# 
+# TODO:
+# 
 #   Allow returning pointers?
+#       Both from function to methods, and from methods to the user.
 #       Start with a few test cases.
 # 
 #   Special case for @compute on __init__, add class method `batch_init(num, *,**)`.
 # 
-# TODO:
-#       NULL Pointers become integers, not None. Document this somewhere?
+#   NULL Pointers become integers, not None. Document this somewhere? I'd really
+#   like some way to make a consistent API, one which doesn't change semantics
+#   between the OOP-API and @Compute.
 
 def _print_pycode(f):
     """ Decompile and print a python function, for debugging purposes. """
@@ -63,12 +65,8 @@ class Compute(Documentation):
     code. All limitations and caveats of `numba.jit(nopython=True)` also apply
     to this decorator.
 
-    If applied to methods then special caveats exist:
+    When applied to methods then special caveats exist:
     All data access must be written as single syntactic expressions.
-        -> give an example of how to access data (and how NOT to do it too)
-
-
-    TODO: DOCS!
     """
     def __init__(self, function):
         if isinstance(function, Compute): function = function.original
@@ -121,7 +119,7 @@ class Compute(Documentation):
             return []
 
         if target is host:
-            instance = np.array(instance, dtype=Pointer)
+            instance = numpy.array(instance, dtype=Pointer)
             retval = function(instance, *db_args, *args, **kwargs)
         elif target is cuda:
             instance = cuda.array(instance, dtype=Pointer)
@@ -193,7 +191,7 @@ class _JIT:
         if self.signature.return_annotation == inspect.Signature.empty:
             self.return_type = None
         else:
-            self.return_type = np.dtype(self.signature.return_annotation)
+            self.return_type = numpy.dtype(self.signature.return_annotation)
 
     def is_method(self):
         return self.db_class is not None
@@ -270,7 +268,8 @@ class _JIT:
         self.module_ast         = ast.fix_missing_locations(module_ast)
         exec(compile(self.module_ast, self.filename, mode='exec'), self.closure)
         self.py_function        = self.closure[self.name]
-        if True: _print_pycode(self.py_function)
+        if False:
+            _print_pycode(self.py_function)
         # Apply JIT compilation to the function.
         if self.target is host:
             self.jit_function = numba.njit(self.py_function)
