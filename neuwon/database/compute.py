@@ -117,18 +117,19 @@ class Compute(Documentation):
             single_input = True
         else:
             single_input = False
+        if len(instance) == 0:
+            return []
 
         if target is host:
             instance = np.array(instance, dtype=Pointer)
             retval = function(instance, *db_args, *args, **kwargs)
-            if single_input and retval is not None:
-                return retval[0]
-            else:
-                return retval
         elif target is cuda:
-            threadsperblock = 32
-            blockspergrid = (len(instance) + (threadsperblock - 1)) // threadsperblock
-            function[blockspergrid, threadsperblock](*db_args, *args, **kwargs)
+            instance = cuda.array(instance, dtype=Pointer)
+            retval = function(instance, *db_args, *args, **kwargs)
+        if single_input and retval is not None:
+            return retval[0]
+        else:
+            return retval
 
     def _jit(self, target):
         cached = self._jit_cache.get(target, None)
@@ -280,42 +281,70 @@ class _JIT:
         exec_scope = {
                 'function': self.jit_function,
                 'return_type': self.return_type,
-                'np': np,
-                'numba': numba,
         }
         arguments = ''.join(f'{arg_name}, ' for arg_name, db_attr in self.db_arguments)
         arguments += self.parameters
         if self.target is host:
             if self.return_type is None:
                 py_code = f'''
-                @numba.njit()
-                def entry_point(instances, {arguments}):
-                    for index in numba.prange(len(instances)):
-                        self = instances[index]
-                        function(self, {arguments})
-                '''
+                    import numba
+                    @numba.njit()
+                    def entry_point(instances, {arguments}):
+                        for index in numba.prange(len(instances)):
+                            self = instances[index]
+                            function(self, {arguments})
+                    '''
             else:
                 py_code = f'''
-                @numba.njit()
-                def njit_entry_point(instances, return_array, {arguments}):
-                    for index in numba.prange(len(instances)):
-                        self = instances[index]
-                        return_array[index] = function(self, {arguments})
-                @numba.jit()
-                def entry_point(instances, {arguments}):
-                    return_array = np.empty(len(instances), dtype=return_type)
-                    njit_entry_point(instances, return_array, {arguments})
-                    return return_array
-                '''
+                    import numba
+                    import numpy
+                    @numba.njit()
+                    def njit_entry_point(instances, return_array, {arguments}):
+                        for index in numba.prange(len(instances)):
+                            self = instances[index]
+                            return_array[index] = function(self, {arguments})
+                    @numba.jit()
+                    def entry_point(instances, {arguments}):
+                        return_array = numpy.empty(len(instances), dtype=return_type)
+                        njit_entry_point(instances, return_array, {arguments})
+                        return return_array
+                    '''
         elif self.target is cuda:
-            1/0
-            @numba.cuda.jit()
-            def _cuda_call_shim(instances, *args, **kwargs):
-                index = cuda.grid(1)
-                if index < instances.shape[0]:
-                    self = instances[index]
-                    call_inner(self, *args, **kwargs)
-
+            if self.return_type is None:
+                py_code = f'''
+                    import numba
+                    import numba.cuda
+                    @numba.cuda.jit()
+                    def cuda_entry_point(instances, {arguments}):
+                        index = numba.cuda.grid(1)
+                        if index < len(instances):
+                            self = instances[index]
+                            function(self, {arguments})
+                    @numba.jit()
+                    def entry_point(instances, {arguments}):
+                        threads = 32
+                        blocks = (len(instances) + (threads - 1)) // threads
+                        cuda_entry_point[blocks, threads](instances, {arguments})
+                    '''
+            else:
+                py_code = f'''
+                    import cupy
+                    import numba
+                    import numba.cuda
+                    @numba.cuda.jit()
+                    def cuda_entry_point(instances, return_array, {arguments}):
+                        index = numba.cuda.grid(1)
+                        if index < len(instances):
+                            self = instances[index]
+                            return_array[index] = function(self, {arguments})
+                    @numba.jit()
+                    def entry_point(instances, {arguments}):
+                        return_array = cupy.empty(len(instances), dtype=return_type)
+                        threads = 32
+                        blocks = (len(instances) + (threads - 1)) // threads
+                        cuda_entry_point[blocks, threads](instances, return_array, {arguments})
+                        return return_array
+                    '''
         exec(textwrap.dedent(py_code), exec_scope)
         self.entry_point = exec_scope['entry_point']
 

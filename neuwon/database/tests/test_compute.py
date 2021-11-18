@@ -140,13 +140,13 @@ def test_return_value():
     for _ in range(77): Foo()
     assert Foo().bar() == 1234
     host_data = Foo.bar()
-    print(host_data)
+    print('Host array type:', type(host_data))
     assert all(x == 1234 for x in host_data)
     # Note, the exact return type is not important as long as its an efficient array.
     assert isinstance(host_data, np.ndarray)
     with db.using_memory_space('cuda'):
         cuda_data = Foo.bar()
-    print(cuda_data)
+    print('CUDA array type:', type(cuda_data))
     assert all(x == 1234 for x in cuda_data)
     assert isinstance(cuda_data, cupy.ndarray) # Exact type can change, as long as its a GPU array.
 
