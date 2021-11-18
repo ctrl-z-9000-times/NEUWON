@@ -28,7 +28,7 @@ class Cell:
     @Compute
     def advance_kernel(self):
         if self.alive:
-            if self.count not in range(2, 4):
+            if self.count not in (2, 3):
                 self.alive = False
         else:
             if self.count == 3:
