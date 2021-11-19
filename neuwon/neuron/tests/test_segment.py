@@ -1,17 +1,17 @@
 from neuwon.database import Database
-from neuwon.neuron.segment import Segment
+from neuwon.neuron.neuron import Neuron as NeuronSuperclass
 import pytest
 
 def test_sections():
     dt = .1
     db = Database()
-    Seg = Segment._initialize(db,
+    Neuron = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 1e6,
             membrane_capacitance = 1e-14,)
-    root = Seg.make_section(None, [0, 0,0], 4)
-    sec1 = Seg.make_section(root[-1], [10,0,0], 1, 3)
-    sec2 = Seg.make_section(sec1[-1], [10,10,0], 1, 3)
+    root = Neuron([0, 0,0], 4)
+    sec1 = root.make_section([10,0,0], 1, 3)
+    sec2 = root.make_section([10,10,0], 1, 3)
 
     for sec in [root, sec1, sec2]:
         for x in sec:
