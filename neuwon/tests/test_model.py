@@ -1,6 +1,5 @@
 from neuwon.model import Model
 from neuwon.nmodl import NmodlMechanism
-from neuwon.species import Species
 from neuwon.database.time import TimeSeries
 import numpy as np
 import pytest

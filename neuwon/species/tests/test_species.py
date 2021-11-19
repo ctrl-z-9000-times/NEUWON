@@ -1,6 +1,6 @@
 from neuwon.database import Database
 from neuwon.parameters import Parameters
-from neuwon.segment import SegmentMethods
+from neuwon.neuron.segment import SegmentMethods
 from neuwon.species import SpeciesFactory
 
 test_parameters = Parameters({

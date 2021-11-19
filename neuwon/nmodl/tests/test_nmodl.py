@@ -1,4 +1,4 @@
-from neuwon.segment import SegmentMethods
+from neuwon.neuron.segment import SegmentMethods
 from neuwon.database import Database
 from neuwon.nmodl import NmodlMechanism
 import pytest

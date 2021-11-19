@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.segment.geometry import SegmentGeometry
+from neuwon.neuron.geometry import SegmentGeometry
 import pytest
 
 def mk_seg(db=None):

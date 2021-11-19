@@ -1,6 +1,6 @@
 from neuwon.database import epsilon
-from neuwon.segment.electric import ElectricProperties
-from neuwon.segment.geometry import SegmentGeometry
+from .electric import ElectricProperties
+from .geometry import SegmentGeometry
 import numpy as np
 import re
 
@@ -38,6 +38,8 @@ class SegmentMethods(SegmentGeometry, ElectricProperties):
     def __init__(self, parent, coordinates, diameter):
         SegmentGeometry.__init__(self, parent, coordinates, diameter)
         ElectricProperties.__init__(self)
+        if self.parent is not None:
+            self.neuron = self.parent.neuron
 
     @classmethod
     def load_swc(cls, swc_data):

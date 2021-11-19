@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.segment import SegmentMethods
+from neuwon.neuron.segment import SegmentMethods
 import bisect
 import numpy as np
 import pytest
