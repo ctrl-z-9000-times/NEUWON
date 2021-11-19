@@ -132,7 +132,11 @@ def test_return_value():
         __slots__ = ()
         @Compute
         def bar(self) -> int:
+            self.red_herring()
             return self.data
+        @Compute
+        def red_herring(self): # Return type annotation should not be required here.
+            return 1234
     db = Database()
     foo_data = db.add_class(Foo)
     foo_data.add_attribute('data', 1234)

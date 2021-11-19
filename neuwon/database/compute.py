@@ -154,7 +154,6 @@ class _JIT:
             self.database = db_something
         self.entry_point = bool(entry_point)
         self.deconstruct_function(self.original)
-        self.check_for_missing_return_type_annotation()
         # Transform and then reassemble the function.
         self.db_arguments = {}
         if self.is_method():
@@ -163,6 +162,7 @@ class _JIT:
         self.rewrite_functions()
         self.assemble_function()
         if self.entry_point:
+            self.check_for_missing_return_type_annotation()
             self.write_entry_point()
 
     def deconstruct_function(self, function):
@@ -232,12 +232,10 @@ class _JIT:
             self.rewrite_reference(db_class, p.name)
 
     def rewrite_reference(self, ref_class, ref_name):
-        rr = _ReferenceRewriter(ref_class, ref_name, self.body_ast)
+        rr = _ReferenceRewriter(ref_class, ref_name, self.body_ast, self.target)
         self.body_ast = rr.body_ast
         self.db_arguments.update(rr.db_arguments)
-        for name, method in rr.method_calls.items():
-            jit_data = _JIT(method.original, self.target, method.db_class)
-            self.closure[name] = jit_data.jit_function
+        self.closure.update(rr.method_calls)
 
     def rewrite_functions(self):
         """ Replace all functions captured in this closure with their JIT'ed versions. """
@@ -382,17 +380,18 @@ class _JIT:
         self.entry_point = exec_scope['entry_point']
 
 class _ReferenceRewriter(ast.NodeTransformer):
-    def __init__(self, db_class, reference_name, body_ast):
+    def __init__(self, db_class, reference_name, body_ast, target):
         ast.NodeTransformer.__init__(self)
         self.db_class       = db_class
         self.reference_name = str(reference_name)
+        self.target         = target
         self.db_arguments   = {} # Name -> DB-Attribute
-        self.method_calls   = {} # Name -> Conpute-Instance
+        self.method_calls   = {} # Name -> jit_function
         self.body_ast       = self.visit(body_ast)
         # Find all references which are exposed via this class and recursively rewrite them.
         for name, db_attribute in list(self.db_arguments.items()):
             if db_attribute.reference:
-                rr = _ReferenceRewriter(db_attribute.reference, name, self.body_ast)
+                rr = _ReferenceRewriter(db_attribute.reference, name, self.body_ast, self.target)
                 self.db_arguments.update(rr.db_arguments)
                 self.method_calls.update(rr.method_calls)
                 self.body_ast = rr.body_ast
@@ -431,10 +430,12 @@ class _ReferenceRewriter(ast.NodeTransformer):
         # Replace this attribute access.
         qualname = '_%s_' % db_attribute.qualname.replace('.', '_')
         if isinstance(db_attribute, Compute):
-            self.method_calls[qualname] = db_attribute
+            jit_data    = _JIT(db_attribute.original, self.target, db_attribute.db_class)
+            self.method_calls[qualname] = jit_data.jit_function
             replacement = ast.Name(id=qualname, ctx=ctx)
-            replacement.db_method   = db_attribute
-            replacement.db_instance = value
+            replacement.db_method       = db_attribute
+            replacement.db_arguments    = jit_data.db_arguments
+            replacement.db_instance     = value
         else:
             self.db_arguments[qualname] = db_attribute
             if isinstance(db_attribute, ClassAttribute):
@@ -456,21 +457,19 @@ class _ReferenceRewriter(ast.NodeTransformer):
         # the AST node.
         self.generic_visit(node)
         # Filter for methods that the database recognizes.
-        db_method = getattr(node.func, 'db_method', None)
-        if db_method is None:
+        if not hasattr(node.func, 'db_method'):
             return node
         # Pass the instance as the methods 'self' argument.
         node.args.insert(0, node.func.db_instance)
         # Insert the method's db_arguments.
-        if not hasattr(db_method, 'db_arguments'):
-            db_method._jit(host)
-        self.db_arguments.update(db_method.db_arguments)
-        for arg_name, db_attr in reversed(db_method.db_arguments):
+        self.db_arguments.update(node.func.db_arguments)
+        for arg_name, db_attr in reversed(node.func.db_arguments):
             node.args.insert(1, ast.Name(id=arg_name, ctx=ast.Load()))
         # Remove these tags so that this call will not be re-processed in any
         # subsequent AST pass.
-        node.func.db_method   = None
-        node.func.db_instance = None
+        del node.func.db_method
+        del node.func.db_arguments
+        del node.func.db_instance
         return node
 
 class _FuncCallRewriter(ast.NodeTransformer):
