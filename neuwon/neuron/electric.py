@@ -6,10 +6,6 @@ import numpy as np
 import scipy.sparse
 import scipy.sparse.linalg
 
-# TODO: Consider the following renames:
-#       cytoplasmic_resistance => specific_resistance
-#       membrane_capacitance => specific_capacitance
-
 class Electric:
     __slots__ = ()
     @staticmethod

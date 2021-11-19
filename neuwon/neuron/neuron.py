@@ -12,40 +12,41 @@ class Neuron:
     __slots__ = ()
     @staticmethod
     def _intialize(database, **electric_arguments):
-        # segment_data = 
-        neuron_data = database.add_class(cls)
-        neuron_data.add_attribute('root', dtype='Segment')
+        neuron_data  = database.add_class(Neuron)
+        segment_data = database.add_class(Segment)
+        Segment._initialize(database, **electric_arguments)
 
-        Segment_data = database.get_class('Segment')
-        Segment_data.add_attribute('neuron', dtype='Neuron')
+        neuron_data .add_attribute('root', dtype='Segment')
+        segment_data.add_attribute('neuron', dtype='Neuron')
 
-        Neuron_cls          = neuron_data.get_instance_type()
-        Neuron_cls._Segment = Segment_data.get_instance_type()
-        return Neuron_cls
+        neuron_cls          = neuron_data.get_instance_type()
+        neuron_cls._Segment = Segment_data.get_instance_type()
+        return neuron_cls
 
     def __init__(self, coordinates, diameter):
-        self.root = self._Segment(parent=None, coordinates=coordinates, diameter=diameter)
+        Segment = type(self)._Segment
+        self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter)
+
+    def add_segment(self, coordinates, diameter):
+        Segment = type(self)._Segment
+        return Segment(self.root, coordinates, diameter)
 
 class Segment(Tree, Geometry, Electric):
     """ """
     __slots__ = ()
-    @classmethod
-    def _initialize(cls, database, **electric_arguments):
-        segment_data = database.add_class("Segment", cls)
+    @staticmethod
+    def _initialize(database, **electric_arguments):
+        """ Do not directly call this method! Call Neuron._initialize() instead. """
         Tree._initialize(database)
         Geometry._initialize(database)
         Electric._initialize(database, **electric_arguments)
-
-        segment_data.add_attribute('neuron', dtype='Neuron')
-
-        return segment_data.get_instance_type()
 
     def __init__(self, parent, coordinates, diameter):
         Tree.__init__(self, parent)
         Geometry.__init__(self, coordinates, diameter)
         Electric.__init__(self)
-        # if self.parent is not None:
-        #     self.neuron = self.parent.neuron
+        if self.parent is not None:
+            self.neuron = self.parent.neuron
 
     @classmethod
     def load_swc(cls, swc_data):
@@ -66,39 +67,35 @@ class Segment(Tree, Geometry, Electric):
             parent = int(next(cursor))
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
 
-    @classmethod
-    def make_section(cls, parent, coordinates, diameter, maximum_segment_length=np.inf):
-        """
-        Argument parents:
-        Argument coordinates:
-        Argument diameters:
-        Argument maximum_segment_length
+    def add_segment(self, coordinates, diameter):
+        return Segment(self, coordinates, diameter)
 
+    def add_section(self, coordinates, diameter, maximum_segment_length=np.inf):
+        """
         Returns a list of Segments.
         """
+        cls = type(self)
         maximum_segment_length = float(maximum_segment_length)
         assert maximum_segment_length > 0
-        if maximum_segment_length == np.inf or parent is None:
-            return [cls(parent, coordinates, diameter)]
         coords      = [float(x) for x in coordinates]
         diameter    = float(diameter)
-        displace    = np.subtract(parent.coordinates, coordinates)
+        displace    = np.subtract(self.coordinates, coordinates)
         length      = np.linalg.norm(displace)
-        p_coords    = np.array(parent.coordinates)
-        if parent.is_sphere() or len(parent.children) > 0:
-            parent_r  = 0.5 * parent.diameter
-            if parent_r < length - epsilon:
-                p_coords -= displace * (parent_r / length)
-                length   -= parent_r
-        divisions   = max(1, int(np.ceil(length / maximum_segment_length)))
-        section     = []
+        p_coords    = np.array(self.coordinates)
+        if self.is_sphere() or len(self.children) > 0:
+            self_r  = 0.5 * self.diameter
+            if self_r < length - epsilon:
+                p_coords -= displace * (self_r / length)
+                length   -= self_r
+        divisions = max(1, int(np.ceil(length / maximum_segment_length)))
         x = np.linspace(p_coords[0], coordinates[0], divisions+1)
         y = np.linspace(p_coords[1], coordinates[1], divisions+1)
         z = np.linspace(p_coords[2], coordinates[2], divisions+1)
-        d = np.linspace(parent.diameter, diameter,   divisions+1)
+        d = np.linspace(self.diameter, diameter,   divisions+1)
         args = zip(x,y,z,d)
         next(args)
+        section = []
         for (x,y,z,d) in args:
-            parent = cls(parent, (x,y,z), d)
-            section.append(parent)
+            self = cls(self, (x,y,z), d)
+            section.append(self)
         return section
