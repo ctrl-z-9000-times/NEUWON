@@ -56,7 +56,7 @@ class Tree:
             parent.children = siblings
 
     @Compute
-    def is_root(self):
+    def is_root(self) -> bool:
         return self.parent == NULL
 
 class SegmentGeometry(Tree):
@@ -120,11 +120,11 @@ class SegmentGeometry(Tree):
         self._compute_intracellular_volume()
 
     @Compute
-    def is_sphere(self):
+    def is_sphere(self) -> bool:
         return self.is_root()
 
     @Compute
-    def is_cylinder(self):
+    def is_cylinder(self) -> bool:
         return not self.is_sphere()
 
     @Compute
@@ -136,7 +136,7 @@ class SegmentGeometry(Tree):
             self.length = np.linalg.norm(self.coordinates - self.parent.coordinates)
 
     @Compute
-    def _secondary_length(self):
+    def _secondary_length(self) -> float:
         """
         Subtract the parent's radius from the secondary nodes length,
         to avoid excessive overlap between segments.
