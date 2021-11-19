@@ -1,45 +1,26 @@
 from neuwon.database import epsilon
-from .electric import ElectricProperties
-from .geometry import SegmentGeometry
+from .electric import Electric
+from .geometry import Tree, Geometry
 import numpy as np
 import re
 
-def _custom_super(target_type, obj):
-    """ Special wrapper for built-in method "super".
-
-    Returns a bound super proxy object, where the MRO starts *at* the given
-    target_type, as opposed to super's default behavior of starting the
-    MRO *after* the given type.
-    """
-    if isinstance(obj, type):
-        mro = obj.mro()
-    else:
-        mro = type(obj).mro()
-    idx = mro.index(target_type) - 1
-    return super(mro[idx], obj)
-
-class SegmentMethods(SegmentGeometry, ElectricProperties):
+class Segment(Tree, Geometry, Electric):
     """ """
     __slots__ = ()
     @classmethod
-    def _initialize(cls, database, *,
-                initial_voltage,
-                cytoplasmic_resistance,
-                membrane_capacitance,):
+    def _initialize(cls, database, **electric_arguments):
         db_cls = database.add_class("Segment", cls)
-        cls = db_cls.get_instance_type()
-        _custom_super(SegmentGeometry, cls)._initialize(db_cls)
-        _custom_super(ElectricProperties, cls)._initialize(db_cls,
-                initial_voltage=initial_voltage,
-                cytoplasmic_resistance=cytoplasmic_resistance,
-                membrane_capacitance=membrane_capacitance,)
-        return cls
+        Tree._initialize(database)
+        Geometry._initialize(database)
+        Electric._initialize(database, **electric_arguments)
+        return db_cls.get_instance_type()
 
     def __init__(self, parent, coordinates, diameter):
-        SegmentGeometry.__init__(self, parent, coordinates, diameter)
-        ElectricProperties.__init__(self)
-        if self.parent is not None:
-            self.neuron = self.parent.neuron
+        Tree.__init__(self, parent)
+        Geometry.__init__(self, coordinates, diameter)
+        Electric.__init__(self)
+        # if self.parent is not None:
+        #     self.neuron = self.parent.neuron
 
     @classmethod
     def load_swc(cls, swc_data):

@@ -1,6 +1,3 @@
-""" Private module. """
-__all__ = []
-
 from neuwon.database import epsilon, Compute, NULL
 import numpy as np
 
@@ -41,8 +38,9 @@ class Tree:
     Segments are organized in a tree.
     """
     __slots__ = ()
-    @classmethod
-    def _initialize(cls, db_cls):
+    @staticmethod
+    def _initialize(database):
+        db_cls = database.get_class('Segment')
         db_cls.add_attribute("parent", dtype=db_cls, allow_invalid=True)
         db_cls.add_connectivity_matrix("children", db_cls)
 
@@ -59,15 +57,15 @@ class Tree:
     def is_root(self) -> bool:
         return self.parent == NULL
 
-class SegmentGeometry(Tree):
+class Geometry:
     """
     The root of the tree is a sphere,
     all other segments are cylinders.
     """
     __slots__ = ()
-    @classmethod
-    def _initialize(cls, db_cls):
-        super()._initialize(db_cls)
+    @staticmethod
+    def _initialize(database):
+        db_cls = database.get_class('Segment')
 
         db_cls.add_attribute("coordinates", shape=(3,),
                 units="μm",)
@@ -98,8 +96,7 @@ class SegmentGeometry(Tree):
                 units="μm³",
                 valid_range=(epsilon, np.inf),)
 
-    def __init__(self, parent, coordinates, diameter):
-        Tree.__init__(self, parent)
+    def __init__(self, coordinates, diameter):
         self.coordinates    = coordinates
         self.diameter       = diameter
         parent              = self.parent

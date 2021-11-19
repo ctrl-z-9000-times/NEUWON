@@ -1,17 +1,17 @@
 from neuwon.database import Database
-from neuwon.neuron.segment import SegmentMethods
+from neuwon.neuron.segment import Segment
 import pytest
 
 def test_sections():
     dt = .1
     db = Database()
-    Segment = SegmentMethods._initialize(db,
+    Seg = Segment._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 1e6,
             membrane_capacitance = 1e-14,)
-    root = Segment.make_section(None, [0, 0,0], 4)
-    sec1 = Segment.make_section(root[-1], [10,0,0], 1, 3)
-    sec2 = Segment.make_section(sec1[-1], [10,10,0], 1, 3)
+    root = Seg.make_section(None, [0, 0,0], 4)
+    sec1 = Seg.make_section(root[-1], [10,0,0], 1, 3)
+    sec2 = Seg.make_section(sec1[-1], [10,10,0], 1, 3)
 
     for sec in [root, sec1, sec2]:
         for x in sec:
@@ -24,11 +24,11 @@ def test_sections():
 def test_swc():
     db = Database()
     Geometry._initialize(db)
-    Segment = db.get("Segment").get_instance_type()
+    Seg = db.get("Segment").get_instance_type()
     # http://neuromorpho.org/neuron_info.jsp?neuron_name=109-6_5_6_L1_CA1_N2_CG
-    my_neuron = Segment.load_swc("swc_files/109-6_5_6_L1_CA1_N2_CG.CNG.swc")
+    my_neuron = Seg.load_swc("swc_files/109-6_5_6_L1_CA1_N2_CG.CNG.swc")
 
-    segs = [x for x in db.get("Segment").get_all_instances() if x.is_cylinder()]
+    segs    = [x for x in Seg.get_all_instances() if x.is_cylinder()]
     length  = sum(x.length for x in segs)
     surface = sum(x.surface_area for x in segs)
     volume  = sum(x.volume for x in segs)

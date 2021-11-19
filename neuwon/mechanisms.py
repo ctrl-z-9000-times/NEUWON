@@ -1,5 +1,3 @@
-import neuwon.nmodl
-
 class Mechanism:
     """ Abstract class for specifying chemical reactions and mechanisms. """
     __slots__ = ()
@@ -16,7 +14,7 @@ class Mechanism:
             return type(self).__name__
 
     @classmethod
-    def initialize(self, database, time_step, celsius, input_clock):
+    def initialize(self, database, time_step, celsius, species_input_hook):
         """
         Optional method; this is called after the Model has been created.
 
@@ -59,3 +57,5 @@ class MechanismsFactory(dict):
                 f"Mechanism referred to by multiple different names: '{name}' and '{mech_name}'.")
         self[name] = mechanism
         return mechanism
+
+import neuwon.nmodl

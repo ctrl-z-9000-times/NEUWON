@@ -2,8 +2,8 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
 from neuwon.parameters import Parameters
-from neuwon.neuron.neuron import NeuronMethods
-from neuwon.neuron.segment import SegmentMethods
+from neuwon.neuron.neuron import Neuron
+from neuwon.neuron.segment import Segment
 from neuwon.mechanisms import MechanismsFactory
 from neuwon.species import SpeciesFactory
 import cupy as cp
@@ -30,12 +30,12 @@ class Model:
         self.clock      = db.add_clock(simulation['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()
         self.celsius    = float(simulation['celsius'])
-        self.Segment    = SegmentMethods._initialize(db,
+        self.Segment    = Segment._initialize(db,
                 initial_voltage         = simulation['initial_voltage'],
                 cytoplasmic_resistance  = simulation['cytoplasmic_resistance'],
                 membrane_capacitance    = simulation['membrane_capacitance'],)
         self.Segment._model = self
-        self.Neuron  = NeuronMethods.initialize(db)
+        self.Neuron  = Neuron.initialize(db)
         self.regions = RegionFactory(self.parameters['regions'])
         self.species = SpeciesFactory(self.parameters['species'], db, 0.5 * self.time_step, self.celsius)
         self.mechanisms = MechanismsFactory(self.parameters['mechanisms'], db, self.time_step, self.celsius)

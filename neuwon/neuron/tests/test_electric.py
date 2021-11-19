@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.neuron.segment import SegmentMethods
+from neuwon.neuron.segment import Segment as SegmentClass
 import bisect
 import numpy as np
 import pytest
@@ -7,7 +7,7 @@ import pytest
 def test_advance_smoke_test():
     dt = .1
     db = Database()
-    Segment = SegmentMethods._initialize(db,
+    Segment = SegmentClass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
@@ -26,7 +26,7 @@ def test_advance_smoke_test():
 
 def test_time_constant():
     db = Database()
-    Segment = SegmentMethods._initialize(db,
+    Segment = SegmentClass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
@@ -45,7 +45,7 @@ def test_time_constant():
 
 def measure_length_constant(diam, rm, max_len, dt, ptol, plot):
     db = Database()
-    Segment = SegmentMethods._initialize(db,
+    Segment = SegmentClass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)

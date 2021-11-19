@@ -1,6 +1,3 @@
-""" Private module. """
-__all__ = []
-
 from neuwon.database import epsilon, NULL
 from neuwon.database.time import TimeSeries
 import cupy
@@ -13,13 +10,14 @@ import scipy.sparse.linalg
 #       cytoplasmic_resistance => specific_resistance
 #       membrane_capacitance => specific_capacitance
 
-class ElectricProperties:
+class Electric:
     __slots__ = ()
-    @classmethod
-    def _initialize(cls, db_cls, *,
-                initial_voltage,
-                cytoplasmic_resistance,
-                membrane_capacitance,):
+    @staticmethod
+    def _initialize(database, *,
+                initial_voltage = -70.0,
+                cytoplasmic_resistance = 100.0,
+                membrane_capacitance = 1.0,):
+        db_cls = database.get_class('Segment')
         db_cls.add_attribute("voltage", float(initial_voltage), units="mV")
         db_cls.add_attribute("integral_voltage")
         db_cls.add_attribute("axial_resistance", units="")
@@ -32,12 +30,12 @@ class ElectricProperties:
                 valid_range=(epsilon, np.inf))
         db_cls.add_attribute("sum_conductance", units="Siemens", valid_range=(0, np.inf))
         db_cls.add_attribute("driving_voltage", units="mV")
-        cls._clean = False
+        db_cls.get_instance_type()._matrix_valid = False
         db_cls.add_sparse_matrix("electric_propagator_matrix", db_cls)
 
     def __init__(self):
         self._compute_passive_electric_properties()
-        type(self)._clean = False
+        type(self)._matrix_valid = False
 
     def _compute_passive_electric_properties(self):
         Ra = self.cytoplasmic_resistance * 1e4 # Convert from ohm-cm to ohm-um.
@@ -48,7 +46,7 @@ class ElectricProperties:
 
     @classmethod
     def _electric_advance(cls, time_step):
-        if not cls._clean:
+        if not cls._matrix_valid:
             cls._compute_propagator_matrix(time_step)
         dt = time_step / 1000
         db_cls              = cls.get_database_class()
@@ -105,7 +103,7 @@ class ElectricProperties:
         matrix.data[np.abs(matrix.data) < epsilon] = 0.0
         matrix.eliminate_zeros()
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
-        cls._clean = True
+        cls._matrix_valid = True
 
     # TODO: Consider changing the default duration to just "1" so that it's a
     # nice round number that's easy to remember.
