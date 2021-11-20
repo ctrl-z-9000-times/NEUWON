@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.neuron.segment import Segment as SegmentClass
+from neuwon.neuron.neuron import Neuron as NeuronSuperclass
 import bisect
 import numpy as np
 import pytest
@@ -7,26 +7,27 @@ import pytest
 def test_advance_smoke_test():
     dt = .1
     db = Database()
-    Segment = SegmentClass._initialize(db,
+    Neuron = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
+    Segment = db.get_class('Segment').get_instance_type()
     Segment._electric_advance(dt)
-    Segment(None, [0,0,0], 13)
+    Neuron([0,0,0], 13)
     Segment._electric_advance(dt)
     # Make disconnected segments.
     for i in range(17):
-        root = Segment(None, [0,0,0], 13)
+        root = Neuron([0,0,0], 13).root
     # Make connected segments.
     tip = root
     for i in range(1, 111):
-        tip = Segment(tip, [i,0,0], 1)
+        tip = tip.add_segment([i,0,0], 1)
     Segment._electric_advance(dt)
     # db.check() # Don't check because some data is still uninitialized.
 
 def test_time_constant():
     db = Database()
-    Segment = SegmentClass._initialize(db,
+    Segment = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)

@@ -1,4 +1,4 @@
-from neuwon.database import epsilon, Compute, NULL
+from neuwon.database import epsilon, Compute
 import numpy as np
 
 @Compute

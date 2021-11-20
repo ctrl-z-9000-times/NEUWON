@@ -9,19 +9,18 @@ def test_sections():
             initial_voltage = -70,
             cytoplasmic_resistance = 1e6,
             membrane_capacitance = 1e-14,)
-    root = Neuron([0, 0,0], 4)
-    sec1 = root.make_section([10,0,0], 1, 3)
-    sec2 = root.make_section([10,10,0], 1, 3)
+    root = Neuron([0, 0,0], 4).root
+    sec1 = root.add_section([10,0,0], 1, 3)
+    sec2 = root.add_section([10,10,0], 1, 3)
 
-    assert root.is_root()
-
-    for sec in [root, sec1, sec2]:
+    for sec in [sec1, sec2]:
         for x in sec:
             print(x.coordinates)
 
+    assert root.is_root()
     assert len(sec1) == 3 # math.ceil((10 - 4/2) / 3)
     assert len(sec2) == 4
-    assert not sec2[-1],is_root()
+    assert not sec2[-1].is_root()
     db.check()
 
 @pytest.mark.skip()

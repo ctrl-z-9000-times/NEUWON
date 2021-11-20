@@ -1,4 +1,4 @@
-from neuwon.database import Compute
+from neuwon.database import Compute, NULL
 
 class Tree:
     """

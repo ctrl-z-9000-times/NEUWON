@@ -65,7 +65,7 @@ class Segment(Tree, Geometry, Electric):
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
 
     def add_segment(self, coordinates, diameter):
-        return Segment(self, coordinates, diameter)
+        return type(self)(self, coordinates, diameter)
 
     def add_section(self, coordinates, diameter, maximum_segment_length=np.inf):
         """
