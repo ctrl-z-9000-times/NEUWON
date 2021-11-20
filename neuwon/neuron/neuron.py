@@ -1,6 +1,7 @@
-from neuwon.database import epsilon
 from .electric import Electric
-from .geometry import Tree, Geometry
+from .geometry import Geometry
+from .tree     import Tree
+from neuwon.database import epsilon
 import numpy as np
 import re
 
@@ -11,7 +12,7 @@ import re
 class Neuron:
     __slots__ = ()
     @staticmethod
-    def _intialize(database, **electric_arguments):
+    def _initialize(database, **electric_arguments):
         neuron_data  = database.add_class(Neuron)
         segment_data = database.add_class(Segment)
         Segment._initialize(database, **electric_arguments)
@@ -20,16 +21,12 @@ class Neuron:
         segment_data.add_attribute('neuron', dtype='Neuron')
 
         neuron_cls          = neuron_data.get_instance_type()
-        neuron_cls._Segment = Segment_data.get_instance_type()
+        neuron_cls._Segment = segment_data.get_instance_type()
         return neuron_cls
 
     def __init__(self, coordinates, diameter):
         Segment = type(self)._Segment
         self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter)
-
-    def add_segment(self, coordinates, diameter):
-        Segment = type(self)._Segment
-        return Segment(self.root, coordinates, diameter)
 
 class Segment(Tree, Geometry, Electric):
     """ """

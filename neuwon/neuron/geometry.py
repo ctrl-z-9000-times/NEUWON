@@ -33,30 +33,6 @@ def volume_cylinder(diameter, length):
 def volume_frustum(radius_1, radius_2, length):
     return np.pi / 3.0 * length * (radius_1 * radius_1 + radius_1 * radius_2 + radius_2 * radius_2)
 
-class Tree:
-    """
-    Segments are organized in a tree.
-    """
-    __slots__ = ()
-    @staticmethod
-    def _initialize(database):
-        db_cls = database.get_class('Segment')
-        db_cls.add_attribute("parent", dtype=db_cls, allow_invalid=True)
-        db_cls.add_connectivity_matrix("children", db_cls)
-
-    def __init__(self, parent):
-        self.parent = parent
-        # Add ourselves to the parent's children list.
-        parent = self.parent
-        if parent is not None:
-            siblings = parent.children
-            siblings.append(self)
-            parent.children = siblings
-
-    @Compute
-    def is_root(self) -> bool:
-        return self.parent == NULL
-
 class Geometry:
     """
     The root of the tree is a sphere,
