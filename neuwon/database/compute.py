@@ -26,22 +26,17 @@ import uncompyle6
 #   Database.add_function()
 #       Register an anonymous function.
 #       This allows users to define & change code at run time.
-#       This will also be needed for processing the type-annotations of functions.
 #       Note: this will broadcast its inputs like numpy does
 #               Can broadcast function over array of pointers, for method-like behavior.
 #       - This seems like a lot of work for a minor gain.
 # 
 # TODO:
 # 
-#   Allow returning pointers?
+#   Allow returning pointers.
 #       Both from function to methods, and from methods to the user.
 #       Start with a few test cases.
 # 
 #   Special case for @compute on __init__, add class method `batch_init(num, *,**)`.
-# 
-#   NULL Pointers become integers, not None. Document this somewhere? I'd really
-#   like some way to make a consistent API, one which doesn't change semantics
-#   between the OOP-API and @Compute.
 
 def _print_pycode(f):
     """ Decompile and print a python function, for debugging purposes. """
@@ -54,19 +49,30 @@ def _print_pycode(f):
 
 class Compute(Documentation):
     """
-    A decorator for functions and methods which are executed by the database.
+    A decorator for functions and methods to be executed by the database.
 
-    The database will apply appropriate optimizations to the given callable,
-    including Just-In-Time compilation with numba.
+    This uses numba to compile the python code into binary machine code.
+    All limitations and caveats of "numba.njit" also apply to this decorator.
 
-    Functions may call other functions which are marked with this decorator.
+    Notes:
+        Functions may call other functions which are marked with this decorator.
 
-    Internally this uses numba to compile the python code into binary machine
-    code. All limitations and caveats of `numba.jit(nopython=True)` also apply
-    to this decorator.
+        All data access must be written as single syntactic expressions, which
+        start with database-objects. For example:
+            >>> @Compute
+            >>> def my_method(self):
+            >>>     self.foobar             # Good
+            >>>     a_new_variable = self
+            >>>     a_new_variable.foobar   # Bad
 
-    When applied to methods then special caveats exist:
-    All data access must be written as single syntactic expressions.
+        To pass pointers to DB_Objects to functions, you must annotate
+        the functions signature with the name of object's DB_Class.
+            >>> @Compute
+            >>> def my_function(my_object: "ObjectType"):
+            >>>     my_object.foobar
+
+        @Compute represents NULL pointers as the maximum integer "neuwon.database.NULL".
+        As opposed to the object-oriented API which represents them as "None".
     """
     def __init__(self, function):
         if isinstance(function, Compute): function = function.original
