@@ -17,6 +17,9 @@ class Neuron:
         segment_data = database.add_class(Segment)
         Segment._initialize(database, **electric_arguments)
 
+        neuron_data .add_attribute('neuron_type', NULL, dtype=Pointer)
+        segment_data.add_attribute('segment_type', NULL, dtype=Pointer)
+
         neuron_data .add_attribute('root', dtype='Segment')
         segment_data.add_attribute('neuron', dtype='Neuron')
 
