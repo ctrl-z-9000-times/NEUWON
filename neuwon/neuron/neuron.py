@@ -5,10 +5,6 @@ from neuwon.database import epsilon
 import numpy as np
 import re
 
-# THOUGHT: I'm going to reorg everthing to call the neuron as the public entry
-# point. and then the neuron init will make all of the bookkeeping, and then
-# pass through to segs init.
-
 class Neuron:
     __slots__ = ()
     @staticmethod
@@ -31,23 +27,6 @@ class Neuron:
         Segment = type(self)._Segment
         self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter)
 
-class Segment(Tree, Geometry, Electric):
-    """ """
-    __slots__ = ()
-    @staticmethod
-    def _initialize(database, **electric_arguments):
-        """ Do not directly call this method! Call Neuron._initialize() instead. """
-        Tree._initialize(database)
-        Geometry._initialize(database)
-        Electric._initialize(database, **electric_arguments)
-
-    def __init__(self, parent, coordinates, diameter):
-        Tree.__init__(self, parent)
-        Geometry.__init__(self, coordinates, diameter)
-        Electric.__init__(self)
-        if self.parent is not None:
-            self.neuron = self.parent.neuron
-
     @classmethod
     def load_swc(cls, swc_data):
         # TODO: Arguments for coordinate offsets and rotations.
@@ -66,6 +45,23 @@ class Segment(Tree, Geometry, Electric):
             radius = float(next(cursor))
             parent = int(next(cursor))
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
+
+class Segment(Tree, Geometry, Electric):
+    """ """
+    __slots__ = ()
+    @staticmethod
+    def _initialize(database, **electric_arguments):
+        """ Do not directly call this method! Call Neuron._initialize() instead. """
+        Tree._initialize(database)
+        Geometry._initialize(database)
+        Electric._initialize(database, **electric_arguments)
+
+    def __init__(self, parent, coordinates, diameter):
+        Tree.__init__(self, parent)
+        Geometry.__init__(self, coordinates, diameter)
+        Electric.__init__(self)
+        if self.parent is not None:
+            self.neuron = self.parent.neuron
 
     def add_segment(self, coordinates, diameter):
         return type(self)(self, coordinates, diameter)
