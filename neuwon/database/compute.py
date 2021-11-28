@@ -265,8 +265,11 @@ class _JIT:
             parameters.insert(start, inspect.Parameter(arg_name,
                                         inspect.Parameter.POSITIONAL_OR_KEYWORD))
         self.signature = self.signature.replace(parameters=parameters)
+        # Strip out the type annotations BC they're not needed for this step and
+        # they can cause errors: especially if they're complex types EG "np.dtype".
+        signature = _remove_annotations(self.signature)
         # Assemble a new AST for the function.
-        template            = f"def {self.name}{self.signature}:\n pass\n"
+        template            = f"def {self.name}{signature}:\n pass\n"
         module_ast          = ast.parse(template, filename=self.filename)
         function_ast        = module_ast.body[0]
         function_ast.body   = self.body_ast.body
@@ -493,3 +496,10 @@ class _FuncCallRewriter(ast.NodeTransformer):
                 node.args.insert(0, ast.Name(id=arg_name, ctx=ast.Load()))
         self.generic_visit(node)
         return ast.fix_missing_locations(node)
+
+def _remove_annotations(signature) -> 'signature':
+    signature = signature.replace(return_annotation=inspect.Signature.empty)
+    signature = signature.replace(parameters=(
+                    p.replace(annotation=inspect.Parameter.empty)
+                        for p in signature.parameters.values()))
+    return signature
