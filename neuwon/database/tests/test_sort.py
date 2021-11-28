@@ -3,6 +3,10 @@ from neuwon.database.memory_spaces import *
 import pytest
 import random
 
+# TODO: Test multi-level sorts with references between them.
+
+# TODO: Test on a all memory spaces.
+
 is_sorted = lambda data: all(a <= b for a,b in zip(data, data[1:]))
 
 def test_sort():
@@ -39,5 +43,3 @@ def test_sort():
     db.sort()
     assert is_sorted(bar_data.get_data())
     assert ans.get_unstable_index() == (10-1+10-3)
-
-# TODO: Test multi-level sorts with references between them.
