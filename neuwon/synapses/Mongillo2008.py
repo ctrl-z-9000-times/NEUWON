@@ -2,8 +2,9 @@ import math
 from neuwon.database import Compute, Real, epsilon
 
 class Mongillo2008:
+    __slots__ = ()
     @staticmethod
-    def initialize(synapse_data, **,
+    def initialize(synapse_data, *,
             minimum_utilization,
             utilization_decay,
             resource_recovery,):
@@ -46,8 +47,8 @@ class Mongillo2008:
         minimum_utilization = self.minimum_utilization
         # Compute temporal effects, since last activation of this synapse.
         elapsed_time = timestamp - self.last_update
-        utilization_alpha = math.exp( -elapsed_time / self.utilization_decay)
-        resources_alpha   = math.exp( -elapsed_time / self.resource_recovery)
+        utilization_alpha = 1.0 - math.exp( -elapsed_time / self.utilization_decay)
+        resources_alpha   = 1.0 - math.exp( -elapsed_time / self.resource_recovery)
         utilization += utilization_alpha * (minimum_utilization - utilization)
         resources   += resources_alpha * (1.0 - resources)
         # Compute fractional neurotransmitter release.
