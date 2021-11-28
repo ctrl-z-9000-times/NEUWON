@@ -175,6 +175,7 @@ class _JIT:
         """ Breakout the function into all of its constituent parts. """
         self.name      = function.__name__.replace('<', '_').replace('>', '_')
         self.filename  = inspect.getsourcefile(function)
+        self.lineno    = function.__code__.co_firstlineno
         self.signature = inspect.signature(function)
         self.body_text = io.StringIO()
         uncompyle6.code_deparse(function.__code__, out=self.body_text)
@@ -265,13 +266,14 @@ class _JIT:
                                         inspect.Parameter.POSITIONAL_OR_KEYWORD))
         self.signature = self.signature.replace(parameters=parameters)
         # Assemble a new AST for the function.
-        template                = f"def {self.name}{self.signature}:\n pass\n"
-        module_ast              = ast.parse(template, filename=self.filename)
-        self.function_ast       = module_ast.body[0]
-        self.function_ast.body  = self.body_ast.body
-        self.module_ast         = ast.fix_missing_locations(module_ast)
+        template            = f"def {self.name}{self.signature}:\n pass\n"
+        module_ast          = ast.parse(template, filename=self.filename)
+        function_ast        = module_ast.body[0]
+        function_ast.body   = self.body_ast.body
+        for _ in range(self.lineno): ast.increment_lineno(function_ast)
+        self.module_ast     = ast.fix_missing_locations(module_ast)
         exec(compile(self.module_ast, self.filename, mode='exec'), self.closure)
-        self.py_function        = self.closure[self.name]
+        self.py_function    = self.closure[self.name]
         if False:
             _print_pycode(self.py_function)
         # Apply JIT compilation to the function.
@@ -436,7 +438,7 @@ class _ReferenceRewriter(ast.NodeTransformer):
         # Replace this attribute access.
         qualname = '_%s_' % db_attribute.qualname.replace('.', '_')
         if isinstance(db_attribute, Compute):
-            jit_data    = _JIT(db_attribute.original, self.target, db_attribute.db_class)
+            jit_data = _JIT(db_attribute.original, self.target, db_attribute.db_class)
             self.method_calls[qualname] = jit_data.jit_function
             replacement = ast.Name(id=qualname, ctx=ctx)
             replacement.db_method       = db_attribute
@@ -476,7 +478,7 @@ class _ReferenceRewriter(ast.NodeTransformer):
         del node.func.db_method
         del node.func.db_arguments
         del node.func.db_instance
-        return node
+        return ast.fix_missing_locations(node)
 
 class _FuncCallRewriter(ast.NodeTransformer):
     """ Inserts a function's db_arguments into all calls to it. """
@@ -490,4 +492,4 @@ class _FuncCallRewriter(ast.NodeTransformer):
             for arg_name, db_attr in reversed(self.func_jit.db_arguments):
                 node.args.insert(0, ast.Name(id=arg_name, ctx=ast.Load()))
         self.generic_visit(node)
-        return node
+        return ast.fix_missing_locations(node)
