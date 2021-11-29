@@ -11,21 +11,27 @@ class Neuron:
     def _initialize(database, **electric_arguments):
         neuron_data  = database.add_class(Neuron)
         segment_data = database.add_class(Segment)
+        neuron_cls   = neuron_data .get_instance_type()
+        segment_cls  = segment_data.get_instance_type()
+        neuron_cls._Segment = segment_cls # Save the segment class constructor.
         Segment._initialize(database, **electric_arguments)
-
-        neuron_data .add_attribute('neuron_type', NULL, dtype=Pointer)
-        segment_data.add_attribute('segment_type', NULL, dtype=Pointer)
-
+        # Link neurons and segments together.
         neuron_data .add_attribute('root', dtype='Segment')
         segment_data.add_attribute('neuron', dtype='Neuron')
-
-        neuron_cls          = neuron_data.get_instance_type()
-        neuron_cls._Segment = segment_data.get_instance_type()
-        return neuron_cls
+        # Add type information.
+        neuron_cls. _neuron_types_list  = []
+        segment_cls._segment_types_list = []
+        neuron_data .add_attribute('neuron_type_id',  NULL, dtype=Pointer)
+        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer)
+        return neuron_cls # Return the entry point to the public API.
 
     def __init__(self, coordinates, diameter):
         Segment = type(self)._Segment
         self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter)
+
+    @property
+    def neuron_type(self):
+        return type(self)._neuron_types_list[self.neuron_type_id]
 
     @classmethod
     def load_swc(cls, swc_data):
@@ -44,6 +50,7 @@ class Neuron:
             coords = (float(next(cursor)), float(next(cursor)), float(next(cursor)))
             radius = float(next(cursor))
             parent = int(next(cursor))
+            1/0 # TODO: this needs to be rewritten!
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
 
 class Segment(Tree, Geometry, Electric):
@@ -62,6 +69,10 @@ class Segment(Tree, Geometry, Electric):
         Electric.__init__(self)
         if self.parent is not None:
             self.neuron = self.parent.neuron
+
+    @property
+    def segment_type(self):
+        return type(self)._segment_types_list[self.segment_type_id]
 
     def add_segment(self, coordinates, diameter):
         return type(self)(self, coordinates, diameter)
