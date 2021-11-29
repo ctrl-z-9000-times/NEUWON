@@ -14,22 +14,22 @@ def test_basic():
     x = MySynapse()
     db.check()
 
-    assert x.compute(1.0) == x.minimum_utilization
+    assert x.compute_presynapses(1.0) == x.minimum_utilization
 
     print("\nRESET\n")
-    x.reset()
+    x.reset_presynapses()
     for t in np.linspace(0, 100, 4):
         print('TIME', t)
-        print('release', x.compute(t))
+        print('release', x.compute_presynapses(t))
         print('utilization', x.utilization)
         print('resources', x.resources)
         print()
 
     db.check()
-    x.reset()
-    assert x.compute(1.0) == 0.2
-    assert x.compute(2.0) > 0.2 # facilitation
+    x.reset_presynapses()
+    assert x.compute_presynapses(1.0) == 0.2
+    assert x.compute_presynapses(2.0) > 0.2 # facilitation
 
     for t in range(3,20):
-        x.compute(float(t))
-    assert x.compute(2.0) < 0.2 # depression
+        x.compute_presynapses(float(t))
+    assert x.compute_presynapses(2.0) < 0.2 # depression

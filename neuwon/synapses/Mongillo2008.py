@@ -2,6 +2,7 @@ import math
 from neuwon.database import Compute, Real, epsilon
 
 class Mongillo2008:
+    """ Model of Short-Term-Plasticity in presynapses. """
     __slots__ = ()
     @staticmethod
     def initialize(synapse_data, *,
@@ -34,13 +35,13 @@ class Mongillo2008:
                 doc = "")
 
     @Compute
-    def reset(self):
+    def reset_presynapses(self):
         self.last_update = 0.0
         self.resources   = 1.0
         self.utilization = self.minimum_utilization
 
     @Compute
-    def compute(self, timestamp) -> Real:
+    def compute_presynapses(self, timestamp) -> Real:
         # Unpack the synapse parameters & data.
         utilization         = self.utilization
         resources           = self.resources
