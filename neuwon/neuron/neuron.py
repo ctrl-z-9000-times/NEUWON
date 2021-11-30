@@ -26,10 +26,13 @@ class Neuron:
         segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer)
         return neuron_cls # Return the entry point to the public API.
 
-    def __init__(self, coordinates, diameter, neuron_type=None):
+    def __init__(self, coordinates, diameter,
+                neuron_type=None,
+                segment_type=None):
         self.neuron_type = neuron_type
         Segment = type(self)._Segment
-        self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter)
+        self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter,
+                            segment_type=segment_type)
 
     @property
     def neuron_type(self):
@@ -81,7 +84,8 @@ class Segment(Tree, Geometry, Electric):
         Geometry._initialize(database)
         Electric._initialize(database, **electric_arguments)
 
-    def __init__(self, parent, coordinates, diameter):
+    def __init__(self, parent, coordinates, diameter, segment_type=None):
+        self.segment_type = segment_type
         Tree.__init__(self, parent)
         Geometry.__init__(self, coordinates, diameter)
         Electric.__init__(self)
@@ -90,12 +94,30 @@ class Segment(Tree, Geometry, Electric):
 
     @property
     def segment_type(self):
-        return type(self)._segment_types_list[self.segment_type_id]
+        if self.segment_type_id == NULL:
+            return None
+        else:
+            return type(self)._segment_types_list[self.segment_type_id]
+    @segment_type.setter
+    def segment_type(self, segment_type):
+        if self.segment_type_id != NULL:
+            raise ValueError(f'{self} already has a segment_type!')
+        if segment_type is None:
+            return
+        types_list = type(self)._segment_types_list
+        try:
+            self.segment_type_id = types_list.index(segment_type)
+        except ValueError:
+            assert isinstance(segment_type, Hashable)
+            self.segment_type_id = len(types_list)
+            types_list.append(segment_type)
 
-    def add_segment(self, coordinates, diameter):
-        return type(self)(self, coordinates, diameter)
+    def add_segment(self, coordinates, diameter, segment_type=None):
+        return type(self)(self, coordinates, diameter, segment_type=segment_type)
 
-    def add_section(self, coordinates, diameter, maximum_segment_length=np.inf):
+    def add_section(self, coordinates, diameter,
+            maximum_segment_length = np.inf,
+            segment_type = None):
         """
         Returns a list of Segments.
         """
@@ -121,6 +143,6 @@ class Segment(Tree, Geometry, Electric):
         next(args)
         section = []
         for (x,y,z,d) in args:
-            self = cls(self, (x,y,z), d)
+            self = cls(self, (x,y,z), d, segment_type=segment_type)
             section.append(self)
         return section
