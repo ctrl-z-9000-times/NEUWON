@@ -19,7 +19,7 @@ def test_sections():
 
     assert root.is_root()
     assert len(sec1) == 3 # math.ceil((10 - 4/2) / 3)
-    assert len(sec2) == 4
+    assert len(sec2) == 5 # math.ceil((math.sqrt(10**2 + 10*2) - 2) / 3)
     assert not sec2[-1].is_root()
     db.check()
 
