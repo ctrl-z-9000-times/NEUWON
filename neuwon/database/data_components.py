@@ -102,15 +102,15 @@ class DataComponent(Documentation):
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
             if self.reference:
-                assert xp.all(xp.less(data, self.reference.size)), self.name + " is NULL"
+                assert xp.all(xp.less(data, self.reference.size)), f"{self.qualname} is NULL"
             else:
                 if data.dtype.kind in ("f", "c"):
-                    assert not xp.any(xp.isnan(data)), self.name + " is NaN"
+                    assert not xp.any(xp.isnan(data)), f"{self.qualname} is NaN"
         lower_bound, upper_bound = self.valid_range
         if lower_bound is not None:
-            assert xp.all(xp.less_equal(lower_bound, data)), self.name + " less than %g"%lower_bound
+            assert xp.all(xp.less_equal(lower_bound, data)), f"{self.qualname} less than {lower_bound}"
         if upper_bound is not None:
-            assert xp.all(xp.greater_equal(upper_bound, data)), self.name + " greater than %g"%upper_bound
+            assert xp.all(xp.greater_equal(upper_bound, data)), f"{self.qualname} greater than {upper_bound}"
 
     def _remove_references_to_destroyed(self):
         raise NotImplementedError(type(self))

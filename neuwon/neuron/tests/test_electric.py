@@ -27,11 +27,12 @@ def test_advance_smoke_test():
 
 def test_time_constant():
     db = Database()
-    Segment = NeuronSuperclass._initialize(db,
+    Neuron = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
-    root = Segment(None, [0,0,0], 20)
+    Segment = db.get_class('Segment').get_instance_type()
+    root = Neuron([0,0,0], 20).root
     root.voltage = 0
     root.driving_voltage = 1
     root.sum_conductance = 1e-10
@@ -46,13 +47,14 @@ def test_time_constant():
 
 def measure_length_constant(diam, rm, max_len, dt, ptol, plot):
     db = Database()
-    Segment = SegmentClass._initialize(db,
+    Neuron = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
-    root = Segment(None, [0,0,0], diam)
+    Segment = db.get_class('Segment').get_instance_type()
+    root = Neuron([0,0,0], diam).root
     section = [root]
-    section.extend(Segment.make_section(root, [3000, 0, 0], diam, max_len))
+    section.extend(root.add_section([3000, 0, 0], diam, max_len))
     for seg in section:
         seg.voltage             = 0
         seg.driving_voltage     = 0

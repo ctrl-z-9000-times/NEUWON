@@ -33,6 +33,7 @@ class Neuron:
         Segment = type(self)._Segment
         self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter,
                             segment_type=segment_type)
+        self.root.neuron = self
 
     @property
     def neuron_type(self):
