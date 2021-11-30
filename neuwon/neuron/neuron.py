@@ -1,7 +1,8 @@
+from collections.abc import Hashable
 from .electric import Electric
 from .geometry import Geometry
 from .tree     import Tree
-from neuwon.database import epsilon
+from neuwon.database import Real, epsilon, Pointer, NULL
 import numpy as np
 import re
 
@@ -25,13 +26,30 @@ class Neuron:
         segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer)
         return neuron_cls # Return the entry point to the public API.
 
-    def __init__(self, coordinates, diameter):
+    def __init__(self, coordinates, diameter, neuron_type=None):
+        self.neuron_type = neuron_type
         Segment = type(self)._Segment
         self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter)
 
     @property
     def neuron_type(self):
-        return type(self)._neuron_types_list[self.neuron_type_id]
+        if self.neuron_type_id == NULL:
+            return None
+        else:
+            return type(self)._neuron_types_list[self.neuron_type_id]
+    @neuron_type.setter
+    def neuron_type(self, neuron_type):
+        if self.neuron_type_id != NULL:
+            raise ValueError(f'{self} already has a neuron_type!')
+        if neuron_type is None:
+            return
+        types_list = type(self)._neuron_types_list
+        try:
+            self.neuron_type_id = types_list.index(neuron_type)
+        except ValueError:
+            assert isinstance(neuron_type, Hashable)
+            self.neuron_type_id = len(types_list)
+            types_list.append(neuron_type)
 
     @classmethod
     def load_swc(cls, swc_data):
