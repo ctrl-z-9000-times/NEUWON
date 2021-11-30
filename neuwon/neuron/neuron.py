@@ -22,8 +22,10 @@ class Neuron:
         # Add type information.
         neuron_cls. _neuron_types_list  = []
         segment_cls._segment_types_list = []
-        neuron_data .add_attribute('neuron_type_id',  NULL, dtype=Pointer)
-        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer)
+        neuron_data .add_attribute('neuron_type_id',  NULL, dtype=Pointer,
+                doc="Read-only attribute.")
+        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer,
+                doc="Read-only attribute.")
         return neuron_cls # Return the entry point to the public API.
 
     def __init__(self, coordinates, diameter,

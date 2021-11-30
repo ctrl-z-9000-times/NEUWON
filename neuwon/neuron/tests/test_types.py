@@ -39,6 +39,8 @@ def test_segment_type():
     # Can only add type once.
     with pytest.raises(ValueError):
         s1.segment_type = 'q'
+    # Set segment type for root in init.
+    assert Neuron([0,0,0], 10, segment_type=12345).root.segment_type == 12345
     # Check that types are correctly converted to unique integer ID's.
     s2 = s1.add_segment([10,0,0], 3, segment_type='x')
     assert s1.segment_type_id == s2.segment_type_id

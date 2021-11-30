@@ -30,6 +30,9 @@ import uncompyle6
 #               Can broadcast function over array of pointers, for method-like behavior.
 #       - This seems like a lot of work for a minor gain.
 # 
+#   How to write filter functions using compute?
+#       Will need to broadcast multiple pointer-array inputs to a function.
+# 
 # TODO:
 # 
 #   Allow returning pointers.

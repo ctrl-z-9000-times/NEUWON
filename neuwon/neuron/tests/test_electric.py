@@ -131,8 +131,8 @@ def test_length_constant_5():
 
 def test_inject_current():
     from neuwon.model import Model
-    m = Model(.01)
-    root = m.Segment(None, [0,0,0], 10)
+    m = Model({'simulation':{'dt':.01}})
+    root = m.Neuron([0,0,0], 10).root
 
     init_v = root.voltage
     while m.clock() < 3:
