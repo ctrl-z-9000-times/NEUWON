@@ -36,8 +36,10 @@ class Model:
                 membrane_capacitance    = simulation['membrane_capacitance'],)
         self.Segment._model = self # todo: replace with the species input clock.
         self.regions = RegionFactory(self.parameters['regions'])
-        self.species = SpeciesFactory(self.parameters['species'], db, 0.5 * self.time_step, self.celsius)
-        self.mechanisms = MechanismsFactory(self.parameters['mechanisms'], db, self.time_step, self.celsius)
+        self.species = SpeciesFactory(self.parameters['species'], db,
+                                        0.5 * self.time_step, self.celsius)
+        self.mechanisms = MechanismsFactory(self.parameters['mechanisms'], db,
+                                        self.time_step, self.celsius)
 
     def __len__(self):
         return len(self.Segment.get_database_class())
