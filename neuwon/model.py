@@ -69,6 +69,7 @@ class Model:
             self._advance_species()
             self._advance_mechanisms()
             self._advance_species()
+            self.Neuron._advance_AP_detector()
         self.clock.tick()
 
     def _advance_lockstep(self):
@@ -77,6 +78,7 @@ class Model:
         self._advance_species()
         self._advance_species()
         self._advance_mechanisms()
+        self.Neuron._advance_AP_detector()
         self.clock.tick()
 
     def _advance_species(self):

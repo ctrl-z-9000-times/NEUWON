@@ -2,7 +2,7 @@ from collections.abc import Hashable
 from .electric import Electric
 from .geometry import Geometry
 from .tree     import Tree
-from neuwon.database import Real, epsilon, Pointer, NULL
+from neuwon.database import Real, epsilon, Pointer, NULL, Compute
 import numpy as np
 import re
 
@@ -16,6 +16,7 @@ class Neuron:
         segment_cls  = segment_data.get_instance_type()
         neuron_cls._Segment = segment_cls # Save the segment class constructor.
         Segment._initialize(database, **electric_arguments)
+        Neuron._initialize_AP_detector(neuron_data)
         # Link neurons and segments together.
         neuron_data .add_attribute('root', dtype='Segment')
         segment_data.add_attribute('neuron', dtype='Neuron')
@@ -28,6 +29,13 @@ class Neuron:
                 doc="Read-only attribute.")
         return neuron_cls # Return the entry point to the public API.
 
+    @staticmethod
+    def _initialize_AP_detector(neuron_data):
+        neuron_data.add_class_attribute('AP_detector_threshold', 20)
+        neuron_data.add_attribute('AP_detector_segment', dtype='Segment')
+        neuron_data.add_attribute('AP_detected', False, dtype=bool)
+        neuron_data.add_attribute('_AP_true_state', False, dtype=bool)
+
     def __init__(self, coordinates, diameter,
                 neuron_type=None,
                 segment_type=None):
@@ -36,6 +44,7 @@ class Neuron:
         self.root = Segment(parent=None, coordinates=coordinates, diameter=diameter,
                             segment_type=segment_type)
         self.root.neuron = self
+        self.AP_detector_segment = self.root
 
     @property
     def neuron_type(self):
@@ -56,6 +65,18 @@ class Neuron:
             assert isinstance(neuron_type, Hashable)
             self.neuron_type_id = len(types_list)
             types_list.append(neuron_type)
+
+    def set_AP_detector(self, segment=None, threshold=None):
+        if segment is not None:
+            self.AP_detector_segment = segment
+        if threshold is not None:
+            self.AP_detector_threshold = threshold
+
+    @Compute
+    def _advance_AP_detector(self):
+        over_threshold = self.AP_detector_segment.voltage >= self.AP_detector_threshold
+        self.AP_detected = over_threshold and not self._AP_true_state
+        self._AP_true_state = over_threshold
 
     @classmethod
     def load_swc(cls, swc_data):
