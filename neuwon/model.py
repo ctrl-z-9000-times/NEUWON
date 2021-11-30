@@ -34,6 +34,7 @@ class Model:
                 initial_voltage         = simulation['initial_voltage'],
                 cytoplasmic_resistance  = simulation['cytoplasmic_resistance'],
                 membrane_capacitance    = simulation['membrane_capacitance'],)
+        self.Segment    = db.get_class('Segment')
         self.Segment._model = self # todo: replace with the species input clock.
         self.regions = RegionFactory(self.parameters['regions'])
         self.species = SpeciesFactory(self.parameters['species'], db,
@@ -49,6 +50,9 @@ class Model:
 
     def get_database(self):
         return self.database
+
+    def get_Neuron(self):
+        return self.Neuron
 
     def check(self):
         self.database.check()
