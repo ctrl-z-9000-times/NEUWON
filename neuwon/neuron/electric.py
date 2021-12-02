@@ -112,7 +112,7 @@ class Electric:
         duration = float(duration)
         assert duration >= 0
         current = float(current)
-        clock = type(self)._model.input_clock
+        clock = type(self)._model.species.input_clock
         dv = current * clock.get_tick_period() / self.capacitance
         input_signal = TimeSeries().set_data([0, dv, dv, 0], [0, 0, duration, duration])
         input_signal.play(self, "voltage", clock=clock)
