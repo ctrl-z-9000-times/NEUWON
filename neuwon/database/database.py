@@ -146,6 +146,11 @@ class Database:
                 if component.reference and not component.allow_invalid:
                     yield component.reference
         dependencies = topological_sort(self.db_classes.values(), destructive_references)
+        if False:
+            for n in self.db_classes.values():
+                print(n)
+                for x in destructive_references(n):
+                    print('\t->', x)
         order = [] # First scan references according to the chain of dependencies.
         order_does_not_matter = [] # Then scan the remaining references.
         for db_class in reversed(dependencies):

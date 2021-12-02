@@ -38,6 +38,8 @@ class DataComponent(Documentation):
             self.reference = False
         self.units = str(units)
         self.allow_invalid = bool(allow_invalid)
+        # This restriction prevents indefinitely long chain reactions when destroying objects.
+        if self.reference is self.db_class: assert self.allow_invalid
         self.valid_range = tuple(valid_range)
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2

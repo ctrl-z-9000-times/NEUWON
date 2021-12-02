@@ -1,3 +1,8 @@
+
+
+DEBUG = True
+
+
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database.database import Database, DB_Class, DB_Object
 from neuwon.database.data_components import ClassAttribute, Attribute, SparseMatrix
@@ -13,7 +18,6 @@ import numba.cuda
 import numpy
 import textwrap
 import uncompyle6
-
 
 # IDEAS:
 # 
@@ -280,7 +284,7 @@ class _JIT:
         self.module_ast     = ast.fix_missing_locations(module_ast)
         exec(compile(self.module_ast, self.filename, mode='exec'), self.closure)
         self.py_function    = self.closure[self.name]
-        if False:
+        if DEBUG:
             _print_pycode(self.py_function)
         # Apply JIT compilation to the function.
         if self.target is host:
@@ -395,6 +399,8 @@ class _JIT:
 
 class _ReferenceRewriter(ast.NodeTransformer):
     def __init__(self, db_class, reference_name, body_ast, target):
+        if DEBUG:
+            print(f'Rewriting references to {reference_name} ({db_class.get_name()}).')
         ast.NodeTransformer.__init__(self)
         self.db_class       = db_class
         self.reference_name = str(reference_name)
@@ -404,7 +410,7 @@ class _ReferenceRewriter(ast.NodeTransformer):
         self.body_ast       = self.visit(body_ast)
         # Find all references which are exposed via this class and recursively rewrite them.
         for name, db_attribute in list(self.db_arguments.items()):
-            if db_attribute.reference:
+            if db_attribute.reference is not False:
                 rr = _ReferenceRewriter(db_attribute.reference, name, self.body_ast, self.target)
                 self.db_arguments.update(rr.db_arguments)
                 self.method_calls.update(rr.method_calls)
@@ -419,7 +425,7 @@ class _ReferenceRewriter(ast.NodeTransformer):
             if value.id != self.reference_name:
                 ignore_node = True
         elif isinstance(value, ast.Subscript):
-            if getattr(value, 'db_reference', False):
+            if getattr(value, 'db_reference', None) is not False:
                 if value.db_reference != self.db_class:
                     ignore_node = True
             else:
