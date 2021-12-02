@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
 from neuwon.database import Clock
+from neuwon.parameters import Parameters
 import cupy as cp
 import math
 import numba.cuda
@@ -30,7 +31,7 @@ class SpeciesFactory(dict):
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters:dict):
-        for name, species in parameters.items():
+        for name, species in Parameters(parameters).items():
             self.add_species(name, species)
 
     def add_species(self, name, species) -> 'SpeciesType':

@@ -18,7 +18,7 @@ class Neuron:
         Segment._initialize(database, **electric_arguments)
         Neuron._initialize_AP_detector(neuron_data)
         # Link neurons and segments together.
-        neuron_data .add_attribute('root', dtype='Segment')
+        neuron_data .add_attribute('root', dtype='Segment', allow_invalid=True)
         segment_data.add_attribute('neuron', dtype='Neuron')
         # Add type information.
         neuron_cls. _neuron_types_list  = []
@@ -32,7 +32,7 @@ class Neuron:
     @staticmethod
     def _initialize_AP_detector(neuron_data):
         neuron_data.add_class_attribute('AP_detector_threshold', 20)
-        neuron_data.add_attribute('AP_detector_segment', dtype='Segment')
+        neuron_data.add_attribute('AP_detector_segment', dtype='Segment', allow_invalid=True)
         neuron_data.add_attribute('AP_detected', False, dtype=bool)
         neuron_data.add_attribute('_AP_true_state', False, dtype=bool)
 
@@ -74,7 +74,10 @@ class Neuron:
 
     @Compute
     def _advance_AP_detector(self):
-        over_threshold = self.AP_detector_segment.voltage >= self.AP_detector_threshold
+        if self.AP_detector_segment == NULL:
+            over_threshold = False
+        else:
+            over_threshold = self.AP_detector_segment.voltage >= self.AP_detector_threshold
         self.AP_detected = over_threshold and not self._AP_true_state
         self._AP_true_state = over_threshold
 
