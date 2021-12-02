@@ -5,21 +5,25 @@ import numpy as np
 import pytest
 
 def test_smoke_test():
-    m = Model(.1)
+    m = Model()
     m.advance()
-    m.Segment(None, [0,0,0], 13)
+    m.Neuron([0,0,0], 13)
     m.advance()
 
 def test_model_hh(debug=False):
     dt = .01
     dt *= 4.56789 # Run faster with larger `dt`.
-    m = Model(dt, celsius=6.3)
-    na = m.add_species(Species("na", reversal_potential=40))
-    k  = m.add_species(Species("k", reversal_potential=-80))
-    l  = m.add_species("l", reversal_potential=-50)
-    hh_cls = NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
-    hh = m.add_reaction(hh_cls)
-    print(hh_cls._breakpoint_pycode)
+    m = Model({'time_step': dt, 'celsius': 6.3},
+            species = {
+                'na': {'reversal_potential': 40},
+                'k':  {'reversal_potential': -80},
+                'l':  {'reversal_potential': 50},
+            },
+            mechanisms = {
+                'hh': NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
+            })
+    hh = m.mechanisms['hh']
+    print(hh)
     root = tip = m.Segment(None, [-1,0,7], 5.7)
     hh(root)
     for x in range(10):

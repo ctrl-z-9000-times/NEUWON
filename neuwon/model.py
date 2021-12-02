@@ -9,7 +9,7 @@ from neuwon.regions import RegionFactory
 import cupy as cp
 import numpy as np
 
-default_simulation_parameters = Parameters({
+default_parameters = Parameters({
     'time_step': 0.1,
     'celsius': 37,
     'fh_space': 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
@@ -22,25 +22,25 @@ default_simulation_parameters = Parameters({
 })
 
 class Model:
-    def __init__(self, parameters):
+    def __init__(self, parameters={}, *,
+                regions={}, species={}, mechanisms={}):
         self.parameters = Parameters(parameters)
-        self.parameters['simulation'].update_with_defaults(default_simulation_parameters)
+        self.parameters.update_with_defaults(default_parameters)
         self.database   = db = Database()
-        simulation      = self.parameters['simulation']
-        self.clock      = db.add_clock(simulation['time_step'], units='ms')
+        self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()
-        self.celsius    = float(simulation['celsius'])
+        self.celsius    = float(self.parameters['celsius'])
         self.Neuron     = Neuron._initialize(db,
-                initial_voltage         = simulation['initial_voltage'],
-                cytoplasmic_resistance  = simulation['cytoplasmic_resistance'],
-                membrane_capacitance    = simulation['membrane_capacitance'],)
-        self.Segment    = db.get_class('Segment')
+                initial_voltage         = self.parameters['initial_voltage'],
+                cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
+                membrane_capacitance    = self.parameters['membrane_capacitance'],)
+        self.Segment    = self.Neuron._Segment
         self.Segment._model = self # todo: replace with the species input clock.
-        self.regions = RegionFactory(self.parameters['regions'])
-        self.species = SpeciesFactory(self.parameters['species'], db,
+        self.regions = RegionFactory(regions)
+        self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
-        self.mechanisms = MechanismsFactory(self.parameters['mechanisms'], db,
-                                        self.time_step, self.celsius)
+        self.mechanisms = MechanismsFactory(mechanisms, db,
+                self.time_step, self.celsius, self.species.input_clock)
 
     def __len__(self):
         return len(self.Segment.get_database_class())
