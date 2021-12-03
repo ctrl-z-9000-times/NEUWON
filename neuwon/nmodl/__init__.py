@@ -4,21 +4,17 @@ from neuwon.mechanisms import Mechanism
 from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
 from neuwon.nmodl.solver import solve
-import copy
-import math
-import numba
-import numba.cuda
 import numpy as np
 import os.path
 import sympy
 import sys
-import textwrap
+import re
 
-__all__ = ["NmodlMechanism"]
+__all__ = ["NMODL"]
 
 def eprint(*args, **kwargs):
     """ Prints to standard error (sys.stderr). """
-    print(*args, file=sys.stderr, **kwargs)
+    print(*args, file=sys.stderr, flush=True, **kwargs)
 
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
@@ -32,14 +28,11 @@ def eprint(*args, **kwargs):
 #             self.breakpoint_block.statements.append(
 #                     AssignStatement(variable, variable, pointer=pointer))
 
-class NmodlMechanism(Mechanism):
-    def __init__(self, filename, pointers={}, parameters={}, use_cache=True):
+class NMODL(Mechanism):
+    def __init__(self, filename, parameters={}, use_cache=True):
         """
         Argument filename is an NMODL file to load.
                 The standard NMODL file name extension is ".mod"
-
-        Argument pointers is a mapping of NMODL variable names to database
-                component names.
 
         Argument parameters is a mapping of parameter names to custom
                 floating-point values.
@@ -50,13 +43,13 @@ class NmodlMechanism(Mechanism):
             try:
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
-                self.name, self.title, self.description = parser.gather_documentation()
+                self.nmodl_name, self.title, self.description = parser.gather_documentation()
                 self.parameters = ParameterTable(parser.gather_parameters())
-                self.variables = {}
+                self.pointers = {}
                 self.accumulators = set()
                 self.states = parser.gather_states()
                 for state in self.states:
-                    self.variables[state] = f'self.{state}'
+                    self.pointers[state] = f'self.{state}'
                 blocks = parser.gather_code_blocks()
                 self.initial_block = blocks['INITIAL']
                 self.breakpoint_block = blocks['BREAKPOINT']
@@ -70,8 +63,7 @@ class NmodlMechanism(Mechanism):
         self.parameters.update(parameters, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
         for param in self.surface_area_parameters:
-            self.variables[param] = f'self.{param}'
-        self.variables.update(pointers)
+            self.pointers[param] = f'self.{param}'
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -88,20 +80,17 @@ class NmodlMechanism(Mechanism):
             if parser.lookup(getattr(ANT, x)):
                 raise ValueError("\"%s\"s are not allowed."%x)
 
-    def get_name(self):
-        return self.name
-
     def _gather_IO(self, parser):
         """ Determine what external data the mechanism accesses. """
         self.breakpoint_block.gather_arguments()
         self.initial_block.gather_arguments()
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
         if "v" in all_args:
-            self.variables["v"] = "self.segment.voltage"
+            self.pointers["v"] = "self.segment.voltage"
         if "area" in all_args:
-            self.variables["area"] = "self.segment.surface_area"
+            self.pointers["area"] = "self.segment.surface_area"
         if "volume" in all_args:
-            self.variables["volume"] = "self.segment.inside_volume"
+            self.pointers["volume"] = "self.segment.inside_volume"
         for x in parser.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
@@ -115,9 +104,9 @@ class NmodlMechanism(Mechanism):
                 if var_name in equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in inside:
-                    self.variables[var_name] = "self.segment.inside_concentrations/%s"
+                    self.pointers[var_name] = "self.segment.inside_concentrations/%s"
                 elif var_name in outside:
-                    self.variables[var_name] = "self.outside/concentrations/%s"
+                    self.pointers[var_name] = "self.outside/concentrations/%s"
                 else:
                     raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
             for y in x.writelist:
@@ -125,24 +114,27 @@ class NmodlMechanism(Mechanism):
                 if var_name in current:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in conductance:
-                    self.variables[var_name] = f"self.segment.{ion}_conductance"
-                    self.accumulate.add(var_name)
+                    self.pointers[var_name] = f"self.segment.{ion}_conductance"
+                    self.accumulators.add(var_name)
                 elif var_name in inside:
-                    self.variables[var_name] = "self.segment.inside_delta_concentrations/%s"%ion
-                    self.accumulate.add(var_name)
+                    self.pointers[var_name] = "self.segment.inside_delta_concentrations/%s"%ion
+                    self.accumulators.add(var_name)
                 elif var_name in outside:
-                    self.variables[var_name] = "outside/delta_concentrations/%s"
-                    self.accumulate.add(var_name)
+                    self.pointers[var_name] = "outside/delta_concentrations/%s"
+                    self.accumulators.add(var_name)
                 else: raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                self.pointers.add(var_name, write=f"Segment.{ion}_conductance", accumulate=True)
+                self.pointers[var_name] = f"Segment.{ion}_conductance"
+                self.accumulators.add(var_name)
 
     def _solve(self):
-        """ Replace SolveStatements with the solved equations to advance the
-        systems of differential equations. """
+        """
+        Replace SolveStatements with the solved equations to advance the systems
+        of differential equations.
+        """
         sympy_methods = ("cnexp", "derivimplicit", "euler")
         while True:
             for idx, stmt in enumerate(self.breakpoint_block):
@@ -155,24 +147,22 @@ class NmodlMechanism(Mechanism):
                                 solve(stmt)
                 elif stmt.method == "sparse":
                     1/0
+                # Splice the solved block into the breakpoint block.
                 bp_stmts = self.breakpoint_block.statements
                 self.breakpoint_block.statements = bp_stmts[:idx] + syseq_block.statements + bp_stmts[idx+1:]
                 break
             else:
                 break
 
-    def initialize(self, database, **builtin_parameters):
+    def initialize(self, database, name, **builtin_parameters):
+        self.name = str(name)
         try:
             self.parameters.update(builtin_parameters, strict=True, override=False)
             self.parameters.substitute(
                     list(self.derivative_blocks.values()) + [self.initial_block, self.breakpoint_block,],)
             self._run_initial_block(database)
-            cls = self._initialize_database(database)
             self._compile_breakpoint_block()
-            cls._cuda_advance = self._cuda_advance
-            cls._advance_arguments = self.arguments
-            cls._surface_area_parameters = self.surface_area_parameters
-            return cls
+            return self._initialize_database(database)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -187,26 +177,23 @@ class NmodlMechanism(Mechanism):
                 self.initial_scope[arg] = self.parameters[arg][0]
                 continue
             if arg in self.pointers:
-                read = self.pointers[arg].read
-                value = database.get(read).get_initial_value()
-                if value is not None:
-                    self.initial_scope[arg] = value
-                    continue
+                db_access = self.pointers[arg]
+                db_access = re.sub(r'self\.segment\.', 'Segment.', db_access)
+                db_access = re.sub(r'self\.inside\.',  'Inside.',  db_access)
+                db_access = re.sub(r'self\.outside\.', 'Outside.', db_access)
+                if db_access.startswith('self.'):
+                    pass
+                else:
+                    value = database.get(db_access).get_initial_value()
+                    if value is not None:
+                        self.initial_scope[arg] = value
+                        continue
             eprint(initial_python)
             eprint("Arguments:", self.initial_block.arguments)
             eprint("Assigned:", self.initial_block.assigned)
-            raise ValueError("Missing initial value for \"%s\"."%arg)
+            raise ValueError(f"Missing initial value for \"{arg}\".")
         code_gen.py_exec(initial_python, {}, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
-
-    def _initialize_database(self, database):
-        mech_data = database.add_class(self.name, NMODL, doc=self.description)
-        mech_data.add_attribute("segment", dtype="Segment")
-        for name in self.surface_area_parameters:
-            mech_data.add_attribute(name, units=None) # TODO: units!
-        for name in self.states:
-            mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
-        return mech_data.get_instance_type()
 
     def _compile_breakpoint_block(self):
         # Move assignments to conductances to the end of the block, where they
@@ -225,34 +212,41 @@ class NmodlMechanism(Mechanism):
             else: raise ValueError(f"Unhandled argument: \"{arg}\".")
         self.breakpoint_block.gather_arguments()
         preamble  = []
-        preamble.append("def BREAKPOINT(%s):")
-        py = code_gen.to_python(self.breakpoint_block, "    ", self.pointers)
-        py = "\n".join(preamble) + "\n" + py
+        preamble.append("@Compute")
+        preamble.append("def BREAKPOINT(self):")
+        self.advance_pycode = (
+                "\n".join(preamble) + "\n" +
+                code_gen.to_python(self.breakpoint_block, "    ", self.pointers))
         breakpoint_globals = {
             # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
+            'Compute': Compute,
         }
-        code_gen.py_exec(py, breakpoint_globals)
-        self._breakpoint_pycode = py # Save this for debugging purposes.
+        code_gen.py_exec(self.advance_pycode, breakpoint_globals)
 
-class NMODL(Mechanism):
-    __slots__ = ()
-    def __init__(self, segment, scale=1.0):
+    def _initialize_database(self, database):
+        mechanism_superclass = type(self.name, (Mechanism), {
+            '__slots__': (),
+            '__init__': NmodlFactory._instance__init__,
+            'advance': 1/0,
+            '_surface_area_parameters': self.surface_area_parameters,
+            '_advance_pycode': self.advance_pycode,
+        })
+        mech_data = database.add_class(self.name, NMODL, doc=self.description)
+        mech_data.add_attribute("segment", dtype="Segment")
+        for name in self.surface_area_parameters:
+            mech_data.add_attribute(name, units=None) # TODO: units!
+        for name in self.states:
+            mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
+        return mech_data.get_instance_type()
+
+    @staticmethod
+    def _instance__init__(self, segment, scale=1.0):
         self.segment = segment
         scale = float(scale)
         x_factor = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
         sa = x_factor * scale * self.segment.surface_area
         for name, (value, units) in self._surface_area_parameters.items():
             setattr(self, name, value * sa)
-
-    @classmethod
-    def advance(cls, *args, **kwargs):
-        db = cls.get_database_class().get_database()
-        segment_data = db.get_data(cls.get_name() + ".segment")
-        if not len(segment_data): return
-        args = (db.get_data(db_access) for arg_name, db_access in cls._advance_arguments)
-        threads = 64
-        blocks = (segment_data.shape[0] + (threads - 1)) // threads
-        cls._cuda_advance[blocks,threads](*args)
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """

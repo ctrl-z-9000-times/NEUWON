@@ -2,9 +2,9 @@ class Mechanism:
     """ Abstract class for specifying chemical reactions and mechanisms. """
     __slots__ = ()
     @classmethod
-    def initialize(cls, database, time_step, celsius):
+    def initialize(cls, database, name, time_step, celsius):
         """
-        Optional method; this is called after the Model has been created.
+        Optional method. This is called after the Model has been created.
 
         Optionally may return a new Mechanism object to use in place of this one. """
         pass
@@ -37,11 +37,11 @@ class MechanismsFactory(dict):
         assert name not in self
         if isinstance(mechanism, str):
             if mechanism.endswith(".mod"):
-                mechanism = neuwon.nmodl.NmodlMechanism(mechanism)
+                mechanism = neuwon.nmodl.NMODL(mechanism)
             else:
                 raise ValueError("File extension not understood")
         if hasattr(mechanism, "initialize"):
-            retval = mechanism.initialize(self.database,
+            retval = mechanism.initialize(self.database, name,
                     time_step=self.time_step,
                     celsius=self.celsius,)
             if retval is not None:

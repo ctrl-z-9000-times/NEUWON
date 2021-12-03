@@ -1,16 +1,14 @@
-from neuwon.neuron.segment import SegmentMethods
+from neuwon.model import Model
 from neuwon.database import Database
-from neuwon.nmodl import NmodlMechanism
+from neuwon.nmodl import NMODL
 import pytest
 
 def test_hh_smoke_test():
-    dt = .1
-    db = Database()
-    hh = NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
-    Segment = SegmentMethods._initialize(db,
-                initial_voltage = -70,
-                cytoplasmic_resistance = 1e6,
-                membrane_capacitance = 1e-14,)
+    m = Model({'time_step': .1,},
+        mechanisms={
+            'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)
+        })
+
     db_cls = Segment.get_database_class()
     db_cls.add_attribute("na_conductance")
     db_cls.add_attribute("k_conductance")
@@ -29,4 +27,4 @@ def test_hh_smoke_test():
 
 @pytest.mark.skip()
 def test_kinetic_model():
-    nav11 = NmodlMechanism("./nmodl_library/Balbi2017/Nav11_a.mod", use_cache=False)
+    nav11 = NMODL("./nmodl_library/Balbi2017/Nav11_a.mod", use_cache=False)

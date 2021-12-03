@@ -2,13 +2,9 @@
 __all__ = []
 
 import math
-import sys
 from neuwon.nmodl.parser import CodeBlock, IfStatement, AssignStatement, SolveStatement, ConserveStatement
 
 import sympy.printing.pycode as sympy_to_pycode
-
-def insert_indent(indent, string):
-    return indent + "\n".join(indent + line for line in string.split("\n"))
 
 def to_python(self, indent="", pointers={}):
     """ Argument self is any parser CodeBlock or Statment. """
@@ -57,5 +53,5 @@ def py_exec(python, globals_, locals_=None):
         err_msg = "Error while exec'ing the following python code:\n" + python
         err_msg + "\nglobals(): %s"%repr(globals_)
         err_msg + "\nlocals(): %s"%repr(locals_)
-        print(err_msg, file=sys.stdout)
+        print(err_msg)
         raise
