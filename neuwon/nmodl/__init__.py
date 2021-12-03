@@ -32,7 +32,6 @@ def eprint(*args, **kwargs):
 #             self.breakpoint_block.statements.append(
 #                     AssignStatement(variable, variable, pointer=pointer))
 
-# TODO: Consider renamining this to "NMODL_Factory"
 class NmodlMechanism(Mechanism):
     def __init__(self, filename, pointers={}, parameters={}, use_cache=True):
         """
@@ -106,11 +105,11 @@ class NmodlMechanism(Mechanism):
         for x in parser.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
-            equilibrium = ('e' + ion,)
-            current     = ('i' + ion,)
-            conductance = ('g' + ion,)
-            inside  = (ion + 'i', ion + '_inside',)
-            outside = (ion + 'o', ion + '_outside',)
+            equilibrium = ('e' + ion, ion + '_equilibrium',)
+            current     = ('i' + ion, ion + '_current',)
+            conductance = ('g' + ion, ion + '_conductance',)
+            inside      = (ion + 'i', ion + '_inside',)
+            outside     = (ion + 'o', ion + '_outside',)
             for y in x.readlist:
                 var_name = y.name.value.eval()
                 if var_name in equilibrium:
@@ -201,13 +200,13 @@ class NmodlMechanism(Mechanism):
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def _initialize_database(self, database):
-        cls = database.add_class(self.name, NMODL, doc=self.description)
-        cls.add_attribute("segment", dtype="Segment")
+        mech_data = database.add_class(self.name, NMODL, doc=self.description)
+        mech_data.add_attribute("segment", dtype="Segment")
         for name in self.surface_area_parameters:
-            cls.add_attribute(name, units=None) # TODO: units!
+            mech_data.add_attribute(name, units=None) # TODO: units!
         for name in self.states:
-            cls.add_attribute(name, initial_value=self.initial_state[name], units=name)
-        return cls.get_instance_type()
+            mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
+        return mech_data.get_instance_type()
 
     def _compile_breakpoint_block(self):
         # Move assignments to conductances to the end of the block, where they
@@ -223,7 +222,7 @@ class NmodlMechanism(Mechanism):
             elif arg in self.initial_scope:
                 value = float(self.initial_scope[arg])
                 self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
-            else: raise ValueError("Unhandled argument: \"%s\"."%arg)
+            else: raise ValueError(f"Unhandled argument: \"{arg}\".")
         self.breakpoint_block.gather_arguments()
         preamble  = []
         preamble.append("def BREAKPOINT(%s):")
