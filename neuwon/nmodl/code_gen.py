@@ -5,15 +5,6 @@ import math
 import sys
 from neuwon.nmodl.parser import CodeBlock, IfStatement, AssignStatement, SolveStatement, ConserveStatement
 
-# TODO: Consider making and documenting a convention regarding what gets mangled & how.
-# -> mangle1 for the user's nmodl variables.
-
-def mangle(x):
-    return "_" + x
-
-def demangle(x):
-    return x[1:]
-
 import sympy.printing.pycode as sympy_to_pycode
 
 def insert_indent(indent, string):
@@ -38,7 +29,7 @@ def to_python(self, indent="", pointers={}):
                 eprint("Failed at:", repr(self))
                 raise
         if self.derivative:
-            lhs = mangle('d' + self.lhsn)
+            lhs = 'd' + self.lhsn
             return indent + lhs + " += " + self.rhs + "\n"
         ptr = pointers.get(self.lhsn, None)
         if ptr is not None:

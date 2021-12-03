@@ -1,7 +1,6 @@
 """ Private module. """
 __all__ = []
 
-from neuwon.nmodl import code_gen
 from neuwon.nmodl.parser import AssignStatement
 import sympy
 
