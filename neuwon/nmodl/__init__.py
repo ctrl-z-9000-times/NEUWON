@@ -1,9 +1,8 @@
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import Real
+from neuwon.database import Real, Compute
 from neuwon.mechanisms import Mechanism
 from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
-from neuwon.nmodl.pointers import PointerTable, Pointer
 from neuwon.nmodl.solver import solve
 import copy
 import math
@@ -54,10 +53,11 @@ class NmodlMechanism(Mechanism):
                 self._check_for_unsupported(parser)
                 self.name, self.title, self.description = parser.gather_documentation()
                 self.parameters = ParameterTable(parser.gather_parameters())
-                self.pointers = PointerTable(self)
+                self.variables = {}
+                self.accumulators = set()
                 self.states = parser.gather_states()
                 for state in self.states:
-                    self.pointers.add(state, read=(self.name+"."+state), write=(self.name+"."+state))
+                    self.variables[state] = f'self.{state}'
                 blocks = parser.gather_code_blocks()
                 self.initial_block = blocks['INITIAL']
                 self.breakpoint_block = blocks['BREAKPOINT']
@@ -71,9 +71,8 @@ class NmodlMechanism(Mechanism):
         self.parameters.update(parameters, strict=True)
         self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
         for param in self.surface_area_parameters:
-            self.pointers.add(param, read=(self.name+"."+param))
-        for var_name, kwargs in pointers.items():
-            self.pointers.add(var_name, **kwargs)
+            self.variables[param] = f'self.{param}'
+        self.variables.update(pointers)
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -99,11 +98,11 @@ class NmodlMechanism(Mechanism):
         self.initial_block.gather_arguments()
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
         if "v" in all_args:
-            self.pointers.add("v", read="Segment.voltage")
+            self.variables["v"] = "self.segment.voltage"
         if "area" in all_args:
-            self.pointers.add("area", read="Segment.surface_area")
+            self.variables["area"] = "self.segment.surface_area"
         if "volume" in all_args:
-            self.pointers.add("volume", read="Segment.inside_volume")
+            self.variables["volume"] = "self.segment.inside_volume"
         for x in parser.lookup(ANT.USEION):
             ion = x.name.value.eval()
             # Automatically generate the variable names for this ion.
@@ -117,24 +116,25 @@ class NmodlMechanism(Mechanism):
                 if var_name in equilibrium:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in inside:
-                    self.pointers.add(var_name, read="Segment.inside_concentrations/%s"%ion)
+                    self.variables[var_name] = "self.segment.inside_concentrations/%s"
                 elif var_name in outside:
-                    self.pointers.add(var_name, read="outside/concentrations/%s"%ion)
-                else: raise ValueError("Unrecognized species READ: \"%s\"."%var_name)
+                    self.variables[var_name] = "self.outside/concentrations/%s"
+                else:
+                    raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
             for y in x.writelist:
                 var_name = y.name.value.eval()
                 if var_name in current:
                     pass # Ignored, mechanisms output conductances instead of currents.
                 elif var_name in conductance:
-                    self.pointers.add(var_name,
-                            write=f"Segment.{ion}_conductance", accumulate=True)
+                    self.variables[var_name] = f"self.segment.{ion}_conductance"
+                    self.accumulate.add(var_name)
                 elif var_name in inside:
-                    self.pointers.add(var_name,
-                            write="Segment.inside_delta_concentrations/%s"%ion, accumulate=True)
+                    self.variables[var_name] = "self.segment.inside_delta_concentrations/%s"%ion
+                    self.accumulate.add(var_name)
                 elif var_name in outside:
-                    self.pointers.add(var_name,
-                            write="outside/delta_concentrations/%s"%ion, accumulate=True)
-                else: raise ValueError("Unrecognized species WRITE: \"%s\"."%var_name)
+                    self.variables[var_name] = "outside/delta_concentrations/%s"
+                    self.accumulate.add(var_name)
+                else: raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
@@ -169,7 +169,6 @@ class NmodlMechanism(Mechanism):
                     list(self.derivative_blocks.values()) + [self.initial_block, self.breakpoint_block,],)
             self._run_initial_block(database)
             cls = self._initialize_database(database)
-            self.pointers.initialize(database)
             self._compile_breakpoint_block()
             cls._cuda_advance = self._cuda_advance
             cls._advance_arguments = self.arguments
@@ -226,31 +225,8 @@ class NmodlMechanism(Mechanism):
                 self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
             else: raise ValueError("Unhandled argument: \"%s\"."%arg)
         self.breakpoint_block.gather_arguments()
-        self.arguments = set()
-        for ptr in self.pointers.values():
-            if ptr.r: self.arguments.add((ptr.read_py(), ptr.read))
-            if ptr.w: self.arguments.add((ptr.write_py(), ptr.write))
-        self.arguments = sorted(self.arguments)
-        index     = code_gen.mangle2("index")
-        # TODO: Consider moving some of this preamble stuff to the code_gen module?
         preamble  = []
-        preamble.append("import numba.cuda")
-        preamble.append("def BREAKPOINT(%s):"%", ".join(py for py, db in self.arguments))
-        preamble.append("    "+index+" = numba.cuda.grid(1)")
-        segment  = self.pointers.get("segment",  None)
-        inside   = self.pointers.get("inside",   None)
-        outside  = self.pointers.get("outside",  None)
-        pointers = (segment, inside, outside)
-        preamble.append("    if "+index+" >= "+segment.read_py()+".shape[0]: return")
-        for ptr in pointers:
-            if ptr is None: continue
-            preamble.append("    %s = %s[%s]"%(
-                code_gen.mangle2(ptr.name), ptr.read_py(), ptr.index_py()))
-        for variable, ptr in sorted(self.pointers.items()):
-            if not ptr.r: continue
-            if ptr in pointers: continue
-            stmt = "    %s = %s[%s]"%(ptr.name, ptr.read_py(), ptr.index_py())
-            preamble.append(stmt)
+        preamble.append("def BREAKPOINT(%s):")
         py = code_gen.to_python(self.breakpoint_block, "    ", self.pointers)
         py = "\n".join(preamble) + "\n" + py
         breakpoint_globals = {
@@ -258,7 +234,6 @@ class NmodlMechanism(Mechanism):
         }
         code_gen.py_exec(py, breakpoint_globals)
         self._breakpoint_pycode = py # Save this for debugging purposes.
-        self._cuda_advance = numba.cuda.jit(breakpoint_globals["BREAKPOINT"])
 
 class NMODL(Mechanism):
     __slots__ = ()

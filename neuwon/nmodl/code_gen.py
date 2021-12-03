@@ -7,19 +7,12 @@ from neuwon.nmodl.parser import CodeBlock, IfStatement, AssignStatement, SolveSt
 
 # TODO: Consider making and documenting a convention regarding what gets mangled & how.
 # -> mangle1 for the user's nmodl variables.
-# -> mangle2 for NEUWON's internal variables.
 
 def mangle(x):
     return "_" + x
 
 def demangle(x):
     return x[1:]
-
-def mangle2(x):
-    return "_" + x + "_"
-
-def demangle2(x):
-    return x[1:-1]
 
 import sympy.printing.pycode as sympy_to_pycode
 
