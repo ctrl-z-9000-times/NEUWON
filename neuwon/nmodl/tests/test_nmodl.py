@@ -7,23 +7,19 @@ def test_hh_smoke_test():
     m = Model({'time_step': .1,},
         mechanisms={
             'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)
-        })
+    })
+    m.database.check()
 
-    db_cls = Segment.get_database_class()
-    db_cls.add_attribute("na_conductance")
-    db_cls.add_attribute("k_conductance")
-    db_cls.add_attribute("l_conductance")
+    hh = m.mechanisms['hh']
+    hh.advance()
 
-    hh = hh.initialize(db, time_step=dt, celsius=6.3)
-
-    my_seg = Segment(None, [0,0,0], 12)
+    my_seg = m.Neuron([0,0,0], 12).root
     my_hh  = hh(my_seg, scale=.2)
     hh.advance()
-    hh.advance()
-    hh(Segment(None, [40,0,0], 12), scale=.2)
+    hh(m.Neuron([40,0,0], 12), scale=.2)
     for _ in range(40):
         hh.advance()
-    db.check()
+    m.database.check()
 
 @pytest.mark.skip()
 def test_kinetic_model():

@@ -195,6 +195,9 @@ class CodeBlock:
         for stmt in self:
             if isinstance(stmt, AssignStatement):
                 stmt.rhs = stmt.rhs.subs(substitutions)
+                lhsn = sympy.Symbol(stmt.lhsn)
+                if lhsn in substitutions:
+                    stmt.lhsn = substitutions[lhsn].name
             elif isinstance(stmt, IfStatement):
                 stmt.condition = stmt.condition.subs(substitutions)
 
