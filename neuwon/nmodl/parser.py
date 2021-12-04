@@ -187,6 +187,17 @@ class CodeBlock:
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
+    def substitute(self, substitutions: dict):
+        substitutions = {
+                sympy.Symbol(k, real=True) if isinstance(k, str) else k :
+                sympy.Symbol(v, real=True) if isinstance(v, str) else v
+                for k, v in substitutions.items()}
+        for stmt in self:
+            if isinstance(stmt, AssignStatement):
+                stmt.rhs = stmt.rhs.subs(substitutions)
+            elif isinstance(stmt, IfStatement):
+                stmt.condition = stmt.condition.subs(substitutions)
+
     def gather_arguments(self):
         """ Sets arguments and assigned lists. """
         self.arguments = set()
@@ -231,11 +242,14 @@ class IfStatement:
 class AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False):
         self.lhsn = str(lhsn) # Left hand side name.
-        self.rhs  = rhs       # Right hand side.
+        if isinstance(rhs, str):
+            rhs = sympy.simpify(rhs)
+        self.rhs = rhs # Right hand side.
         self.derivative = bool(derivative)
+        self.operation = '='
 
     def __repr__(self):
-        s = self.lhsn + " = " + str(self.rhs)
+        s = f'{self.lhsn} {self.operation} {str(self.rhs)}'
         if self.derivative: s = "'" + s
         return s
 

@@ -6,7 +6,7 @@ from neuwon.nmodl.parser import CodeBlock, IfStatement, AssignStatement, SolveSt
 
 import sympy.printing.pycode as sympy_to_pycode
 
-def to_python(self, indent="", pointers={}):
+def to_python(self, indent="", pointers={}, accumulators=set()):
     """ Argument self is any parser CodeBlock or Statment. """
     py = ""
     if isinstance(self, CodeBlock):
@@ -27,14 +27,7 @@ def to_python(self, indent="", pointers={}):
         if self.derivative:
             lhs = 'd' + self.lhsn
             return indent + lhs + " += " + self.rhs + "\n"
-        ptr = pointers.get(self.lhsn, None)
-        if ptr is not None:
-            assert ptr.w, ptr.name + " is not a writable pointer!"
-            array_access = ptr.write_py() + "[" + ptr.index_py() + "]"
-            eq = " += " if ptr.a else " = "
-            assign_local = self.lhsn + " = " if ptr.r and not ptr.a else ""
-            return indent + array_access + eq + assign_local + self.rhs + "\n"
-        return indent + self.lhsn + " = " + self.rhs + "\n"
+        return indent + self.lhsn + self.operation + self.rhs + "\n"
     elif isinstance(self, ConserveStatement):
         py  = indent + "_CORRECTION_FACTOR = %s / (%s)\n"%(str(self.conserve_sum), " + ".join(self.states))
         for x in self.states:
@@ -50,8 +43,8 @@ def py_exec(python, globals_, locals_=None):
     except:
         for noshow in ("__builtins__", "math"):
             if noshow in globals_: globals_.pop(noshow)
-        err_msg = "Error while exec'ing the following python code:\n" + python
+        err_msg = "Error while exec'ing the following python program:\n" + python
         err_msg + "\nglobals(): %s"%repr(globals_)
         err_msg + "\nlocals(): %s"%repr(locals_)
-        print(err_msg)
+        print(err_msg, flush=True)
         raise
