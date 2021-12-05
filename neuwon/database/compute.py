@@ -182,6 +182,7 @@ class _JIT:
         """ Breakout the function into all of its constituent parts. """
         self.name      = function.__name__.replace('<', '_').replace('>', '_')
         self.filename  = inspect.getsourcefile(function)
+        assert self.filename is not None
         self.lineno    = function.__code__.co_firstlineno
         self.signature = inspect.signature(function)
         self.body_text = io.StringIO()
