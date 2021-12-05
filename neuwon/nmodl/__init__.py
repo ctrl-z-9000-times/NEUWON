@@ -4,11 +4,12 @@ from neuwon.mechanisms import Mechanism
 from neuwon.nmodl import code_gen, cache
 from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
 from neuwon.nmodl.solver import solve
+import math
 import numpy as np
 import os.path
+import re
 import sympy
 import sys
-import re
 
 __all__ = ["NMODL"]
 
@@ -199,7 +200,7 @@ class NMODL(Mechanism):
         if missing_arguments:
             raise ValueError(f"Missing initial values for {', '.join(missing_arguments)}.")
         initial_python = code_gen.to_python(self.initial_block)
-        code_gen.py_exec(initial_python, {}, self.initial_scope)
+        self._py_exec(initial_python, {}, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def _compile_breakpoint_block(self):
@@ -224,8 +225,8 @@ class NMODL(Mechanism):
             'Compute': Compute,
             # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
-        code_gen.py_exec(self.advance_pycode, breakpoint_globals)
         self.advance_bytecode = breakpoint_globals['BREAKPOINT']
+        self._py_exec(self.advance_pycode, breakpoint_globals)
 
     def _initialize_database(self, database):
         mechanism_superclass = type(self.name, (Mechanism,), {
@@ -251,6 +252,21 @@ class NMODL(Mechanism):
         sa = x_factor * scale * self.segment.surface_area
         for name, (value, units) in self._surface_area_parameters.items():
             setattr(self, name, value * sa)
+
+    def _py_exec(self, python, globals_, locals_=None):
+        if not isinstance(python, str): python = str(python)
+        globals_["math"] = math
+        try:
+            bytecode = compile(python, self.filename, mode='exec')
+            exec(bytecode, globals_, locals_)
+        except:
+            for noshow in ("__builtins__", "math"):
+                if noshow in globals_: globals_.pop(noshow)
+            err_msg = "Error while exec'ing the following python program:\n" + python
+            err_msg + "\nglobals(): %s"%repr(globals_)
+            err_msg + "\nlocals(): %s"%repr(locals_)
+            print(err_msg, flush=True)
+            raise
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
