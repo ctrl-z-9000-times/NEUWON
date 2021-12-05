@@ -1,9 +1,8 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Compute
 from neuwon.mechanisms import Mechanism
-from neuwon.nmodl import code_gen, cache
-from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement
-from neuwon.nmodl.solver import solve
+from neuwon.nmodl import code_gen, cache, solver
+from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement, ConserveStatement
 import math
 import numpy as np
 import os.path
@@ -60,7 +59,7 @@ class NMODL(Mechanism):
                 raise
             cache.save(self.filename, self)
         self.parameters.update(parameters, strict=True)
-        self.surface_area_parameters = self.parameters.separate_surface_area_parameters()
+        self.surface_area_parameters = self.parameters.split_surface_area_parameters()
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -87,7 +86,7 @@ class NMODL(Mechanism):
         self.accumulators = set()
         for state in self.states:
             self.pointers[state] = f'self.{state}'
-        for param in self.parameters.separate_surface_area_parameters():
+        for param in self.parameters.get_surface_area_parameters():
             self.pointers[param] = f'self.{param}'
         self.breakpoint_block.gather_arguments()
         self.initial_block.gather_arguments()
@@ -151,7 +150,7 @@ class NMODL(Mechanism):
                     if syseq_block.derivative:
                         for stmt in syseq_block:
                             if isinstance(stmt, AssignStatement) and stmt.derivative:
-                                solve(stmt)
+                                solver.solve(stmt)
                 elif stmt.method == "sparse":
                     1/0
                 # Splice the solved block into the breakpoint block.
@@ -166,6 +165,8 @@ class NMODL(Mechanism):
             if isinstance(stmt, AssignStatement):
                 if stmt.lhsn in self.accumulators:
                     stmt.operation = '+='
+        self.breakpoint_block.map(lambda stmt: stmt.simple_solution()
+                                if isinstance(stmt, ConserveStatement) else [stmt])
         self.breakpoint_block.substitute(self.pointers)
 
     def initialize(self, database, name, **builtin_parameters):
@@ -219,14 +220,14 @@ class NMODL(Mechanism):
                 self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
         self.advance_pycode = (
                 "@Compute\n"
-                "def BREAKPOINT(self):\n"
+                "def advance(self):\n"
                 + code_gen.to_python(self.breakpoint_block, "    ", self.pointers))
         breakpoint_globals = {
             'Compute': Compute,
             # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
-        self.advance_bytecode = breakpoint_globals['BREAKPOINT']
         self._py_exec(self.advance_pycode, breakpoint_globals)
+        self.advance_bytecode = breakpoint_globals['advance']
 
     def _initialize_database(self, database):
         mechanism_superclass = type(self.name, (Mechanism,), {
@@ -299,8 +300,8 @@ class ParameterTable(dict):
             self[name] = (value, units)
         return self
 
-    def separate_surface_area_parameters(self):
-        """ Returns surface_area_parameters, Modifies parameters (self).
+    def get_surface_area_parameters(self):
+        """ Returns the surface_area_parameters.
 
         The surface area parameters are special because each segment of neuron
         has its own surface area and so their actual values are different for
@@ -308,10 +309,15 @@ class ParameterTable(dict):
         source code, instead they are stored alongside the state variables and
         accessed at run time. 
         """
-        surface_area_parameters = {}
-        for name, (value, units) in list(self.items()):
-            if units and "/cm2" in units:
-                surface_area_parameters[name] = self.pop(name)
+        return {name: (value, units)
+            for name, (value, units) in self.items()
+                if units and "/cm2" in units}
+
+    def split_surface_area_parameters(self):
+        """ Removes and returns the surface_area_parameters. """
+        surface_area_parameters = self.get_surface_area_parameters()
+        for name in surface_area_parameters:
+            self.pop(name)
         return surface_area_parameters
 
     def substitute(self, block):
@@ -320,6 +326,6 @@ class ParameterTable(dict):
             if value is None:
                 continue
             if name == "time_step":
-                name = sympy.Symbol(name, real=True, positive=True)
+                name = solver.dt
             substitutions[name] = value
         block.substitute(substitutions)

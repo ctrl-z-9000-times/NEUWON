@@ -11,6 +11,11 @@ def test_hh_smoke_test():
     m.database.check()
 
     hh = m.mechanisms['hh']
+    help(hh)
+    print('SURFACE AREA PARAMETERS:', hh._surface_area_parameters)
+    print('ADVANCE PYCODE:')
+    print(hh._advance_pycode)
+
     hh.advance()
 
     my_seg = m.Neuron([0,0,0], 12).root

@@ -28,10 +28,5 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
             lhs = 'd' + self.lhsn
             return indent + lhs + " += " + self.rhs + "\n"
         return indent + self.lhsn + self.operation + self.rhs + "\n"
-    elif isinstance(self, ConserveStatement):
-        py  = indent + "_CORRECTION_FACTOR = %s / (%s)\n"%(str(self.conserve_sum), " + ".join(self.states))
-        for x in self.states:
-            py += indent + x + " *= _CORRECTION_FACTOR\n"
-        return py
     else: raise NotImplementedError(type(self))
     return py.rstrip() + "\n"

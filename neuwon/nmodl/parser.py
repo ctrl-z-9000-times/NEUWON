@@ -188,18 +188,17 @@ class CodeBlock:
         self.statements = mapped_statements
 
     def substitute(self, substitutions: dict):
-        substitutions = {
+        substitution_symbols = {
                 sympy.Symbol(k, real=True) if isinstance(k, str) else k :
                 sympy.Symbol(v, real=True) if isinstance(v, str) else v
                 for k, v in substitutions.items()}
         for stmt in self:
             if isinstance(stmt, AssignStatement):
-                stmt.rhs = stmt.rhs.subs(substitutions)
-                lhsn = sympy.Symbol(stmt.lhsn)
-                if lhsn in substitutions:
-                    stmt.lhsn = substitutions[lhsn].name
+                stmt.rhs = stmt.rhs.subs(substitution_symbols)
+                if stmt.lhsn in substitutions:
+                    stmt.lhsn = substitutions[stmt.lhsn]
             elif isinstance(stmt, IfStatement):
-                stmt.condition = stmt.condition.subs(substitutions)
+                stmt.condition = stmt.condition.subs(substitution_symbols)
 
     def gather_arguments(self):
         """ Sets arguments and assigned lists. """
@@ -243,13 +242,13 @@ class IfStatement:
             self.blocks.append(self.else_block)
 
 class AssignStatement:
-    def __init__(self, lhsn, rhs, derivative=False):
+    def __init__(self, lhsn, rhs, derivative=False, operation='='):
         self.lhsn = str(lhsn) # Left hand side name.
         if isinstance(rhs, str):
             rhs = sympy.simpify(rhs)
         self.rhs = rhs # Right hand side.
         self.derivative = bool(derivative)
-        self.operation = '='
+        self.operation = str(operation)
 
     def __repr__(self):
         s = f'{self.lhsn} {self.operation} {str(self.rhs)}'
@@ -277,3 +276,15 @@ class ConserveStatement:
         sum_solution = sympy.solvers.solve(sympy.Eq(conserved_expr, assumed_form), sum_symbol)
         assert(len(sum_solution) == 1)
         self.conserve_sum = sum_solution[0].evalf()
+
+    def simple_solution(self):
+        if not self.states:
+            return []
+        true_sum = self.states[0]
+        for state in self.states[1:]:
+            true_sum = true_sum + state
+        replacement = [AssignStatement('_CORRECTION_FACTOR', true_sum / self.conserve_sum)]
+        for state in self.states:
+            replacement.append(
+                    AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))
+        return replacement
