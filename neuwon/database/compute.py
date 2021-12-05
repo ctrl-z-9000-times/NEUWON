@@ -322,7 +322,6 @@ class _JIT:
                     '''
             else:
                 py_code = f'''
-                    @numba.jit()
                     def entry_point(instances, {arguments}):
                         return_array = numpy.empty(len(instances), dtype=return_type)
                         if isinstance(instances, range):
