@@ -337,19 +337,20 @@ class DB_Class(Documentation):
                     \"\"\" \"\"\"
                     self._db_class._destroy_instance(self)
 
-                def is_destroyed(self):
+                def is_destroyed(self) -> bool:
                     \"\"\" \"\"\"
                     return self._idx == {NULL}
 
-                def get_unstable_index(self):
-                    \"\"\" Get the index into the database where this object is stored at.
+                def get_unstable_index(self) -> int:
+                    \"\"\"
+                    Get the index of this object in its DB_Class's data arrays.
 
                     WARNING: Sorting the database will invalidate this index!
                     \"\"\"
                     return self._idx
 
                 @classmethod
-                def get_database_class(cls):
+                def get_database_class(cls) -> 'DB_Class':
                     \"\"\" Get the database's internal representation of this object's type. \"\"\"
                     return cls._db_class
             """)
