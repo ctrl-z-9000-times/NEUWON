@@ -69,7 +69,7 @@ class Model:
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
         self.database.sort()
-        with self.database.using_memory_space('cuda'):
+        with self.database.using_memory_space('host'):
             self._advance_species()
             self._advance_mechanisms()
             self._advance_species()
