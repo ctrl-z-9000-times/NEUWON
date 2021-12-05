@@ -198,7 +198,10 @@ class Attribute(DataComponent):
             if value is None:
                 value = NULL
             else:
-                assert isinstance(value, self.reference.instance_type)
+                if not isinstance(value, self.reference.instance_type):
+                    ref_name  = self.reference.get_name()
+                    type_name = type(value).__name__
+                    raise TypeError(f"Expected '{ref_name}' got '{type_name}'!")
                 value = value._idx
         self.data[instance._idx] = value
 
