@@ -8,7 +8,7 @@ This file provides tools for performing constructive solid geometry:
 from collections.abc import Callable, Iterable, Mapping
 import numpy as np
 
-__all__ = 'Region Intersection Union Not Rec angle Sphere Cylinder'.split()
+__all__ = 'Region Intersection Union Not Rectangle Sphere Cylinder'.split()
 
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.

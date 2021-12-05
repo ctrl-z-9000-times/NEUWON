@@ -32,9 +32,9 @@ class main:
     def make_model(self):
         """ Construct a soma with a single long axon. """
         self.model = m = make_model_with_hh(self.time_step)
-        hh        = m.get_reaction("hh")
-        self.soma = m.Segment(None, [0,0,0], self.soma_diameter)
-        self.axon = m.Segment.make_section(self.soma,
+        hh        = m.mechanisms['hh']
+        self.soma = m.Neuron([0,0,0], self.soma_diameter).root
+        self.axon = self.soma.add_section(
                 [0,0,self.axon_length], self.axon_diameter,
                 maximum_segment_length=self.length_step)
         self.segments = [self.soma] + self.axon

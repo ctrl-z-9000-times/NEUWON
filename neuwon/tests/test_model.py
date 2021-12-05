@@ -1,5 +1,5 @@
 from neuwon.model import Model
-from neuwon.nmodl import NmodlMechanism
+from neuwon.nmodl import NMODL
 from neuwon.database.time import TimeSeries
 import numpy as np
 import pytest
@@ -20,10 +20,10 @@ def test_model_hh(debug=False):
                 'l':  {'reversal_potential': 50},
             },
             mechanisms = {
-                'hh': NmodlMechanism("./nmodl_library/hh.mod", use_cache=False)
+                'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)
             })
     hh = m.mechanisms['hh']
-    print(hh)
+    print(hh._advance_pycode)
     root = tip = m.Segment(None, [-1,0,7], 5.7)
     hh(root)
     for x in range(10):

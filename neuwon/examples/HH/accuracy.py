@@ -21,7 +21,7 @@ class Model:
 
     def make_model(self):
         self.model = m = make_model_with_hh(self.time_step)
-        hh         = m.get_reaction("hh")
+        hh         = m.mechanisms['hh']
         self.soma  = m.Segment(None, [0,0,0], self.soma_diameter)
         self.hh    = hh(self.soma, scale=1)
         if True:

@@ -34,7 +34,7 @@ class main:
 
     def make_model(self):
         self.model = m = make_model_with_hh(self.time_step)
-        hh         = m.get_reaction("hh")
+        hh         = m.mechanisms['hh']
         self.soma  = m.Segment(None, [0,0,0], 10)
         self.axon  = Tree(self.soma, self.make_region(), 0.000025,
             balancing_factor = .0,

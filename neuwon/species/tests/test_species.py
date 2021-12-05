@@ -1,6 +1,6 @@
 from neuwon.database import Database
 from neuwon.parameters import Parameters
-from neuwon.neuron.segment import SegmentMethods
+from neuwon.neuron.neuron import Neuron as NeuronSuperclass
 from neuwon.species import SpeciesFactory
 
 test_parameters = Parameters({
@@ -30,15 +30,18 @@ test_parameters = Parameters({
 
 def test_species_containers():
     db = Database()
-    SegmentMethods._initialize(db,
-            initial_voltage = -70,
-            cytoplasmic_resistance = 100,
-            membrane_capacitance = 1,)
+    Neuron = NeuronSuperclass._initialize(db)
 
     all_s = SpeciesFactory(test_parameters, db, .1, 37)
     db.check()
     for name, s in all_s.items():
         assert s.get_name() in repr(s)
+    all_s._zero_accumulators()
+    all_s._accumulate_conductance()
+    all_s._advance()
+    Neuron([1,2,3], 7)
+    Neuron([4,5,6], 7)
+    Neuron([7,8,9], 7)
     all_s._zero_accumulators()
     all_s._accumulate_conductance()
     all_s._advance()

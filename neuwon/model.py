@@ -106,5 +106,5 @@ class Model:
     def _advance_mechanisms(self):
         self.species._zero_accumulators()
         for name, m in self.mechanisms.items():
-            try: m.advance(self)
+            try: m.advance()
             except Exception: raise RuntimeError("in mechanism " + name)
