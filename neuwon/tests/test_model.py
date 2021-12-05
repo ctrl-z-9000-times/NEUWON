@@ -17,13 +17,16 @@ def test_model_hh(debug=False):
             species = {
                 'na': {'reversal_potential': 40},
                 'k':  {'reversal_potential': -80},
-                'l':  {'reversal_potential': 50},
+                'l':  {'reversal_potential': -50},
             },
             mechanisms = {
                 'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)
             })
     hh = m.mechanisms['hh']
     print(hh._advance_pycode)
+    print('Initial Values:')
+    for comp in m.database.get('hh').get_all_components():
+        print(comp.get_name(), '\t', comp.get_initial_value())
     root = tip = m.Segment(None, [-1,0,7], 5.7)
     hh(root)
     for x in range(10):
