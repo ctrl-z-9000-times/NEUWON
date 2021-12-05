@@ -6,8 +6,13 @@ import pytest
 def test_hh_smoke_test():
     m = Model({'time_step': .1,},
         mechanisms={
-            'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)
-    })
+            'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)},
+        species={
+            'na': {'reversal_potential': +60,},
+            'k': {'reversal_potential': -88,},
+            'l': {'reversal_potential': -54.3,},
+        },
+    )
     m.database.check()
 
     hh = m.mechanisms['hh']
@@ -21,7 +26,7 @@ def test_hh_smoke_test():
     my_seg = m.Neuron([0,0,0], 12).root
     my_hh  = hh(my_seg, scale=.2)
     hh.advance()
-    hh(m.Neuron([40,0,0], 12), scale=.2)
+    hh(m.Neuron([40,0,0], 12).root, scale=.2)
     for _ in range(40):
         hh.advance()
     m.database.check()
