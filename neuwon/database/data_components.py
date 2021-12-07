@@ -170,7 +170,6 @@ class Attribute(DataComponent):
     __init__.__doc__ += "".join((
         DataComponent._dtype_doc,
         DataComponent._shape_doc,
-        Documentation._doc_doc,
         DataComponent._units_doc,
         DataComponent._allow_invalid_doc,
         DataComponent._valid_range_doc,))
@@ -297,7 +296,6 @@ class ClassAttribute(DataComponent):
     __init__.__doc__ += "".join((
         DataComponent._dtype_doc,
         DataComponent._shape_doc,
-        Documentation._doc_doc,
         DataComponent._units_doc,
         DataComponent._allow_invalid_doc,
         DataComponent._valid_range_doc,
@@ -368,7 +366,6 @@ class SparseMatrix(DataComponent):
 
     __init__.__doc__ += "".join((
         DataComponent._dtype_doc,
-        Documentation._doc_doc,
         DataComponent._units_doc,
         DataComponent._allow_invalid_doc,
         DataComponent._valid_range_doc,))
@@ -561,8 +558,6 @@ class ConnectivityMatrix(SparseMatrix):
     def __init__(self, db_class, name, column, doc:str=""):
         """ """ # TODO-DOC
         super().__init__(db_class, name, column, doc=doc, dtype=bool,)
-    
-    __init__.__doc__  += Documentation._doc_doc
 
     def _getter(self, instance):
         return super()._getter(instance)[0]
