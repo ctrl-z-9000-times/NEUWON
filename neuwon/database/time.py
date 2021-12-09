@@ -19,6 +19,33 @@ def _weakref_wrapper(method):
             return method()
     return call_if_able
 
+class Callback:
+    def __init__(self):
+        self._callbacks = []
+
+    # TODO: Reverse the return value: return "remove_callback" instead of "keep_callback"
+
+    def register(self, function: 'f() -> bool'):
+        """
+        Callbacks are guaranteed to always be called in the same order 
+        that they were registered in.
+
+        The function must return a True value to keep the itself registered.
+        """
+        assert isinstance(function, Callable)
+        self._callbacks.append(function)
+
+    def __call__(self):
+        any_dead = False
+        for idx, callback in enumerate(self._callbacks):
+            # TODO: Consider more verbose error messages when a callback fails?
+            keep_alive = callback()
+            if not keep_alive:
+                self._callbacks[idx] = None
+                any_dead = True
+        if any_dead:
+            self._callbacks = [x for x in self._callbacks if x is not None]
+
 class Clock:
     """ Clock and notification system. """
     def __init__(self, tick_period:float, units:str=""):
@@ -30,11 +57,15 @@ class Clock:
         self.dt = self.time_step = self.tick_period = float(tick_period)
         self.ticks = 0
         self.units = str(units)
-        self.callbacks = []
+        self.callbacks = Callback()
 
     def get_time(self) -> float:
         """ Returns the current time. """
         return self.ticks * self.dt
+
+    def get_ticks(self) -> int:
+        """ Returns the current number of ticks. """
+        return self.ticks
 
     def __call__(self) -> float:
         """ Returns the current time. """
@@ -57,13 +88,12 @@ class Clock:
 
         The function must return a True value to keep the itself registered.
         """
-        assert isinstance(function, Callable)
-        self.callbacks.append(function)
+        self.callbacks.register(function)
 
     def reset(self):
         """ Set the clock to zero and then call all callbacks. """
         self.ticks = 0
-        self._call_callbacks()
+        self.callbacks()
 
     def set_time(self, new_time: float):
         self.ticks = round(float(new_time) / self.dt)
@@ -72,18 +102,7 @@ class Clock:
     def tick(self):
         """ Advance the clock by `tick_period` and then call all callbacks. """
         self.ticks += 1
-        self._call_callbacks()
-
-    def _call_callbacks(self):
-        any_dead = False
-        for idx, callback in enumerate(self.callbacks):
-            # TODO: Consider more verbose error messages when a callback fails?
-            keep_alive = callback()
-            if not keep_alive:
-                self.callbacks[idx] = None
-                any_dead = True
-        if any_dead:
-            self.callbacks = [x for x in self.callbacks if x is not None]
+        self.callbacks()
 
 # TODO: Consider renaming "TimeSeries.timeseries" to "TimeSeries.data" for
 # bevity & conformity (its getter is named "get_data()")
