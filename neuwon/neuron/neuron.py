@@ -32,7 +32,9 @@ class Neuron:
     @staticmethod
     def _initialize_AP_detector(neuron_data):
         neuron_data.add_class_attribute('AP_detector_threshold', 20)
-        neuron_data.add_attribute('AP_detector_segment', dtype='Segment', allow_invalid=True)
+        neuron_data.add_attribute('AP_detector_segment', dtype='Segment',
+                # This will never be NULL, but don't enforce it as a constraint on the database.
+                allow_invalid=True)
         neuron_data.add_attribute('AP_detected', False, dtype=bool)
         neuron_data.add_attribute('_AP_true_state', False, dtype=bool)
 
@@ -74,10 +76,7 @@ class Neuron:
 
     @Compute
     def _advance_AP_detector(self):
-        if self.AP_detector_segment == NULL:
-            over_threshold = False
-        else:
-            over_threshold = self.AP_detector_segment.voltage >= self.AP_detector_threshold
+        over_threshold = self.AP_detector_segment.voltage >= self.AP_detector_threshold
         self.AP_detected = over_threshold and not self._AP_true_state
         self._AP_true_state = over_threshold
 
