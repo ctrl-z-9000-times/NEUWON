@@ -45,16 +45,6 @@ import textwrap
 # 
 #   Special case for @compute on __init__, add class method `batch_init(num, *,**)`.
 
-def _print_pycode(f):
-    """ Decompile and print a python function, for debugging purposes. """
-    import uncompyle6
-    signature = inspect.signature(f)
-    body_text = io.StringIO()
-    uncompyle6.code_deparse(f.__code__, out=body_text)
-    body_text = body_text.getvalue()
-    body_text = textwrap.indent(body_text, ' '*4)
-    print(f'def {f.__name__}{signature}:\n{body_text}\n')
-
 class Compute(Documentation):
     """
     A decorator for functions and methods to be executed by the database.
@@ -299,8 +289,6 @@ class _JIT:
         self.module_ast     = ast.fix_missing_locations(module_ast)
         exec(compile(self.module_ast, self.filename, mode='exec'), self.closure)
         self.py_function    = self.closure[self.name]
-        if DEBUG:
-            _print_pycode(self.py_function)
         # Apply JIT compilation to the function.
         if self.target is host:
             self.jit_function = numba.njit(self.py_function)
