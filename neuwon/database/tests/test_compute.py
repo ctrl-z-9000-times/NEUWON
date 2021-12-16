@@ -102,7 +102,11 @@ def test_annotations():
             return foo_data.get_instance_type()
         @Compute
         def do(self):
-            add(self, self.ref)
+            # Rename the variables to test type annotations.
+            my_self: 'Foo' = self
+            my_ref: 'Foo' = my_self.ref
+            my_ref.bar
+            add(self, my_ref)
         def do2(self, other: 'Foo'):
             add(self, other)
     @Compute

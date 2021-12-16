@@ -16,8 +16,8 @@ import io
 import numba
 import numba.cuda
 import numpy
+import re
 import textwrap
-import uncompyle6
 
 # IDEAS:
 # 
@@ -47,6 +47,7 @@ import uncompyle6
 
 def _print_pycode(f):
     """ Decompile and print a python function, for debugging purposes. """
+    import uncompyle6
     signature = inspect.signature(f)
     body_text = io.StringIO()
     uncompyle6.code_deparse(f.__code__, out=body_text)
@@ -64,19 +65,12 @@ class Compute(Documentation):
     Notes:
         Functions may call other functions which are marked with this decorator.
 
-        All data access must be written as single syntactic expressions, which
-        start with database-objects. For example:
-            >>> @Compute
-            >>> def my_method(self):
-            >>>     self.foobar             # Good
-            >>>     a_new_variable = self
-            >>>     a_new_variable.foobar   # Bad
-
-        To pass pointers to DB_Objects to functions, you must annotate
-        the functions signature with the name of object's DB_Class.
-            >>> @Compute
-            >>> def my_function(my_object: "ObjectType"):
-            >>>     my_object.foobar
+        Variables containing DB_Objects must be annotated with the name of the
+        object's DB_Class. For example:
+            >>> class Foo
+            >>>     @Compute
+            >>>     def bar(self, other: "Foo"):
+            >>>         ptr: "Foo" = self.my_pointer
 
         @Compute represents NULL pointers as the maximum integer "neuwon.database.NULL".
         As opposed to the object-oriented API which represents them as "None".
@@ -170,8 +164,9 @@ class _JIT:
         # Transform and then reassemble the function.
         self.db_arguments = {}
         if self.is_method():
-            self.rewrite_method_self()
-        self.rewrite_annotated_references()
+            self.rewrite_self_argument()
+        self.rewrite_annotated_arguments()
+        self.rewrite_annotated_assignments()
         self.rewrite_functions()
         self.assemble_function()
         if self.entry_point:
@@ -185,10 +180,11 @@ class _JIT:
         assert self.filename is not None
         self.lineno    = function.__code__.co_firstlineno
         self.signature = inspect.signature(function)
-        self.body_text = io.StringIO()
-        uncompyle6.code_deparse(function.__code__, out=self.body_text)
-        self.body_text = self.body_text.getvalue()
-        self.body_ast  = ast.parse(self.body_text, self.filename)
+        self.func_text = textwrap.dedent(inspect.getsource(function))
+        self.func_text = re.sub(r'^@.*Compute\n', '', self.func_text)
+        module_ast     = ast.parse(self.func_text, self.filename)
+        for _ in range(self.lineno): ast.increment_lineno(module_ast)
+        self.body_ast  = module_ast.body[0]
         nonlocals, globals, builtins, unbound = inspect.getclosurevars(function)
         self.closure = {}
         self.closure.update(builtins)
@@ -229,11 +225,11 @@ class _JIT:
                         continue
                 raise TypeError(f"Method '{self.name}' is missing return type annotations")
 
-    def rewrite_method_self(self):
+    def rewrite_self_argument(self):
         self.self_variable = next(iter(self.signature.parameters))
         self.rewrite_reference(self.db_class, self.self_variable)
 
-    def rewrite_annotated_references(self):
+    def rewrite_annotated_arguments(self):
         parameters = list(self.signature.parameters.values())
         if self.is_method():
             parameters = parameters[1:]
@@ -245,6 +241,24 @@ class _JIT:
             except KeyError:
                 continue
             self.rewrite_reference(db_class, p.name)
+
+    def rewrite_annotated_assignments(self):
+        for node in ast.walk(self.body_ast):
+            if isinstance(node, ast.AnnAssign):
+                if not node.simple: continue
+                ref_name = node.target.id
+                anno = node.annotation
+                if isinstance(anno, ast.Str):
+                    ref_class = anno.s
+                elif isinstance(anno, ast.Constant) and isinstance(anno.value, str):
+                    ref_class = anno.value
+                else:
+                    continue
+                try:
+                    ref_class = self.database.get_class(ref_class)
+                except KeyError:
+                    continue
+                self.rewrite_reference(ref_class, ref_name)
 
     def rewrite_reference(self, ref_class, ref_name):
         rr = _ReferenceRewriter(ref_class, ref_name, self.body_ast, self.target)
