@@ -1,10 +1,10 @@
 from collections.abc import Callable, Iterable, Mapping
+from neuwon.database.data_components import DataComponent, Attribute, ClassAttribute
+from neuwon.database.database import DB_Object
 import collections
 import functools
 import math
 import matplotlib.pyplot
-from neuwon.database.database import DB_Object
-from neuwon.database.data_components import DataComponent, Attribute, ClassAttribute
 import numpy as np
 import scipy.interpolate
 import weakref

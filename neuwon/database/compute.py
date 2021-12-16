@@ -10,9 +10,7 @@ from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
 from neuwon.database.memory_spaces import host, cuda
 import ast
-import collections
 import inspect
-import io
 import numba
 import numba.cuda
 import numpy
