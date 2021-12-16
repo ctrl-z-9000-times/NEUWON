@@ -27,16 +27,6 @@ import textwrap
 #           But that's generally a bad design, since it encourages for-loops
 #           inside of the compute kernel, esp for GPUs.
 # 
-#   Database.add_function()
-#       Register an anonymous function.
-#       This allows users to define & change code at run time.
-#       Note: this will broadcast its inputs like numpy does
-#               Can broadcast function over array of pointers, for method-like behavior.
-#       - This seems like a lot of work for a minor gain.
-# 
-#   How to write filter functions using compute?
-#       Will need to broadcast multiple pointer-array inputs to a function.
-# 
 # TODO:
 # 
 #   Allow returning pointers.
