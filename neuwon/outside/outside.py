@@ -1,9 +1,6 @@
 import neuwon.species.voronoi
 import numpy as np
 
-# TODO: Consider moving both this file and the voronoi module to a new subdirectory.
-#       What to name it?
-
 class OutsideMethods:
     @classmethod
     def _initialize(cls):
