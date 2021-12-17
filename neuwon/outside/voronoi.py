@@ -6,8 +6,6 @@ from neuwon.database import Real, epsilon, Pointer, NULL
 
 __all__ = ["voronoi_cell"] # Public API entry point.
 
-origin = np.zeros(3, dtype=Real)
-
 um  = 1e-6    # Length in micrometers.
 um2 = um ** 2 # Surface Area in square micrometers.
 um3 = um ** 3 # Volume in cubic micrometers.
@@ -91,7 +89,7 @@ def triangle_volume(triangle):
     a, b, c = triangle["vertexes"]
     vector_b = b - a
     vector_c = c - a
-    vector_home = origin - a
+    vector_home = - a
     base_cross = np.cross(vector_b, vector_c)
     base_cross_magnitude = magnitude(base_cross)
     if base_cross_magnitude == 0.0: # TODO: Consider if there are any floating point issues here?
