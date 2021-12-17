@@ -1,8 +1,14 @@
 import math
 from neuwon.database import Compute, Real, epsilon
 
-class Mongillo2008:
-    """ Model of Short-Term-Plasticity in presynapses. """
+class STP:
+    """ Model of Short-Term-Plasticity in presynapses.
+
+    Reference:
+        Synaptic theory of working memory.
+        Mongillo, Barak, Tsodyks. 2008
+        doi: 10.1126/science.1150769.
+    """
     __slots__ = ()
     @staticmethod
     def initialize(synapse_data, *,

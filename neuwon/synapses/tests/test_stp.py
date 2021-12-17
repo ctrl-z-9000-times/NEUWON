@@ -1,12 +1,12 @@
 import numpy as np
 from neuwon.database import Database
-from neuwon.synapses.Mongillo2008 import Mongillo2008
+from neuwon.synapses.stp import STP
 
 def test_basic():
     db = Database()
-    syn_data = db.add_class('MySynapse', Mongillo2008)
+    syn_data = db.add_class('MySynapse', STP)
     MySynapse = syn_data.get_instance_type()
-    Mongillo2008.initialize(syn_data,
+    STP.initialize(syn_data,
             minimum_utilization = 0.2,
             utilization_decay = 1000.0,
             resource_recovery = 5.0,)
