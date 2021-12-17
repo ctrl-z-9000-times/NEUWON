@@ -98,7 +98,7 @@ def test_annotations():
         def initialize(cls, db):
             foo_data = db.add_class(cls)
             foo_data.add_attribute('bar', 0)
-            foo_data.add_attribute('ref', dtype='Foo', allow_invalid=True)
+            foo_data.add_attribute('ref', dtype=Foo, allow_invalid=True)
             return foo_data.get_instance_type()
         @Compute
         def do(self):

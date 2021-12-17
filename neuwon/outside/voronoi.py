@@ -6,10 +6,6 @@ from neuwon.database import Real, epsilon, Pointer, NULL
 
 __all__ = ["voronoi_cell"] # Public API entry point.
 
-um  = 1e-6    # Length in micrometers.
-um2 = um ** 2 # Surface Area in square micrometers.
-um3 = um ** 3 # Volume in cubic micrometers.
-
 Plane = np.dtype([
     ("normal", Real, (3,)),
     ("offset", Real),
@@ -163,7 +159,7 @@ def add_plane(triangles, plane, facing_location):
             len_new_vertex_pairs += 1
             new_triangle(new_triangles[len_new_triangles],
                 new1, new2, t["vertexes"][alive1], t["facing_location"])
-            if new_triangles[len_new_triangles]["surface_area"] > epsilon * um2:
+            if new_triangles[len_new_triangles]["surface_area"] > epsilon:
                 len_new_triangles += 1
         elif num_alive == 2:
             # One corner removed. Cut off the corner turning this into a
@@ -176,12 +172,12 @@ def add_plane(triangles, plane, facing_location):
             #
             new_triangle(new_triangles[len_new_triangles],
                 t["vertexes"][alive1], t["vertexes"][alive2], new1, t["facing_location"])
-            if new_triangles[len_new_triangles]["surface_area"] > epsilon * um2:
+            if new_triangles[len_new_triangles]["surface_area"] > epsilon:
                 len_new_triangles += 1
             #
             new_triangle(new_triangles[len_new_triangles],
                 new1, new2, t["vertexes"][alive2], t["facing_location"])
-            if new_triangles[len_new_triangles]["surface_area"] > epsilon * um2:
+            if new_triangles[len_new_triangles]["surface_area"] > epsilon:
                 len_new_triangles += 1
     # Triangulate the surface of the new plane like a fan.
     if len_new_vertex_pairs > 0:
@@ -189,7 +185,7 @@ def add_plane(triangles, plane, facing_location):
         for b, c in new_vertex_pairs[1:len_new_vertex_pairs]:
             new_triangle(new_triangles[len_new_triangles],
                 anchor, b, c, facing_location)
-            if new_triangles[len_new_triangles]["surface_area"] > epsilon * um2:
+            if new_triangles[len_new_triangles]["surface_area"] > epsilon:
                 len_new_triangles += 1
     return new_triangles[:len_new_triangles]
 

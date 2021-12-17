@@ -2,7 +2,7 @@ import textwrap
 
 class Documentation:
     """
-    This class provides two public attributes, both are strings:
+    This class provides two public attributes, both of which are strings:
       * name
       * doc
     """

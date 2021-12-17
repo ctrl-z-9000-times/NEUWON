@@ -24,12 +24,12 @@ class DataComponent(Documentation):
             self.shape = (round(shape),)
         if isinstance(dtype, type) and issubclass(dtype, DB_Object):
             dtype = dtype.get_database_class()
-        if isinstance(dtype, str) or isinstance(dtype, DB_Class):
-            self.dtype = Pointer
-            self.initial_value = NULL
+        try:
             self.reference = self.db_class.database.get_class(dtype)
             self.reference.referenced_by.append(self)
-        else:
+            self.dtype = Pointer
+            self.initial_value = NULL
+        except KeyError:
             self.dtype = np.dtype(dtype)
             if initial_value is None:
                 self.initial_value = None

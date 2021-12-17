@@ -31,11 +31,17 @@ class Database:
         >>> assert Foo == database.get("Foo")
         >>> assert bar == database.get("Foo.bar")
         """
-        if isinstance(name, type) and issubclass(name, DB_Object):
-            try:
-                name = name._db_class
-            except AttributeError:
-                1/0 # How to explain what went wrong?
+        if isinstance(name, type):
+            if issubclass(name, DB_Object):
+                try:
+                    name = name._db_class
+                except AttributeError:
+                    1/0 # TODO: How to explain what went wrong?
+            else:
+                if name is object: raise KeyError()
+                for db_class in self.db_classes.values():
+                    if issubclass(db_class.instance_type, name):
+                        return db_class
         if isinstance(name, DB_Class):
             assert name.database is self
             return name
@@ -43,7 +49,7 @@ class Database:
             assert name.db_class.database is self
             return name
         elif isinstance(name, str): pass
-        else: raise ValueError(f"Expected 'str' got '{type(name)}'")
+        else: raise KeyError(f"Expected 'str' got '{type(name)}'")
         db_class, _, attr = name.partition('.')
         try:
             obj = self.db_classes[db_class]
