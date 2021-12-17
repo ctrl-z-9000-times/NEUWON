@@ -368,7 +368,6 @@ class DB_Class(Documentation):
             if isinstance(attr, Compute):
                 attr._register_method(self)
 
-
     def _init_instance(self, new_instance):
         old_size  = self.size
         new_size  = old_size + 1

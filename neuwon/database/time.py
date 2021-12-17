@@ -38,7 +38,6 @@ class Callback:
     def __call__(self):
         any_dead = False
         for idx, callback in enumerate(self._callbacks):
-            # TODO: Consider more verbose error messages when a callback fails?
             keep_alive = callback()
             if not keep_alive:
                 self._callbacks[idx] = None
@@ -104,8 +103,6 @@ class Clock:
         self.ticks += 1
         self.callbacks()
 
-# TODO: Consider renaming "TimeSeries.timeseries" to "TimeSeries.data" for
-# bevity & conformity (its getter is named "get_data()")
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
     def __init__(self, *initial_data):
@@ -132,13 +129,13 @@ class TimeSeries:
     def clear(self) -> 'self':
         """ Reset the buffer. Removes all data samples from the buffer. """
         assert self.is_stopped()
-        self.timeseries = collections.deque()
+        self.data = collections.deque()
         self.timestamps = collections.deque()
         return self
 
     def get_data(self) -> collections.deque:
         """ Returns a list containing all of the data samples. """
-        return self.timeseries
+        return self.data
 
     def get_timestamps(self) -> collections.deque:
         """ Returns a list containing all of the timestamps. """
@@ -152,9 +149,9 @@ class TimeSeries:
             data_samples = data_samples.get_data()
         elif timestamps is None:
             raise TypeError("TimeSeries.set_data() missing required positional argument: 'timestamps'")
-        self.timeseries = collections.deque(data_samples)
+        self.data = collections.deque(data_samples)
         self.timestamps = collections.deque(timestamps)
-        assert len(self.timeseries) == len(self.timestamps)
+        assert len(self.data) == len(self.timestamps)
         for i in range(len(self.timestamps) - 1):
             assert self.timestamps[i] <= self.timestamps[i + 1]
         return self
@@ -170,10 +167,6 @@ class TimeSeries:
             self.clock  = db_class.get_database().get_clock()
         self.component  = db_class.get(component)
         self.component_name = self.component.get_name()
-        # TODO: I feel like this should guard against users changing the component.
-        # 
-        # IDEA: If I dis-allow changing components then I can store the
-        # component after first usage and make the argument optional therafter.
 
     def record(self, db_object: DB_Object, component: str,
             record_duration:float=np.inf,
@@ -207,10 +200,10 @@ class TimeSeries:
 
     def _record_implementation(self):
         if not self.is_recording(): return False
-        self.timeseries.append(getattr(self.db_object, self.component_name))
+        self.data.append(getattr(self.db_object, self.component_name))
         self.timestamps.append(self.clock())
         while self.timestamps[-1] - self.timestamps[0] > self.discard_after:
-            self.timeseries.popleft()
+            self.data.popleft()
             self.timestamps.popleft()
         self.record_duration -= self.clock.dt
         return True
@@ -311,7 +304,7 @@ class TimeSeries:
         """
         assert self.is_stopped()
         f = scipy.interpolate.interp1d(self.get_timestamps(), self.get_data(),
-                            fill_value = (self.timeseries[0], self.timeseries[-1]),
+                            fill_value = (self.data[0], self.data[-1]),
                             bounds_error = False,)
         return np.vectorize(f)
 
@@ -350,7 +343,7 @@ class TimeSeries:
 
     def __len__(self):
         """ Returns the number of data samples in this buffer. """
-        return len(self.timeseries)
+        return len(self.data)
 
     def constant_wave(self, value, duration) -> 'self':
         """ Overwrite this buffer with the given function. """
