@@ -14,7 +14,6 @@ import inspect
 import numba
 import numba.cuda
 import numpy
-import re
 import textwrap
 
 # IDEAS:
@@ -159,7 +158,6 @@ class _JIT:
         self.lineno    = function.__code__.co_firstlineno
         self.signature = inspect.signature(function)
         self.func_text = textwrap.dedent(inspect.getsource(function))
-        self.func_text = re.sub(r'^@.*Compute\n', '', self.func_text)
         module_ast     = ast.parse(self.func_text, self.filename)
         for _ in range(self.lineno): ast.increment_lineno(module_ast)
         self.body_ast  = module_ast.body[0]
