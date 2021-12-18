@@ -163,9 +163,7 @@ class Attribute(DataComponent):
         DataComponent.__init__(self, db_class, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
             allow_invalid=allow_invalid, valid_range=valid_range)
-        self.data = self._alloc(len(self.db_class))
-        if self.initial_value is not None:
-            self.data.fill(self.initial_value)
+        self.free()
 
     __init__.__doc__ += "".join((
         DataComponent._dtype_doc,
