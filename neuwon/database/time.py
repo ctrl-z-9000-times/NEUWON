@@ -9,43 +9,45 @@ import numpy as np
 import scipy.interpolate
 import weakref
 
-def _weakref_wrapper(method):
-    # Note: Don't use weakrefs if the callback writes to the database or any
-    # other globally visible state.
-    method_ref = weakref.WeakMethod(method)
-    def call_if_able():
-        method = method_ref()
-        if method is not None:
-            return method()
-        else:
-            return True
-    return call_if_able
-
 class CallbackHook:
     """ This class aggregates and manages callbacks. """
     def __init__(self):
         self._callbacks = []
 
-    def register(self, function: 'f() -> bool'):
+    def register(self, function: 'f() -> bool', weak_method=False):
         """ Append a callback to this hook.
 
-        Callbacks are guaranteed to always be called in the same order 
-        that they were registered in.
+        Callbacks are removed if they return True. They are guaranteed to always
+        be called in the same relative order that they were registered in.
 
-        Callbacks are unregister (removed) when they return True.
+        Note: Don't use weakrefs if the callback writes to the database or any
+        other globally visible state.
         """
         assert isinstance(function, Callable)
+        if weak_method:
+            function = CallbackHook._weakref_wrapper(function)
         self._callbacks.append(function)
 
     def __call__(self):
-        any_unregistered = False
+        any_removed = False
         for idx, callback in enumerate(self._callbacks):
-            unregister = callback()
-            if unregister:
+            remove = callback()
+            if remove:
                 self._callbacks[idx] = None
-                any_unregistered = True
-        if any_unregistered:
+                any_removed = True
+        if any_removed:
             self._callbacks = [x for x in self._callbacks if x is not None]
+
+    @staticmethod
+    def _weakref_wrapper(method):
+        method_ref = weakref.WeakMethod(method)
+        def call_if_able():
+            method = method_ref()
+            if method is not None:
+                return method()
+            else:
+                return True
+        return call_if_able
 
 class Clock:
     """ Clock and notification system. """
@@ -80,16 +82,14 @@ class Clock:
         """ Returns the physical units of time used by this clock. """
         return self.units
 
-    def register_callback(self, function: Callable):
+    def register_callback(self, function: 'f() -> bool', weak_method=False):
         """
         Argument function will be called immediately after every clock tick.
 
-        Callbacks are guaranteed to be called in the order that they were
-        registered.
-
-        The function must return a True value to keep the itself registered.
+        Callbacks are removed if they return True. They are guaranteed to always
+        be called in the same relative order that they were registered in.
         """
-        self.callbacks.register(function)
+        self.callbacks.register(function, weak_method)
 
     def reset(self):
         """ Set the clock to zero and then call all callbacks. """
@@ -194,7 +194,7 @@ class TimeSeries:
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
         assert self.clock, "Argument 'clock' not given and database has no default clock set."
-        self.clock.register_callback(_weakref_wrapper(self._record_implementation))
+        self.clock.register_callback(self._record_implementation, weak_method=True)
         self.record_duration = float(record_duration)
         self.discard_after = float(discard_after)
         self._record_implementation() # Collect the current value as the first data sample.
@@ -501,9 +501,10 @@ class Trace:
                 callback = self._attr_callback_start
             else:
                 callback = self._attr_callback_nostart
+            self.clock.register_callback(callback)
         elif self.trace_obj:
-            callback = _weakref_wrapper(self._obj_callback)
-        self.clock.register_callback(callback)
+            callback = self._obj_callback
+            self.clock.register_callback(callback, weak_method=True)
         callback() # Collect the current value as the first data sample.
 
     def reset(self):
