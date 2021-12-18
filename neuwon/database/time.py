@@ -17,32 +17,34 @@ def _weakref_wrapper(method):
         method = method_ref()
         if method is not None:
             return method()
+        else:
+            return True
     return call_if_able
 
-class Callback:
+class CallbackHook:
+    """ This class aggregates and manages callbacks. """
     def __init__(self):
         self._callbacks = []
 
-    # TODO: Reverse the return value: return "remove_callback" instead of "keep_callback"
-
     def register(self, function: 'f() -> bool'):
-        """
+        """ Append a callback to this hook.
+
         Callbacks are guaranteed to always be called in the same order 
         that they were registered in.
 
-        The function must return a True value to keep the itself registered.
+        Callbacks are unregister (removed) when they return True.
         """
         assert isinstance(function, Callable)
         self._callbacks.append(function)
 
     def __call__(self):
-        any_dead = False
+        any_unregistered = False
         for idx, callback in enumerate(self._callbacks):
-            keep_alive = callback()
-            if not keep_alive:
+            unregister = callback()
+            if unregister:
                 self._callbacks[idx] = None
-                any_dead = True
-        if any_dead:
+                any_unregistered = True
+        if any_unregistered:
             self._callbacks = [x for x in self._callbacks if x is not None]
 
 class Clock:
@@ -56,7 +58,7 @@ class Clock:
         self.dt = self.time_step = self.tick_period = float(tick_period)
         self.ticks = 0
         self.units = str(units)
-        self.callbacks = Callback()
+        self.callbacks = CallbackHook()
 
     def get_time(self) -> float:
         """ Returns the current time. """
@@ -199,14 +201,13 @@ class TimeSeries:
         return self
 
     def _record_implementation(self):
-        if not self.is_recording(): return False
+        if not self.is_recording(): return True
         self.data.append(getattr(self.db_object, self.component_name))
         self.timestamps.append(self.clock())
         while self.timestamps[-1] - self.timestamps[0] > self.discard_after:
             self.data.popleft()
             self.timestamps.popleft()
         self.record_duration -= self.clock.dt
-        return True
 
     def play(self, db_object: DB_Object, component: str,
             mode:str="+=",
@@ -246,7 +247,7 @@ class TimeSeries:
         return self
 
     def _play_implementation(self):
-        if self.play_data is None: return False
+        if self.play_data is None: return True
         value = self.play_data[self.play_index]
         if self.mode == "=":
             setattr(self.db_object, self.component_name, value)
@@ -260,8 +261,7 @@ class TimeSeries:
                 self.play_index = 0
             else:
                 self.play_data = None
-                return False
-        return True
+                return True
 
     def interpolate(self, *timeseries):
         """ Interpolate any number of TimeSeries to a common set of timestamps.
@@ -535,7 +535,6 @@ class Trace:
             var = self.var.get_data()
             var = self.alpha * (var + diff * incr)
             self.var.set_data(var)
-        return True
 
     def _attr_callback_start(self):
         # db = self.component.get_database()
@@ -553,7 +552,6 @@ class Trace:
             var += self.beta * (value - true_mean) ** 2
             var *= self.alpha
             self.var.set_data(var)
-        return True
 
     def _obj_callback(self):
         value       = getattr(self.db_object, self.component_name)
@@ -562,7 +560,6 @@ class Trace:
         true_mean   = self.mean / (1.0 - self.start)
         self.var   += self.beta * (value - true_mean) ** 2
         self.var   *= self.alpha
-        return True
 
     def get_mean(self):
         if self.trace_attr:
