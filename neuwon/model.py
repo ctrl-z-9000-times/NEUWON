@@ -32,7 +32,7 @@ class Model:
         self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()
         self.celsius    = float(self.parameters['celsius'])
-        self.Neuron     = Neuron._initialize(db, time_step = 0.5 * self.time_step,
+        self.Neuron     = Neuron._initialize(db,
                 initial_voltage         = self.parameters['initial_voltage'],
                 cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
                 membrane_capacitance    = self.parameters['membrane_capacitance'],)
@@ -93,9 +93,8 @@ class Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
-        dt = self.species.time_step
         self._accumulate_conductances()
-        self.Segment._advance_electric()
+        self.Segment._advance_electric(self.species.time_step)
         self.species._advance()
 
     def _accumulate_conductances(self):

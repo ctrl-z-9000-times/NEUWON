@@ -12,9 +12,9 @@ def test_advance_smoke_test():
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
     Segment = db.get_class('Segment').get_instance_type()
-    Segment._electric_advance(dt)
+    Segment._advance_electric(dt)
     Neuron([0,0,0], 13)
-    Segment._electric_advance(dt)
+    Segment._advance_electric(dt)
     # Make disconnected segments.
     for i in range(17):
         root = Neuron([0,0,0], 13).root
@@ -22,7 +22,7 @@ def test_advance_smoke_test():
     tip = root
     for i in range(1, 111):
         tip = tip.add_segment([i,0,0], 1)
-    Segment._electric_advance(dt)
+    Segment._advance_electric(dt)
     # db.check() # Don't check because some data is still uninitialized.
 
 def test_time_constant():
@@ -41,7 +41,7 @@ def test_time_constant():
     dt = tau / nstep
     dt = dt * 1e3 # Convert to milliseconds.
     for _ in range(nstep):
-        Segment._electric_advance(dt)
+        Segment._advance_electric(dt)
     assert root.voltage == pytest.approx(1 - (1 / np.e))
     db.check()
 
@@ -67,7 +67,7 @@ def measure_length_constant(diam, rm, max_len, dt, ptol, plot):
 
     for i in range(round(10/dt)):
         probe.voltage = 1
-        Segment._electric_advance(dt)
+        Segment._advance_electric(dt)
     db.check()
 
     x_coords = [seg.coordinates[0] for seg in section]

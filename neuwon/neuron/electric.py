@@ -10,7 +10,6 @@ class Electric:
     __slots__ = ()
     @staticmethod
     def _initialize(database, *,
-                time_step,
                 initial_voltage = -70.0,
                 cytoplasmic_resistance = 100.0,
                 membrane_capacitance = 1.0,):
@@ -30,7 +29,6 @@ class Electric:
         seg_data.add_sparse_matrix("electric_propagator_matrix", 'Segment')
         seg_cls = seg_data.get_instance_type()
         seg_cls._matrix_valid = False
-        seg_cls.time_step = float(time_step)
 
     def __init__(self):
         self._compute_passive_electric_properties()
@@ -44,10 +42,10 @@ class Electric:
         self.capacitance = Cm * self.surface_area
 
     @classmethod
-    def _advance_electric(cls):
+    def _advance_electric(cls, time_step):
         if not cls._matrix_valid:
-            cls._compute_propagator_matrix()
-        dt = cls.time_step / 1000
+            cls._compute_propagator_matrix(time_step)
+        dt = time_step / 1000
         db_cls              = cls.get_database_class()
         xp                  = db_cls.get_database().get_memory_space().array_module
         sum_conductance     = db_cls.get_data("sum_conductance")
@@ -71,7 +69,7 @@ class Electric:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """
         db_cls = cls.get_database_class()
-        dt     = cls.time_step / 1000
+        dt     = time_step / 1000
         with db_cls.get_database().using_memory_space('host'):
             parents      = db_cls.get_data("parent")
             resistances  = db_cls.get_data("axial_resistance")
@@ -115,7 +113,7 @@ class Electric:
         duration = float(duration)
         assert duration >= 0
         current = float(current)
-        clock = type(self)._model.species.input_clock
+        clock = type(self)._model.species.input_hook
         dv = current * clock.get_tick_period() / self.capacitance
         input_signal = TimeSeries().set_data([0, dv, dv, 0], [0, 0, duration, duration])
         input_signal.play(self, "voltage", clock=clock)

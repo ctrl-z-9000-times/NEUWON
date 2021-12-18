@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
-from neuwon.database.time import Callback
+from neuwon.database.time import CallbackHook
 from neuwon.parameters import Parameters
 import cupy as cp
 import math
@@ -192,7 +192,7 @@ class SpeciesFactory(dict):
         self.time_step  = time_step
         self.celsius    = celsius
         # TODO: Come up with a better name than "input_hook". Maybe "accumulate_conductance_hook"?
-        self.input_hook = Callback()
+        self.input_hook = CallbackHook()
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
