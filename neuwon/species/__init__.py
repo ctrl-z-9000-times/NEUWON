@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 from scipy.sparse.linalg import expm
-from neuwon.database import Clock
+from neuwon.database.time import Callback
 from neuwon.parameters import Parameters
 import cupy as cp
 import math
@@ -12,88 +12,43 @@ F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
-"""
-Parameters
-* concentration: initial value.
-* reversal_potential: is one of: number, "nerst", "goldman_hodgkin_katz"
-
-If diffusivity is not given, then the concentration is a global constant.
-"""
-
-
-class SpeciesFactory(dict):
-    def __init__(self, parameters: dict, database, time_step, celsius):
-        super().__init__()
-        self.database   = database
-        self.time_step  = time_step
-        self.celsius    = celsius
-        self.input_clock = Clock(time_step)
-        self.add_parameters(parameters)
-
-    def add_parameters(self, parameters:dict):
-        for name, species in Parameters(parameters).items():
-            self.add_species(name, species)
-
-    def add_species(self, name, species) -> 'SpeciesType':
-        if name in self:
-            return self[name]
-        if not isinstance(species, SpeciesType):
-            species = SpeciesType(name, species, self)
-        self[species.name] = species
-        return species
-
-    def _zero_accumulators(self):
-        """ Zero all data buffers which the mechanisms can write to. """
-        for species in self.values():
-            species._zero_accumulators()
-
-    def _accumulate_conductance(self):
-        """ """
-        for species in self.values():
-            species._accumulate_conductance()
-
-    def _advance(self):
-        """ """
-        for species in self.values():
-            species._advance()
-
-default_species_type_parameters = {
-    'charge': 0,
-    'reversal_potential': None,
-}
-
 class SpeciesType:
-    def __init__(self, name, parameters, factory):
-        parameters.update_with_defaults(default_species_type_parameters)
+    def __init__(self, name, factory,
+                charge = 0,
+                reversal_potential: '(None|float|"nerst"|"goldman_hodgkin_katz")' = None,
+                initial_concentration = None,
+                diffusivity = None,
+                ):
         self.name       = str(name)
         self.factory    = factory
-        self.charge     = int(parameters['charge'])
-        self.reversal_potential = parameters['reversal_potential']
-        if self.reversal_potential is not None:
+        self.charge     = int(charge)
+        if reversal_potential is None:
+            self.reversal_potential = None
+        else:
             try:
-                self.reversal_potential = float(self.reversal_potential)
+                self.reversal_potential = float(reversal_potential)
             except ValueError:
-                self.reversal_potential = str(self.reversal_potential)
+                self.reversal_potential = str(reversal_potential)
                 assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
         self.electric = (self.charge != 0) or (self.reversal_potential is not None)
         if self.electric:
             assert self.reversal_potential is not None
-            segment_cls = factory.database.get("Segment")
-            self.conductance = segment_cls.add_attribute(f"{self.name}_conductance",
+            segment_data = factory.database.get("Segment")
+            self.conductance = segment_data.add_attribute(f"{self.name}_conductance",
                     initial_value=0.0,
                     valid_range=(0, np.inf),
                     units="Siemens")
             if isinstance(self.reversal_potential, float):
-                self.reversal_potential_data = segment_cls.add_class_attribute(
+                self.reversal_potential_data = segment_data.add_class_attribute(
                         f"{self.name}_reversal_potential",
                         initial_value=self.reversal_potential,
                         units="mV")
             else:
-                self.reversal_potential_data = segment_cls.add_attribute(
+                self.reversal_potential_data = segment_data.add_attribute(
                         f"{self.name}_reversal_potential",
                         initial_value=0.0,
                         units="mV")
-            factory.input_clock.register_callback(self._accumulate_conductance)
+            factory.input_hook.register_callback(self._accumulate_conductance)
 
         self.inside = None
         self.outside = None
@@ -110,12 +65,9 @@ class SpeciesType:
     def get_name(self) -> str:
         return self.name
 
-    def __repr__(self):
-        return f"<{type(self).__name__}: {self.name}>"
-
     def _zero_accumulators(self):
         if self.electric:
-            self.conductance.get_data().fill(0.0)
+            self.conductance.free()
         for instance in (self.inside, self.outside):
             if instance is not None:
                 instance._zero_accumulators()
@@ -222,7 +174,7 @@ class SpeciesInstance:
         1/0
 
     def _zero_accumulators(self):
-        self.delta.get_data().fill(0.0)
+        self.delta.free()
 
     def _advance(self):
         """ Update the chemical concentrations with local changes and diffusion. """
@@ -231,3 +183,36 @@ class SpeciesInstance:
         rr   = access("delta_concentrations/"+self.name)
         irm  = access("diffusions/"+self.name)
         x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+
+
+class SpeciesFactory(dict):
+    def __init__(self, parameters: dict, database, time_step, celsius):
+        super().__init__()
+        self.database   = database
+        self.time_step  = time_step
+        self.celsius    = celsius
+        # TODO: Come up with a better name than "input_hook". Maybe "accumulate_conductance_hook"?
+        self.input_hook = Callback()
+        self.add_parameters(parameters)
+
+    def add_parameters(self, parameters: dict):
+        for name, species in Parameters(parameters).items():
+            self.add_species(name, species)
+
+    def add_species(self, name, species) -> SpeciesType:
+        if name in self:
+            return self[name]
+        if not isinstance(species, SpeciesType):
+            species = SpeciesType(name, species, self)
+        self[species.name] = species
+        return species
+
+    def _zero_accumulators(self):
+        """ Zero all data buffers which the mechanisms can write to. """
+        for species in self.values():
+            species._zero_accumulators()
+
+    def _advance(self):
+        """ """
+        for species in self.values():
+            species._advance()

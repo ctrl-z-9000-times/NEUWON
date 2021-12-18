@@ -10,24 +10,27 @@ class Electric:
     __slots__ = ()
     @staticmethod
     def _initialize(database, *,
+                time_step,
                 initial_voltage = -70.0,
                 cytoplasmic_resistance = 100.0,
                 membrane_capacitance = 1.0,):
-        db_cls = database.get_class('Segment')
-        db_cls.add_attribute("voltage", float(initial_voltage), units="mV")
-        db_cls.add_attribute("integral_voltage")
-        db_cls.add_attribute("axial_resistance", units="")
-        db_cls.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
-        db_cls.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
+        seg_data = database.get_class('Segment')
+        seg_data.add_attribute("voltage", float(initial_voltage), units="mV")
+        seg_data.add_attribute("integral_voltage")
+        seg_data.add_attribute("axial_resistance", units="")
+        seg_data.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
+        seg_data.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
                 units="ohm-cm",
                 valid_range=(epsilon, np.inf))
-        db_cls.add_class_attribute("membrane_capacitance", membrane_capacitance,
+        seg_data.add_class_attribute("membrane_capacitance", membrane_capacitance,
                 units="?",
                 valid_range=(epsilon, np.inf))
-        db_cls.add_attribute("sum_conductance", units="Siemens", valid_range=(0, np.inf))
-        db_cls.add_attribute("driving_voltage", units="mV")
-        db_cls.get_instance_type()._matrix_valid = False
-        db_cls.add_sparse_matrix("electric_propagator_matrix", db_cls)
+        seg_data.add_attribute("sum_conductance", units="Siemens", valid_range=(0, np.inf))
+        seg_data.add_attribute("driving_voltage", units="mV")
+        seg_data.add_sparse_matrix("electric_propagator_matrix", 'Segment')
+        seg_cls = seg_data.get_instance_type()
+        seg_cls._matrix_valid = False
+        seg_cls.time_step = float(time_step)
 
     def __init__(self):
         self._compute_passive_electric_properties()
@@ -41,10 +44,10 @@ class Electric:
         self.capacitance = Cm * self.surface_area
 
     @classmethod
-    def _electric_advance(cls, time_step):
+    def _advance_electric(cls):
         if not cls._matrix_valid:
-            cls._compute_propagator_matrix(time_step)
-        dt = time_step / 1000
+            cls._compute_propagator_matrix()
+        dt = cls.time_step / 1000
         db_cls              = cls.get_database_class()
         xp                  = db_cls.get_database().get_memory_space().array_module
         sum_conductance     = db_cls.get_data("sum_conductance")
@@ -68,7 +71,7 @@ class Electric:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """
         db_cls = cls.get_database_class()
-        dt     = time_step / 1000
+        dt     = cls.time_step / 1000
         with db_cls.get_database().using_memory_space('host'):
             parents      = db_cls.get_data("parent")
             resistances  = db_cls.get_data("axial_resistance")

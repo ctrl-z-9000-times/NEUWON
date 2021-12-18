@@ -32,7 +32,7 @@ class Model:
         self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()
         self.celsius    = float(self.parameters['celsius'])
-        self.Neuron     = Neuron._initialize(db,
+        self.Neuron     = Neuron._initialize(db, time_step = 0.5 * self.time_step,
                 initial_voltage         = self.parameters['initial_voltage'],
                 cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
                 membrane_capacitance    = self.parameters['membrane_capacitance'],)
@@ -43,7 +43,7 @@ class Model:
         self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
         self.mechanisms = MechanismsFactory(mechanisms, db,
-                self.time_step, self.celsius, self.species.input_clock)
+                self.time_step, self.celsius, self.species.input_hook)
 
     def __len__(self):
         return len(self.Segment.get_database_class())
@@ -56,6 +56,9 @@ class Model:
 
     def get_Neuron(self):
         return self.Neuron
+
+    def get_Outside(self):
+        return self.Outside
 
     def check(self):
         self.database.check()
@@ -90,21 +93,24 @@ class Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
-        dt = self.species.input_clock.get_tick_period()
+        dt = self.species.time_step
+        self._accumulate_conductances()
+        self.Segment._advance_electric()
+        self.species._advance()
+
+    def _accumulate_conductances(self):
         sum_conductance = self.database.get_data("Segment.sum_conductance")
         driving_voltage = self.database.get_data("Segment.driving_voltage")
         # Zero the accumulators.
         sum_conductance.fill(0.0)
         driving_voltage.fill(0.0)
         # Sum the species conductances & driving-voltages into the accumulators.
-        self.species.input_clock.tick()
+        self.species.input_hook()
+        # 
         driving_voltage /= sum_conductance
+        # If conductance is zero then the driving_voltage is also zero.
         xp = cp.get_array_module(driving_voltage)
         driving_voltage[:] = xp.nan_to_num(driving_voltage)
-
-        self.Segment._electric_advance(dt)
-
-        self.species._advance()
 
     def _advance_mechanisms(self):
         self.species._zero_accumulators()
