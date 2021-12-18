@@ -6,7 +6,8 @@ from neuwon.neuron.neuron import Neuron
 from neuwon.outside.outside import Outside
 from neuwon.mechanisms import MechanismsFactory
 from neuwon.species import SpeciesFactory
-from neuwon.regions import RegionFactory
+from neuwon.regions import RegionsFactory
+# from neuwon.synapses import SynapsesFactory
 import cupy as cp
 import numpy as np
 
@@ -38,7 +39,7 @@ class Model:
         self.Outside    = Outside._initialize(db)
         self.Segment    = self.Neuron._Segment
         self.Segment._model = self # todo: replace with the species input clock.
-        self.regions = RegionFactory(regions)
+        self.regions = RegionsFactory(regions)
         self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
         self.mechanisms = MechanismsFactory(mechanisms, db,
