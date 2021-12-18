@@ -3,6 +3,7 @@ from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
 from neuwon.parameters import Parameters
 from neuwon.neuron.neuron import Neuron
+from neuwon.outside.outside import Outside
 from neuwon.mechanisms import MechanismsFactory
 from neuwon.species import SpeciesFactory
 from neuwon.regions import RegionFactory
@@ -34,6 +35,7 @@ class Model:
                 initial_voltage         = self.parameters['initial_voltage'],
                 cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
                 membrane_capacitance    = self.parameters['membrane_capacitance'],)
+        self.Outside    = Outside._initialize(db)
         self.Segment    = self.Neuron._Segment
         self.Segment._model = self # todo: replace with the species input clock.
         self.regions = RegionFactory(regions)

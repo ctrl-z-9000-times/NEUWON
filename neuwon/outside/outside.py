@@ -1,18 +1,29 @@
-import neuwon.species.voronoi
+import neuwon.outside.voronoi
 import numpy as np
 
-class OutsideMethods:
-    @classmethod
-    def _initialize(cls):
-        db.add_archetype("outside", doc="Extracellular space using a voronoi diagram.")
-        db.add_attribute("membrane/outside", dtype="outside", doc="")
-        db.add_attribute("outside/coordinates", shape=(3,), units="μm")
-        db.add_kd_tree(  "outside/tree", "outside/coordinates")
-        db.add_attribute("outside/volumes", units="Liters")
-        db.add_sparse_matrix("outside/neighbor_distances", "outside")
-        db.add_sparse_matrix("outside/neighbor_border_areas", "outside")
+class Outside:
+    """ Extracellular space using a voronoi diagram. """
+    __slots__ = ()
+    @staticmethod
+    def _initialize(database):
+        outside_data = database.add_class(Outside)
+        outside_data.add_attribute('coordinates', shape=(3,), units='μm')
+        outside_data.add_attribute('volumes', units='μm³')
 
-    def _initialize_outside(self, locations):
+        outside_data.add_sparse_matrix('neighbor_distances', Outside)
+        outside_data.add_sparse_matrix('neighbor_border_areas', Outside)
+        outside_data.add_sparse_matrix('neighbor_area_over_dist', Outside)
+
+        # outside_data.add_kd_tree("tree", "coordinates")
+
+        segment_data = database.get_class('Segment')
+        segment_data.add_attribute('outside', dtype=Outside, allow_invalid=True)
+
+        return outside_data.get_instance_type()
+
+    @classmethod
+    def _initialize_outside(cls, locations):
+        1/0
         self._initialize_outside_inner(locations)
         touched = set()
         for neighbors in self.db.access("outside/neighbor_distances")[locations]:
@@ -24,7 +35,9 @@ class OutsideMethods:
         fh_space = self.fh_space * s_areas[membrane_idx] * 1000
         outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
 
-    def _initialize_outside_inner(self, locations):
+    @classmethod
+    def _initialize_outside_inner(cls, locations):
+        1/0
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
         coordinates     = self.db.access("outside/coordinates").get()
         tree            = self.db.access("outside/tree")
@@ -45,7 +58,9 @@ class OutsideMethods:
         self.db.access("outside/neighbor_border_areas",
                 sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_area))
 
-    def _outside_diffusion_coefficients(self, access):
+    @classmethod
+    def _outside_diffusion_coefficients(cls, access):
+        1/0
         extracellular_tortuosity = 1.4 # TODO: FIXME: put this one back in the db?
         D = self.outside_diffusivity / extracellular_tortuosity ** 2
         dt          = access("time_step") / 1000 / _ITERATIONS_PER_TIMESTEP
