@@ -8,6 +8,7 @@ import textwrap
 import weakref
 
 class Database:
+    """ An in-memory database for implementing simulations. """
     def __init__(self):
         """ Create a new empty database. """
         self.db_classes = dict()

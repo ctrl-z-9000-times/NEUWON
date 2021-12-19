@@ -1,4 +1,4 @@
-""" A database for neural simulations. """
+""" A framework for implementing simulations. """
 
 from neuwon.database.dtypes import Real, epsilon, Pointer, NULL
 from neuwon.database.database import Database, DB_Object, DB_Class

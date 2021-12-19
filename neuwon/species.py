@@ -12,6 +12,47 @@ F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
+class SpeciesInstance:
+    def __init__(self, db_class,
+            geometry_component=None,
+            concentration=None,
+            diffusivity=None,
+            decay_period=float('inf')):
+        """ Argument geometry_component refers to the ratio of: (length / x-area)??? """
+        self.global_const   = diffusivity is None
+        self.diffusivity    = None if self.global_const else float(diffusivity)
+        self.decay_period   = float(decay_period)
+        if concentration is None:
+            self.concentration = None
+            assert self.diffusivity is None
+        else:
+            self.concentration = float(concentration)
+            assert self.concentration >= 0.0
+            add_attr = db_class.add_class_attribute if self.global_const else db_class.add_attribute
+            add_attr(f"{self.name}_concentration",
+                    self.concentration,
+                    units="millimolar")
+            if not self.global_const:
+                self.delta = db_class.add_attribute(f"{self.name}_delta_concentration",
+                        initial_value=0.0,
+                        units="millimolar / timestep")
+
+        assert self.diffusivity >= 0
+        assert self.decay_period > 0.0
+        if self.global_const: assert self.decay_period == float('inf')
+        1/0
+
+    def _zero_accumulators(self):
+        self.delta.free()
+
+    def _advance(self):
+        """ Update the chemical concentrations with local changes and diffusion. """
+        1/0
+        x    = access("concentrations/"+self.name)
+        rr   = access("delta_concentrations/"+self.name)
+        irm  = access("diffusions/"+self.name)
+        x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+
 class SpeciesType:
     def __init__(self, name, factory,
                 charge = 0,
@@ -142,48 +183,6 @@ def _efun(z):
         return 1 - z / 2
     else:
         return z / (math.exp(z) - 1)
-
-class SpeciesInstance:
-    def __init__(self, db_class,
-            geometry_component=None,
-            concentration=None,
-            diffusivity=None,
-            decay_period=float('inf')):
-        """ Argument geometry_component refers to the ratio of: (length / x-area)??? """
-        self.global_const   = diffusivity is None
-        self.diffusivity    = None if self.global_const else float(diffusivity)
-        self.decay_period   = float(decay_period)
-        if concentration is None:
-            self.concentration = None
-            assert self.diffusivity is None
-        else:
-            self.concentration = float(concentration)
-            assert self.concentration >= 0.0
-            add_attr = db_class.add_class_attribute if self.global_const else db_class.add_attribute
-            add_attr(f"{self.name}_concentration",
-                    self.concentration,
-                    units="millimolar")
-            if not self.global_const:
-                self.delta = db_class.add_attribute(f"{self.name}_delta_concentration",
-                        initial_value=0.0,
-                        units="millimolar / timestep")
-
-        assert self.diffusivity >= 0
-        assert self.decay_period > 0.0
-        if self.global_const: assert self.decay_period == float('inf')
-        1/0
-
-    def _zero_accumulators(self):
-        self.delta.free()
-
-    def _advance(self):
-        """ Update the chemical concentrations with local changes and diffusion. """
-        1/0
-        x    = access("concentrations/"+self.name)
-        rr   = access("delta_concentrations/"+self.name)
-        irm  = access("diffusions/"+self.name)
-        x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
-
 
 class SpeciesFactory(dict):
     def __init__(self, parameters: dict, database, time_step, celsius):

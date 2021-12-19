@@ -34,6 +34,8 @@ def test_OOP_API():
     assert FooFactory.shared_value == 77
     y.shared_value = 55
     assert x.shared_value == 55
+    FooFactory.shared_value = 123
+    assert FooFactory.shared_value == 123
 
     FooClass.add_sparse_matrix("connections", "Foo").to_lil()
     print((x.connections))
