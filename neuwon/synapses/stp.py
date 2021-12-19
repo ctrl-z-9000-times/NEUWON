@@ -11,43 +11,44 @@ class STP:
     """
     __slots__ = ()
     @staticmethod
-    def initialize(synapse_data, *,
+    def initialize(db_class, *,
             minimum_utilization,
             utilization_decay,
             resource_recovery,):
-        synapse_data.add_class_attribute('minimum_utilization',
+        db_class.add_class_attribute('minimum_utilization',
                 initial_value = minimum_utilization,
                 valid_range = (0.0, 1.0),
                 doc = "")
-        synapse_data.add_class_attribute('utilization_decay',
+        db_class.add_class_attribute('utilization_decay',
                 initial_value = utilization_decay,
                 valid_range = (epsilon, math.inf),
                 doc = "")
-        synapse_data.add_class_attribute('resource_recovery',
+        db_class.add_class_attribute('resource_recovery',
                 initial_value = resource_recovery,
                 valid_range = (epsilon, math.inf),
                 doc = "")
-        synapse_data.add_attribute('last_update',
+        db_class.add_attribute('last_update',
                 initial_value = 0.0,
                 valid_range = (0.0, math.inf),
                 doc = "")
-        synapse_data.add_attribute('resources',
+        db_class.add_attribute('resources',
                 initial_value = 1.0,
                 valid_range = (0.0, 1.0),
                 doc = "")
-        synapse_data.add_attribute('utilization',
+        db_class.add_attribute('utilization',
                 initial_value = minimum_utilization,
                 valid_range = (0.0, 1.0),
                 doc = "")
 
-    @Compute
-    def reset_presynapses(self):
-        self.last_update = 0.0
-        self.resources   = 1.0
-        self.utilization = self.minimum_utilization
+    @classmethod
+    def reset_presynapses(cls):
+        db_class = cls.get_database_class()
+        db_class.get_data('last_update').fill(0.0)
+        db_class.get_data('resources'  ).fill(1.0)
+        db_class.get_data('utilization').fill(cls.minimum_utilization)
 
     @Compute
-    def compute_presynapses(self, timestamp) -> Real:
+    def activate_presynapses(self, timestamp) -> Real:
         # Unpack the synapse parameters & data.
         utilization         = self.utilization
         resources           = self.resources
