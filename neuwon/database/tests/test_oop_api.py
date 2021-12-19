@@ -31,6 +31,7 @@ def test_OOP_API():
     assert y.bar == 5
     FooClass.add_class_attribute("shared_value", 77)
     assert x.shared_value == 77
+    assert FooFactory.shared_value == 77
     y.shared_value = 55
     assert x.shared_value == 55
 

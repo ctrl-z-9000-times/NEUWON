@@ -327,8 +327,9 @@ class DB_Class(Documentation):
         def escape(s):
             """ Escape newlines so that doc-strings can be inserted into a single line string. """
             return s.encode("unicode_escape").decode("utf-8")
+        self.ClassAttrMeta = ClassAttrMeta = type('ClassAttrMeta', (type,), {})
         pycode = textwrap.dedent(f"""
-            class {self.name}(*super_classes):
+            class {self.name}(*super_classes, metaclass=ClassAttrMeta):
                 \"\"\"{escape(doc)}\"\"\"
                 _db_class = self
                 __slots__ = {__slots__}

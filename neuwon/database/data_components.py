@@ -9,7 +9,8 @@ import numpy as np
 class DataComponent(Documentation):
     """ Abstract class for all types of data storage. """
     def __init__(self, db_class, name,
-                doc, units, shape, dtype, initial_value, allow_invalid, valid_range):
+                doc, units, shape, dtype, initial_value, allow_invalid, valid_range,
+                class_attribute=False):
         Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
         assert self.name not in db_class.components
@@ -46,6 +47,9 @@ class DataComponent(Documentation):
         self.memory_space = self.db_class.database.memory_space
         setattr(self.db_class.instance_type, self.name,
                 property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
+        if class_attribute:
+            setattr(self.db_class.ClassAttrMeta, self.name,
+                    property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
 
     def _getter_wrapper(self, instance):
         if instance._idx == NULL:
@@ -286,7 +290,8 @@ class ClassAttribute(DataComponent):
         """
         DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
-                allow_invalid=allow_invalid, valid_range=valid_range)
+                allow_invalid=allow_invalid, valid_range=valid_range,
+                class_attribute=True)
         self.data = self.initial_value
         self.memory_space = memory_spaces.host
         if self.reference: raise NotImplementedError
