@@ -1,7 +1,8 @@
 from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
-from scipy.sparse.linalg import expm
-from neuwon.database.time import CallbackHook
+import scipy.sparse
+import scipy.sparse.linalg
+from neuwon.database import Clock
 from neuwon.parameters import Parameters
 import cupy as cp
 import math
@@ -13,45 +14,66 @@ R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
 class SpeciesInstance:
-    def __init__(self, db_class,
-            geometry_component=None,
-            concentration=None,
+    """ A species in a location. """
+    def __init__(self, db_class, name, initial_concentration, *,
             diffusivity=None,
-            decay_period=float('inf')):
-        """ Argument geometry_component refers to the ratio of: (length / x-area)??? """
-        self.global_const   = diffusivity is None
-        self.diffusivity    = None if self.global_const else float(diffusivity)
-        self.decay_period   = float(decay_period)
-        if concentration is None:
-            self.concentration = None
+            geometry_component=None,
+            decay_period=math.inf,
+            constant=False):
+        self.name = name
+        self.initial_concentration = float(initial_concentration)
+        assert self.initial_concentration >= 0.0
+        self.diffusivity = None if diffusivity is None else float(diffusivity)
+        if geometry_component is None:
+            self.geometry = None
             assert self.diffusivity is None
         else:
-            self.concentration = float(concentration)
-            assert self.concentration >= 0.0
-            add_attr = db_class.add_class_attribute if self.global_const else db_class.add_attribute
-            add_attr(f"{self.name}_concentration",
-                    self.concentration,
-                    units="millimolar")
-            if not self.global_const:
-                self.delta = db_class.add_attribute(f"{self.name}_delta_concentration",
-                        initial_value=0.0,
-                        units="millimolar / timestep")
-
-        assert self.diffusivity >= 0
+            self.geometry = db_class.get(geometry_component)
+            assert self.diffusivity >= 0
+            self._matrix_valid = False
+        self.decay_period = float(decay_period)
         assert self.decay_period > 0.0
-        if self.global_const: assert self.decay_period == float('inf')
-        1/0
+        self.constant = bool(constant)
+        if self.constant:
+            assert self.decay_period == math.inf
+            assert self.diffusivity is None
+
+        add_attr = db_class.add_class_attribute if self.constant else db_class.add_attribute
+        self.concentrations = add_attr(f"{self.name}",
+                self.initial_concentration,
+                units="millimolar")
+        if not self.constant:
+            self.deltas = db_class.add_attribute(f"{self.name}_delta",
+                    initial_value=0.0,
+                    units="millimolar / timestep")
 
     def _zero_accumulators(self):
-        self.delta.free()
+        if not self.constant:
+            self.deltas.get_data().fill(0.0)
 
     def _advance(self):
         """ Update the chemical concentrations with local changes and diffusion. """
-        1/0
-        x    = access("concentrations/"+self.name)
-        rr   = access("delta_concentrations/"+self.name)
+        if self.constant: return
+        x    = self.concentrations.get_data()
+        rr   = self.deltas.get_data()
+        x    = cp.maximum(0, x + rr * 0.5)
+        if self.diffusivity is None: return
+        if not self._matrix_valid: self._compute_matrix()
         irm  = access("diffusions/"+self.name)
-        x[:] = irm.dot(cp.maximum(0, x + rr * 0.5))
+        x[:] = irm.dot(x)
+
+    # Who sets _matrix_valid=False?
+
+    def _compute_matrix(self):
+        1/0
+        # Note: always use double precision floating point for building the impulse response matrix.
+        coef = scipy.sparse.csc_matrix(coef, shape=(len(db_cls), len(db_cls)), dtype=np.float64)
+        matrix = scipy.sparse.linalg.expm(coef)
+        # Prune the impulse response matrix.
+        matrix.data[np.abs(matrix.data) < epsilon] = 0.0
+        matrix.eliminate_zeros()
+        db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
+        self._matrix_valid = True
 
 class SpeciesType:
     def __init__(self, name, factory,
@@ -191,7 +213,7 @@ class SpeciesFactory(dict):
         self.time_step  = time_step
         self.celsius    = celsius
         # TODO: Come up with a better name than "input_hook". Maybe "accumulate_conductance_hook"?
-        self.input_hook = CallbackHook()
+        self.input_hook = Clock(time_step)
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
