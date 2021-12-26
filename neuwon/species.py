@@ -15,7 +15,7 @@ zero_c = 273.15 # Temperature, in Kelvins.
 
 class SpeciesInstance:
     """ A species in a location. """
-    def __init__(self, db_class, name, initial_concentration, *,
+    def __init__(self, time_step, db_class, name, initial_concentration, *,
             diffusivity=None,
             geometry_component=None,
             decay_period=math.inf,
@@ -23,7 +23,14 @@ class SpeciesInstance:
         self.name = name
         self.initial_concentration = float(initial_concentration)
         assert self.initial_concentration >= 0.0
-        self.diffusivity = None if diffusivity is None else float(diffusivity)
+        if diffusivity is None:
+            self.diffusivity = None 
+        else:
+            self.diffusivity = float(diffusivity)
+            self.diffusion_matrix = db_class.add_sparse_matrix(
+                    self.name + '_diffusion',
+                    db_class,
+                    doc='Propagator matrix.')
         if geometry_component is None:
             self.geometry = None
             assert self.diffusivity is None
@@ -53,14 +60,19 @@ class SpeciesInstance:
 
     def _advance(self):
         """ Update the chemical concentrations with local changes and diffusion. """
-        if self.constant: return
-        x    = self.concentrations.get_data()
-        rr   = self.deltas.get_data()
-        x    = cp.maximum(0, x + rr * 0.5)
-        if self.diffusivity is None: return
-        if not self._matrix_valid: self._compute_matrix()
-        irm  = access("diffusions/"+self.name)
-        x[:] = irm.dot(x)
+        if self.constant:
+            return
+        c  = self.concentrations.get_data()
+        rr = self.deltas.get_data()
+        xp = self.concentrations.get_database().get_memory_space().get_array_module()
+        xp.maximum(0, c + rr * 0.5, out=c)
+        if self.diffusivity is None:
+            return
+        if not self._matrix_valid:
+            self._compute_matrix()
+        m = self.diffusion_matrix.get_data()
+        c = m.dot(c)
+        self.concentrations.set_data(c)
 
     # Who sets _matrix_valid=False?
 
@@ -81,6 +93,8 @@ class SpeciesType:
                 reversal_potential: '(None|float|"nerst"|"goldman_hodgkin_katz")' = None,
                 initial_concentration = None,
                 diffusivity = None,
+                inside = None,
+                outside = None,
                 ):
         self.name       = str(name)
         self.factory    = factory
@@ -115,13 +129,15 @@ class SpeciesType:
 
         self.inside = None
         self.outside = None
-        if 'inside' in parameters:
-            1/0
-            self.use_shells         = bool(use_shells)
-            self.inside_archetype   = "Inside" if self.use_shells else "Segment"
-            self.inside = SpeciesInstance(**parameters['inside'])
-        if 'outside' in parameters:
-            1/0
+        if inside is not None:
+            inside = Parameters(inside)
+            db_class = self.factory.database.get_class("Segment")
+            geometry_component = 1/0
+            self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+                    geometry_component=None,
+                    **inside)
+
+        if outside is not None:
             self.outside_grid       = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
             self.outside = SpeciesInstance(**parameters['outside'])
 
