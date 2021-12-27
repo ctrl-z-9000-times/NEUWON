@@ -1,11 +1,11 @@
 from neuwon.database import Database
-from neuwon.neuron.neuron import Neuron as NeuronSuperclass
+from neuwon.rxd.neurons.neurons import Neuron as NeuronSuperclass
 import pytest
 
 def test_sections():
     dt = .1
     db = Database()
-    Neuron = NeuronSuperclass._initialize(db,
+    Neuron, Segment = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 1e6,
             membrane_capacitance = 1e-14,)

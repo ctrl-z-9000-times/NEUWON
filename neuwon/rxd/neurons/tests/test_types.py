@@ -1,10 +1,10 @@
 from neuwon.database import Database
-from neuwon.neuron.neuron import Neuron as NeuronSuperclass
+from neuwon.rxd.neurons.neurons import Neuron as NeuronSuperclass
 import pytest
 
 def test_neuron_type():
     db = Database()
-    Neuron = NeuronSuperclass._initialize(db)
+    Neuron, Segment = NeuronSuperclass._initialize(db)
     # Type system must be oiptional: no types given.
     n1 = Neuron([0,0,0], 10)
     assert n1.neuron_type == None
@@ -22,12 +22,11 @@ def test_neuron_type():
 
 def test_segment_type():
     db = Database()
-    Neuron = NeuronSuperclass._initialize(db)
+    Neuron, Segment = NeuronSuperclass._initialize(db)
     # Type system must be optional: no types given.
-    s1 = Neuron([0,0,0], 10).root
+    s1  = Neuron([0,0,0], 10).root
     s10 = s1.add_segment([2,3,4], 1)
     s11 = s1.add_section([2,3,4], 1)
-    Segment = type(s1)
     s12 = Segment(s1, [2,3,4], 1)
     assert s1.segment_type == None
     assert s10.segment_type == None

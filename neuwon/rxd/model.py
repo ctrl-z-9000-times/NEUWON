@@ -2,14 +2,10 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
 from neuwon.parameters import Parameters
-from neuwon.neuron.neuron import Neuron
-from neuwon.outside.outside import Outside
-from neuwon.mechanisms import MechanismsFactory
-from neuwon.species import SpeciesFactory
-from neuwon.regions import RegionsFactory
-# from neuwon.synapses import SynapsesFactory
-import cupy as cp
-import numpy as np
+from neuwon.rxd.neuron.neuron import Neuron
+from neuwon.rxd.outside.outside import Outside
+from neuwon.rxd.mechanisms import MechanismsFactory
+from neuwon.rxd.species import SpeciesFactory
 
 default_parameters = Parameters({
     'time_step': 0.1,
@@ -24,22 +20,19 @@ default_parameters = Parameters({
 })
 
 class Model:
-    def __init__(self, parameters={}, *,
-                regions={}, species={}, mechanisms={}):
+    def __init__(self, parameters={}, species={}, mechanisms={},):
         self.parameters = Parameters(parameters)
         self.parameters.update_with_defaults(default_parameters)
         self.database   = db = Database()
         self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()
         self.celsius    = float(self.parameters['celsius'])
-        self.Neuron     = Neuron._initialize(db,
+        self.Neuron, self.Segment = Neuron._initialize(db,
                 initial_voltage         = self.parameters['initial_voltage'],
                 cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
                 membrane_capacitance    = self.parameters['membrane_capacitance'],)
-        self.Outside    = Outside._initialize(db)
-        self.Segment    = self.Neuron._Segment
         self.Segment._model = self # todo: replace with the species input clock.
-        self.regions = RegionsFactory(regions)
+        # self.Outside = Outside._initialize(db)
         self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
         self.mechanisms = MechanismsFactory(mechanisms, db,
@@ -56,6 +49,9 @@ class Model:
 
     def get_Neuron(self):
         return self.Neuron
+
+    def get_Segment(self):
+        return self.Segment
 
     def get_Outside(self):
         return self.Outside
@@ -108,7 +104,7 @@ class Model:
         # 
         driving_voltage /= sum_conductance
         # If conductance is zero then the driving_voltage is also zero.
-        xp = cp.get_array_module(driving_voltage)
+        xp = self.database.get_array_module()
         driving_voltage[:] = xp.nan_to_num(driving_voltage)
 
     def _advance_mechanisms(self):

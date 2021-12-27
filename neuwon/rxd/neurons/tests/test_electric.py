@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.neuron.neuron import Neuron as NeuronSuperclass
+from neuwon.rxd.neurons.neurons import Neuron as NeuronSuperclass
 import bisect
 import numpy as np
 import pytest
@@ -7,11 +7,10 @@ import pytest
 def test_advance_smoke_test():
     dt = .1
     db = Database()
-    Neuron = NeuronSuperclass._initialize(db,
+    Neuron, Segment = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
-    Segment = db.get_class('Segment').get_instance_type()
     Segment._advance_electric(dt)
     Neuron([0,0,0], 13)
     Segment._advance_electric(dt)
@@ -27,11 +26,10 @@ def test_advance_smoke_test():
 
 def test_time_constant():
     db = Database()
-    Neuron = NeuronSuperclass._initialize(db,
+    Neuron, Segment = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
-    Segment = db.get_class('Segment').get_instance_type()
     root = Neuron([0,0,0], 20).root
     root.voltage = 0
     root.driving_voltage = 1
@@ -47,11 +45,10 @@ def test_time_constant():
 
 def measure_length_constant(diam, rm, max_len, dt, ptol, plot):
     db = Database()
-    Neuron = NeuronSuperclass._initialize(db,
+    Neuron, Segment = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 100,
             membrane_capacitance = 1,)
-    Segment = db.get_class('Segment').get_instance_type()
     root = Neuron([0,0,0], diam).root
     section = [root]
     section.extend(root.add_section([3000, 0, 0], diam, max_len))
