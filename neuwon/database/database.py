@@ -89,10 +89,10 @@ class Database:
         return tuple(itertools.chain.from_iterable(
                 x.components.values() for x in self.db_classes.values()))
 
-    def add_clock(self, tick_period:float, units:str="") -> 'neuwon.database.time.Clock':
+    def add_clock(self, tick_period:float, units:str="") -> 'neuwon.database.Clock':
         """ Set the default clock for this database. """
         from neuwon.database.time import Clock
-        assert self.clock is None, "Database already has a Clock!"
+        assert self.clock is None, "Database already has a default Clock!"
         if isinstance(tick_period, Clock):
             self.clock = tick_period
             assert not units, 'Unexpected argument.'
@@ -100,13 +100,20 @@ class Database:
             self.clock = Clock(tick_period, units=units)
         return self.clock
 
-    def get_clock(self) -> 'neuwon.database.time.Clock':
+    def get_clock(self) -> 'neuwon.database.Clock':
         """ Get the default clock for this database. """
         return self.clock
 
     def get_memory_space(self):
         """ Returns the memory space that is currently in use. """
         return self.memory_space
+
+    def get_array_module(self):
+        """
+        Returns either the "numpy" module or the "cupy" module,
+        depending on which memory space is currently in use.
+        """
+        return self.memory_space.get_array_module()
 
     def using_memory_space(self, memory_space:str):
         """

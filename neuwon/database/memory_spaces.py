@@ -23,8 +23,8 @@ class MemorySpace(enum.Enum):
     def get_array_module(self): return self.array_module
     def get_matrix_module(self):return self.matrix_module
 
-for x in MemorySpace:
-    globals()[x.name] = x
+host = MemorySpace.host
+cuda = MemorySpace.cuda
 
 class ContextManager:
     def __init__(self, database, memory_space):
