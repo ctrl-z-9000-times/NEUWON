@@ -1,11 +1,11 @@
-from neuwon.model import Model
-from neuwon.nmodl import NMODL
+from neuwon.rxd.rxd_model import RxD_Model
+from neuwon.rxd.nmodl import NMODL
 from neuwon.database.time import TimeSeries
 import numpy as np
 import pytest
 
 def test_smoke_test():
-    m = Model()
+    m = RxD_Model()
     m.advance()
     m.Neuron([0,0,0], 13)
     m.advance()
@@ -13,7 +13,7 @@ def test_smoke_test():
 def test_model_hh(debug=False):
     dt = .01
     dt *= 4.56789 # Run faster with larger `dt`.
-    m = Model({'time_step': dt, 'celsius': 6.3},
+    m = RxD_Model({'time_step': dt, 'celsius': 6.3},
             species = {
                 'na': {'reversal_potential': 40},
                 'k':  {'reversal_potential': -80},

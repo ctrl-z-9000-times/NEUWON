@@ -19,7 +19,7 @@ default_parameters = Parameters({
     'initial_voltage': -70,
 })
 
-class Model:
+class RxD_Model:
     def __init__(self, parameters={}, species={}, mechanisms={},):
         self.parameters = Parameters(parameters)
         self.parameters.update_with_defaults(default_parameters)
