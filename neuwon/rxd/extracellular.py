@@ -7,13 +7,12 @@ class Extracellular:
     @staticmethod
     def _initialize(database,
                 tortuosity = 1.55,
-                fh_space = 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
-                volume_fraction = .20,
-                max_outside_radius = 20e-6,
+                maximum_diffusion_distance = 20e-6,
                 ):
         ec_data = database.add_class(Extracellular)
         ec_data.add_attribute('coordinates', shape=(3,), units='μm')
         ec_data.add_attribute('volumes', units='μm³')
+        ec_data.add_class_attribute('tortuosity', tortuosity)
 
         ec_data.add_sparse_matrix('neighbor_distances', Extracellular)
         ec_data.add_sparse_matrix('neighbor_border_areas', Extracellular)
@@ -93,3 +92,7 @@ class Extracellular:
                 coef[write_idx] = -dt * flux * recip_vol[location] + decay
                 write_idx += 1
         return (coef, (dst, src))
+
+    @classmethod
+    def fill_region(cls, maximum_distance, region):
+        raise NotImplementedError

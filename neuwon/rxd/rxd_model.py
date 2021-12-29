@@ -10,10 +10,8 @@ from neuwon.rxd.species import SpeciesFactory
 default_parameters = Parameters({
     'time_step': 0.1,
     'celsius': 37,
-    'fh_space': 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
-    'max_outside_radius':20e-6,
-    'outside_volume_fraction':.20,
-    'outside_tortuosity':1.55,
+    'tortuosity': 1.55,
+    'maximum_neighbor_distance': 20e-6,
     'cytoplasmic_resistance': 100,
     'membrane_capacitance': 1, # uf/cm^2
     'initial_voltage': -70,
