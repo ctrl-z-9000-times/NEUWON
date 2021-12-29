@@ -2,8 +2,8 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
 from neuwon.parameters import Parameters
-from neuwon.rxd.neuron.neuron import Neuron
-from neuwon.rxd.outside.outside import Outside
+from neuwon.rxd.neurons import Neuron
+from neuwon.rxd.extracellular import Extracellular
 from neuwon.rxd.mechanisms import MechanismsFactory
 from neuwon.rxd.species import SpeciesFactory
 

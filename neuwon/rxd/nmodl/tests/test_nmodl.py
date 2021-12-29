@@ -1,10 +1,10 @@
-from neuwon.model import Model
+from neuwon.rxd.rxd_model import RxD_Model
 from neuwon.database import Database
-from neuwon.nmodl import NMODL
+from neuwon.rxd.nmodl import NMODL
 import pytest
 
 def test_hh_smoke_test():
-    m = Model({'time_step': .1,},
+    m = RxD_Model({'time_step': .1,},
         mechanisms={
             'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)},
         species={

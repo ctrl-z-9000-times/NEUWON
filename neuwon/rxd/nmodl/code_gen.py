@@ -1,8 +1,6 @@
-""" Private module. """
-__all__ = []
-
 import math
-from neuwon.nmodl.parser import CodeBlock, IfStatement, AssignStatement, SolveStatement, ConserveStatement
+from neuwon.rxd.nmodl.parser import (CodeBlock,
+        IfStatement, AssignStatement, SolveStatement, ConserveStatement)
 
 import sympy.printing.pycode as sympy_to_pycode
 

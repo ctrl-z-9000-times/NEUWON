@@ -19,7 +19,7 @@ class Segment(Tree, Geometry, Electric):
                 doc="Read-only attribute.")
         segment_cls = segment_data.get_instance_type()
         segment_cls._segment_types_list = []
-        return db_cls
+        return segment_cls
 
     def __init__(self, parent, coordinates, diameter, segment_type=None):
         self.segment_type = segment_type

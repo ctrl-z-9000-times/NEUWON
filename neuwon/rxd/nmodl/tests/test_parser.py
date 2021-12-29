@@ -1,4 +1,4 @@
-from neuwon.nmodl.parser import ANT, NmodlParser
+from neuwon.rxd.nmodl.parser import ANT, NmodlParser
 
 def verify_file_parses(filename, check_for_v=True):
     x = NmodlParser(filename)

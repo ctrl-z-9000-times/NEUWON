@@ -1,4 +1,4 @@
-from neuwon.nmodl import cache
+from neuwon.rxd.nmodl import cache
 import tempfile
 
 class TestMechanism:

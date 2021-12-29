@@ -88,7 +88,7 @@ class SpeciesInstance:
         self._matrix_valid = True
 
 class SpeciesType:
-    def __init__(self, name, factory,
+    def __init__(self, name, factory, *,
                 charge = 0,
                 reversal_potential: '(None|float|"nerst"|"goldman_hodgkin_katz")' = None,
                 initial_concentration = None,
@@ -233,15 +233,16 @@ class SpeciesFactory(dict):
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
-        for name, species in Parameters(parameters).items():
-            self.add_species(name, species)
+        for name, species_kwargs in Parameters(parameters).items():
+            self.add_species(name, species_kwargs)
 
-    def add_species(self, name, species) -> SpeciesType:
+    def add_species(self, name, species_kwargs) -> SpeciesType:
         if name in self:
             return self[name]
-        if not isinstance(species, SpeciesType):
-            species = SpeciesType(name, species, self)
-        self[species.name] = species
+        if isinstance(species_kwargs, SpeciesType):
+            self[name] = species = species_kwargs
+        else:
+            self[name] = species = SpeciesType(name, self, **species_kwargs)
         return species
 
     def _zero_accumulators(self):

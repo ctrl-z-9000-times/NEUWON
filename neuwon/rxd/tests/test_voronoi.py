@@ -4,7 +4,7 @@ import time
 import random
 from neuwon.database import Real, epsilon, Pointer, NULL
 
-from neuwon.outside.voronoi import *
+from neuwon.rxd.voronoi import *
 
 um  = 1e-6    # Length in micrometers.
 um2 = um ** 2 # Surface Area in square micrometers.

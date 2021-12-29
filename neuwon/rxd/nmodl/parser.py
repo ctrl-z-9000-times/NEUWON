@@ -1,6 +1,3 @@
-""" Private module. """
-__all__ = []
-
 import itertools
 import nmodl
 import nmodl.ast

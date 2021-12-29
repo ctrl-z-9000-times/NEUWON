@@ -1,6 +1,3 @@
-""" Private module. """
-__all__ = []
-
 from os.path import abspath, join, exists, getmtime
 from sys import stderr
 from zlib import crc32

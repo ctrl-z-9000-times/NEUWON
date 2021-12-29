@@ -1,8 +1,12 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Compute
-from neuwon.mechanisms import Mechanism
-from neuwon.nmodl import code_gen, cache, solver
-from neuwon.nmodl.parser import NmodlParser, ANT, SolveStatement, AssignStatement, IfStatement, ConserveStatement
+from neuwon.rxd.mechanisms import Mechanism
+from neuwon.rxd.nmodl import code_gen, cache, solver
+from neuwon.rxd.nmodl.parser import (NmodlParser, ANT,
+        SolveStatement,
+        AssignStatement,
+        IfStatement,
+        ConserveStatement)
 import math
 import numpy as np
 import os.path

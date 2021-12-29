@@ -1,7 +1,7 @@
 from neuwon.database import Database
 from neuwon.parameters import Parameters
-from neuwon.neuron.neuron import Neuron as NeuronSuperclass
-from neuwon.species import SpeciesInstance, SpeciesFactory
+from neuwon.rxd.neurons import Neuron as NeuronSuperclass
+from neuwon.rxd.species import SpeciesInstance, SpeciesFactory
 import pytest
 import math
 

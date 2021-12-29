@@ -37,7 +37,7 @@ class MechanismsFactory(dict):
         assert name not in self
         if isinstance(mechanism, str):
             if mechanism.endswith(".mod"):
-                mechanism = neuwon.nmodl.NMODL(mechanism)
+                mechanism = neuwon.rxd.nmodl.NMODL(mechanism)
             else:
                 raise ValueError("File extension not understood")
         if hasattr(mechanism, "initialize"):
@@ -52,4 +52,4 @@ class MechanismsFactory(dict):
             1/0 # Register the computation with the model here.
         return mechanism
 
-import neuwon.nmodl
+import neuwon.rxd.nmodl

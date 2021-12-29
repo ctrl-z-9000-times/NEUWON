@@ -1,7 +1,4 @@
-""" Private module. """
-__all__ = []
-
-from neuwon.nmodl.parser import AssignStatement
+from neuwon.rxd.nmodl.parser import AssignStatement
 import sympy
 
 dt = sympy.Symbol("time_step", real=True, positive=True)
