@@ -5,7 +5,7 @@ import pytest
 def test_sections():
     dt = .1
     db = Database()
-    Neuron, Segment = NeuronSuperclass._initialize(db,
+    Neuron = NeuronSuperclass._initialize(db,
             initial_voltage = -70,
             cytoplasmic_resistance = 1e6,
             membrane_capacitance = 1e-14,)

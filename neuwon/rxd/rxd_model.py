@@ -31,7 +31,7 @@ class RxD_Model:
                 membrane_capacitance    = self.parameters['membrane_capacitance'],)
         self.Segment = db.get_class('Segment').get_instance_type()
         self.Segment._model = self # todo: replace with the species input clock.
-        # self.Outside = Outside._initialize(db)
+        # self.Extracellular = Extracellular._initialize(db)
         self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
         self.mechanisms = MechanismsFactory(mechanisms, db,
@@ -52,8 +52,8 @@ class RxD_Model:
     def get_Segment(self):
         return self.Segment
 
-    def get_Outside(self):
-        return self.Outside
+    def get_Extracellular(self):
+        return self.Extracellular
 
     def check(self):
         self.database.check()

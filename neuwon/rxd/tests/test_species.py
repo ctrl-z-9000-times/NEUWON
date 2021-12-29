@@ -25,11 +25,12 @@ def test_instances():
     help(Loc)
 
     l1.ca += 1
-    l1.x = []        # TODO: Connect these three in a line, the exact values do NOT matter.
-    l2.x = []        # TODO: Connect these three in a line, the exact values do NOT matter.
-    l3.x = []        # TODO: Connect these three in a line, the exact values do NOT matter.
+    # Connect these three in a line, the exact values don't matter.
+    l1.x = ([l2],       [.1])
+    l2.x = ([l1,l3],    [.2, .05])
+    l3.x = ([l2],       [.04])
 
-    l3.na_release_rate += 1
+    l3.na_delta += 1
 
     assert l2.const == 1.11
     assert l2.na == 3

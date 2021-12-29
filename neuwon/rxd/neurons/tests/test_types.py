@@ -4,7 +4,7 @@ import pytest
 
 def test_neuron_type():
     db = Database()
-    Neuron, Segment = NeuronSuperclass._initialize(db)
+    Neuron = NeuronSuperclass._initialize(db)
     # Type system must be oiptional: no types given.
     n1 = Neuron([0,0,0], 10)
     assert n1.neuron_type == None
@@ -22,7 +22,8 @@ def test_neuron_type():
 
 def test_segment_type():
     db = Database()
-    Neuron, Segment = NeuronSuperclass._initialize(db)
+    Neuron = NeuronSuperclass._initialize(db)
+    Segment = db.get_class('Segment').get_instance_type()
     # Type system must be optional: no types given.
     s1  = Neuron([0,0,0], 10).root
     s10 = s1.add_segment([2,3,4], 1)
