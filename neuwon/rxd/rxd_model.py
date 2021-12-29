@@ -25,10 +25,11 @@ class RxD_Model:
         self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()
         self.celsius    = float(self.parameters['celsius'])
-        self.Neuron, self.Segment = Neuron._initialize(db,
+        self.Neuron = Neuron._initialize(db,
                 initial_voltage         = self.parameters['initial_voltage'],
                 cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
                 membrane_capacitance    = self.parameters['membrane_capacitance'],)
+        self.Segment = db.get_class('Segment').get_instance_type()
         self.Segment._model = self # todo: replace with the species input clock.
         # self.Outside = Outside._initialize(db)
         self.species = SpeciesFactory(species, db,

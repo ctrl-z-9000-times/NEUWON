@@ -144,6 +144,9 @@ class SpeciesType:
     def get_name(self) -> str:
         return self.name
 
+    def __repr__(self):
+        return f'<Species: {self.name}>'
+
     def _zero_accumulators(self):
         if self.electric:
             self.conductance.free()

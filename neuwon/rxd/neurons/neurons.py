@@ -7,6 +7,7 @@ class Neuron:
     __slots__ = ()
     @staticmethod
     def _initialize(database, **electric_arguments):
+        """ This also initializes the Segment class. """
         neuron_data  = database.add_class(Neuron)
         segment_data = database.add_class(Segment)
         neuron_cls   = neuron_data .get_instance_type()
@@ -21,7 +22,7 @@ class Neuron:
         neuron_cls. _neuron_types_list  = []
         neuron_data .add_attribute('neuron_type_id',  NULL, dtype=Pointer,
                 doc="Read-only attribute.")
-        return (neuron_cls, segment_cls) # Return the entry points to the public API.
+        return neuron_cls # Return the entry point to the public API.
 
     @staticmethod
     def _initialize_AP_detector(neuron_data):
