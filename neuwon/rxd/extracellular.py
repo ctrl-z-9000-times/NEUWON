@@ -1,42 +1,49 @@
-import neuwon.outside.voronoi
+import neuwon.rxd.voronoi
 import numpy as np
 
-class Outside:
-    """ Extracellular space using a voronoi diagram. """
+class Extracellular:
+    """ Extracellular Space with a voronoi diagram. """
     __slots__ = ()
     @staticmethod
-    def _initialize(database):
-        outside_data = database.add_class(Outside)
-        outside_data.add_attribute('coordinates', shape=(3,), units='μm')
-        outside_data.add_attribute('volumes', units='μm³')
+    def _initialize(database,
+                tortuosity = 1.55,
+                fh_space = 300e-10, # Frankenhaeuser Hodgkin Space, in Angstroms
+                volume_fraction = .20,
+                max_outside_radius = 20e-6,
+                ):
+        ec_data = database.add_class(Extracellular)
+        ec_data.add_attribute('coordinates', shape=(3,), units='μm')
+        ec_data.add_attribute('volumes', units='μm³')
 
-        outside_data.add_sparse_matrix('neighbor_distances', Outside)
-        outside_data.add_sparse_matrix('neighbor_border_areas', Outside)
-        outside_data.add_sparse_matrix('neighbor_area_over_dist', Outside)
+        ec_data.add_sparse_matrix('neighbor_distances', Extracellular)
+        ec_data.add_sparse_matrix('neighbor_border_areas', Extracellular)
+        ec_data.add_sparse_matrix('xarea_over_distance', Extracellular)
 
-        # outside_data.add_kd_tree("tree", "coordinates")
+        ec_cls = ec_data.get_instance_type()
+        ec_cls._dirty = []
+        ec_cls.kd_tree = None
 
         segment_data = database.get_class('Segment')
-        segment_data.add_attribute('outside', dtype=Outside, allow_invalid=True)
+        segment_data.add_attribute('outside', dtype=Extracellular, allow_invalid=True)
 
-        return outside_data.get_instance_type()
+        return ec_cls
 
-    @classmethod
-    def _initialize_outside(cls, locations):
-        1/0
-        self._initialize_outside_inner(locations)
+    def __init__(self, coordinates, volume):
+        self.coordinates = coordinates
+        self.volume      = volume
+        type(self)._dirty.append(self)
+
+    def _clean(self):
+        self._compute_voronoi_cells(self._dirty)
         touched = set()
-        for neighbors in self.db.access("outside/neighbor_distances")[locations]:
+        for neighbors in self.db.access("outside/neighbor_distances")[self._dirty]:
             touched.update(neighbors.indices)
-        touched.difference_update(set(locations))
-        self._initialize_outside_inner(list(touched))
-
-        outside_volumes = access("outside/volumes")
-        fh_space = self.fh_space * s_areas[membrane_idx] * 1000
-        outside_volumes[access("membrane/outside")[membrane_idx]] = fh_space
+        touched.difference_update(set(self._dirty))
+        self._compute_voronoi_cells(list(touched))
+        self._dirty.clear()
 
     @classmethod
-    def _initialize_outside_inner(cls, locations):
+    def _compute_voronoi_cells(cls, locations):
         1/0
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
         coordinates     = self.db.access("outside/coordinates").get()
