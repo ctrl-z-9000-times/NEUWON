@@ -9,8 +9,9 @@ import random
 
 is_sorted = lambda data: all(a <= b for a,b in zip(data, data[1:]))
 
-def test_sort():
-    db = Database()
+def test_sort(db=None):
+    if db is None:
+        db = Database()
     Foo_data = db.add_class("Foo", sort_key='bar')
     bar_data = Foo_data.add_attribute("bar", 42)
     Foo = Foo_data.get_instance_type()
@@ -43,3 +44,10 @@ def test_sort():
     db.sort()
     assert is_sorted(bar_data.get_data())
     assert ans.get_unstable_index() == (10-1+10-3)
+
+@pytest.mark.skip()
+def test_gpu():
+    db = Database()
+    with db.using_memory_space('cuda'):
+        test_sort(db)
+
