@@ -1,5 +1,4 @@
 from neuwon.database import Database
-from neuwon.parameters import Parameters
 from neuwon.rxd.neurons import Neuron as NeuronSuperclass
 from neuwon.rxd.species import SpeciesInstance, SpeciesFactory
 import pytest
@@ -55,7 +54,7 @@ def test_instances():
     assert l3.ca > 2
 
 
-test_parameters = Parameters({
+test_parameters = {
     'const_e': {
         'reversal_potential': -60,
     },
@@ -63,7 +62,7 @@ test_parameters = Parameters({
     #           Constant species values,
     #           Diffusive species values,
     #           Nerst, GHK
-})
+}
 
 def test_species_containers():
     db = Database()

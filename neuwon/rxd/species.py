@@ -147,7 +147,7 @@ class SpeciesType:
 
     def _zero_accumulators(self):
         if self.electric:
-            self.conductance.free()
+            self.conductance.get_data().fill(0.0)
         for instance in (self.inside, self.outside):
             if instance is not None:
                 instance._zero_accumulators()
@@ -214,7 +214,7 @@ def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration
     outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
     z = (charge * F / (R * T)) * voltages
     return ((1e3 * charge * F) *
-            (inside_concentration * Species._efun(-z) - outside_concentration * Species._efun(z)))
+            (inside_concentration * _efun(-z) - outside_concentration * _efun(z)))
 
 @cp.fuse()
 def _efun(z):

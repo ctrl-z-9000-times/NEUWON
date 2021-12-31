@@ -4,6 +4,5 @@ matplotlib
 NMODL
 numba
 numpy
-Pillow
 scipy
 sympy

@@ -25,7 +25,9 @@ def test_hh_smoke_test():
 
     my_seg = m.Neuron([0,0,0], 12).root
     my_hh  = hh(my_seg, scale=.2)
+    assert my_seg.l_conductance == 0
     hh.advance()
+    assert my_seg.l_conductance > 0
     hh(m.Neuron([40,0,0], 12).root, scale=.2)
     for _ in range(40):
         hh.advance()

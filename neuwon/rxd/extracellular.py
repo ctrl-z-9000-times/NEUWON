@@ -39,7 +39,7 @@ class Extracellular:
             touched.update(neighbors.indices)
         touched.difference_update(set(self._dirty))
         self._compute_voronoi_cells(list(touched))
-        self._dirty.clear()
+        type(self)._dirty = []
 
     @classmethod
     def _compute_voronoi_cells(cls, locations):
@@ -94,5 +94,5 @@ class Extracellular:
         return (coef, (dst, src))
 
     @classmethod
-    def fill_region(cls, maximum_distance, region):
+    def fill_region(cls, maximum_distance, region) -> list:
         raise NotImplementedError
