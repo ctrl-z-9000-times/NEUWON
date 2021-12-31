@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from scipy.spatial.transform import Rotation
+from .rotate_align import rotate_align
 
 class Primative:
     def get_vertices(self):
@@ -50,7 +50,7 @@ class Cylinder(Primative):
         length = np.linalg.norm(vector)
         vector /= length
         ref_vector = np.array([0.0, 0.0, 1.0])
-        rot_matrix = Rotation.align_vectors(ref_vector.reshape((-1,3)), vector.reshape((-1,3)))[0].as_matrix()
+        rot_matrix = rotate_align(vector, ref_vector)
         for s in range(num_slices + 1):
             f = 2 * math.pi * (s / num_slices)
             y = math.sin(f)

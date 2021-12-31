@@ -1,12 +1,12 @@
 """ Hodgkin-Huxley Demonstration. """
 
-from neuwon.model import Model
+from neuwon.rxd.rxd_model import RxD_Model
 
 min_v = -88.
 max_v = +60.
 
 def make_model_with_hh(time_step):
-    return Model({
+    return RxD_Model({
             'time_step': time_step,
             'celsius': 6.3,
         },
