@@ -1,13 +1,12 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Database, epsilon
 from neuwon.database.time import Clock
-from neuwon.parameters import Parameters
 from neuwon.rxd.neurons import Neuron
 from neuwon.rxd.extracellular import Extracellular
 from neuwon.rxd.mechanisms import MechanismsFactory
 from neuwon.rxd.species import SpeciesFactory
 
-default_parameters = Parameters({
+default_parameters = {
     'time_step': 0.1,
     'celsius': 37,
     'tortuosity': 1.55,
@@ -15,12 +14,12 @@ default_parameters = Parameters({
     'cytoplasmic_resistance': 100,
     'membrane_capacitance': 1, # uf/cm^2
     'initial_voltage': -70,
-})
+}
 
 class RxD_Model:
     def __init__(self, parameters={}, species={}, mechanisms={},):
-        self.parameters = Parameters(parameters)
-        self.parameters.update_with_defaults(default_parameters)
+        self.parameters = dict(default_parameters)
+        self.parameters.update(parameters)
         self.database   = db = Database()
         self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
         self.time_step  = self.clock.get_tick_period()

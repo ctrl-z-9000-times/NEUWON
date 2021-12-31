@@ -3,7 +3,6 @@ from scipy.sparse import csr_matrix, csc_matrix
 import scipy.sparse
 import scipy.sparse.linalg
 from neuwon.database import Clock
-from neuwon.parameters import Parameters
 import cupy as cp
 import math
 import numba.cuda
@@ -130,7 +129,6 @@ class SpeciesType:
         self.inside = None
         self.outside = None
         if inside is not None:
-            inside = Parameters(inside)
             db_class = self.factory.database.get_class("Segment")
             geometry_component = 1/0
             self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
@@ -236,7 +234,7 @@ class SpeciesFactory(dict):
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
-        for name, species_kwargs in Parameters(parameters).items():
+        for name, species_kwargs in parameters.items():
             self.add_species(name, species_kwargs)
 
     def add_species(self, name, species_kwargs) -> SpeciesType:
