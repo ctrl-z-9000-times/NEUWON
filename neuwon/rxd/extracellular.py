@@ -7,7 +7,7 @@ class Extracellular:
     @staticmethod
     def _initialize(database,
                 tortuosity = 1.55,
-                maximum_diffusion_distance = 20e-6,
+                maximum_distance = 20e-6,
                 ):
         ec_data = database.add_class(Extracellular)
         ec_data.add_attribute('coordinates', shape=(3,), units='μm')

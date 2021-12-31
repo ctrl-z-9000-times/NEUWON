@@ -6,31 +6,30 @@ from neuwon.rxd.extracellular import Extracellular
 from neuwon.rxd.mechanisms import MechanismsFactory
 from neuwon.rxd.species import SpeciesFactory
 
-default_parameters = {
-    'time_step': 0.1,
-    'celsius': 37,
-    'tortuosity': 1.55,
-    'maximum_neighbor_distance': 20e-6,
-    'cytoplasmic_resistance': 100,
-    'membrane_capacitance': 1, # uf/cm^2
-    'initial_voltage': -70,
-}
-
 class RxD_Model:
-    def __init__(self, parameters={}, species={}, mechanisms={},):
-        self.parameters = dict(default_parameters)
-        self.parameters.update(parameters)
+    def __init__(self, *,
+                time_step = 0.1,
+                celsius = 37,
+                initial_voltage = -70,
+                cytoplasmic_resistance = 100,
+                membrane_capacitance = 1, # uf/cm^2
+                extracellular_tortuosity = 1.55,
+                extracellular_max_distance = 20e-6,
+                species={},
+                mechanisms={},):
         self.database   = db = Database()
-        self.clock      = db.add_clock(self.parameters['time_step'], units='ms')
+        self.clock      = db.add_clock(time_step, units='ms')
         self.time_step  = self.clock.get_tick_period()
-        self.celsius    = float(self.parameters['celsius'])
+        self.celsius    = float(celsius)
         self.Neuron = Neuron._initialize(db,
-                initial_voltage         = self.parameters['initial_voltage'],
-                cytoplasmic_resistance  = self.parameters['cytoplasmic_resistance'],
-                membrane_capacitance    = self.parameters['membrane_capacitance'],)
+                initial_voltage         = initial_voltage,
+                cytoplasmic_resistance  = cytoplasmic_resistance,
+                membrane_capacitance    = membrane_capacitance,)
         self.Segment = db.get_class('Segment').get_instance_type()
         self.Segment._model = self # todo: replace with the species input clock.
-        # self.Extracellular = Extracellular._initialize(db)
+        self.Extracellular = Extracellular._initialize(db,
+                tortuosity       = extracellular_tortuosity,
+                maximum_distance = extracellular_max_distance,)
         self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
         self.mechanisms = MechanismsFactory(mechanisms, db,
@@ -42,17 +41,14 @@ class RxD_Model:
     def __repr__(self):
         return repr(self.database)
 
-    def get_database(self):
-        return self.database
-
-    def get_Neuron(self):
-        return self.Neuron
-
-    def get_Segment(self):
-        return self.Segment
-
-    def get_Extracellular(self):
-        return self.Extracellular
+    def get_celsius(self) -> float:     return self.celsius
+    def get_clock(self):                return self.clock
+    def get_database(self):             return self.database
+    def get_Extracellular(self):        return self.Extracellular
+    def get_mechanisms(self) -> dict:   return dict(self.mechanisms)
+    def get_Neuron(self):               return self.Neuron
+    def get_species(self) -> dict:      return dict(self.species)
+    def get_time_step(self) -> float:   return self.time_step
 
     def check(self):
         self.database.check()
