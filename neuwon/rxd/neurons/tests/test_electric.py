@@ -144,6 +144,7 @@ def test_inject_current():
     delta_Q = 1e-9 * 2e-3
     while m.clock() < 6:
         m.advance()
+        print(root.voltage)
     m.check()
     new_Q = 1e-3 * root.voltage * root.capacitance
     assert init_Q + delta_Q == pytest.approx(new_Q)

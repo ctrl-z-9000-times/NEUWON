@@ -32,6 +32,7 @@ def test_hh_smoke_test():
     for _ in range(40):
         hh.advance()
     m.database.check()
+    assert my_seg.na_conductance > 0
 
 @pytest.mark.skip()
 def test_kinetic_model():

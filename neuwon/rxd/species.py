@@ -163,7 +163,6 @@ class SpeciesType:
         reversal_potential  = self._compute_reversal_potential()
         sum_conductance += species_conductance
         driving_voltage += species_conductance * reversal_potential
-        return True
 
     def _compute_reversal_potential(self):
         x = self.reversal_potential_data.get_data()

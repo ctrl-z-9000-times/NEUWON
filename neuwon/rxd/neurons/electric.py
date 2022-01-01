@@ -45,7 +45,7 @@ class Electric:
     def _advance_electric(cls, time_step):
         if not cls._matrix_valid:
             cls._compute_propagator_matrix(time_step)
-        dt = time_step / 1000
+        dt = time_step * 1e-3
         db_cls              = cls.get_database_class()
         xp                  = db_cls.get_database().get_memory_space().array_module
         sum_conductance     = db_cls.get_data("sum_conductance")
@@ -113,10 +113,13 @@ class Electric:
         duration = float(duration)
         assert duration >= 0
         current = float(current)
-        clock = type(self)._model.species.input_hook
-        dv = current * clock.get_tick_period() / self.capacitance
-        input_signal = TimeSeries().set_data([0, dv, dv, 0], [0, 0, duration, duration])
-        input_signal.play(self, "voltage", clock=clock)
+        dt = type(self)._model.time_step
+        dv = current * dt / self.capacitance
+        input_signal = TimeSeries().constant_wave(dv, duration)
+        # TODO: This should use a new clock that ticks at the start of the
+        # advacen step, instead of using the default clock (which ticks just
+        # after each advance).
+        input_signal.play(self, "voltage")
 
     def get_time_constant(self):
         return self.capacitance / self.sum_conductance
