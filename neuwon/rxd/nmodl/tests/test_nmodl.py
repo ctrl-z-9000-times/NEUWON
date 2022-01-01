@@ -4,7 +4,7 @@ from neuwon.rxd.nmodl import NMODL
 import pytest
 
 def test_hh_smoke_test():
-    m = RxD_Model({'time_step': .1,},
+    m = RxD_Model(time_step = .1,
         mechanisms={
             'hh': NMODL("./nmodl_library/hh.mod", use_cache=False)},
         species={

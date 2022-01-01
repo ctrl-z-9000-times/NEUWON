@@ -131,7 +131,7 @@ def test_length_constant_5():
 
 def test_inject_current():
     from neuwon.rxd.rxd_model import RxD_Model
-    m = RxD_Model({'simulation':{'dt':.01}})
+    m = RxD_Model(time_step = .01)
     root = m.Neuron([0,0,0], 10).root
 
     init_v = root.voltage

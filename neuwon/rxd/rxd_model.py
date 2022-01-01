@@ -7,8 +7,7 @@ from neuwon.rxd.mechanisms import MechanismsFactory
 from neuwon.rxd.species import SpeciesFactory
 
 class RxD_Model:
-    def __init__(self, *,
-                time_step = 0.1,
+    def __init__(self, time_step = 0.1, *,
                 celsius = 37,
                 initial_voltage = -70,
                 cytoplasmic_resistance = 100,
