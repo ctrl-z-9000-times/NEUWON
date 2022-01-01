@@ -20,6 +20,7 @@ class SpeciesInstance:
             decay_period=math.inf,
             constant=False):
         self.name = name
+        self.time_step = float(time_step)
         self.initial_concentration = float(initial_concentration)
         assert self.initial_concentration >= 0.0
         if diffusivity is None:
@@ -66,6 +67,8 @@ class SpeciesInstance:
         xp = self.concentrations.get_database().get_memory_space().get_array_module()
         xp.maximum(0, c + rr * 0.5, out=c)
         if self.diffusivity is None:
+            if self.decay_period < math.inf:
+                c *= math.exp(-self.time_step / self.decay_period)
             return
         if not self._matrix_valid:
             self._compute_matrix()
