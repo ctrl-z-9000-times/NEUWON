@@ -28,12 +28,14 @@ def test_model_hh(debug=False):
     for comp in m.database.get('hh').get_all_components():
         print(comp.get_name(), '\t', comp.get_initial_value())
     root = tip = m.Segment(None, [-1,0,7], 5.7)
-    hh(root)
+    hh_instance = hh(root)
     for x in range(10):
         tip = m.Segment(tip, [x,0,7], 1)
         hh(tip)
 
     x = TimeSeries().record(tip, 'voltage')
+    debug_probe_1 = TimeSeries().record(root, 'driving_voltage')
+    debug_probe_2 = TimeSeries().record(root, 'sum_conductance')
 
     m.advance()
     m.check()
@@ -94,7 +96,10 @@ def test_model_hh(debug=False):
     correct.interpolate(x)
     abs_diff = np.abs(np.subtract(x.get_data(), correct.get_data()))
     if debug:
+        # debug_probe_1.plot(show=False)
+        # debug_probe_2.plot(show=False)
         import matplotlib.pyplot as plt
+        plt.figure()
         plt.plot(x.get_timestamps(), x.get_data(), 'k', label='current run')
         plt.plot(x.get_timestamps(), correct.get_data(), 'y', label='saved data')
         plt.plot(x.get_timestamps(), abs_diff, 'r', label='absolute difference')

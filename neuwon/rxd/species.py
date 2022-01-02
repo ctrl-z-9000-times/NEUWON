@@ -12,6 +12,8 @@ F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
+# TODO: Consider renaming "_zero_accumulators" to "_zero_inputs".
+
 class SpeciesInstance:
     """ A species in a location. """
     def __init__(self, time_step, db_class, name, initial_concentration, *,

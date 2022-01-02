@@ -69,7 +69,7 @@ class Electric:
         dV/dt = C * V, where C is Coefficients matrix and V is voltage vector.
         """
         db_cls = cls.get_database_class()
-        dt     = time_step / 1000
+        dt     = time_step * 1e-3
         with db_cls.get_database().using_memory_space('host'):
             parents      = db_cls.get_data("parent")
             resistances  = db_cls.get_data("axial_resistance")

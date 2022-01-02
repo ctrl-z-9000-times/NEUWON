@@ -93,7 +93,7 @@ class RxD_Model:
         sum_conductance.fill(0.0)
         driving_voltage.fill(0.0)
         # Sum the species conductances & driving-voltages into the accumulators.
-        self.species.input_hook()
+        self.species.input_hook.tick()
         # 
         driving_voltage /= sum_conductance
         # If conductance is zero then the driving_voltage is also zero.
