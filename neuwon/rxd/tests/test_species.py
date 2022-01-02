@@ -23,7 +23,7 @@ def test_instances():
     help(Loc)
 
     for s in all_species:
-        s._zero_accumulators()
+        s._zero_input_accumulators()
 
     l3.na_delta += 1
 
@@ -65,7 +65,7 @@ def test_diffusion_simple():
     l1.species += 1
     assert l2.species == 2
 
-    species._zero_accumulators()
+    species._zero_input_accumulators()
     species._advance()
 
     assert l1.species < 3
@@ -90,13 +90,13 @@ def test_species_containers():
     db.check()
     for name, s in all_s.items():
         assert s.get_name() in repr(s)
-    all_s._zero_accumulators()
+    all_s._zero_input_accumulators()
     all_s.input_hook()
     all_s._advance()
     Neuron([1,2,3], 7)
     Neuron([4,5,6], 7)
     Neuron([7,8,9], 7)
-    all_s._zero_accumulators()
+    all_s._zero_input_accumulators()
     all_s.input_hook()
     all_s._advance()
     db.check()

@@ -12,8 +12,6 @@ F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
-# TODO: Consider renaming "_zero_accumulators" to "_zero_inputs".
-
 class SpeciesInstance:
     """ A species in a location. """
     def __init__(self, time_step, db_class, name, initial_concentration, *,
@@ -56,7 +54,7 @@ class SpeciesInstance:
                     initial_value=0.0,
                     units="millimolar / timestep")
 
-    def _zero_accumulators(self):
+    def _zero_input_accumulators(self):
         if not self.constant:
             self.deltas.get_data().fill(0.0)
 
@@ -150,12 +148,12 @@ class SpeciesType:
     def __repr__(self):
         return f'<Species: {self.name}>'
 
-    def _zero_accumulators(self):
+    def _zero_input_accumulators(self):
         if self.electric:
             self.conductance.get_data().fill(0.0)
         for instance in (self.inside, self.outside):
             if instance is not None:
-                instance._zero_accumulators()
+                instance._zero_input_accumulators()
 
     def _accumulate_conductance(self):
         database            = self.factory.database
@@ -250,10 +248,10 @@ class SpeciesFactory(dict):
             self[name] = species = SpeciesType(name, self, **species_kwargs)
         return species
 
-    def _zero_accumulators(self):
+    def _zero_input_accumulators(self):
         """ Zero all data buffers which the mechanisms can write to. """
         for species in self.values():
-            species._zero_accumulators()
+            species._zero_input_accumulators()
 
     def _advance(self):
         """ """

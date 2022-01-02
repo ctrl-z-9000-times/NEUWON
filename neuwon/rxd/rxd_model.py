@@ -101,7 +101,7 @@ class RxD_Model:
         driving_voltage[:] = xp.nan_to_num(driving_voltage)
 
     def _advance_mechanisms(self):
-        self.species._zero_accumulators()
+        self.species._zero_input_accumulators()
         for name, m in self.mechanisms.items():
             try: m.advance()
             except Exception: raise RuntimeError("in mechanism " + name)
