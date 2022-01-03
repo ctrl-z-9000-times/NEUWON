@@ -20,7 +20,7 @@ class RxD_Model:
         self.celsius    = float(celsius)
         self.database   = db = Database()
         self.clock      = db.add_clock(self.time_step, units='ms')
-        self.input_hook =        Clock(self.time_step, units='ms')
+        self.input_hook =        Clock(self.time_step / 2, units='ms')
         self.Neuron = Neuron._initialize(db,
                 initial_voltage         = initial_voltage,
                 cytoplasmic_resistance  = cytoplasmic_resistance,
@@ -73,7 +73,6 @@ class RxD_Model:
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
         self.database.sort()
-        self.input_hook.tick()
         with self.database.using_memory_space('host'):
             self._advance_species()
             self._advance_mechanisms()
@@ -92,6 +91,7 @@ class RxD_Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
+        self.input_hook.tick()
         self._accumulate_conductances()
         self.Segment._advance_electric(self.species.time_step)
         self.species._advance()
