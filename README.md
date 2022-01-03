@@ -6,7 +6,7 @@ the NEURON simulator. It is fast, accurate, and easy to use.
 
 ## Examples
 
-![](neuwon/examples/Hodgkin_Huxley/Staggered_Time_Steps.png)
+![](neuwon/rxd/examples/HH/Staggered_Time_Steps.png)
 
 ## Usage
 
