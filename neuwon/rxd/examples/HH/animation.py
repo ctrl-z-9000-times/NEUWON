@@ -1,10 +1,10 @@
 """ Model of an action potential propagating through an axonal arbor. """
 
-from neuwon.database.time import TimeSeries
-from neuwon.examples.HH import *
-from neuwon.growth import *
-from neuwon.gui.viewport import *
-from neuwon.regions import *
+from . import *
+from neuwon.brains.growth import *
+from neuwon.brains.regions import *
+from neuwon.database import TimeSeries
+from neuwon.gui.viewport import Viewport
 import numpy as np
 
 class main:
