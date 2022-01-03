@@ -9,8 +9,7 @@ class Extracellular:
     @staticmethod
     def _initialize(database,
                 tortuosity = 1.55,
-                maximum_distance = 20,
-                ):
+                maximum_distance = 20,):
         ecs_data = database.add_class(Extracellular)
         ecs_data.add_attribute('coordinates', shape=(3,), units='μm')
         ecs_data.add_attribute('voronoi_volume', units='μm³')
