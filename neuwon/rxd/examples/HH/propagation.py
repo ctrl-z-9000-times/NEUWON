@@ -1,5 +1,10 @@
-from neuwon.database.time import TimeSeries
-from neuwon.examples.HH import make_model_with_hh
+""" Plot the propagation of an action potential through an axon.
+
+This module is executable with the command:
+    $ python -m neuwon.rxd.examples.HH.propagation
+"""
+from neuwon.database import TimeSeries
+from . import make_model_with_hh
 from sys import argv
 import matplotlib.pyplot as plt
 import numpy as np

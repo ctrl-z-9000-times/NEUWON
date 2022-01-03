@@ -1,5 +1,10 @@
-from neuwon.database.time import TimeSeries
-from neuwon.examples.HH import make_model_with_hh
+""" Analyze the numeric accuracy of NEUWON.
+
+This module is executable with the command:
+    $ python -m neuwon.rxd.examples.HH.accuracy
+"""
+from neuwon.database import TimeSeries
+from . import make_model_with_hh
 import matplotlib.pyplot as plt
 import numpy as np
 
