@@ -91,13 +91,13 @@ def test_species_containers():
     for name, s in all_s.items():
         assert s.get_name() in repr(s)
     all_s._zero_input_accumulators()
-    all_s.input_hook()
+    all_s.accumulate_conductances_hook.tick()
     all_s._advance()
     Neuron([1,2,3], 7)
     Neuron([4,5,6], 7)
     Neuron([7,8,9], 7)
     all_s._zero_input_accumulators()
-    all_s.input_hook()
+    all_s.accumulate_conductances_hook.tick()
     all_s._advance()
     db.check()
 

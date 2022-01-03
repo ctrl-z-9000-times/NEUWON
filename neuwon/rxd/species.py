@@ -127,7 +127,7 @@ class SpeciesType:
                         f"{self.name}_reversal_potential",
                         initial_value=0.0,
                         units="mV")
-            factory.input_hook.register_callback(self._accumulate_conductance)
+            factory.accumulate_conductances_hook.register_callback(self._accumulate_conductance)
 
         self.inside = None
         self.outside = None
@@ -231,8 +231,7 @@ class SpeciesFactory(dict):
         self.database   = database
         self.time_step  = time_step
         self.celsius    = celsius
-        # TODO: Come up with a better name than "input_hook". Maybe "accumulate_conductance_hook"?
-        self.input_hook = Clock(time_step)
+        self.accumulate_conductances_hook = Clock(time_step)
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):

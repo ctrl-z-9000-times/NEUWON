@@ -22,7 +22,7 @@ class Mechanism:
         raise TypeError(f"Abstract method called by {type(self)}.")
 
 class MechanismsFactory(dict):
-    def __init__(self, parameters:dict, database, time_step, celsius, species_input_hook):
+    def __init__(self, parameters:dict, database, time_step, celsius, accumulate_conductances_hook):
         super().__init__()
         self.database   = database
         self.time_step  = time_step

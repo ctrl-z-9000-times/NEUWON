@@ -113,13 +113,11 @@ class Electric:
         duration = float(duration)
         assert duration >= 0
         current = float(current)
-        dt = type(self)._model.time_step
+        clock = type(self)._model.input_hook
+        dt = clock.get_time_step()
         dv = current * dt / self.capacitance
         input_signal = TimeSeries().constant_wave(dv, duration)
-        # TODO: This should use a new clock that ticks at the start of the
-        # advacen step, instead of using the default clock (which ticks just
-        # after each advance).
-        input_signal.play(self, "voltage")
+        input_signal.play(self, "voltage", clock=clock)
 
     def get_time_constant(self):
         return self.capacitance / self.sum_conductance

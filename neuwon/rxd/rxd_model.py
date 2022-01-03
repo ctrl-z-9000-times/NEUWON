@@ -16,10 +16,11 @@ class RxD_Model:
                 extracellular_max_distance = 20e-6,
                 species={},
                 mechanisms={},):
-        self.database   = db = Database()
-        self.clock      = db.add_clock(time_step, units='ms')
-        self.time_step  = self.clock.get_tick_period()
+        self.time_step  = float(time_step)
         self.celsius    = float(celsius)
+        self.database   = db = Database()
+        self.clock      = db.add_clock(self.time_step, units='ms')
+        self.input_hook =        Clock(self.time_step, units='ms')
         self.Neuron = Neuron._initialize(db,
                 initial_voltage         = initial_voltage,
                 cytoplasmic_resistance  = cytoplasmic_resistance,
@@ -31,8 +32,9 @@ class RxD_Model:
                 maximum_distance = extracellular_max_distance,)
         self.species = SpeciesFactory(species, db,
                                         0.5 * self.time_step, self.celsius)
+        self.accumulate_conductances_hook = self.species.accumulate_conductances_hook
         self.mechanisms = MechanismsFactory(mechanisms, db,
-                self.time_step, self.celsius, self.species.input_hook)
+                self.time_step, self.celsius, self.accumulate_conductances_hook)
 
     def __len__(self):
         return len(self.Segment.get_database_class())
@@ -64,6 +66,7 @@ class RxD_Model:
         Chapter 4, Section: Efficient handling of nonlinearity.
         """
         self.database.sort()
+        self.input_hook.tick()
         with self.database.using_memory_space('host'):
             self._advance_species()
             self._advance_mechanisms()
@@ -93,7 +96,7 @@ class RxD_Model:
         sum_conductance.fill(0.0)
         driving_voltage.fill(0.0)
         # Sum the species conductances & driving-voltages into the accumulators.
-        self.species.input_hook.tick()
+        self.accumulate_conductances_hook.tick()
         # 
         driving_voltage /= sum_conductance
         # If conductance is zero then the driving_voltage is also zero.
