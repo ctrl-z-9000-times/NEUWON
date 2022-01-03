@@ -418,11 +418,13 @@ class SparseMatrix(DataComponent):
             matrix = matrix.get()
         if self.fmt == 'lil':
             index = matrix.rows[0]
+            data  = matrix.data[0]
         elif self.fmt == 'csr':
             index = matrix.indices
+            data  = list(matrix.data)
         else: raise NotImplementedError(self.fmt)
         index_to_object = self.column.index_to_object
-        return ([index_to_object(x) for x in index], list(matrix.data))
+        return ([index_to_object(x) for x in index], data)
 
     def _setter(self, instance, value):
         columns, data = value
