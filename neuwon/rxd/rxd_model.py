@@ -51,6 +51,13 @@ class RxD_Model:
     def get_species(self) -> dict:      return dict(self.species)
     def get_time_step(self) -> float:   return self.time_step
 
+    def register_input_callback(self, function: 'f() -> bool'):
+        """ """
+        self.input_hook.register_callback(function)
+    def register_advance_callback(self, function: 'f() -> bool'):
+        """ """
+        self.clock.register_callback(function)
+
     def check(self):
         self.database.check()
 
