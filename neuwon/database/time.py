@@ -29,6 +29,7 @@ class CallbackHook:
         self._callbacks.append(function)
 
     def __call__(self):
+        """ Call all registered callbacks and remove any that return true. """
         any_removed = False
         for idx, callback in enumerate(self._callbacks):
             remove = callback()
@@ -73,6 +74,10 @@ class Clock:
     def __call__(self) -> float:
         """ Returns the current time. """
         return self.get_time()
+
+    def get_time_step(self) -> float:
+        """ Returns the duration of each tick. """
+        return self.dt
 
     def get_tick_period(self) -> float:
         """ Returns the duration of each tick. """
