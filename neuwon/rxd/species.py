@@ -127,7 +127,7 @@ class SpeciesType:
                         f"{self.name}_reversal_potential",
                         initial_value=0.0,
                         units="mV")
-            factory.accumulate_conductances_hook.register_callback(self._accumulate_conductance)
+            factory.input_hook.register_callback(self._accumulate_conductance)
 
         self.inside = None
         self.outside = None
@@ -226,12 +226,12 @@ def _efun(z):
         return z / (math.exp(z) - 1)
 
 class SpeciesFactory(dict):
-    def __init__(self, parameters: dict, database, time_step, celsius):
+    def __init__(self, parameters: dict, database, input_hook, celsius):
         super().__init__()
         self.database   = database
-        self.time_step  = time_step
+        self.input_hook = input_hook
+        self.time_step  = input_hook.get_time_step()
         self.celsius    = celsius
-        self.accumulate_conductances_hook = Clock(time_step)
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
