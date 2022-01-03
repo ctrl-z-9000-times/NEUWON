@@ -1,4 +1,6 @@
-import neuwon.rxd.voronoi
+from neuwon.database import Real, epsilon, Pointer, NULL
+from neuwon.rxd.voronoi import voronoi_cell
+from scipy.spatial import KDTree
 import numpy as np
 
 class Extracellular:
@@ -7,62 +9,79 @@ class Extracellular:
     @staticmethod
     def _initialize(database,
                 tortuosity = 1.55,
-                maximum_distance = 20e-6,
+                maximum_distance = 20,
                 ):
-        ec_data = database.add_class(Extracellular)
-        ec_data.add_attribute('coordinates', shape=(3,), units='μm')
-        ec_data.add_attribute('volumes', units='μm³')
-        ec_data.add_class_attribute('tortuosity', tortuosity)
+        ecs_data = database.add_class(Extracellular)
+        ecs_data.add_attribute('coordinates', shape=(3,), units='μm')
+        ecs_data.add_attribute('voronoi_volume', units='μm³')
+        ecs_data.add_attribute('volume', units='μm³')
+        ecs_data.add_class_attribute('tortuosity', tortuosity)
 
-        ec_data.add_sparse_matrix('neighbor_distances', Extracellular)
-        ec_data.add_sparse_matrix('neighbor_border_areas', Extracellular)
-        ec_data.add_sparse_matrix('xarea_over_distance', Extracellular)
+        ecs_data.add_sparse_matrix('neighbor_distances', Extracellular)
+        ecs_data.add_sparse_matrix('neighbor_border_areas', Extracellular)
+        ecs_data.add_sparse_matrix('xarea_over_distance', Extracellular)
 
-        ec_cls = ec_data.get_instance_type()
-        ec_cls._dirty = []
-        ec_cls.kd_tree = None
+        ecs_cls = ecs_data.get_instance_type()
+        ecs_cls.maximum_distance = float(maximum_distance)
+        ecs_cls._dirty = []
+        ecs_cls._kd_tree = None
 
         segment_data = database.get_class('Segment')
         segment_data.add_attribute('outside', dtype=Extracellular, allow_invalid=True)
 
-        return ec_cls
+        return ecs_cls
 
     def __init__(self, coordinates, volume):
         self.coordinates = coordinates
         self.volume      = volume
-        type(self)._dirty.append(self)
+        cls = type(self)
+        cls._dirty.append(self)
+        cls._kd_tree = None
 
-    def _clean(self):
-        self._compute_voronoi_cells(self._dirty)
+    @property
+    def neighbors(self):
+        return self.neighbor_distances[0]
+
+    @classmethod
+    def _clean(cls):
+        if not cls._dirty: return
+        db_class    = cls.get_database_class()
+        assert db_class.get_database().is_sorted()
+        dirty = [ecs.get_unstable_index() for ecs in cls._dirty]
+        coordinates = db_class.get_data("coordinates")
+        cls._kd_tree = KDTree(coordinates)
+        cls._compute_voronoi_cells(dirty)
+        neighbors_matrix = db_class.get("neighbor_distances").to_lil().get_data()
         touched = set()
-        for neighbors in self.db.access("outside/neighbor_distances")[self._dirty]:
-            touched.update(neighbors.indices)
-        touched.difference_update(set(self._dirty))
-        self._compute_voronoi_cells(list(touched))
-        type(self)._dirty = []
+        for location in dirty:
+            neighbors = neighbors_matrix.getrow(location)
+            touched.update(neighbors.rows[0])
+        touched.difference_update(dirty)
+        cls._compute_voronoi_cells(list(touched))
+        cls._dirty = []
 
     @classmethod
     def _compute_voronoi_cells(cls, locations):
-        1/0
         # TODO: Consider https://en.wikipedia.org/wiki/Power_diagram
-        coordinates     = self.db.access("outside/coordinates").get()
-        tree            = self.db.access("outside/tree")
-        write_neighbor_cols = []
-        write_neighbor_dist = []
-        write_neighbor_area = []
+        db_class        = cls.get_database_class()
+        coordinates     = db_class.get_data("coordinates")
+        voronoi_volume  = db_class.get_data("voronoi_volume")
         for location in locations:
-            coords = coordinates[location]
-            potential_neighbors = tree.query_ball_point(coords, 2 * self.max_outside_radius)
+            potential_neighbors = cls._kd_tree.query_ball_point(
+                                    coordinates[location], 2 * cls.maximum_distance)
             potential_neighbors.remove(location)
-            volume, neighbors = neuwon.species.voronoi.voronoi_cell(location,
-                    self.max_outside_radius, np.array(potential_neighbors, dtype=Pointer), coordinates)
-            write_neighbor_cols.append(list(neighbors['location']))
-            write_neighbor_dist.append(list(neighbors['distance']))
-            write_neighbor_area.append(list(neighbors['border_surface_area']))
-        self.db.access("outside/neighbor_distances",
-                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_dist))
-        self.db.access("outside/neighbor_border_areas",
-                sparse_matrix_write=(locations, write_neighbor_cols, write_neighbor_area))
+            volume, neighbors = voronoi_cell(location,
+                                            cls.maximum_distance,
+                                            np.array(potential_neighbors, dtype=Pointer),
+                                            coordinates)
+            voronoi_volume[location] = volume
+            neighbor_locations = list(neighbors['location'])
+            neighbor_distances = list(neighbors['distance'])
+            neighbor_areas     = list(neighbors['border_surface_area'])
+            db_class.get("neighbor_distances").write_row(
+                    location, neighbor_locations, neighbor_distances)
+            db_class.get("neighbor_border_areas").write_row(
+                    location, neighbor_locations, neighbor_areas)
 
     @classmethod
     def _outside_diffusion_coefficients(cls, access):
