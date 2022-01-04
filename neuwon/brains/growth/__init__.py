@@ -5,67 +5,10 @@ import itertools
 import random
 from collections.abc import Callable, Iterable, Mapping
 from graph_algorithms import depth_first_traversal as dft
-from neuwon.regions import Region
+from neuwon.brains.regions import Region
 from neuwon.database import epsilon, DB_Class
 
-"""
-API design notes:
--> Growth Routine API/concept.
-        A class that the user can call to incrementally grow neurites.
-        growth routines will contain:
-            * At least one Region,
-            * Dozens of parameters,
-            * growth_routine.grow(*args) -> list of Segments
-            * References to other growth-routines (for example as tips to grow off of)
-            * an API getting out segments (for other growth routines to grow off of)
-
-User will create an instance of GrowthRoutine for each group of neurons they
-want to create. Then they will incrementally (or all at once) create segments.
-
-"""
-
-class _Distribution:
-    def __init__(self, arg):
-        if isinstance(arg, Iterable):
-            mean, std_dev = arg
-            self.mean    = float(mean)
-            self.std_dev = float(std_dev)
-        else:
-            self.mean    = float(arg)
-            self.std_dev = 0.0
-    def __call__(self, size=1):
-        return np.random.normal(self.mean, self.std_dev, size=size)
-
-class GrowthRoutine:
-    def grow(self, *args, **kwargs) -> "list of Segments":
-        """ """
-        raise NotImplementedError(type(self))
-
-    def get_segments(self):
-        return self.segments # Default implementation.
-
-class Soma(GrowthRoutine):
-    def __init__(self, Segment, region, diameter):
-        self.Segment = Segment
-        self.region = region
-        self.diameter = _Distribution(diameter)
-        self.segments = []
-        assert(isinstance(self.region, Region))
-        assert(self.diameter.mean - 2 * self.diameter.std_dev > 0)
-
-    def grow(self, num_cells):
-        new_segments = []
-        for _ in range(num_cells):
-            coordinates = self.region.sample_point()
-            diameter = self.diameter()
-            while diameter <= epsilon:
-                diameter = self.diameter()
-            x = self.Segment(None, coordinates, diameter)
-            new_segments.append(x)
-        self.segments.extend(new_segments)
-        return new_segments
-
-class Tree(GrowthRoutine):
+class Tree:
     """ Grow dendrites or axons
 
     This implements the TREES algorithm combined with the morphological
@@ -224,48 +167,6 @@ class PathLengthCache:
             parent_idx = parent.get_unstable_index()
             self.path_lengths[cursor_idx] = cursor.length + self.path_lengths[parent_idx]
         return self.path_lengths[segment_idx]
-
-
-
-class Synapses(GrowthRoutine):
-    def __init__(self, model, axons, dendrites, pre_gap_post, diameter, num_synapses):
-        self.model = model
-        self.axons = list(axons)
-        self.dendrites = list(dendrites)
-        num_synapses = int(num_synapses)
-        pre_len, gap_len, post_len = pre_gap_post
-        f_pre = pre_len / sum(pre_gap_post)
-        f_post = post_len / sum(pre_gap_post)
-        self.presynaptic_segments = []
-        self.postsynaptic_segments = []
-        # Find all possible synapses.
-        pre = scipy.spatial.cKDTree([x.coordinates for x in self.axons])
-        post = scipy.spatial.cKDTree([x.coordinates for x in self.dendrites])
-        results = pre.query_ball_tree(post, sum(pre_gap_post))
-        results = list(itertools.chain.from_iterable(
-            ((pre, post) for post in inner) for pre, inner in enumerate(results)))
-        # Select some synapses and make them.
-        random.shuffle(results)
-        for pre, post in results:
-            if num_synapses <= 0:
-                break
-            pre = self.axons[pre]
-            post = self.dendrites[post]
-            if pre_len and len(pre.children) > 1: continue
-            if post_len and len(post.children) > 1: continue
-            if pre_len == 0:
-                self.presynaptic_segments.append(pre)
-            else:
-                x = (1 - f_pre) * np.array(pre.coordinates) + f_pre * np.array(post.coordinates)
-                self.presynaptic_segments.append(model.create_segment(pre, x, diameter)[0])
-            if post_len == 0:
-                self.postsynaptic_segments.append(post)
-            else:
-                x = (1 - f_post) * np.array(post.coordinates) + f_post * np.array(pre.coordinates)
-                self.postsynaptic_segments.append(model.create_segment(post, x, diameter)[0])
-            num_synapses -= 1
-        self.presynaptic_segments = list(set(self.presynaptic_segments))
-        self.segments = self.presynaptic_segments + self.postsynaptic_segments
 
 
 
