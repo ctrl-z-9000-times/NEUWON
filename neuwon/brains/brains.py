@@ -1,5 +1,5 @@
-from .regions import RegionsFactory
 from .neurons import NeuronTypesFactory
+from .regions import RegionsFactory
 from neuwon.rxd.rxd_model import RxD_Model
 
 class Brain:
@@ -10,6 +10,7 @@ class Brain:
                 regions={},
                 neurons={},
                 ):
-        self.rxd_model = RxD_Model(species=species, mechanisms=mechanisms, **rxd_parameters)
-        self.regions = RegionsFactory(regions)
+        self.rxd_model  = RxD_Model(species=species, mechanisms=mechanisms, **rxd_parameters)
+        self.database   = self.rxd_model.get_database()
+        self.regions    = RegionsFactory(regions)
         # self.neuron_types = NeuronTypesFactory(self, neurons)

@@ -34,6 +34,8 @@ class Region:
     def sample_points(self, density):
         """ Returns a list of points from within the region. Density is
         approximate and is specified as points per unit of length cubed. """
+        density = float(density)
+        assert density >= 0.0
         lower, upper = self.aabb()
         if not (all(np.isfinite(lower)) and all(np.isfinite(upper))):
             raise TypeError("Region is infinite!")
