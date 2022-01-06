@@ -15,7 +15,7 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
             extend_before_bifurcate=False,
             only_bifurcate=False,
             maximum_segment_length=math.inf,
-            diameter,):
+            segment_parameters,):
     """ Grow dendrites and axons
 
     This implements the TREES algorithm combined with the morphological
@@ -46,7 +46,6 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
     extend_before_bifurcate = bool(extend_before_bifurcate)
     only_bifurcate          = bool(only_bifurcate)
     maximum_segment_length  = float(maximum_segment_length)
-    diameter                = float(diameter)
     assert isinstance(region, Region)
     assert 0 <= carrier_point_density
     assert 0 <= balancing_factor
@@ -55,12 +54,12 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
     assert 0 <= bifurcation_angle <= math.pi
     assert 0 <= bifurcation_distance
 
-    def cost_function(self, parent, child_coordinates):
+    def cost_function(parent, child_coordinates):
         distance = np.linalg.norm(np.subtract(parent.coordinates, child_coordinates))
         path_length = path_length_cache[parent] + distance
         return distance + balancing_factor * path_length
 
-    def morphological_constraints_satisfied(self, parent, child_coordinates):
+    def morphological_constraints_satisfied(parent, child_coordinates):
         if (only_bifurcate and
             len(parent.children) >= 2 and
             not parent.is_root()):
@@ -123,7 +122,7 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
         if not morphological_constraints_satisfied(parent, coordinates):
             continue
         free_points[index] = False
-        s = parent.add_segment(coordinates, diameter)
+        s = parent.add_segment(coordinates, **segment_parameters)
         new_segments.append(s)
         compute_costs_to_all_carriers(s)
 
@@ -178,35 +177,5 @@ def set_diameter(self, P = (0, .01, 1e-6)):
         for length in paths[n]:
             diameters.append(P[0] * length ** 2 + P[1] * length + P[2])
         n.diameter = np.mean(diameters)
-
-
-
-
-
-class GrowthProgram:
-    def __init__(self, database, regions, soma: list, phases: 'list of dict'):
-        # Save the databse and regions, initialize any internal data-structures.
-        1/0
-
-        self.segments = []
-
-        for parameters in phases:
-            self._run_phase(**parameters)
-
-    def _run_phase(self, index, name=None, morphology={}, mechanisms={}):
-        if name is None: name = str(index)
-        # Run TREEs algorithm
-        trees_with_roots()
-        1/0
-        # Save the results
-        1/0
-        # Insert the mechanisms
-        1/0
-
-
-
-
-
-
 
 
