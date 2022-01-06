@@ -16,6 +16,7 @@ class RxD_Model:
                 extracellular_max_distance = 20e-6,
                 species={},
                 mechanisms={},):
+        """ """
         self.time_step      = float(time_step)
         self.celsius        = float(celsius)
         self.database       = db = Database()
