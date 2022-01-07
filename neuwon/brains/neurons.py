@@ -85,7 +85,7 @@ class NeuronGrowthProgram:
             for segment in segments:
                 mechanism(segment, **parameters)
 
-class NeuronFactory(dict):
+class NeuronTypeFactory(dict):
     def __init__(self, brains, parameters: dict):
         super().__init__()
         self.brains = brains

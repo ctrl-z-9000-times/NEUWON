@@ -1,4 +1,4 @@
-import neuwon.regions
+from neuwon.brains.regions import RegionFactory
 
 test_parameters = {
     'foo': ('Sphere', (1,2,3), 4),
@@ -6,7 +6,7 @@ test_parameters = {
 }
 
 def test_region_factory():
-    r = neuwon.regions.RegionsFactory(test_parameters)
+    r = RegionFactory(test_parameters)
     assert r['foo'].radius == 4
     assert r['foo'].contains([1.1, 1.1, 1.1])
     assert not r['bar'].contains([1.1, 1.1, 1.1])

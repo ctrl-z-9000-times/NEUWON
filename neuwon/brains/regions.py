@@ -201,7 +201,7 @@ class _ImageStack:
     def contains(self, coordinates):
         return self.stack.contains(coordinates)
 
-class RegionsFactory(dict):
+class RegionFactory(dict):
     def __init__(self, parameters: dict):
         super().__init__()
         self.add_parameters(parameters)
