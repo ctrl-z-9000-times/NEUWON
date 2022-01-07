@@ -210,7 +210,7 @@ class RegionsFactory(dict):
         self.parameters = parameters
         for name, rgn in self.parameters.items():
             self.add_region(name, rgn)
-        del self.parameters
+        self.parameters = None
 
     def add_region(self, name: str, region_parameters) -> Region:
         if name in self:
@@ -227,7 +227,7 @@ class RegionsFactory(dict):
             return args
         elif isinstance(args, str):
             region_name = args
-            if region_name not in self:
+            if region_name not in self and self.parameters:
                 region_parameters = self.parameters[region_name]
                 self.add_region(region_name, region_parameters)
             return self[region_name]
