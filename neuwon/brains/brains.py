@@ -13,4 +13,4 @@ class Brain:
         self.rxd_model  = RxD_Model(species=species, mechanisms=mechanisms, **rxd_parameters)
         self.database   = self.rxd_model.get_database()
         self.regions    = RegionsFactory(regions)
-        # self.neuron_types = NeuronTypesFactory(self, neurons)
+        self.neurons    = NeuronTypesFactory(self, neurons)

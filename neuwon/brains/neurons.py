@@ -1,47 +1,4 @@
 
-class NeuronTypesFactory(dict):
-    def __init__(self, parameters: dict):
-        super().__init__()
-        self.add_parameters(parameters)
-
-    def add_parameters(self, parameters: dict):
-        self.parameters = parameters
-        for name, parameters in self.parameters.items():
-            self.add_neuron_type(name, *parameters)
-        del self.parameters
-
-    def add_neuron_type(self, name: str, args, kwargs) -> GrowthRoutine:
-        if name in self:
-            return self[name]
-        self[name] = rgn = self.make_routine(routine_type, args, kwargs)
-        return rgn
-
-    # _routine_types = {cls.__name__: cls for cls in
-    #         (Soma, Dendrite)}
-
-    # def make_routine(self, routine_type, args, kwargs) -> GrowthRoutine:
-        # if 
-        # if isinstance(args, GrowthRoutine):
-        #     return args
-        # elif isinstance(args, str):
-        #     region_name = args
-        #     if region_name not in self:
-        #         region_parameters = self.parameters[region_name]
-        #         self.add_routine(region_name, region_parameters)
-        #     return self[region_name]
-        # elif isinstance(args, Iterable):
-        #     region_type, *args = args
-        #     if region_type in ('Intersection', 'Union', 'Not'):
-        #         args = [self.make_routine(r) for r in args]
-        #     return self._routine_types[region_type](*args)
-        # else:
-        #     raise ValueError(args)
-
-
-
-
-################################################################################
-
 
 class _Distribution:
     def __init__(self, arg):
@@ -57,28 +14,89 @@ class _Distribution:
 
 
 
-class NeuronType:
-    def __init__(self, brain, soma):
-        self.Segment = Segment
-        self.region = region
-        self.diameter = _Distribution(diameter)
+class NeuronGrowthProgram:
+    def __init__(self, brains, neuron_type, program):
+        self.brains = brains
+        self.neuron_type = str(neuron_type)
+        self.neurons = []
         self.segments = []
-        assert(isinstance(self.region, Region))
-        assert(self.diameter.mean - 2 * self.diameter.std_dev > 0)
+        self.path_length_cache = PathLengthCache()
+        self._run_program(*program)
 
-    def _init_soma(self, diameter, region):
+    def _run_program(self, soma_parameters, *instructions_list):
+        self._grow_soma(**soma_parameters)
+        for parameters in instructions_list:
+            self._run_growth_algorithm(**parameters)
 
+    def _grow_soma(self, *,
+                segment_type,
+                region,
+                diameter,
+                number=None,
+                density=None,
+                mechanisms={},):
+        region = self.brains.regions.make_region(region)
+        assert (number is None) != (density is None), "'number' and 'density' are mutually exclusive."
+        if number is not None:
+            coordinates = [region.sample_point() for _ in range(number)]
+        else:
+            coordinates = region.sample_points(density)
+        diameter = _Distribution(diameter)
+        for c in coordinates:
+            d = diameter()
+            while d <= epsilon:
+                d = diameter()
+            n = self.brains.rxd_model.Neuron(c, d)
+            self.neurons.append(n)
+            self.segments.append(n.root)
 
-    def grow(self, num_cells):
-        new_segments = []
-        for _ in range(num_cells):
-            coordinates = self.region.sample_point()
-            diameter = self.diameter()
-            while diameter <= epsilon:
-                diameter = self.diameter()
-            x = self.Segment(None, coordinates, diameter)
-            new_segments.append(x)
-        self.segments.extend(new_segments)
-        return new_segments
+    def _run_growth_algorithm(self, *,
+                segment_type,
+                region,
+                diameter,
+                morphology={},
+                mechanisms={},):
 
+        region = self.brains.regions.make_region(region)
 
+        relative_region = morphology.pop('relative_region', None)
+        if relative_region is not None:
+            relative_region = self.brains.regions.make_region(relative_region)
+
+        grow_from_soma = bool(morphology.pop('grow_from_soma', False))
+        if grow_from_soma:
+            roots = [n.root for n in self.neurons]
+        else:
+            roots = self.segments
+
+        competitive = bool(morphology.pop('competitive', True))
+        if not competitive: 1/0 # TODO
+
+        segments = growth_algorithm(roots, region,
+                path_length_cache=self.path_length_cache,
+                segment_parameters={
+                        'segment_type': str(segment_type),
+                        'diameter':     float(diameter),},
+                **morphology)
+        self.segments.extend(segments)
+        # Insert the mechanisms.
+        for mech_name, parameters in mechanisms.items():
+            mechanism = 1/0
+            for segment in segments:
+                mechanism(segment, **parameters)
+
+class NeuronFactory(dict):
+    def __init__(self, brains, parameters: dict):
+        super().__init__()
+        self.brains = brains
+        self.add_parameters(parameters)
+
+    def add_parameters(self, parameters: dict):
+        for neuron_type, program in parameters.items():
+            self.add_neuron_type(neuron_type, program)
+
+    def add_neuron_type(self, neuron_type: str, program: list):
+        neuron_type = str(neuron_type)
+        if neuron_type not in self:
+            self[neuron_type] = NeuronGrowthProgram(self.brains, neuron_type, program).neurons
+        return self[neuron_type]
