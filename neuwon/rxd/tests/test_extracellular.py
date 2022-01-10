@@ -1,6 +1,6 @@
 from neuwon.database import Database
 from neuwon.rxd.extracellular import Extracellular
-from neuwon.rxd.neurons import Neuron
+from neuwon.rxd.neuron import Neuron
 import pytest
 
 

@@ -1,5 +1,5 @@
 from collections.abc import Hashable
-from .segments import Segment
+from .segment import Segment
 from neuwon.database import Real, epsilon, Pointer, NULL, Compute
 import re
 

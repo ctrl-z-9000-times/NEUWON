@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.rxd.neurons import Neuron as NeuronSuperclass
+from neuwon.rxd.neuron import Neuron as NeuronSuperclass
 from neuwon.rxd.species import SpeciesInstance, SpeciesFactory
 import pytest
 import math

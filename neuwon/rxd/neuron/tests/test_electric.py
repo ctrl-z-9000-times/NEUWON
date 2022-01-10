@@ -1,5 +1,5 @@
 from neuwon.database import Database
-from neuwon.rxd.neurons.neurons import Neuron as NeuronSuperclass
+from neuwon.rxd.neuron.neuron import Neuron as NeuronSuperclass
 import bisect
 import numpy as np
 import pytest
