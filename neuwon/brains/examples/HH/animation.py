@@ -1,6 +1,6 @@
 """ Model of an action potential propagating through an axonal arbor. """
 
-from . import *
+from neuwon.rxd.examples.HH import make_model_with_hh
 from neuwon.brains.growth import *
 from neuwon.brains.regions import *
 from neuwon.database import TimeSeries
