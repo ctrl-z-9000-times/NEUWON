@@ -1,6 +1,4 @@
-from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import Database, epsilon
-from neuwon.database.time import Clock
+from neuwon.database import Database, Clock
 from neuwon.rxd.neuron import Neuron
 from neuwon.rxd.extracellular import Extracellular
 from neuwon.rxd.mechanisms import MechanismsFactory
