@@ -8,7 +8,7 @@ This file provides tools for performing constructive solid geometry:
 from collections.abc import Callable, Iterable, Mapping
 import numpy as np
 
-__all__ = 'Region Intersection Union Not Rectangle Sphere Cylinder'.split()
+__all__ = 'Region Intersection Union Not Everywhere Nowhere Rectangle Sphere Cylinder'.split()
 
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
@@ -80,6 +80,26 @@ class Not(Region):
         return ([-np.inf]*3, [+np.inf]*3)
     def contains(self, coordinates):
         return not self.region.contains(coordinates)
+
+class Everywhere(Region):
+    """ Region covering everything. """
+    def __init__(self):
+        """ """
+        pass
+    def aabb(self):
+        return ([-np.inf]*3, [+np.inf]*3)
+    def contains(self, coordinates):
+        return True
+
+class Nowhere(Region):
+    """ Region covering nothing. """
+    def __init__(self):
+        """ """
+        pass
+    def aabb(self):
+        return ([+np.inf]*3, [-np.inf]*3)
+    def contains(self, coordinates):
+        return False
 
 class Rectangle(Region):
     """ Axis Aligned Rectangular Prism """
