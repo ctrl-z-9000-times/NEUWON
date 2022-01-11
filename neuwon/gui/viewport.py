@@ -8,8 +8,10 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
-from neuwon.database import Database, Pointer, epsilon
+from neuwon.database import Database, Pointer
 from neuwon.gui.primatives import *
+
+epsilon = np.finfo(float).eps
 
 class Scene:
     def __init__(self, database, lod=2.5):
@@ -69,18 +71,19 @@ class Scene:
         else: raise ValueError(color_depth)
 
 class Viewport:
-    def __init__(self, window_size=(2*640,2*480), move_speed = .02):
+    def __init__(self, window_size=(2*640,2*480), move_speed = .02, camera_position=[0.0, 0.0, 0.0]):
         pygame.init()
         pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
         self.clock = pygame.time.Clock()
 
         self.window_size = window_size = pygame.display.get_window_size()
+        self.window_center = [0.5 * x for x in window_size]
         self.background_color = [0,0,0,0]
         self.fps = 60.
         self.fov = 45.
         self.move_speed = float(move_speed)
         self.turn_speed = float(move_speed) / 100
-        self.camera_pos   = np.array([0.0, 0.0, 0.0])
+        self.camera_pos   = np.array(camera_position, dtype=float)
         self.camera_pitch = 0.0
         self.camera_yaw   = 0.0
         self.update_camera_rotation_matrix()
@@ -88,7 +91,7 @@ class Viewport:
         self.camera_up      = np.array([ 0.0, 1.0, 0.0])
 
         pygame.mouse.set_visible(False)
-        self.window_center = [0.5 * x for x in window_size]
+        pygame.mouse.set_pos(self.window_center)
 
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
@@ -141,7 +144,7 @@ class Viewport:
         delta = [mouse_pos[dim] - self.window_center[dim] for dim in range(2)]
         self.camera_yaw   += delta[0] * self.turn_speed * dt
         self.camera_pitch += delta[1] * self.turn_speed * dt
-        halfpi = 0.5 * np.pi - 100*epsilon
+        halfpi = 0.5 * np.pi - 5000*epsilon
         self.camera_yaw = self.camera_yaw % (2.0 * np.pi)
         self.camera_pitch = np.clip(self.camera_pitch, -halfpi, +halfpi)
         self.update_camera_rotation_matrix()

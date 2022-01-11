@@ -56,7 +56,7 @@ def main(time_step = .1):
         sa = sum(x.surface_area for x in all_segments)
         print("Total surface area:", sa, sa_units)
 
-    view = Viewport()
+    view = Viewport(camera_position=[0,0,400])
     view.set_scene(rxd)
     voltage = rxd.Segment.get_database_class().get("voltage")
 
