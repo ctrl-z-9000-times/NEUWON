@@ -1,6 +1,6 @@
 from .neurons import NeuronTypeFactory
 from .regions import RegionFactory
-from neuwon.rxd.rxd_model import RxD_Model
+from neuwon.rxd import RxD_Model
 
 class Brain:
     def __init__(self,
@@ -14,3 +14,6 @@ class Brain:
         self.database   = self.rxd_model.get_database()
         self.regions    = RegionFactory(regions)
         self.neurons    = NeuronTypeFactory(self, neurons)
+
+    def advance(self):
+        self.rxd_model.advance()

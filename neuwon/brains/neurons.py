@@ -1,3 +1,7 @@
+from collections import Iterable, Callable, Mapping
+from neuwon.database import epsilon
+from .growth import PathLengthCache, growth_algorithm
+import numpy as np
 
 
 class _Distribution:
@@ -81,7 +85,7 @@ class NeuronGrowthProgram:
         self.segments.extend(segments)
         # Insert the mechanisms.
         for mech_name, parameters in mechanisms.items():
-            mechanism = 1/0
+            mechanism = self.brains.rxd_model.mechanisms[mech_name]
             for segment in segments:
                 mechanism(segment, **parameters)
 
