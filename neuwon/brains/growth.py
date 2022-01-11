@@ -6,7 +6,7 @@ import numpy as np
 import scipy.spatial
 
 
-def growth_algorithm(roots, region, carrier_point_density, path_length_cache=None, *,
+def growth_algorithm(roots, global_region, carrier_point_density, path_length_cache=None, *,
             balancing_factor=0.5,
             extension_angle=math.pi,
             extension_distance=math.inf,
@@ -15,6 +15,7 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
             extend_before_bifurcate=False,
             only_bifurcate=False,
             maximum_segment_length=math.inf,
+            neuron_region=None,
             segment_parameters,):
     """ Grow dendrites and axons
 
@@ -46,7 +47,8 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
     extend_before_bifurcate = bool(extend_before_bifurcate)
     only_bifurcate          = bool(only_bifurcate)
     maximum_segment_length  = float(maximum_segment_length)
-    assert isinstance(region, Region)
+    assert isinstance(global_region, Region)
+    assert isinstance(neuron_region, Region) or (neuron_region is None)
     assert 0 <= carrier_point_density
     assert 0 <= balancing_factor
     assert 0 <= extension_angle <= math.pi
@@ -88,7 +90,7 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
         return True
 
     # Generate the carrier points and associated data structures.
-    carrier_points  = region.sample_points(carrier_point_density)
+    carrier_points  = global_region.sample_points(carrier_point_density)
     free_points     = np.ones(len(carrier_points), dtype=bool)
     tree = scipy.spatial.cKDTree(carrier_points)
 
@@ -98,9 +100,16 @@ def growth_algorithm(roots, region, carrier_point_density, path_length_cache=Non
     bifurcations = [] # Secondary queue for potential bifurcations, used when extend_before_bifurcate=True.
     def compute_costs_to_all_carriers(parent):
         for index in tree.query_ball_point(parent.coordinates, max_distance):
-            if free_points[index]:
-                c = cost_function(parent, carrier_points[index])
-                heapq.heappush(costs, (c, parent, index))
+            if not free_points[index]:
+                continue
+            coordinates = carrier_points[index]
+            if neuron_region is not None:
+                soma_coordinates = parent.neuron.root.coordinates
+                relative_coordinates = coordinates - soma_coordinates
+                if not neuron_region.contains(relative_coordinates):
+                    continue
+            cost = cost_function(parent, coordinates)
+            heapq.heappush(costs, (cost, parent, index))
 
     # Initialize the potential connections from the starting seeds to all carrier points.
     for seed in roots:
