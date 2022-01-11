@@ -1,4 +1,4 @@
-from neuwon.parameters import Parameters
+from neuwon.brains.parameters import Parameters
 
 test_parameters = {
     'foo': 4,

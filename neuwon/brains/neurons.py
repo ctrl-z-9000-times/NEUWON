@@ -46,13 +46,16 @@ class NeuronGrowthProgram:
         else:
             coordinates = region.sample_points(density)
         diameter = _Distribution(diameter)
+        new_segments = []
         for c in coordinates:
             d = diameter()
             while d <= epsilon:
                 d = diameter()
             n = self.brains.rxd_model.Neuron(c, d)
             self.neurons.append(n)
-            self.segments.append(n.root)
+            new_segments.append(n.root)
+        self.segments.extend(new_segments)
+        self._insert_mechanisms(new_segments, mechanisms)
 
     def _run_growth_algorithm(self, *,
                 segment_type,
@@ -83,7 +86,18 @@ class NeuronGrowthProgram:
                         'diameter':     float(diameter),},
                 **morphology)
         self.segments.extend(segments)
-        # Insert the mechanisms.
+        self._insert_mechanisms(segments, mechanisms)
+
+    def _insert_mechanisms(self, segments, mechanisms):
+        # Clean the inputs.
+        if isinstance(mechanisms, Mapping):
+            pass
+        elif isinstance(mechanisms, str):
+            mechanisms = {mechanisms: {}}
+        elif isinstance(mechanisms, Iterable):
+            mechanisms = {mech_name: {} for mech_name in mechanisms}
+        else: raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
+        # 
         for mech_name, parameters in mechanisms.items():
             mechanism = self.brains.rxd_model.mechanisms[mech_name]
             for segment in segments:

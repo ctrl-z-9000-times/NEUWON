@@ -23,7 +23,7 @@ def main(time_step = .1):
                     'region': ('Sphere', [0, 0, 0], 1),
                     'number': 1,
                     'diameter': 10,
-                    'mechanisms': {'hh': {}}
+                    'mechanisms': {'hh'}
                 },
                 {
                     'segment_type': 'axon',
@@ -38,7 +38,7 @@ def main(time_step = .1):
                         'bifurcation_distance': 40,
                         'extend_before_bifurcate': True,
                         'maximum_segment_length': 30,},
-                    'mechanisms': {'hh': {}}
+                    'mechanisms': {'hh'}
                 },
             )
         },
