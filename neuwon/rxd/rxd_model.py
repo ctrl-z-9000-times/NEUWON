@@ -35,10 +35,8 @@ class RxD_Model:
                 self.time_step, self.celsius, self.input_hook)
 
     def __len__(self):
+        """ Returns the number of Segments in the Model. """
         return len(self.Segment.get_database_class())
-
-    def __repr__(self):
-        return repr(self.database)
 
     def get_celsius(self) -> float:     return self.celsius
     def get_clock(self):                return self.clock
