@@ -17,3 +17,9 @@ class Brain:
 
     def advance(self):
         self.rxd_model.advance()
+
+    def check(self):
+        self.rxd_model.check()
+
+    def __len__(self):
+        return 1/0

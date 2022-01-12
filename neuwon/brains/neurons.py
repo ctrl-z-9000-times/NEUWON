@@ -1,8 +1,8 @@
 from collections import Iterable, Callable, Mapping
 from neuwon.database import epsilon
 from .growth import PathLengthCache, growth_algorithm
+from . import regions
 import numpy as np
-
 
 class _Distribution:
     def __init__(self, arg):
@@ -15,8 +15,6 @@ class _Distribution:
             self.std_dev = 0.0
     def __call__(self, size=1):
         return np.random.normal(self.mean, self.std_dev, size=size)
-
-
 
 class NeuronGrowthProgram:
     def __init__(self, brains, neuron_type, program):
@@ -61,30 +59,49 @@ class NeuronGrowthProgram:
                 segment_type,
                 region,
                 diameter,
+                grow_from=None,
+                exclude_from=None,
                 morphology={},
                 mechanisms={},):
-
+        # Clean the inputs.
+        segment_type = str(segment_type)
         region = self.brains.regions.make_region(region)
 
-        relative_region = morphology.pop('relative_region', None)
-        if relative_region is not None:
-            relative_region = self.brains.regions.make_region(relative_region)
-
-        grow_from_soma = bool(morphology.pop('grow_from_soma', False))
-        if grow_from_soma:
-            roots = [n.root for n in self.neurons]
-        else:
+        if grow_from is None:
             roots = self.segments
+        else:
+            # grow_from is a segment type (or a list of them?)
+            # It's a reference to a segment-type made in this program
+            #       Raise an error if its not present / not grown yet.
+            #       Only applies to the neurons made by *this* NeuronGrowthProgram.
+            1/0 # TODO!
+
+        neuron_region = morphology.pop('neuron_region', None)
+        if neuron_region is not None:
+            neuron_region = self.brains.regions.make_region(neuron_region)
+
+        if exclude_from:
+            1/0 # TODO!
+            # exclude_from is a segment type (or list of them)
+            #   The current growth step will not grow in the same neuron_region as the
+            #   steps which produce those segment types.
 
         competitive = bool(morphology.pop('competitive', True))
-        if not competitive: 1/0 # TODO
 
-        segments = growth_algorithm(roots, region,
-                path_length_cache=self.path_length_cache,
-                segment_parameters={
-                        'segment_type': str(segment_type),
-                        'diameter':     float(diameter),},
-                **morphology)
+        # Run the growth algorithm.
+        if competitive:
+            segments = growth_algorithm(roots, region,
+                    path_length_cache=self.path_length_cache,
+                    segment_parameters={
+                            'segment_type': segment_type,
+                            'diameter':     float(diameter),},
+                    neuron_region=neuron_region,
+                    **morphology)
+        else:
+            1/0 # TODO
+
+        if neuron_region is not None:
+            self.neuron_regions = regions.Union(self.neuron_regions, neuron_region)
         self.segments.extend(segments)
         self._insert_mechanisms(segments, mechanisms)
 
@@ -97,7 +114,7 @@ class NeuronGrowthProgram:
         elif isinstance(mechanisms, Iterable):
             mechanisms = {mech_name: {} for mech_name in mechanisms}
         else: raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
-        # 
+        # Lookup and then create the mechanism instances.
         for mech_name, parameters in mechanisms.items():
             mechanism = self.brains.rxd_model.mechanisms[mech_name]
             for segment in segments:
