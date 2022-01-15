@@ -38,14 +38,14 @@ class RxD_Model:
         """ Returns the number of Segments in the Model. """
         return len(self.Segment.get_database_class())
 
-    def get_celsius(self) -> float:     return self.celsius
-    def get_clock(self):                return self.clock
+    # def get_celsius(self) -> float:     return self.celsius
+    # def get_clock(self):                return self.clock
     def get_database(self):             return self.database
     def get_Extracellular(self):        return self.Extracellular
     def get_mechanisms(self) -> dict:   return dict(self.mechanisms)
     def get_Neuron(self):               return self.Neuron
-    def get_species(self) -> dict:      return dict(self.species)
-    def get_time_step(self) -> float:   return self.time_step
+    # def get_species(self) -> dict:      return dict(self.species)
+    # def get_time_step(self) -> float:   return self.time_step
 
     def register_input_callback(self, function: 'f() -> bool'):
         """ """

@@ -1,18 +1,7 @@
 from neuwon.database import Pointer, NULL
-from neuwon.parameters import Parameters
-
-default_synapse_parameters = Parameters({
-    'filters': {},
-    'ap_detector': {},
-    'presynapse': {},
-    'extracellular': {},
-    'postsynapse': {},
-})
 
 
-
-
-class ____Synapses:
+class SynapseGrowthProgram:
     def __init__(self, model, axons, dendrites, pre_gap_post, diameter, num_synapses):
         self.model = model
         self.axons = list(axons)
@@ -127,9 +116,6 @@ class Synapse(Mechanism):
         return event
 
 
-
-
-
 class SynapsesFactory(dict):
     def __init__(self, database, parameters: dict):
         super().__init__()
@@ -143,3 +129,4 @@ class SynapsesFactory(dict):
         assert name not in self
         self[name] = syn_cls = Synapse.initialize(database, name, **synapse_parameters)
         return syn_cls
+

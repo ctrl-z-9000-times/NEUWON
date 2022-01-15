@@ -102,14 +102,14 @@ class Electric:
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._matrix_valid = True
 
-    # TODO: Consider changing the default duration to just "1" so that it's a
-    # nice round number that's easy to remember.
-    # 
-    # TODO:  Conisder switching inject current to units of nano-Amps.
-    #        Does anyone else use nA?
-    #        What does NEURON use?
-    #        Is nA actually a good unit? or is my using it a fluke?
     def inject_current(self, current, duration = 1.4):
+        # TODO: Consider changing the default duration to just "1" so that it's a
+        # nice round number that's easy to remember.
+        # 
+        # TODO:  Conisder switching inject current to units of nano-Amps.
+        #        Does anyone else use nA?
+        #        What does NEURON use?
+        #        Is nA actually a good unit? or is my using it a fluke?
         duration = float(duration)
         assert duration >= 0
         current = float(current)
