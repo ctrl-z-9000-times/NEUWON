@@ -1,7 +1,6 @@
 from .environment import Environment
 from .model import Model
 from scipy.ndimage.filters import maximum_filter
-import cv2
 import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -10,6 +9,12 @@ import random
 import scipy.ndimage
 import scipy.signal
 import scipy.stats
+
+def circle_mask(dimension):
+    x = np.linspace(-1, 1, dimension)
+    y = np.linspace(-1, 1, dimension)
+    x, y = np.meshgrid(x, y)
+    return np.sqrt(x**2 + y**2) < 1
 
 class Experiment:
     def __init__(self, size=200):
@@ -44,13 +49,13 @@ class Experiment:
         self.xcor      = []
         self.gridness  = []
         dim = int(self.env.size - 1) # Dimension of the X-Correlation.
-        circleMask = cv2.circle( np.zeros([dim,dim]), (dim//2,dim//2), dim//2, [1], -1)
+        mask = circle_mask(dim)
         for rf in self.gc_rfs:
             # Shrink images before the expensive auto correlation.
             rf = scipy.ndimage.zoom(rf, self.zoom, order=1)
             X  = scipy.signal.correlate2d(rf, rf)
             # Crop to a circle.
-            X *= circleMask
+            X *= mask
             self.xcor.append( X )
             # Correlate the xcor with a rotation of itself.
             rot_cor = {}
