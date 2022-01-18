@@ -1,3 +1,5 @@
+from neuwon.database import Compute
+import math
 
 class Constraints:
     def __init__(self, database, *,
@@ -8,8 +10,8 @@ class Constraints:
                 share_postsynapses=False,
                 maximum_distance=math.inf,
                 ):
-        self.Neuron   = database.get_class('Neuron')
-        self.Segment  = database.get_class('Segment')
+        self.Neuron   = database.get_class('Neuron').get_instance_type()
+        self.Segment  = database.get_class('Segment').get_instance_type()
         self.presynapse_neuron_types = [self.Neuron.neuron_types_list.index(neuron_type)
                                     for neuron_type in presynapse_neuron_types]
         self.presynapse_segment_types = [self.Segment.segment_types_list.index(segment_type)
