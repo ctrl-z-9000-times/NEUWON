@@ -1,5 +1,4 @@
 
-
 class Constraints:
     def __init__(self, database, *,
                 presynapse_neuron_types=[],
@@ -21,7 +20,7 @@ class Constraints:
                                     for segment_type in postsynapse_segment_types]
         self.maximum_distance = float(maximum_distance)
 
-        self._type_mask = self.Segment.get_database_class().add_method(self._type_mask)
+        self._filter_method = self.Segment.get_database_class().add_method(self._filter_method)
 
     def find_all_candidates(self) -> '[(presyn, postsyn), ...]':
         presyn_segs  = self.filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types)
@@ -47,16 +46,10 @@ class Constraints:
             segment_mask[segment_types] = True
         else:
             segment_mask = np.ones(len(self.Segment.segment_types_list), dtype=bool)
-        return np.nonzero(self._type_mask(None, neuron_mask, segment_mask))[0]
+        return np.nonzero(self._filter_method(None, neuron_mask, segment_mask))[0]
 
     @Compute
-    def _type_mask(seg: 'Segment', neuron_mask, segment_mask) -> bool:
+    def _filter_method(seg: 'Segment', neuron_mask, segment_mask, share) -> bool:
+        if share and seg._num_presyn > 0:
+            return False
         return segment_mask[seg.segment_type_id] and neuron_mask[seg.neuron.neuron_type_id]
-
-    def make_postsynapse_coinhabits_mask(self):
-        mask = np.zeros(len(self.Segment.get_database_class()), dtype=bool)
-        for synapse_type, synapse_growth_program in self.factory.items():
-            if synapse_type in self.postsynapse_coinhabits:
-                continue
-            synapse_growth_program.
-            mask[] = True
