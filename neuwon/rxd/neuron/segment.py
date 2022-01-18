@@ -18,7 +18,7 @@ class Segment(Tree, Geometry, Electric):
         segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer,
                 doc="Read-only attribute.")
         segment_cls = segment_data.get_instance_type()
-        segment_cls._segment_types_list = []
+        segment_cls.segment_types_list = []
         return segment_cls
 
     def __init__(self, parent, coordinates, diameter, segment_type=None):
@@ -34,14 +34,14 @@ class Segment(Tree, Geometry, Electric):
         if self.segment_type_id == NULL:
             return None
         else:
-            return type(self)._segment_types_list[self.segment_type_id]
+            return type(self).segment_types_list[self.segment_type_id]
     @segment_type.setter
     def segment_type(self, segment_type):
         if self.segment_type_id != NULL:
             raise ValueError(f'{self} already has a segment_type!')
         if segment_type is None:
             return
-        types_list = type(self)._segment_types_list
+        types_list = type(self).segment_types_list
         try:
             self.segment_type_id = types_list.index(segment_type)
         except ValueError:
