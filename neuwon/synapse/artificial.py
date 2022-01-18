@@ -1,112 +1,11 @@
-from neuwon.database import Pointer, NULL
-
-
-class SynapseGrowthProgram:
-    def __init__(self, model, axons, dendrites, pre_gap_post, diameter, num_synapses):
-        self.model = model
-        self.axons = list(axons)
-        self.dendrites = list(dendrites)
-        num_synapses = int(num_synapses)
-        pre_len, gap_len, post_len = pre_gap_post
-        f_pre = pre_len / sum(pre_gap_post)
-        f_post = post_len / sum(pre_gap_post)
-        self.presynaptic_segments = []
-        self.postsynaptic_segments = []
-        # Find all possible synapses.
-        pre = scipy.spatial.cKDTree([x.coordinates for x in self.axons])
-        post = scipy.spatial.cKDTree([x.coordinates for x in self.dendrites])
-        results = pre.query_ball_tree(post, sum(pre_gap_post))
-        results = list(itertools.chain.from_iterable(
-            ((pre, post) for post in inner) for pre, inner in enumerate(results)))
-        # Select some synapses and make them.
-        random.shuffle(results)
-        for pre, post in results:
-            if num_synapses <= 0:
-                break
-            pre = self.axons[pre]
-            post = self.dendrites[post]
-            if pre_len and len(pre.children) > 1: continue
-            if post_len and len(post.children) > 1: continue
-            if pre_len == 0:
-                self.presynaptic_segments.append(pre)
-            else:
-                x = (1 - f_pre) * np.array(pre.coordinates) + f_pre * np.array(post.coordinates)
-                self.presynaptic_segments.append(model.create_segment(pre, x, diameter)[0])
-            if post_len == 0:
-                self.postsynaptic_segments.append(post)
-            else:
-                x = (1 - f_post) * np.array(post.coordinates) + f_post * np.array(pre.coordinates)
-                self.postsynaptic_segments.append(model.create_segment(post, x, diameter)[0])
-            num_synapses -= 1
-        self.presynaptic_segments = list(set(self.presynaptic_segments))
-        self.segments = self.presynaptic_segments + self.postsynaptic_segments
-
-
+from neuwon.database import Pointer, NULL, Compute
+from neuwon.rxd import Mechanism
+import math
 
 
 class Synapse(Mechanism):
     def __init__(self, presynapse: 'Neuron', postsynapse: 'Segment'):
-        1/0
-
-    @staticmethod
-    def initialize(database, name,
-                filters = {},
-                presynapse = {},
-                extracellular = {},
-                postsynapse = {},):
-
-        synapse_data = database.add_class(name, (Synapse,))
-        synapse_data.add_attribute('presynapse', 'Neuron')
-        synapse_data.add_attribute('postsynapse', 'Segment')
-        event_queue = AP_Event.initialize()
-        return synapse_data.get_instance_type()
-
-    def initialize_presynapse(model, args, kwargs):
-        inherit = []
-        model = str(model).lower()
-        if model == 'mongillo2008':
-            from .Mongillo2008 import Mongillo2008
-            inherit.append(Mongillo2008)
-        else:
-            raise NotImplementedError(model)
-
-    def initialize_postsynapse(self, parameters):
-        # TODO: Make a big switch case stmt over all of the different things
-        # that the user can insert at the postsynapse.
-
-        # THOUGHT: Is everything at the postsynapse a regular Mechanism?
-        #          If so then this should be pretty easy to implement.
-
-        1/0
-
-    def filter(self, presynapse, postsynapse) -> bool:
-        for filter_type, filter_parameters in self.parameters['filters'].items():
-            if filter_type == 'presynaptic_neuron':
-                neuron_type = presynapse.neuron.neuron_type
-                if filter_parameters != neuron_type:
-                    return False
-            elif filter_type == 'postsynaptic_neuron':
-                neuron_type = postsynapse.neuron.neuron_type
-                if filter_parameters != neuron_type:
-                    return False
-            elif filter_type == 'presynaptic_dendrite':
-                segment_type = presynapse.segment_type
-                if filter_parameters != segment_type:
-                    return False
-            elif filter_type == 'postsynaptic_dendrite':
-                segment_type = postsynapse.segment_type
-                if filter_parameters != segment_type:
-                    return False
-            else:
-                raise ValueError(f'Unrecognized filter type "{filter_type}"')
-
-
-    def scan_for_APs():
-        1/0
-
-    def dispatch_to_synapses():
-        1/0
-
+        postsynapse._num_presyn += 1
 
     @Compute
     def postsynapse_event(self) -> bool:
@@ -116,17 +15,100 @@ class Synapse(Mechanism):
         return event
 
 
+class SynapseGrowthProgram:
+    def __init__(self, factory, synapse_type, *,
+                presynapse_neuron_types=[],
+                presynapse_segment_types=[],
+                postsynapse_neuron_types=[],
+                postsynapse_segment_types=[],
+                share_postsynapses=False,
+                maximum_distance=math.inf,
+                number = None,
+                stp = None,
+                stdp = None,
+                transmitter,
+                ):
+        self.name     = self.synapse_type = str(synapse_type)
+        self.factory  = factory
+        self.transmitter = self.factory.rxd.species[str(transmitter)]
+        self.database = self.factory.rxd.get_database()
+        self.Neuron   = self.database.get_class('Neuron')
+        self.Segment  = self.database.get_class('Segment')
+        self.Segment.get_database_class().add_attribute('_num_presyn', dtype=np.uint8)
+        self.presynapse_neuron_types = [self.Neuron.neuron_types_list.index(neuron_type)
+                                    for neuron_type in presynapse_neuron_types]
+        self.presynapse_segment_types = [self.Segment.segment_types_list.index(segment_type)
+                                    for segment_type in presynapse_segment_types]
+        self.postsynapse_neuron_types = [self.Neuron.neuron_types_list.index(neuron_type)
+                                    for neuron_type in postsynapse_neuron_types]
+        self.postsynapse_segment_types = [self.Segment.segment_types_list.index(segment_type)
+                                    for segment_type in postsynapse_segment_types]
+        self.maximum_distance = float(maximum_distance)
+
+        self._type_mask = self.Segment.get_database_class().add_method(self._type_mask)
+
+        self.Synapse = self.make_synapse_class()
+
+
+    def make_synapse_class(self):
+        synapse_data = self.database.add_class(self.name)
+        synapse_data.add_attribute('presynapse',  'Segment')
+        synapse_data.add_attribute('postsynapse', 'Segment')
+        STP.initialize(synapse_data, **self.stp)
+        return synapse_data.get_database_class()
+
+
+    def find_all_candidates(self) -> '[(presyn, postsyn), ...]':
+        presyn_segs  = self.filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types)
+        postsyn_segs = self.filter_segments(self.postsynapse_neuron_types, self.postsynapse_segment_types)
+        coordinates  = self.Segment.get_database_class().get_data('coordinates')
+        presyn_tree  = scipy.spatial.cKDTree([coordinates[presyn_segs]])
+        postsyn_tree = scipy.spatial.cKDTree([coordinates[postsyn_segs]])
+        results = presyn_tree.query_ball_tree(postsyn_tree, self.maximum_distance)
+        results = list(itertools.chain.from_iterable(
+                ((presyn_segs[pre_idx], postsyn_segs[post_idx])
+                    for post_idx in inner) for pre_idx, inner in enumerate(results)))
+        random.shuffle(results)
+        return results
+ 
+    def filter_segments(self, neuron_types, segment_types):
+        if neuron_types:
+            neuron_mask = np.zeros(len(self.Neuron.neuron_types_list), dtype=bool)
+            neuron_mask[neuron_types] = True
+        else:
+            neuron_mask = np.ones(len(self.Neuron.neuron_types_list), dtype=bool)
+        if segment_types:
+            segment_mask = np.zeros(len(self.Segment.segment_types_list), dtype=bool)
+            segment_mask[segment_types] = True
+        else:
+            segment_mask = np.ones(len(self.Segment.segment_types_list), dtype=bool)
+        return np.nonzero(self._type_mask(None, neuron_mask, segment_mask))[0]
+
+    def make_postsynapse_coinhabits_mask(self):
+        mask = np.zeros(len(self.Segment.get_database_class()), dtype=bool)
+        for synapse_type, synapse_growth_program in self.factory.items():
+            if synapse_type in self.postsynapse_coinhabits:
+                continue
+            synapse_growth_program.
+            mask[] = True
+
+
+    @Compute
+    def _type_mask(seg: 'Segment', neuron_mask, segment_mask) -> bool:
+        return segment_mask[seg.segment_type_id] and neuron_mask[seg.neuron.neuron_type_id]
+
+
 class SynapsesFactory(dict):
-    def __init__(self, database, parameters: dict):
+    def __init__(self, rxd, parameters: dict):
         super().__init__()
-        self.add_parameters(database, parameters)
+        self.rxd = rxd
+        self.add_parameters(parameters)
 
-    def add_parameters(self, database, parameters: dict):
+    def add_parameters(self, parameters: dict):
         for name, syn in self.parameters.items():
-            self.add_synapse(database, name, syn)
+            self.add_synapse_type(name, syn)
 
-    def add_synapse(self, database, name: str, synapse_parameters: dict) -> Synapse:
+    def add_synapse_type(self, name: str, synapse_parameters: dict) -> Synapse:
         assert name not in self
-        self[name] = syn_cls = Synapse.initialize(database, name, **synapse_parameters)
+        self[name] = syn_cls = Synapse.initialize(self.rxd, name, **synapse_parameters)
         return syn_cls
-
