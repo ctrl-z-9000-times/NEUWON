@@ -1,5 +1,5 @@
 from graph_algorithms import depth_first_traversal as dft
-from neuwon.brains.regions import Region
+from .regions import Region
 import heapq
 import math
 import numpy as np

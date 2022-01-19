@@ -121,9 +121,9 @@ class NeuronGrowthProgram:
                 mechanism(segment, **parameters)
 
 class NeuronTypeFactory(dict):
-    def __init__(self, brains, parameters: dict):
+    def __init__(self, rxd_model, parameters: dict):
         super().__init__()
-        self.brains = brains
+        self.rxd_model = rxd_model
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):
@@ -133,5 +133,5 @@ class NeuronTypeFactory(dict):
     def add_neuron_type(self, neuron_type: str, program: list):
         neuron_type = str(neuron_type)
         if neuron_type not in self:
-            self[neuron_type] = NeuronGrowthProgram(self.brains, neuron_type, program).neurons
+            self[neuron_type] = NeuronGrowthProgram(self.rxd_model, neuron_type, program).neurons
         return self[neuron_type]
