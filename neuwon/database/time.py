@@ -7,14 +7,14 @@ import math
 import matplotlib.pyplot
 import numpy as np
 import scipy.interpolate
-import weakref
+from weakref import WeakMethod
 
 class CallbackHook:
     """ This class aggregates and manages callbacks. """
     def __init__(self):
         self._callbacks = []
 
-    def register(self, function: 'f() -> bool', weak_method=False):
+    def register(self, function: 'f() -> bool', weakref=False):
         """ Append a callback to this hook.
 
         Callbacks are removed if they return True. They are guaranteed to always
@@ -24,7 +24,7 @@ class CallbackHook:
         other globally visible state.
         """
         assert isinstance(function, Callable)
-        if weak_method:
+        if weakref:
             function = CallbackHook._weakref_wrapper(function)
         self._callbacks.append(function)
 
@@ -41,7 +41,7 @@ class CallbackHook:
 
     @staticmethod
     def _weakref_wrapper(method):
-        method_ref = weakref.WeakMethod(method)
+        method_ref = WeakMethod(method)
         def call_if_able():
             method = method_ref()
             if method is not None:
@@ -61,7 +61,7 @@ class Clock:
         self.dt = self.time_step = self.tick_period = float(tick_period)
         self.ticks = 0
         self.units = str(units)
-        self.callbacks = CallbackHook()
+        self._callbacks = CallbackHook()
 
     def get_time(self) -> float:
         """ Returns the current time. """
@@ -87,19 +87,24 @@ class Clock:
         """ Returns the physical units of time used by this clock. """
         return self.units
 
-    def register_callback(self, function: 'f() -> bool', weak_method=False):
+    def register_callback(self, function: 'f() -> bool', period=1, weakref=False):
         """
         Argument function will be called immediately after every clock tick.
 
         Callbacks are removed if they return True. They are guaranteed to always
         be called in the same relative order that they were registered in.
         """
-        self.callbacks.register(function, weak_method)
+        if period == 1:
+            self._callbacks.register(function, weakref)
+        else:
+            1/0 # TODO!
+            # This would be useful for scheduling periodic maintenance tasks.
+            # For example: synapse death & growth.
 
     def reset(self):
         """ Set the clock to zero and then call all callbacks. """
         self.ticks = 0
-        self.callbacks()
+        self._callbacks()
 
     def set_time(self, new_time: float):
         self.ticks = round(float(new_time) / self.dt)
@@ -108,7 +113,7 @@ class Clock:
     def tick(self):
         """ Advance the clock by `tick_period` and then call all callbacks. """
         self.ticks += 1
-        self.callbacks()
+        self._callbacks()
 
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
@@ -199,7 +204,7 @@ class TimeSeries:
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
         assert self.clock, "Argument 'clock' not given and database has no default clock set."
-        self.clock.register_callback(self._record_implementation, weak_method=True)
+        self.clock.register_callback(self._record_implementation, weakref=True)
         self.record_duration = float(record_duration)
         self.discard_after = float(discard_after)
         self._record_implementation() # Collect the current value as the first data sample.
@@ -509,7 +514,7 @@ class Trace:
             self.clock.register_callback(callback)
         elif self.trace_obj:
             callback = self._obj_callback
-            self.clock.register_callback(callback, weak_method=True)
+            self.clock.register_callback(callback, weakref=True)
         callback() # Collect the current value as the first data sample.
 
     def reset(self):
