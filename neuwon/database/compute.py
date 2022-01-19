@@ -67,15 +67,15 @@ class Compute(Documentation):
         self.db_class = db_class
         self.qualname = f'{self.db_class.name}.{self.name}'
         self._jit_cache = {}
+        wrapper = lambda instance=None, *args, **kwargs: self._call(instance, *args, **kwargs)
+        wrapper.__name__ = self.name
+        wrapper.__doc__  = self.doc
         if add_attr:
             assert self.name not in self.db_class.components
             assert self.name not in self.db_class.methods
             self.db_class.methods[self.name] = self
-            wrapper = lambda instance=None, *args, **kwargs: self._call(instance, *args, **kwargs)
-            wrapper.__name__ = self.name
-            wrapper.__doc__  = self.doc
             setattr(self.db_class.instance_type, self.name, wrapper)
-        return self
+        return wrapper
 
     def _call(self, instance, *args, **kwargs):
         """

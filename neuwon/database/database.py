@@ -383,6 +383,10 @@ class DB_Class(Documentation):
             if isinstance(attr, Compute):
                 attr._register_method(self)
 
+    def add_method(self, compute):
+        assert isinstance(compute, Compute)
+        return compute._register_method(self, add_attr=False)
+
     def _init_instance(self, new_instance):
         old_size  = self.size
         new_size  = old_size + 1
