@@ -1,5 +1,6 @@
 from neuwon.database import Pointer, NULL, Compute
 from neuwon.rxd import Mechanism
+from .constraints import Constraints
 import math
 
 
@@ -23,10 +24,11 @@ class SynapseGrowthProgram:
                 stp = None,
                 stdp = None,
                 ):
-        self.name     = self.synapse_type = str(synapse_type)
-        self.factory  = factory
-        self.transmitter = self.factory.rxd.species[str(transmitter)]
-        self.database = self.factory.rxd.get_database()
+        self.name           = self.synapse_type = str(synapse_type)
+        self.factory        = factory
+        self.transmitter    = self.factory.rxd.species[str(transmitter)]
+        self.database       = self.factory.rxd.get_database()
+        self.constraints    = Constraints(self.database, **constraints)
         self.Neuron   = self.database.get_class('Neuron')
         self.Segment  = self.database.get_class('Segment')
         self.Segment.get_database_class().add_attribute('_num_presyn', dtype=np.uint8)

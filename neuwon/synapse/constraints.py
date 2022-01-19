@@ -1,4 +1,5 @@
 from neuwon.database import Compute
+import itertools
 import math
 import numpy as np
 import random
@@ -31,8 +32,8 @@ class Constraints:
         presyn_segs  = self.filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types)
         postsyn_segs = self.filter_segments(self.postsynapse_neuron_types, self.postsynapse_segment_types)
         coordinates  = self.Segment.get_database_class().get_data('coordinates')
-        presyn_tree  = scipy.spatial.cKDTree([coordinates[presyn_segs]])
-        postsyn_tree = scipy.spatial.cKDTree([coordinates[postsyn_segs]])
+        presyn_tree  = scipy.spatial.cKDTree(coordinates[presyn_segs])
+        postsyn_tree = scipy.spatial.cKDTree(coordinates[postsyn_segs])
         results = presyn_tree.query_ball_tree(postsyn_tree, self.maximum_distance)
         results = list(itertools.chain.from_iterable(
                 ((presyn_segs[pre_idx], postsyn_segs[post_idx])
@@ -55,7 +56,7 @@ class Constraints:
         return np.nonzero(filter_values)[0]
 
     @Compute
-    def _filter_method(seg: 'Segment', neuron_mask, segment_mask, share) -> bool:
-        if share and seg._num_presyn > 0:
+    def _filter_method(segment, neuron_mask, segment_mask, share) -> bool:
+        if share and segment._num_presyn > 0:
             return False
-        return segment_mask[seg.segment_type_id] and neuron_mask[seg.neuron.neuron_type_id]
+        return segment_mask[segment.segment_type_id] and neuron_mask[segment.neuron.neuron_type_id]
