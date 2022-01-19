@@ -1,5 +1,8 @@
 from neuwon.database import Compute
 import math
+import numpy as np
+import random
+import scipy.spatial
 
 class Constraints:
     def __init__(self, database, *,
@@ -7,9 +10,8 @@ class Constraints:
                 presynapse_segment_types=[],
                 postsynapse_neuron_types=[],
                 postsynapse_segment_types=[],
-                share_postsynapses=False,
                 maximum_distance=math.inf,
-                ):
+                share_postsynapses=False,):
         self.Neuron   = database.get_class('Neuron').get_instance_type()
         self.Segment  = database.get_class('Segment').get_instance_type()
         self.presynapse_neuron_types = [self.Neuron.neuron_types_list.index(neuron_type)
@@ -21,6 +23,7 @@ class Constraints:
         self.postsynapse_segment_types = [self.Segment.segment_types_list.index(segment_type)
                                     for segment_type in postsynapse_segment_types]
         self.maximum_distance = float(maximum_distance)
+        self.share_postsynapses = bool(share_postsynapses)
 
         self._filter_method = self.Segment.get_database_class().add_method(self._filter_method)
 
@@ -48,7 +51,8 @@ class Constraints:
             segment_mask[segment_types] = True
         else:
             segment_mask = np.ones(len(self.Segment.segment_types_list), dtype=bool)
-        return np.nonzero(self._filter_method(None, neuron_mask, segment_mask))[0]
+        filter_values = self._filter_method(None, neuron_mask, segment_mask, self.share_postsynapses)
+        return np.nonzero(filter_values)[0]
 
     @Compute
     def _filter_method(seg: 'Segment', neuron_mask, segment_mask, share) -> bool:
