@@ -1,7 +1,7 @@
-import neuwon.rxd
-import neuwon.synapse
 import neuwon.morphology.neurons
 import neuwon.morphology.regions
+import neuwon.rxd
+import neuwon.synapse
 
 __all__ = ('Model', 'TimeSeries', 'Trace',)
 

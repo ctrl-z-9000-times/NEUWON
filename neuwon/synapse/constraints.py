@@ -1,3 +1,8 @@
+"""
+Models the physical & structural constraints on synapses,
+and finds potential sites for growing new synapses.
+"""
+
 from neuwon.database import Compute
 import itertools
 import math
@@ -29,8 +34,8 @@ class Constraints:
         self._filter_method = self.Segment.get_database_class().add_method(self._filter_method)
 
     def find_all_candidates(self) -> '[(presyn, postsyn), ...]':
-        presyn_segs  = self.filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types)
-        postsyn_segs = self.filter_segments(self.postsynapse_neuron_types, self.postsynapse_segment_types)
+        presyn_segs  = self.get_presynapse_candidates()
+        postsyn_segs = self.get_postsynapse_candidates()
         coordinates  = self.Segment.get_database_class().get_data('coordinates')
         presyn_tree  = scipy.spatial.cKDTree(coordinates[presyn_segs])
         postsyn_tree = scipy.spatial.cKDTree(coordinates[postsyn_segs])
@@ -40,6 +45,11 @@ class Constraints:
                     for post_idx in inner) for pre_idx, inner in enumerate(results)))
         random.shuffle(results)
         return results
+
+    def get_presynapse_candidates(self):
+        return self.filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types)
+    def get_postsynapse_candidates(self):
+        return self.filter_segments(self.postsynapse_neuron_types, self.postsynapse_segment_types)
  
     def filter_segments(self, neuron_types, segment_types):
         if neuron_types:
@@ -57,6 +67,6 @@ class Constraints:
 
     @Compute
     def _filter_method(segment, neuron_mask, segment_mask, share) -> bool:
-        if share and segment._num_presyn > 0:
+        if not share and segment._num_presyn > 0:
             return False
         return segment_mask[segment.segment_type_id] and neuron_mask[segment.neuron.neuron_type_id]
