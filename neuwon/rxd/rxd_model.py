@@ -3,6 +3,7 @@ from neuwon.rxd.neuron import Neuron
 from neuwon.rxd.extracellular import Extracellular
 from neuwon.rxd.mechanisms import MechanismsFactory
 from neuwon.rxd.species import SpeciesFactory
+import numpy as np
 
 class RxD_Model:
     def __init__(self, time_step = 0.1, *,
@@ -110,3 +111,26 @@ class RxD_Model:
         for name, m in self.mechanisms.items():
             try: m.advance()
             except Exception: raise RuntimeError("in mechanism " + name)
+
+    def filter_segments_by_type(self, neuron_types, segment_types):
+        neuron_types_list = self.Neuron.neuron_types_list
+        if neuron_types:
+            neuron_types = [neuron_types_list.index(x) for x in neuron_types]
+            neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
+            neuron_mask[neuron_types] = True
+        else:
+            neuron_mask = np.ones(len(neuron_types_list), dtype=bool)
+        segment_types_list = self.Segment.segment_types_list
+        if segment_types:
+            segment_types = [segment_types_list.index(x) for x in segment_types]
+            segment_mask  = np.zeros(len(segment_types_list), dtype=bool)
+            segment_mask[segment_types] = True
+        else:
+            segment_mask = np.ones(len(segment_types_list), dtype=bool)
+        filter_values = self.Segment._filter_by_type(None, neuron_mask, segment_mask)
+        index = np.nonzero(filter_values)[0]
+        if True:
+            index_to_object = self.Segment.get_database_class().index_to_object
+            return [index_to_object(x) for x in index]
+        else:
+            return index

@@ -83,3 +83,7 @@ class Segment(Tree, Geometry, Electric):
             self = cls(self, (x,y,z), d, segment_type=segment_type)
             section.append(self)
         return section
+
+    @Compute
+    def _filter_by_type(self, neuron_mask, segment_mask) -> bool:
+        return segment_mask[self.segment_type_id] and neuron_mask[self.neuron.neuron_type_id]

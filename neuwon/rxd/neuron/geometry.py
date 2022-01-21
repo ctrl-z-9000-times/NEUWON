@@ -50,7 +50,7 @@ class Geometry:
                 units="μm",
                 valid_range=(0.0, np.inf),)
 
-        db_cls.add_attribute("_primary", dtype=np.bool, doc="""
+        db_cls.add_attribute("_primary", dtype=bool, doc="""
                 Primary segments are straightforward extensions of the parent
                 branch. Non-primary segments are lateral branches off to the side of
                 the parent branch. """)
