@@ -134,3 +134,19 @@ class RxD_Model:
             return [index_to_object(x) for x in index]
         else:
             return index
+
+    def filter_neurons_by_type(self, neuron_types):
+        neuron_types_list = self.Neuron.neuron_types_list
+        if neuron_types:
+            neuron_types = [neuron_types_list.index(x) for x in neuron_types]
+            neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
+            neuron_mask[neuron_types] = True
+        else:
+            neuron_mask = np.ones(len(neuron_types_list), dtype=bool)
+        filter_values = self.Neuron._filter_by_type(None, neuron_mask)
+        index = np.nonzero(filter_values)[0]
+        if True:
+            index_to_object = self.Neuron.get_database_class().index_to_object
+            return [index_to_object(x) for x in index]
+        else:
+            return index

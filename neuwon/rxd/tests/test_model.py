@@ -10,7 +10,7 @@ def test_smoke_test():
     m.Neuron([0,0,0], 13)
     m.advance()
 
-def test_filter_segments():
+def test_filter_by_type():
     m = RxD_Model()
     n1 = m.Neuron([0,0,0], 13, neuron_type='n1', segment_type='s1')
     n2 = m.Neuron([0,2,0], 13, neuron_type='n2', segment_type='s2')
@@ -19,6 +19,10 @@ def test_filter_segments():
     assert m.filter_segments_by_type(['n2'], ['s1', 's2']) == [n2.root]
     assert m.filter_segments_by_type(['n2'], ['s1']) == []
     assert m.filter_segments_by_type(['n1', 'n2'], ['s1']) == [n1.root]
+    assert m.filter_segments_by_type(['n1', 'n2'], ['s1', 's2']) == [n1.root, n2.root]
+    assert m.filter_neurons_by_type(['n1']) == [n1]
+    assert m.filter_neurons_by_type(['n2']) == [n2]
+    assert m.filter_neurons_by_type(['n1', 'n2']) == [n1, n2]
 
 def test_model_hh(debug=False):
     dt = .01

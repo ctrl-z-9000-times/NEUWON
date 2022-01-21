@@ -94,3 +94,7 @@ class Neuron:
             parent = int(next(cursor))
             1/0 # TODO: this needs to be rewritten!
             entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
+
+    @Compute
+    def _filter_by_type(self, neuron_mask) -> bool:
+        return neuron_mask[self.neuron_type_id]
