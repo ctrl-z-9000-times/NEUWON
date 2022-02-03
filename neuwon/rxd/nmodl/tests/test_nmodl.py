@@ -17,7 +17,7 @@ def test_hh_smoke_test():
 
     hh = m.mechanisms['hh']
     help(hh)
-    print('SURFACE AREA PARAMETERS:', hh._surface_area_parameters)
+    print('PARAMETERS:', hh._parameters)
     print('ADVANCE PYCODE:')
     print(hh._advance_pycode)
 

@@ -1,8 +1,8 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Compute
 from neuwon.rxd.mechanisms import Mechanism
-from neuwon.rxd.nmodl import code_gen, cache, solver
-from neuwon.rxd.nmodl.parser import (NmodlParser, ANT,
+from . import code_gen, cache, solver
+from .parser import (NmodlParser, ANT,
         SolveStatement,
         AssignStatement,
         IfStatement,
@@ -48,7 +48,8 @@ class NMODL(Mechanism):
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self.nmodl_name, self.title, self.description = parser.gather_documentation()
-                self.parameters = ParameterTable(parser.gather_parameters())
+                self.point_process = parser.is_point_process()
+                self.parameters = ParameterTable(parser.gather_parameters(), self.nmodl_name)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
                 self.all_blocks = list(blocks.values())
@@ -63,7 +64,7 @@ class NMODL(Mechanism):
                 raise
             cache.save(self.filename, self)
         self.parameters.update(parameters, strict=True)
-        self.surface_area_parameters = self.parameters.split_surface_area_parameters()
+        self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -90,7 +91,7 @@ class NMODL(Mechanism):
         self.accumulators = set()
         for state in self.states:
             self.pointers[state] = f'self.{state}'
-        for param in self.parameters.get_surface_area_parameters():
+        for param in self.parameters.get_instance_parameters(self.point_process):
             self.pointers[param] = f'self.{param}'
         self.breakpoint_block.gather_arguments()
         self.initial_block.gather_arguments()
@@ -236,30 +237,41 @@ class NMODL(Mechanism):
     def _initialize_database(self, database):
         mechanism_superclass = type(self.name, (Mechanism,), {
             '__slots__': (),
+            '_point_process': self.point_process,
+            '_parameters': self.instance_parameters,
             '__init__': NMODL._instance__init__,
             'advance': self.advance_bytecode,
-            '_surface_area_parameters': self.surface_area_parameters,
             '_advance_pycode': self.advance_pycode,
+            'modulate': NMODL._instance_modulate,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
-        for name in self.surface_area_parameters:
-            mech_data.add_attribute(name, units=None) # TODO: units!
+        for name, (value, units) in self.instance_parameters.items():
+            mech_data.add_attribute(name,
+                    initial_value=value if self.point_process else None,
+                    units=units,)
         for name in self.states:
             mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
         return mech_data.get_instance_type()
 
     @staticmethod
-    def _instance__init__(self, segment, scale=1.0, **initial_state):
+    def _instance__init__(self, segment, scale=1.0):
         self.segment = segment
+        if self._point_process:
+            self.modulate(scale)
+        else:
+            scale = float(scale)
+            x_factor = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
+            sa = x_factor * scale * self.segment.surface_area
+            for name, (value, units) in self._parameters.items():
+                setattr(self, name, value * sa)
+
+    @staticmethod
+    def _instance_modulate(self, scale):
         scale = float(scale)
-        x_factor = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
-        sa = x_factor * scale * self.segment.surface_area
-        for name, (value, units) in self._surface_area_parameters.items():
-            setattr(self, name, value * sa)
-        if initial_state is not None:
-            for state, value in initial_state.items():
-                setattr(self, state, value)
+        for name in self._parameters.keys():
+            value = getattr(self, name)
+            setattr(self, name, value * scale)
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
@@ -269,8 +281,9 @@ class ParameterTable(dict):
         "time_step": (None, "ms"),
     }
 
-    def __init__(self, parameters):
+    def __init__(self, parameters, mechanism_name):
         dict.__init__(self)
+        self.mechanism_name = mechanism_name
         self.update(self.builtin_parameters)
         self.update(parameters)
 
@@ -292,8 +305,8 @@ class ParameterTable(dict):
             self[name] = (value, units)
         return self
 
-    def get_surface_area_parameters(self):
-        """ Returns the surface_area_parameters.
+    def get_instance_parameters(self, point_process):
+        """ Returns the instance_parameters.
 
         The surface area parameters are special because each segment of neuron
         has its own surface area and so their actual values are different for
@@ -301,16 +314,20 @@ class ParameterTable(dict):
         source code, instead they are stored alongside the state variables and
         accessed at run time. 
         """
-        return {name: (value, units)
-            for name, (value, units) in self.items()
-                if units and "/cm2" in units}
+        parameters = {}
+        for name, (value, units) in self.items():
+            if units:
+                if ((    point_process and "/" + self.mechanism_name in units) or
+                    (not point_process and "/cm2" in units)):
+                        parameters[name] = (value, units)
+        return parameters
 
-    def split_surface_area_parameters(self):
-        """ Removes and returns the surface_area_parameters. """
-        surface_area_parameters = self.get_surface_area_parameters()
-        for name in surface_area_parameters:
+    def split_instance_parameters(self, point_process):
+        """ Removes and returns the instance_parameters. """
+        parameters = self.get_instance_parameters(point_process)
+        for name in parameters:
             self.pop(name)
-        return surface_area_parameters
+        return parameters
 
     def substitute(self, block):
         substitutions = {}
