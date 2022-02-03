@@ -6,13 +6,13 @@ from neuwon.rxd.species import SpeciesFactory
 import numpy as np
 
 class RxD_Model:
-    def __init__(self, time_step = 0.1, *,
+    def __init__(self, time_step: 'ms' = 0.1, *,
                 celsius = 37,
-                initial_voltage = -70,
+                initial_voltage: 'mv' = -70,
                 cytoplasmic_resistance = 100,
-                membrane_capacitance = 1, # uf/cm^2
+                membrane_capacitance: 'uf/cm^2' = 1,
                 extracellular_tortuosity = 1.55,
-                extracellular_max_distance = 20e-6,
+                extracellular_max_distance: 'um' = 20e-6,
                 species={},
                 mechanisms={},):
         """ """

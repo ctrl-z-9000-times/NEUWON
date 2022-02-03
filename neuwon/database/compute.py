@@ -31,6 +31,9 @@ import textwrap
 #       Start with a few test cases.
 # 
 #   Special case for @compute on __init__, add class method `batch_init(num, *,**)`.
+#       Note: python does not like @decorators on __init__.
+#       Instead I should make my own magic "init" method.
+#       Different name, custom implementation, mutually exclusive with "__init__".
 
 class Compute(Documentation):
     """
