@@ -1,5 +1,4 @@
 from neuwon.rxd.rxd_model import RxD_Model
-from neuwon.database import Database
 from neuwon.rxd.nmodl import NMODL
 import pytest
 
