@@ -36,11 +36,13 @@ class NmodlParser:
     to_nmodl = nmodl.dsl.to_nmodl
 
     def gather_documentation(self):
-        """ Returns triple of (name, title, and description).
+        """ Returns tuple of (name, point_process, title, and description).
         This assumes that the first block comment is the primary documentation. """
         x = self.lookup(ANT.SUFFIX)
         if x: name = x[0].name.get_node_name()
         else: name = os.path.split(self.filename)[1] # TODO: Split extension too?
+        if x: point_process = x[0].type.get_node_name() == "POINT_PROCESS"
+        else: point_process = False
         title = self.lookup(ANT.MODEL)
         title = title[0].title.eval().strip() if title else ""
         if title.startswith(name + ".mod"):
@@ -48,7 +50,7 @@ class NmodlParser:
         if title: title = title[0].title() + title[1:] # Capitalize the first letter.
         comments = self.lookup(ANT.BLOCK_COMMENT)
         description = comments[0].statement.eval() if comments else ""
-        return (name, title, description)
+        return (name, point_process, title, description)
 
     def gather_states(self):
         """ Returns sorted list the names of the states. """

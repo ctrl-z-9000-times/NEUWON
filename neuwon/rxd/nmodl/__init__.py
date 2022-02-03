@@ -38,8 +38,7 @@ class NMODL(Mechanism):
             try:
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
-                self.nmodl_name, self.title, self.description = parser.gather_documentation()
-                self.point_process = parser.is_point_process()
+                self.nmodl_name, self.point_process,  self.title, self.description = parser.gather_documentation()
                 self.parameters = ParameterTable(parser.gather_parameters(), self.nmodl_name)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
