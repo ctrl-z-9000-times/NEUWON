@@ -23,15 +23,6 @@ def eprint(*args, **kwargs):
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
-# TODO: Ensure that all output pointers are written to.
-# surface_area_parameters = sorted(self.surface_area_parameters)
-# for variable, pointer in self.pointers.items():
-#     if pointer.conductance and variable not in self.breakpoint_block.assigned:
-#         if variable in surface_area_parameters:
-#             idx = surface_area_parameters.index(variable)
-#             self.breakpoint_block.statements.append(
-#                     AssignStatement(variable, variable, pointer=pointer))
-
 class NMODL(Mechanism):
     def __init__(self, filename, parameters={}, use_cache=True):
         """
