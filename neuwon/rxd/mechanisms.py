@@ -4,9 +4,17 @@ class Mechanism:
     @classmethod
     def initialize(cls, database, name, time_step, celsius):
         """
-        Optional method. This is called after the Model has been created.
+        Optional method to setup this mechanism.
+
+        This is called after the Model has been created.
 
         Optionally may return a new Mechanism object to use in place of this one. """
+        pass
+
+    def modulate(self, scale):
+        """
+        Optional method to scale the strength of this element by a multiplier.
+        """
         pass
 
     @classmethod
