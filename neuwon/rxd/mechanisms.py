@@ -19,13 +19,6 @@ class Mechanism:
         raise NotImplementedError
 
     @classmethod
-    def add_nonspecific_conductance(cls, conductance, reversal_potential, segment='segment'):
-        mechanism_data = cls.get_database_class()
-        1/0
-        # TODO: This should make hidden attributes for the mechanism factory to pick up.
-        #       The model will give the mech-factory the species input clock as another argument.
-
-    @classmethod
     def advance(cls):
         """ Advance all instances of this mechanism. """
         raise NotImplementedError
@@ -41,6 +34,7 @@ class MechanismsFactory(dict):
                     for name, mechanism in parameters.items()]
 
     def add_mechanism(self, name, mechanism) -> Mechanism:
+        name = str(name)
         assert name not in self
         if isinstance(mechanism, str):
             if mechanism.endswith(".mod"):
@@ -52,9 +46,6 @@ class MechanismsFactory(dict):
             if retval is not None:
                 mechanism = retval
         self[name] = mechanism
-        # TODO: something like this:
-        if getattr(mechanism, '_nonspecific_conductance', False):
-            1/0 # Register the computation with the model here.
         return mechanism
 
 import neuwon.rxd.nmodl
