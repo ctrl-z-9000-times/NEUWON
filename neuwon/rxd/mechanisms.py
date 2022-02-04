@@ -2,44 +2,43 @@ class Mechanism:
     """ Abstract class for specifying chemical reactions and mechanisms. """
     __slots__ = ()
     @classmethod
-    def initialize(cls, database, name, time_step, celsius):
+    def initialize(cls, rxd_model, name):
         """
         Optional method to setup this mechanism.
 
         This is called after the Model has been created.
 
-        Optionally may return a new Mechanism object to use in place of this one. """
+        Optionally may return a new Mechanism object to use in place of this one.
+        """
         pass
 
-    def modulate(self, scale):
+    def set_magnitude(self, magnitude):
         """
-        Optional method to scale the strength of this element by a multiplier.
+        Optional method. Sets the strength of this element.
         """
-        pass
+        raise NotImplementedError
 
     @classmethod
     def add_nonspecific_conductance(cls, conductance, reversal_potential, segment='segment'):
         mechanism_data = cls.get_database_class()
-        raise NotImplementedError
+        1/0
         # TODO: This should make hidden attributes for the mechanism factory to pick up.
         #       The model will give the mech-factory the species input clock as another argument.
 
     @classmethod
-    def advance(self):
+    def advance(cls):
         """ Advance all instances of this mechanism. """
-        raise TypeError(f"Abstract method called by {type(self)}.")
+        raise NotImplementedError
 
 class MechanismsFactory(dict):
-    def __init__(self, parameters:dict, database, time_step, celsius, accumulate_conductances_hook):
+    def __init__(self, rxd_model, parameters:dict):
         super().__init__()
-        self.database   = database
-        self.time_step  = time_step
-        self.celsius    = celsius
+        self.rxd_model  = rxd_model
         self.add_parameters(parameters)
 
-    def add_parameters(self, parameters:dict):
-        for name, mechanism in parameters.items():
-            self.add_mechanism(name, mechanism)
+    def add_parameters(self, parameters:dict) -> [Mechanism]:
+        return [self.add_mechanism(name, mechanism)
+                    for name, mechanism in parameters.items()]
 
     def add_mechanism(self, name, mechanism) -> Mechanism:
         assert name not in self
@@ -49,9 +48,7 @@ class MechanismsFactory(dict):
             else:
                 raise ValueError("File extension not understood")
         if hasattr(mechanism, "initialize"):
-            retval = mechanism.initialize(self.database, name,
-                    time_step=self.time_step,
-                    celsius=self.celsius,)
+            retval = mechanism.initialize(self.rxd_model, name)
             if retval is not None:
                 mechanism = retval
         self[name] = mechanism

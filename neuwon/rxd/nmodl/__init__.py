@@ -164,7 +164,12 @@ class NMODL(Mechanism):
                                 if isinstance(stmt, ConserveStatement) else [stmt])
         self.breakpoint_block.substitute(self.pointers)
 
-    def initialize(self, database, name, **builtin_parameters):
+    def initialize(self, rxd_model, name):
+        database = rxd_model.get_database()
+        builtin_parameters = {
+                "time_step": rxd_model.get_time_step(),
+                "celsius":   rxd_model.get_celsius(),
+        }
         self.name = str(name)
         try:
             self.parameters.update(builtin_parameters, strict=True, override=False)
@@ -232,7 +237,7 @@ class NMODL(Mechanism):
             '__init__': NMODL._instance__init__,
             'advance': self.advance_bytecode,
             '_advance_pycode': self.advance_pycode,
-            'modulate': NMODL._instance_modulate,
+            'set_magnitude': NMODL._set_magnitude,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
@@ -247,21 +252,19 @@ class NMODL(Mechanism):
     @staticmethod
     def _instance__init__(self, segment, scale=1.0):
         self.segment = segment
-        if self._point_process:
-            self.modulate(scale)
-        else:
-            scale = float(scale)
-            x_factor = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
-            sa = x_factor * scale * self.segment.surface_area
-            for name, (value, units) in self._parameters.items():
-                setattr(self, name, value * sa)
+        self.set_magnitude(scale)
 
     @staticmethod
-    def _instance_modulate(self, scale):
-        scale = float(scale)
-        for name in self._parameters.keys():
-            value = getattr(self, name)
-            setattr(self, name, value * scale)
+    def _set_magnitude(self, multiplier):
+        multiplier = float(multiplier)
+        if self._point_process:
+            for name, (value, units) in self._parameters.items():
+                setattr(self, name, value * multiplier)
+        else:
+            sa_units = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
+            x = multiplier * sa_units * self.segment.surface_area
+            for name, (value, units) in self._parameters.items():
+                setattr(self, name, value * x)
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
@@ -307,8 +310,10 @@ class ParameterTable(dict):
         parameters = {}
         for name, (value, units) in self.items():
             if units:
-                if ((    point_process and "/" + self.mechanism_name in units) or
-                    (not point_process and "/cm2" in units)):
+                if not point_process and "/cm2" in units:
+                    parameters[name] = (value, units)
+                elif point_process:
+                    if ("/" + self.mechanism_name in units) or ("/1" in units):
                         parameters[name] = (value, units)
         return parameters
 

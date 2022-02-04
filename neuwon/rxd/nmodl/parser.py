@@ -41,7 +41,7 @@ class NmodlParser:
         x = self.lookup(ANT.SUFFIX)
         if x: name = x[0].name.get_node_name()
         else: name = os.path.split(self.filename)[1] # TODO: Split extension too?
-        if x: point_process = x[0].type.get_node_name() == "POINT_PROCESS"
+        if x: point_process = (x[0].type.get_node_name() == "POINT_PROCESS")
         else: point_process = False
         title = self.lookup(ANT.MODEL)
         title = title[0].title.eval().strip() if title else ""

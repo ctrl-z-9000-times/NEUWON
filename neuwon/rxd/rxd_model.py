@@ -32,8 +32,7 @@ class RxD_Model:
                 tortuosity       = extracellular_tortuosity,
                 maximum_distance = extracellular_max_distance,)
         self.species = SpeciesFactory(species, db, self.input_hook, self.celsius)
-        self.mechanisms = MechanismsFactory(mechanisms, db,
-                self.time_step, self.celsius, self.input_hook)
+        self.mechanisms = MechanismsFactory(self, mechanisms)
 
     def __len__(self):
         """ Returns the number of Segments in the Model. """
