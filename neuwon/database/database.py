@@ -160,7 +160,7 @@ class Database:
                 if component.reference and not component.allow_invalid:
                     yield component.reference
         dependencies = topological_sort(self.db_classes.values(), destructive_references)
-        if False:
+        if False: # Diagnostic printout.
             for n in self.db_classes.values():
                 print(n)
                 for x in destructive_references(n):
@@ -174,7 +174,7 @@ class Database:
                 else:
                     order_does_not_matter.append(component)
         order.extend(order_does_not_matter)
-        # 
+        # Dispatch to the data component to do the actual work.
         for component in order:
              component._remove_references_to_destroyed()
 
@@ -198,7 +198,7 @@ class Database:
                 db_class.sort_key = keys = tuple(db_class.get(k) for k in keys)
                 assert all(isinstance(x, Attribute) for x in keys)
                 self._sort_order = None # Sort order was invalidated by adding a new db_class.
-        # Sorting by classes by references to other classes introduces a
+        # Sorting by a reference to another class introduces a
         # dependency in the sort order.
         def sort_order_dependencies(db_class):
             """ Yields all db_classes which must be sorted before this db_class can be sorted. """
@@ -409,7 +409,7 @@ class DB_Class(Documentation):
         instance._idx = NULL
         self.is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
 
-    # TODO: Make this into a propper attribute so that the user can see it more
+    # TODO: Make this into a proper attribute so that the user can see it more
     # easily. Make it private ie '_destroyed'. Someday the user might want to
     # run a little bit of computation on unsorted data, which I should support!
     # Although it would have sub-optimal performance, sorting the data has a
@@ -504,7 +504,8 @@ class DB_Class(Documentation):
 
     def _sort(self):
         if self.is_sorted: return
-        xp = self.database.memory_space.array_module
+        mem = self.database.get_memory_space()
+        xp  = mem.get_array_module()
         # First compress out the dead instances.
         new_to_old = xp.arange(len(self))
         if self.destroyed_list:
@@ -513,7 +514,8 @@ class DB_Class(Documentation):
         for key in reversed(self.sort_key):
             sort_key_data   = self.get(key).get_data()
             rearranged      = sort_key_data[new_to_old]
-            sort_order      = xp.argsort(rearranged, kind='stable')
+            sort_kwargs     = {'kind': 'stable'} if mem == memory_spaces.host else {}
+            sort_order      = xp.argsort(rearranged, **sort_kwargs)
             new_to_old      = new_to_old[sort_order]
         # Make the forward transform map.
         old_to_new = xp.empty(len(self), dtype=Pointer)
@@ -530,11 +532,6 @@ class DB_Class(Documentation):
                 component.to_coo()
                 component.data.row = old_to_new[component.data.row]
             else: raise NotImplementedError(type(component))
-        self.instances = list(np.take(self.instances, new_to_old))
-        for ref in self.instances:
-            inst = ref()
-            if inst:
-                inst._idx = old_to_new[inst._idx]
         # Update all references to point to their new locations.
         for component in self.referenced_by:
             assert isinstance(component, Attribute)
@@ -549,6 +546,15 @@ class DB_Class(Documentation):
             if matrix.is_free(): continue
             matrix.to_coo()
             matrix.data.col = old_to_new[matrix.data.col]
+        # Update the instance handles.
+        if mem == memory_spaces.cuda:
+            new_to_old = new_to_old.get()
+            old_to_new = old_to_new.get()
+        self.instances = list(np.take(self.instances, new_to_old))
+        for ref in self.instances:
+            inst = ref()
+            if inst:
+                inst._idx = old_to_new[inst._idx]
         # Bookkeeping.
         self.size = len(new_to_old)
         self.destroyed_list = []

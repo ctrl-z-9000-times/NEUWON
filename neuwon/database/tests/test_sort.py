@@ -1,11 +1,8 @@
 from neuwon.database import *
-from neuwon.database.memory_spaces import *
 import pytest
 import random
 
 # TODO: Test multi-level sorts with references between them.
-
-# TODO: Test on a all memory spaces.
 
 is_sorted = lambda data: all(a <= b for a,b in zip(data, data[1:]))
 
@@ -45,7 +42,7 @@ def test_sort(db=None):
     assert is_sorted(bar_data.get_data())
     assert ans.get_unstable_index() == (10-1+10-3)
 
-@pytest.mark.skip()
+
 def test_gpu():
     db = Database()
     with db.using_memory_space('cuda'):
