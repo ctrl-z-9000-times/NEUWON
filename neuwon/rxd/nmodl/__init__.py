@@ -8,6 +8,7 @@ from .parser import (NmodlParser, ANT,
         IfStatement,
         ConserveStatement)
 import math
+import numbers
 import numpy as np
 import os.path
 import re
@@ -237,7 +238,7 @@ class NMODL(Mechanism):
             '__init__': NMODL._instance__init__,
             'advance': self.advance_bytecode,
             '_advance_pycode': self.advance_pycode,
-            'set_magnitude': NMODL._set_magnitude,
+            'set_magnitude': NMODL._set_magnitude if self.instance_parameters else NMODL._no_magnitude,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
@@ -265,6 +266,14 @@ class NMODL(Mechanism):
             x = multiplier * sa_units * self.segment.surface_area
             for name, (value, units) in self._parameters.items():
                 setattr(self, name, value * x)
+
+    @staticmethod
+    def _no_magnitude(self, multiplier):
+        if ((multiplier is None) or
+            (multiplier is False) or
+            (isinstance(multiplier, Number) and math.isnan(multiplier))):
+                return
+        raise TypeError(f"Mechanism {type(self).__name__} has no magnitude.")
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
