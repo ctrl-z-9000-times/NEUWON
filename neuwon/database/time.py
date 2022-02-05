@@ -397,6 +397,11 @@ class TimeSeries:
         period      = float(period)
         return self.set_data([min_, max_, min_], [0.0, period, period])
 
+# Thought: The Trace class does too much. Because it covers two use cases
+# (single instances and whole components) its API is unintuitive, excessively
+# documented, and allows nonsensical combinations of features.
+# I should split it into two classes: "Trace" and "TraceAll".
+
 class Trace:
     """ Exponentially weighted mean and standard deviation.
 

@@ -325,12 +325,6 @@ class ClassAttribute(DataComponent):
 class SparseMatrix(DataComponent):
     """ """ # TODO-DOC
 
-    # TODO: Consider adding more write methods:
-    #       1) Write rows. (done)
-    #       2) Insert coordinates.
-    #               Notes: first convert format to either lil or coo
-    #       3) Overwrite the matrix. (done)
-
     # TODO: Figure out if/when to call mat.eliminate_zeros() and sort too.
 
     # I really want to like to use enums, and they are great an all....
@@ -338,13 +332,13 @@ class SparseMatrix(DataComponent):
     #               "lil" vs SparseMatrix.Format.lil
     #       Pros & Cons:
     #           + faster to check pointer identity than string equality.
+    #           + easier to use, harder to mess up (error checking).
+    #           + more organized. Can attach methods to enum. start with: _matrix_class
     #           - more verbose.
-    #           + more elegant / readable / organized?
-    #               -> Can attach methods to enum. start with: _matrix_class
     # class Format(enum.Enum):
-    #     lil = object()
-    #     coo = object()
-    #     csr = object()
+    #     lil = "lil"
+    #     coo = "coo"
+    #     csr = "csr"
 
     def __init__(self, db_class, name, column, dtype=Real, doc:str="", units:str="",
                 allow_invalid:bool=False, valid_range=(None, None),):
