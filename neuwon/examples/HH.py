@@ -1,11 +1,11 @@
 """ Model of an action potential propagating through an axonal arbor. """
 
-from neuwon.brains import Brain
+from neuwon import Model
 from neuwon.gui.viewport import Viewport
 from math import pi
 
 def main(time_step = .1):
-    model = Brain({
+    model = Model({
             'time_step': time_step,
             'celsius': 6.3,
         },
@@ -45,20 +45,19 @@ def main(time_step = .1):
     )
     max_v = +60
     min_v = -88
-    rxd   = model.rxd_model
-    soma  = rxd.Neuron.get_database_class().get_all_instances()[0].root
+    soma  = model.Neuron.get_database_class().get_all_instances()[0].root
 
     if True:
-        print("Number of Locations:", len(rxd))
+        print("Number of Locations:", len(model))
         sa_units = soma.get_database_class().get("surface_area").get_units()
         print("Soma surface area:", soma.surface_area, sa_units)
-        all_segments = rxd.Segment.get_database_class().get_all_instances()
+        all_segments = model.Segment.get_database_class().get_all_instances()
         sa = sum(x.surface_area for x in all_segments)
         print("Total surface area:", sa, sa_units)
 
     view = Viewport(camera_position=[0,0,400])
-    view.set_scene(rxd)
-    voltage = rxd.Segment.get_database_class().get("voltage")
+    view.set_scene(model)
+    voltage = model.Segment.get_database_class().get("voltage")
 
     period = 30
     cooldown = 0

@@ -1,5 +1,8 @@
-from graph_algorithms import depth_first_traversal as dft
+from . import regions
 from .regions import Region
+from collections.abc import Iterable, Callable, Mapping
+from graph_algorithms import depth_first_traversal as dft
+from neuwon.database import epsilon
 import heapq
 import math
 import numpy as np
@@ -188,12 +191,6 @@ def set_diameter(self, P = (0, .01, 1e-6)):
         n.diameter = np.mean(diameters)
 
 
-from collections import Iterable, Callable, Mapping
-from neuwon.database import epsilon
-from .growth import PathLengthCache, growth_algorithm
-from . import regions
-import numpy as np
-
 class _Distribution:
     def __init__(self, arg):
         if isinstance(arg, Iterable):
@@ -207,8 +204,8 @@ class _Distribution:
         return np.random.normal(self.mean, self.std_dev, size=size)
 
 class NeuronGrowthProgram:
-    def __init__(self, brains, neuron_type, program):
-        self.brains = brains
+    def __init__(self, model, neuron_type, program):
+        self.model = model
         self.neuron_type = str(neuron_type)
         self.neurons = []
         self.segments = []
@@ -227,7 +224,7 @@ class NeuronGrowthProgram:
                 number=None,
                 density=None,
                 mechanisms={},):
-        region = self.brains.regions.make_region(region)
+        region = self.model.regions.make_region(region)
         assert (number is None) != (density is None), "'number' and 'density' are mutually exclusive."
         if number is not None:
             coordinates = [region.sample_point() for _ in range(number)]
@@ -239,7 +236,7 @@ class NeuronGrowthProgram:
             d = diameter()
             while d <= epsilon:
                 d = diameter()
-            n = self.brains.rxd_model.Neuron(c, d)
+            n = self.model.Neuron(c, d)
             self.neurons.append(n)
             new_segments.append(n.root)
         self.segments.extend(new_segments)
@@ -255,7 +252,7 @@ class NeuronGrowthProgram:
                 mechanisms={},):
         # Clean the inputs.
         segment_type = str(segment_type)
-        region = self.brains.regions.make_region(region)
+        region = self.model.regions.make_region(region)
 
         if grow_from is None:
             roots = self.segments
@@ -268,7 +265,7 @@ class NeuronGrowthProgram:
 
         neuron_region = morphology.pop('neuron_region', None)
         if neuron_region is not None:
-            neuron_region = self.brains.regions.make_region(neuron_region)
+            neuron_region = self.model.regions.make_region(neuron_region)
 
         if exclude_from:
             1/0 # TODO!
@@ -306,7 +303,7 @@ class NeuronGrowthProgram:
         else: raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
         # Lookup and then create the mechanism instances.
         for mech_name, parameters in mechanisms.items():
-            mechanism = self.brains.rxd_model.mechanisms[mech_name]
+            mechanism = self.model.mechanisms[mech_name]
             for segment in segments:
                 mechanism(segment, **parameters)
 
