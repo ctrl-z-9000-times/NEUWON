@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import setuptools
-import re
 
 setuptools.setup(
     name="neuwon",
@@ -12,12 +11,19 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     author="David McDougall",
     author_email = "dam1784@rit.edu",
-    # url="https://github.com/pypa/sampleproject",
+    url="https://github.com/ctrl-z-9000-times/NEUWON",
     install_requires=[
-            line for line in open("requirements.txt", "rt").read().split_lines()
-            .map(lambda line: re.sub(r"#.*", "", line).strip()) # Remove comments.
-            .map(lambda line: line.partition("==")[0].strip()) # Remove version specifiers.
-            if line], # Remove empty lines.
+            "cupy-cuda91",
+            "graph-algorithms",
+            "matplotlib",
+            "NMODL",
+            "numba",
+            "numpy",
+            "pygame",
+            "PyOpenGL",
+            "scipy",
+            "sympy",
+    ],
     packages=setuptools.find_packages(),
     classifiers=[
         "License :: OSI Approved :: MIT License",
@@ -27,5 +33,5 @@ setuptools.setup(
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
 )
