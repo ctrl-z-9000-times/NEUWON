@@ -112,6 +112,10 @@ class RxD_Model:
             except Exception: raise RuntimeError("in mechanism " + name)
 
     def filter_segments_by_type(self, neuron_types, segment_types):
+        segment_db_class = self.Segment.get_database_class()
+        assert segment_db_class.is_sorted()
+        if not neuron_types and not segment_types:
+            return segment_db_class.get_all_instances()
         neuron_types_list = self.Neuron.neuron_types_list
         if neuron_types:
             neuron_types = [neuron_types_list.index(x) for x in neuron_types]
@@ -135,13 +139,14 @@ class RxD_Model:
             return index
 
     def filter_neurons_by_type(self, neuron_types):
+        neuron_db_class = self.Neuron.get_database_class()
+        assert neuron_db_class.is_sorted()
+        if not neuron_types:
+            return neuron_db_class.get_all_instances()
         neuron_types_list = self.Neuron.neuron_types_list
-        if neuron_types:
-            neuron_types = [neuron_types_list.index(x) for x in neuron_types]
-            neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
-            neuron_mask[neuron_types] = True
-        else:
-            neuron_mask = np.ones(len(neuron_types_list), dtype=bool)
+        neuron_types = [neuron_types_list.index(x) for x in neuron_types]
+        neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
+        neuron_mask[neuron_types] = True
         filter_values = self.Neuron._filter_by_type(None, neuron_mask)
         index = np.nonzero(filter_values)[0]
         if True:
