@@ -1,6 +1,6 @@
-from neuwon.brains.growth import growth_algorithm
-from neuwon.brains.regions import Sphere
-from neuwon.rxd.rxd_model import RxD_Model
+from neuwon.morphology import growth_algorithm
+from neuwon.regions import Sphere
+from neuwon.rxd import RxD_Model
 
 def test_growth_algorithm():
     # Make a very simple tree, and verify that it creates at least one segment.

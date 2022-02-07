@@ -319,6 +319,5 @@ class NeuronTypeFactory(dict):
 
     def add_neuron_type(self, neuron_type: str, program: list):
         neuron_type = str(neuron_type)
-        if neuron_type not in self:
-            self[neuron_type] = NeuronGrowthProgram(self.rxd_model, neuron_type, program).neurons
-        return self[neuron_type]
+        assert neuron_type not in self
+        self[neuron_type] = NeuronGrowthProgram(self.rxd_model, neuron_type, program).neurons

@@ -1,7 +1,8 @@
 import math
 from neuwon.database import Compute, Real, epsilon
+from neuwon.rxd import Mechanism
 
-class STP:
+class STP(Mechanism):
     """ Model of Short-Term-Plasticity in presynapses.
 
     Reference:

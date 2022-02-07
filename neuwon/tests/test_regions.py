@@ -1,4 +1,4 @@
-from neuwon.brains.regions import RegionFactory
+from neuwon.regions import RegionFactory
 
 test_parameters = {
     'foo': ('Sphere', (1,2,3), 4),

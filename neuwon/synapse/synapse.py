@@ -57,6 +57,7 @@ class SynapseGrowthProgram:
             number              = round(number_per_neuron * num_postsyn_neurons)
         # 
         pairs = self.constraints.find_all_candidates()
+        random.shuffle(pairs)
         # Iterate over and filter out candidates which are already taken.
         _num_presyn = self.database.get_data('Synapse._num_presyn')
         index_to_object = self.Segment.get_database_class().index_to_object
@@ -69,9 +70,18 @@ class SynapseGrowthProgram:
             postsyn = index_to_object(postsyn)
             self.Synapse(presyn, postsyn)
 
-def SynapsesFactory(rxd_model, parameters: dict):
-    self = {}
-    for name, synapse_parameters in parameters.items():
-        p = SynapseGrowthProgram.initialize(rxd_model, name, **synapse_parameters)
-        self[p.name] = p.Synapse
-    return self
+class SynapsesFactory(dict):
+    def __init__(self, rxd_model, parameters: dict):
+        super().__init__()
+        self.rxd_model = rxd_model
+        self.add_parameters(parameters)
+
+    def add_parameters(self, parameters: dict):
+        for synapse_type, synapse_parameters in parameters.items():
+            self.add_synapse_type(synapse_type, synapse_parameters)
+
+    def add_synapse_type(self, synapse_type: str, synapse_parameters: dict):
+        synapse_type = str(synapse_type)
+        assert synapse_type not in self
+        x = SynapseGrowthProgram(rxd_model, synapse_type, **synapse_parameters)
+        self[synapse_type] = x.Synapse

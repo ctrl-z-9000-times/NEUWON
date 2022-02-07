@@ -7,19 +7,18 @@ from neuwon.database import Compute
 import itertools
 import math
 import numpy as np
-import random
 import scipy.spatial
 
 class Constraints:
-    def __init__(self, database, *,
+    def __init__(self, rxd, *,
                 presynapse_neuron_types=[],
                 presynapse_segment_types=[],
                 postsynapse_neuron_types=[],
                 postsynapse_segment_types=[],
                 maximum_distance=math.inf,
                 share_postsynapses=False,):
-        self.Neuron   = database.get_class('Neuron').get_instance_type()
-        self.Segment  = database.get_class('Segment').get_instance_type()
+        self.Neuron   = rxd.Neuron
+        self.Segment  = rxd.Segment
         self.presynapse_neuron_types = [self.Neuron.neuron_types_list.index(neuron_type)
                                     for neuron_type in presynapse_neuron_types]
         self.presynapse_segment_types = [self.Segment.segment_types_list.index(segment_type)
@@ -43,15 +42,14 @@ class Constraints:
         results = list(itertools.chain.from_iterable(
                 ((presyn_segs[pre_idx], postsyn_segs[post_idx])
                     for post_idx in inner) for pre_idx, inner in enumerate(results)))
-        random.shuffle(results)
         return results
 
     def get_presynapse_candidates(self):
-        return self.filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types)
+        return self._filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types, True)
     def get_postsynapse_candidates(self):
-        return self.filter_segments(self.postsynapse_neuron_types, self.postsynapse_segment_types)
- 
-    def filter_segments(self, neuron_types, segment_types):
+        return self._filter_segments(self.postsynapse_neuron_types, self.postsynapse_segment_types, self.share_postsynapses)
+
+    def _filter_segments(self, neuron_types, segment_types, share):
         if neuron_types:
             neuron_mask = np.zeros(len(self.Neuron.neuron_types_list), dtype=bool)
             neuron_mask[neuron_types] = True
@@ -62,7 +60,7 @@ class Constraints:
             segment_mask[segment_types] = True
         else:
             segment_mask = np.ones(len(self.Segment.segment_types_list), dtype=bool)
-        filter_values = self._filter_method(None, neuron_mask, segment_mask, self.share_postsynapses)
+        filter_values = self._filter_method(None, neuron_mask, segment_mask, share)
         return np.nonzero(filter_values)[0]
 
     @Compute

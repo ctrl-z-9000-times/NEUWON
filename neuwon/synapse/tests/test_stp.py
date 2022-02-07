@@ -1,6 +1,6 @@
 import numpy as np
 from neuwon.database import Database
-from neuwon.synapses.stp import STP
+from neuwon.synapse.stp import STP
 
 def test_basic():
     db = Database()
