@@ -180,7 +180,7 @@ class Database:
 
     def is_sorted(self):
         """ Is everything in this database sorted? """
-        return all(db_class.is_sorted for db_class in self.db_classes.values())
+        return all(db_class._is_sorted for db_class in self.db_classes.values())
 
     def sort(self):
         """ Sort everything in this database.
@@ -209,9 +209,10 @@ class Database:
             self._sort_order = topological_sort(self.db_classes.values(), sort_order_dependencies)
         # Propagate "is_sorted==False" through the dependencies.
         for db_class in reversed(self._sort_order):
-            if not db_class.is_sorted: continue
-            if any(not x.is_sorted for x in sort_order_dependencies(db_class)):
-                db_class.is_sorted = False
+            if not db_class._is_sorted:
+                continue
+            if any(not x._is_sorted for x in sort_order_dependencies(db_class)):
+                db_class._is_sorted = False
         # Sort all db_classes.
         for db_class in reversed(self._sort_order):
             db_class._sort()
@@ -299,7 +300,7 @@ class DB_Class(Documentation):
             for k in self.sort_key:
                 if not isinstance(k, str):
                     raise ValueError(f"Expected 'str', got '{type(k)}'")
-        self.is_sorted = True
+        self._is_sorted = True
         self._init_instance_type(base_class, doc)
         self.destroyed_list = []
         self.destroyed_mask = None
@@ -399,7 +400,7 @@ class DB_Class(Documentation):
         for x in self.referenced_by_matrix_columns: x._resize()
         new_instance._idx = old_size
         self.instances.append(weakref.ref(new_instance))
-        if self.sort_key: self.is_sorted = False
+        if self.sort_key: self._is_sorted = False
 
     def _destroy_instance(self, instance):
         idx = instance._idx
@@ -407,7 +408,7 @@ class DB_Class(Documentation):
         if self.destroyed_mask is not None: self.destroyed_mask[idx] = True
         self.instances[idx] = None
         instance._idx = NULL
-        self.is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
+        self._is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
 
     # TODO: Make this into a proper attribute so that the user can see it more
     # easily. Make it private ie '_destroyed'. Someday the user might want to
@@ -503,7 +504,7 @@ class DB_Class(Documentation):
         return ConnectivityMatrix(self, name, column, doc=doc)
 
     def _sort(self):
-        if self.is_sorted: return
+        if self._is_sorted: return
         mem = self.database.get_memory_space()
         xp  = mem.get_array_module()
         # First compress out the dead instances.
@@ -559,7 +560,7 @@ class DB_Class(Documentation):
         self.size = len(new_to_old)
         self.destroyed_list = []
         self.destroyed_mask = None
-        self.is_sorted = True
+        self._is_sorted = True
 
     def check(self, name:str=None):
         """ Run all configured checks on this class or on only the given data component. """
