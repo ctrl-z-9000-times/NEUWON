@@ -295,17 +295,18 @@ class NeuronGrowthProgram:
     def _insert_mechanisms(self, segments, mechanisms):
         # Clean the inputs.
         if isinstance(mechanisms, Mapping):
-            pass
+            mechanisms = {mech_name: float(magnitude) for mech_name, magnitude in mechanisms.items()}
         elif isinstance(mechanisms, str):
-            mechanisms = {mechanisms: {}}
+            mechanisms = {mechanisms: 1.0}
         elif isinstance(mechanisms, Iterable):
-            mechanisms = {mech_name: {} for mech_name in mechanisms}
-        else: raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
+            mechanisms = {mech_name: 1.0 for mech_name in mechanisms}
+        else:
+            raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
         # Lookup and then create the mechanism instances.
-        for mech_name, parameters in mechanisms.items():
+        for mech_name, magnitude in mechanisms.items():
             mechanism = self.model.mechanisms[mech_name]
             for segment in segments:
-                mechanism(segment, **parameters)
+                mechanism(segment, magnitude)
 
 class NeuronTypeFactory(dict):
     def __init__(self, rxd_model, parameters: dict):

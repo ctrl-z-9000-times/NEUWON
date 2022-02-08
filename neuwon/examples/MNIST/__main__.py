@@ -11,7 +11,7 @@ from neuwon.gui.viewport import Viewport
 # from htm.bindings.sdr import SDR, Metrics
 
 spacing = 10 # microns
-
+stim = 1e-9 # Amps
 
 default_parameters = {
     'rxd_parameters': {
@@ -27,7 +27,7 @@ default_parameters = {
     },
     'regions': {
         'input_layer': ("Rectangle", [0,0,0], [28*spacing, .1,        28*spacing]),
-        'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 2*spacing, 28*spacing]),
+        'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 5*spacing, 28*spacing]),
     },
     'neurons': {
         'input_neuron': (
@@ -36,14 +36,14 @@ default_parameters = {
                 'region': 'input_layer',
                 'number': 28 * 28 * 1,
                 'diameter': 3,
-                'mechanisms': {'hh'}
+                'mechanisms': {'hh': 1.0}
             },
             {
                 'segment_type': 'input_axon',
                 'region': 'main_layer',
                 'diameter': .5,
                 'morphology': {
-                    'carrier_point_density': 0.000025,
+                    'carrier_point_density': 0.0001,
                     'balancing_factor': .0,
                     'extension_angle': pi / 6,
                     'extension_distance': 60,
@@ -68,15 +68,15 @@ def main(parameters=default_parameters, verbose=True):
         x, y, z = n.root.coordinates
         x = min(int(x / spacing), 28-1)
         z = min(int(z / spacing), 28-1)
-        input_terminals[x][z].append(n)
+        input_terminals[x][27-z].append(n)
     def apply_sensory_input(image):
         image = (image >= 100) # Encode the image into binary.
         for x, y in zip(*np.nonzero(np.squeeze(image))):
             for n in input_terminals[x][y]:
-                n.root.inject_current(1)
+                n.root.inject_current(stim)
     # Setup the GUI.
     if verbose:
-        view = Viewport(camera_position=[0,0,400])
+        view = Viewport(camera_position=[14*spacing,28*spacing,14*spacing])
         view.set_scene(model)
     def update_viewport():
         if not verbose: return
@@ -86,18 +86,16 @@ def main(parameters=default_parameters, verbose=True):
         voltage = ((voltage - min_v) / (max_v - min_v)).clip(0, 1)
         colors  = [(x, 0, 1-x) for x in voltage]
         view.tick(colors)
-    
+
     # Training Loop.
     for img, lbl in train_data[:1000]:
         print("Label:", lbl)
-        model.check()
         apply_sensory_input(img)
-        model.check()
         for _ in range(round(10 / model.get_time_step())):
             model.advance()
-            model.check()
             update_viewport()
-            print(model.clock())
+
+
 
         # sdrc.learn(activity, lbl)
 
