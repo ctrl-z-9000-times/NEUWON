@@ -251,9 +251,10 @@ class NMODL(Mechanism):
         return mech_data.get_instance_type()
 
     @staticmethod
-    def _instance__init__(self, segment, scale=1.0):
+    def _instance__init__(self, segment, magnitude=1.0):
+        """ Insert this mechanism. """
         self.segment = segment
-        self.set_magnitude(scale)
+        self.set_magnitude(magnitude)
 
     @staticmethod
     def _set_magnitude(self, multiplier):

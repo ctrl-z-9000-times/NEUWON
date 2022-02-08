@@ -14,18 +14,27 @@ class Electric:
                 cytoplasmic_resistance = 100.0,
                 membrane_capacitance = 1.0,):
         seg_data = database.get_class('Segment')
-        seg_data.add_attribute("voltage", float(initial_voltage), units="mV")
-        seg_data.add_attribute("integral_voltage")
-        seg_data.add_attribute("axial_resistance", units="")
-        seg_data.add_attribute("capacitance", units="Farads", valid_range=(0, np.inf))
+        seg_data.add_attribute("voltage", float(initial_voltage),
+                units="mV")
+        seg_data.add_attribute("integral_voltage", 0.0,
+                units="mV")
+        seg_data.add_attribute("axial_resistance",
+                units="Ohms",
+                valid_range=(0, np.inf))
+        seg_data.add_attribute("capacitance",
+                units="Farads",
+                valid_range=(0, np.inf))
         seg_data.add_class_attribute("cytoplasmic_resistance", cytoplasmic_resistance,
                 units="ohm-cm",
                 valid_range=(epsilon, np.inf))
         seg_data.add_class_attribute("membrane_capacitance", membrane_capacitance,
                 units="?",
                 valid_range=(epsilon, np.inf))
-        seg_data.add_attribute("sum_conductance", units="Siemens", valid_range=(0, np.inf))
-        seg_data.add_attribute("driving_voltage", units="mV")
+        seg_data.add_attribute("sum_conductance", 0.0,
+                units="Siemens",
+                valid_range=(0, np.inf))
+        seg_data.add_attribute("driving_voltage", 0.0,
+                units="mV")
         seg_data.add_sparse_matrix("electric_propagator_matrix", 'Segment')
         seg_cls = seg_data.get_instance_type()
         seg_cls._matrix_valid = False

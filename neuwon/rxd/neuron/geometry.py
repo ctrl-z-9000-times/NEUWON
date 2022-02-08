@@ -48,7 +48,7 @@ class Geometry:
 
         db_cls.add_attribute("diameter",
                 units="μm",
-                valid_range=(0.0, np.inf),)
+                valid_range=(epsilon, np.inf),)
 
         db_cls.add_attribute("_primary", dtype=bool, doc="""
                 Primary segments are straightforward extensions of the parent
