@@ -16,7 +16,7 @@ def test_hh():
 
 def test_destexhe1994():
     verify_file_parses("./nmodl_library/Destexhe1994/gabaa5.mod")
-    verify_file_parses("./nmodl_library/Destexhe1994/ampa5.mod")
+    verify_file_parses("./nmodl_library/Destexhe1994/ampa5.mod", check_for_v=False)
     verify_file_parses("./nmodl_library/Destexhe1994/release.mod", check_for_v=False)
 
 def test_nav11():

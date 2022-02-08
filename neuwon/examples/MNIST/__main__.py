@@ -5,13 +5,14 @@ import random
 
 from .load_mnist import load_mnist
 from neuwon import *
-from neuwon.gui.viewport import Viewport
+from neuwon.gui import Viewport
 
-# from htm.bindings.algorithms import Classifier
-# from htm.bindings.sdr import SDR, Metrics
+from htm import SDR, Metrics
+from htm.algorithms import Classifier
 
-spacing = 10 # microns
+spacing = 10 # Microns
 stim = 1e-9 # Amps
+period = 10 # Milliseconds
 
 default_parameters = {
     'rxd_parameters': {
@@ -31,7 +32,7 @@ default_parameters = {
         'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 10*spacing, 28*spacing]),
     },
     'neurons': {
-        'input_neuron': (
+        'input_neuron': [
             {
                 'segment_type': 'input_soma',
                 'region': 'input_layer',
@@ -54,15 +55,15 @@ default_parameters = {
                     'maximum_segment_length': 30,},
                 'mechanisms': {'hh': 1.0}
             },
-        )
+        ],
+        # 'excit_neuron': [],
     },
     'synapses': {},
 }
 
-def main(parameters=default_parameters, verbose=True):
+def main(parameters=default_parameters, verbose=False):
     model = Model(**parameters)
     train_data, test_data = load_mnist()
-
     # Organize all of the sensory input neurons into a grid.
     input_terminals = [[[] for row in range(28)] for col in range(28)]
     for n in model.neurons['input_neuron']:
@@ -75,6 +76,16 @@ def main(parameters=default_parameters, verbose=True):
         for x, y in zip(*np.nonzero(np.squeeze(image))):
             for n in input_terminals[x][y]:
                 n.root.inject_current(stim)
+    # Setup the output timeseries buffers and classifier.
+    outputs = []
+    for n in model.neurons['input_neuron']: # DEBUGGING, record from the input neurons instead of the exictatory neurons.
+        outputs.append(TimeSeries().record(n.root, 'voltage', discard_after=period))
+    def get_activity():
+        q = SDR(len(outputs))
+        q.dense = [any(v > 0 for v in ts.get_data()) for ts in outputs]
+        return q
+    sdrc = Classifier()
+    sdrc.learn(SDR(len(outputs)), 9)
     # Setup the GUI.
     if verbose:
         view = Viewport(camera_position=[14*spacing,28*spacing,14*spacing])
@@ -87,28 +98,31 @@ def main(parameters=default_parameters, verbose=True):
         voltage = ((voltage - min_v) / (max_v - min_v)).clip(0, 1)
         colors  = [(x, 0, 1-x) for x in voltage]
         view.tick(colors)
-
     # Training Loop.
-    for img, lbl in train_data[:1000]:
-        print("Label:", lbl)
+    for img, lbl in train_data:
+        print("Label: ", lbl)
         apply_sensory_input(img)
-        for _ in range(round(10 / model.get_time_step())):
+        for _ in range(round(period / model.get_time_step())):
             model.advance()
             update_viewport()
-
-
-
-        # sdrc.learn(activity, lbl)
-
-
-    # Testing Loop
+        activity = get_activity()
+        if verbose:
+            print("Output:", np.argmax(sdrc.infer(activity)))
+        sdrc.learn(activity, lbl)
+    # Testing Loop.
     score = 0
-    for img, lbl in test_data[:0]:
+    for img, lbl in test_data:
+        apply_sensory_input(img)
+        for _ in range(round(period / model.get_time_step())):
+            model.advance()
+
         activity = run(img)
         if lbl == np.argmax(sdrc.infer(activity)):
             score += 1
-    print('Score: %g %', 100 * score / len(test_data))
-    return 
+
+    score = score / len(test_data)
+    print('Score: %g %', 100 * score)
+    return score
 
 if __name__ == "__main__":
     main()
