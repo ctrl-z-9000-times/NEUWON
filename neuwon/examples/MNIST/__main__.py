@@ -16,6 +16,7 @@ stim = 1e-9 # Amps
 default_parameters = {
     'rxd_parameters': {
         'time_step': .1,
+        'celsius': 6.3,
     },
     'species': {
         'na': {'reversal_potential': +60,},
@@ -27,7 +28,7 @@ default_parameters = {
     },
     'regions': {
         'input_layer': ("Rectangle", [0,0,0], [28*spacing, .1,        28*spacing]),
-        'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 5*spacing, 28*spacing]),
+        'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 10*spacing, 28*spacing]),
     },
     'neurons': {
         'input_neuron': (
@@ -51,7 +52,7 @@ default_parameters = {
                     'bifurcation_distance': 40,
                     'extend_before_bifurcate': True,
                     'maximum_segment_length': 30,},
-                'mechanisms': {'hh'}
+                'mechanisms': {'hh': 1.0}
             },
         )
     },
