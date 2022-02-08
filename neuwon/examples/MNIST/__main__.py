@@ -4,7 +4,7 @@ import numpy as np
 import random
 
 from .load_mnist import load_mnist
-from neuwon import *
+from neuwon import Model, TimeSeries
 from neuwon.gui import Viewport
 
 from htm import SDR, Metrics
@@ -28,7 +28,7 @@ default_parameters = {
         'hh': './nmodl_library/hh.mod',
     },
     'regions': {
-        'input_layer': ("Rectangle", [0,0,0], [28*spacing, .1,        28*spacing]),
+        'input_layer': ("Rectangle", [0,0,0], [28*spacing, .1,         28*spacing]),
         'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 10*spacing, 28*spacing]),
     },
     'neurons': {
@@ -61,7 +61,7 @@ default_parameters = {
     'synapses': {},
 }
 
-def main(parameters=default_parameters, verbose=False):
+def main(parameters=default_parameters, verbose=True):
     model = Model(**parameters)
     train_data, test_data = load_mnist()
     # Organize all of the sensory input neurons into a grid.
@@ -88,7 +88,7 @@ def main(parameters=default_parameters, verbose=False):
     sdrc.learn(SDR(len(outputs)), 9)
     # Setup the GUI.
     if verbose:
-        view = Viewport(camera_position=[14*spacing,28*spacing,14*spacing])
+        view = Viewport(camera_position=[14*spacing,28*spacing,14*spacing], fps=60)
         view.set_scene(model)
     def update_viewport():
         if not verbose: return
@@ -100,14 +100,13 @@ def main(parameters=default_parameters, verbose=False):
         view.tick(colors)
     # Training Loop.
     for img, lbl in train_data:
-        print("Label: ", lbl)
         apply_sensory_input(img)
         for _ in range(round(period / model.get_time_step())):
             model.advance()
             update_viewport()
         activity = get_activity()
         if verbose:
-            print("Output:", np.argmax(sdrc.infer(activity)))
+            print("Label:", lbl, "Output:", np.argmax(sdrc.infer(activity)))
         sdrc.learn(activity, lbl)
     # Testing Loop.
     score = 0
@@ -115,13 +114,11 @@ def main(parameters=default_parameters, verbose=False):
         apply_sensory_input(img)
         for _ in range(round(period / model.get_time_step())):
             model.advance()
-
-        activity = run(img)
+        activity = get_activity()
         if lbl == np.argmax(sdrc.infer(activity)):
             score += 1
-
     score = score / len(test_data)
-    print('Score: %g %', 100 * score)
+    print('Score: %g%%'%(100 * score))
     return score
 
 if __name__ == "__main__":
