@@ -117,11 +117,11 @@ class Clock:
 
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
-    def __init__(self, *initial_data):
+    def __init__(self, initial_data=None, timestamps=None):
         """ Create a new empty buffer. """
         self.stop()
         self.clear()
-        if initial_data: self.set_data(*initial_data)
+        if initial_data: self.set_data(initial_data, timestamps)
 
     def stop(self) -> 'self':
         """ Immediately stop recording / playing. """
@@ -157,6 +157,7 @@ class TimeSeries:
         """ Overwrite the data in this buffer. """
         assert self.is_stopped()
         if isinstance(data_samples, TimeSeries):
+            assert timestamps is None
             timestamps   = data_samples.get_timestamps()
             data_samples = data_samples.get_data()
         elif timestamps is None:
