@@ -48,12 +48,12 @@ def main(time_step = .1):
     soma  = model.Neuron.get_database_class().get_all_instances()[0].root
 
     if True:
-        print("Number of Locations:", len(model))
+        all_segments = model.Segment.get_database_class().get_all_instances()
+        print("Number of Locations:", len(all_segments))
         sa_units = soma.get_database_class().get("surface_area").get_units()
         print("Soma surface area:", soma.surface_area, sa_units)
-        all_segments = model.Segment.get_database_class().get_all_instances()
-        sa = sum(x.surface_area for x in all_segments)
-        print("Total surface area:", sa, sa_units)
+        sa_sum = sum(x.surface_area for x in all_segments)
+        print("Total surface area:", sa_sum, sa_units)
 
     view = Viewport(camera_position=[0,0,400])
     view.set_scene(model)
@@ -71,6 +71,7 @@ def main(time_step = .1):
         colors = [(x, 0, 1-x) for x in v]
         view.tick(colors)
         model.advance()
+        # model.check()
 
 if __name__ == "__main__":
     main()

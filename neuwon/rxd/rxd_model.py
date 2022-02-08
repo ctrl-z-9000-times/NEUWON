@@ -34,10 +34,6 @@ class RxD_Model:
         self.species = SpeciesFactory(species, db, self.input_hook, self.celsius)
         self.mechanisms = MechanismsFactory(self, mechanisms)
 
-    def __len__(self):
-        """ Returns the number of Segments in the Model. """
-        return len(self.Segment.get_database_class())
-
     def get_celsius(self) -> float:     return self.celsius
     def get_clock(self):                return self.clock
     def get_database(self):             return self.database

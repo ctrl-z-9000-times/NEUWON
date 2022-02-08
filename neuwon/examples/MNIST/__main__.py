@@ -70,7 +70,7 @@ def main(parameters=default_parameters, verbose=True):
         z = min(int(z / spacing), 28-1)
         input_terminals[x][z].append(n)
     def apply_sensory_input(image):
-        image = (image >= 100) # Encode the image into binary map.
+        image = (image >= 100) # Encode the image into binary.
         for x, y in zip(*np.nonzero(np.squeeze(image))):
             for n in input_terminals[x][y]:
                 n.root.inject_current(1)
@@ -87,7 +87,7 @@ def main(parameters=default_parameters, verbose=True):
         colors  = [(x, 0, 1-x) for x in voltage]
         view.tick(colors)
     
-    # Training Loop
+    # Training Loop.
     for img, lbl in train_data[:1000]:
         print("Label:", lbl)
         model.check()

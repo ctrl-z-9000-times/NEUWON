@@ -20,3 +20,6 @@ class Model(RxD_Model):
         self.regions  = RegionFactory(regions)
         self.neurons  = NeuronTypeFactory(self, neurons)
         self.synapses = SynapsesFactory(self, synapses)
+
+    def get_parameters(self):
+        return self.parameters
