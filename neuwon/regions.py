@@ -1,14 +1,19 @@
-""" Tools for specifying 3-Dimensional volumes
+""" Tools for specifying 3-Dimensional volumes. """
 
-This file provides tools for performing constructive solid geometry:
-  * Geometric primitives: Rectangle, Sphere, Cylinder.
-  * Logical operators for combining regions: Intersection, Union, Not.
-  * The abstract class "Region" allows for defining new types of 3-D volumes.
-"""
 from collections.abc import Callable, Iterable, Mapping
 import numpy as np
 
-__all__ = 'Region Intersection Union Not Everywhere Nowhere Rectangle Sphere Cylinder'.split()
+__all__ = (
+        'Cylinder',
+        'Everywhere',
+        'Intersection',
+        'Not',
+        'Nowhere',
+        'Rectangle',
+        'Region',
+        'Sphere',
+        'Union',
+)
 
 class Region:
     """ Abstract class for representing the shapes of 3-Dimensional volumes.
@@ -19,16 +24,19 @@ class Region:
     """
     def contains(self, coordinates):
         """ Returns bool: does this region contain the given coordinates? """
+        raise NotImplementedError
     def aabb(self):
         """ Returns pair (lower_corner, upper_corner) of an axis aligned
         bounding box which entirely contains this region. """
+        raise NotImplementedError
     def sample_point(self):
         """ Returns a random point from within the region. """
         lower, upper = self.aabb()
         if not (all(np.isfinite(lower)) and all(np.isfinite(upper))):
             raise TypeError("Region is infinite!")
+        span = np.subtract(upper, lower)
         while True:
-            x = np.add(lower, np.random.uniform(size=(3)) * np.subtract(upper, lower))
+            x = np.add(lower, np.random.uniform(size=(3)) * span)
             if self.contains(x):
                 return x
     def sample_points(self, density):
@@ -169,7 +177,7 @@ class Cylinder(Region):
         dot = self.axis.dot(displacement)
         if dot < 0 or dot > self.length_sqr:
             return False
-        dist_sqr = displacement.dot(displacement) - dot*dot/self.length_sqr;
+        dist_sqr = displacement.dot(displacement) - dot*dot/self.length_sqr
         return dist_sqr <= self.radius_sqr
 
 class _Image(Rectangle):
@@ -233,6 +241,8 @@ class RegionFactory(dict):
         self.parameters = None
 
     def add_region(self, name: str, region_parameters) -> Region:
+        if name is region_parameters:
+            raise ValueError(f'Circular definition for region "{name}".')
         if name in self:
             return self[name]
         self[name] = rgn = self.make_region(region_parameters)
@@ -248,13 +258,21 @@ class RegionFactory(dict):
         elif isinstance(args, str):
             region_name = args
             if region_name not in self and self.parameters:
-                region_parameters = self.parameters[region_name]
+                try:
+                    region_parameters = self.parameters[region_name]
+                except KeyError:
+                    raise ValueError(f'Expected the name of a region, got "{region_name}".')
                 self.add_region(region_name, region_parameters)
             return self[region_name]
         elif isinstance(args, Iterable):
             region_type, *args = args
             if region_type in ('Intersection', 'Union', 'Not'):
                 args = [self.make_region(r) for r in args]
-            return self._region_types[region_type](*args)
+            try:
+                region_type = self._region_types[region_type]
+            except KeyError:
+                all_region_types = ', '.join(sorted(self._region_types.keys()))
+                raise ValueError(f'Got "{region_type}", expected one of {all_region_types}.')
+            return region_type(*args)
         else:
             raise ValueError(args)
