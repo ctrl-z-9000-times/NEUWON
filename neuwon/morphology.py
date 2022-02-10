@@ -37,7 +37,6 @@ def growth_algorithm(roots, global_region, carrier_point_density, path_length_ca
         Axons and an Application to Electroceutical Modeling. Front. Comput.
         Neurosci. 14:13. doi:10.3389/fncom.2020.00013
     """
-
     # Gather and check parameters.
     if path_length_cache is None: path_length_cache = PathLengthCache()
     carrier_point_density   = float(carrier_point_density)
@@ -285,10 +284,19 @@ class NeuronGrowthProgram:
                     neuron_region=neuron_region,
                     **morphology)
         else:
-            1/0 # TODO
+            roots_by_neuron = {}
+            for segment in roots:
+                roots_by_neuron.setdefault(segment.neuron, []).append(segment)
+            segments = []
+            for roots in roots_by_neuron.values():
+                segments.extend(growth_algorithm(roots, region,
+                        path_length_cache=self.path_length_cache,
+                        segment_parameters={
+                                'segment_type': segment_type,
+                                'diameter':     float(diameter),},
+                        neuron_region=neuron_region,
+                        **morphology))
 
-        if neuron_region is not None:
-            self.neuron_regions = regions.Union(self.neuron_regions, neuron_region)
         self.segments.extend(segments)
         self._insert_mechanisms(segments, mechanisms)
 
