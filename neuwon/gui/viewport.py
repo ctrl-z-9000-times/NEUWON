@@ -79,6 +79,7 @@ class Viewport:
         pygame.init()
         pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
         self.clock = pygame.time.Clock()
+        self.first_tick = True
 
         self.window_size = window_size = pygame.display.get_window_size()
         self.window_center = [0.5 * x for x in window_size]
@@ -94,8 +95,6 @@ class Viewport:
         self.camera_forward = np.array([ 0.0, 0.0, -1.0])
         self.camera_up      = np.array([ 0.0, 1.0, 0.0])
 
-        pygame.event.set_grab(True)
-
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
         glDisable(GL_CULL_FACE)
@@ -107,6 +106,11 @@ class Viewport:
             self.scene = Scene(scene_or_database, *args)
 
     def tick(self, colors=None):
+        if self.first_tick:
+            # Don't grab the mouse until we're actually ready to draw something.
+            pygame.event.set_grab(True)
+            self.first_tick = False
+
         dt = self.clock.tick(self.fps)
 
         for event in pygame.event.get():
