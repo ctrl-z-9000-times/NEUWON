@@ -82,18 +82,25 @@ class Neuron:
         if swc_data.endswith(".swc"):
             with open(swc_data, 'rt') as f:
                 swc_data = f.read()
-        swc_data = re.sub(r"#.*", "", swc_data) # Remove comments.
-        swc_data = [x.strip() for x in swc_data.split("\n") if x.strip()]
-        entries = dict()
-        for line in swc_data:
+        neuron = None
+        segments = dict()
+        for line in swc_data.split('\n'):
+            line = re.sub(r"#.*", "", line).strip() # Remove comments and excess white space.
+            if not line:
+                continue
             cursor = iter(line.split())
             sample_number = int(next(cursor))
             structure_id = int(next(cursor))
             coords = (float(next(cursor)), float(next(cursor)), float(next(cursor)))
             radius = float(next(cursor))
             parent = int(next(cursor))
-            1/0 # TODO: this needs to be rewritten!
-            entries[sample_number] = cls(entries.get(parent, None), coords, 2 * radius)
+            parent = segments.get(parent, None)
+            if parent is not None:
+                segments[sample_number] = parent.add_segment(coords, 2 * radius)
+            else:
+                assert neuron is None
+                neuron = cls(coords, 2 * radius)
+                segments[sample_number] = neuron.root
 
     @Compute
     def _filter_by_type(self, neuron_mask) -> bool:
