@@ -2,6 +2,7 @@ from graph_algorithms import topological_sort
 from neuwon.database import memory_spaces
 from neuwon.database.doc import Documentation
 from neuwon.database.dtypes import *
+import inspect
 import itertools
 import numpy as np
 import textwrap
@@ -326,13 +327,17 @@ class DB_Class(Documentation):
         if not hasattr(users_class, "__weakref__"):
             __slots__ += ("__weakref__",)
         # 
+        init_sig = inspect.signature(DB_Object.__init__)
         init_doc = DB_Object.__init__.__doc__
         if users_class:
             user_init = users_class.__init__
             if user_init is not object.__init__:
+                init_sig = inspect.signature(user_init)
                 user_init_doc = user_init.__doc__
                 if user_init_doc is not None:
                     init_doc = user_init_doc
+                else:
+                    init_doc = ""
         def escape(s):
             """ Escape newlines so that doc-strings can be inserted into a single line string. """
             return s.encode("unicode_escape").decode("utf-8")
@@ -344,7 +349,7 @@ class DB_Class(Documentation):
                 __slots__ = {__slots__}
                 __module__ = super_classes[0].__module__
 
-                def __init__(self, *args, **kwargs):
+                def __init__{str(init_sig)}:
                     \"\"\"{escape(init_doc)}\"\"\"
                     self._db_class._init_instance(self)
                     super().__init__(*args, **kwargs)
