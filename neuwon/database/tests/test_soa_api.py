@@ -62,11 +62,3 @@ def test_create_on_device():
     cols, vals = f.sp
     assert cols == [f, f]
     assert vals == [3.4, 5.5]
-
-@pytest.mark.skip
-def test_matrixes():
-    1/0 # TODO
-    # IDEA: Make a matrix of all configurations: (host/device, data-fmt).
-    # Then convert between the formats (at random or exhaustively), and check
-    # that data is preserved and not crashes.
-

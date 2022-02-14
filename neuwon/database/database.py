@@ -38,7 +38,7 @@ class Database:
                 try:
                     name = name._db_class
                 except AttributeError:
-                    1/0 # TODO: How to explain what went wrong?
+                    raise RuntimeError(f'{name.__name__} is not a member of this database (see method Database.add_class)')
             else:
                 if name is object: raise KeyError()
                 for db_class in self.db_classes.values():
@@ -265,7 +265,7 @@ class DB_Class(Documentation):
         Argument base_class is an optional superclass for the instance_type.
                 All base_classes must define "__slots__ = ()".
 
-        Argument sort_key is [TODO]
+        Argument sort_key is the name of an attribute or a list of attribute names.
         """
         """ TODO: Use these docs:
 
