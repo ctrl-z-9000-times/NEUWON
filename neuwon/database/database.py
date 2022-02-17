@@ -338,6 +338,7 @@ class DB_Class(Documentation):
                     init_doc = user_init_doc
                 else:
                     init_doc = ""
+        init_sig_no_self = init_sig.replace(parameters=tuple(init_sig.parameters.values())[1:])
         def escape(s):
             """ Escape newlines so that doc-strings can be inserted into a single line string. """
             return s.encode("unicode_escape").decode("utf-8")
@@ -352,7 +353,7 @@ class DB_Class(Documentation):
                 def __init__{str(init_sig)}:
                     \"\"\"{escape(init_doc)}\"\"\"
                     self._db_class._init_instance(self)
-                    super().__init__(*args, **kwargs)
+                    super().__init__{str(init_sig_no_self)}
 
                 def destroy(self):
                     \"\"\" \"\"\"
@@ -375,8 +376,11 @@ class DB_Class(Documentation):
                     \"\"\" Get the database's internal representation of this object's type. \"\"\"
                     return cls._db_class
             """)
-        if False: print(pycode)
-        exec(pycode, locals())
+        try:
+            exec(pycode, locals())
+        except Exception:
+            print("Internal error while exec'ing the following python code:\n" + pycode)
+            raise
         self.instance_type = locals()[self.name]
 
     def _init_methods(self):
