@@ -1,1 +1,2 @@
 *.mod linguist-language=NMODL
+*.mod linguist-vendored
