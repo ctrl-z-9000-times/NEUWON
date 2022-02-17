@@ -6,7 +6,7 @@ setuptools.setup(
     name="neuwon",
     version="0.0.0",
     license=open("LICENSE.txt", "rt").read(),
-    description="Neuroscience simulator",
+    description="A toolkit for simulating the brain.",
     long_description=open("README.md", "rt").read(),
     long_description_content_type="text/markdown",
     author="David McDougall",
