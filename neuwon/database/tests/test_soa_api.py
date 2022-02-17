@@ -62,3 +62,57 @@ def test_create_on_device():
     cols, vals = f.sp
     assert cols == [f, f]
     assert vals == [3.4, 5.5]
+
+@pytest.mark.skip()
+def test_initial_distribution():
+    db = Database()
+    Foo_data = db.add_class("Foo")
+    Foo     = Foo_data.get_instance_type()
+    u1_data = Foo_data.add_attribute('u1',
+            initial_distribution=('uniform', 2, 5),
+            valid_range = (2, 5))
+    n1_data = Foo_data.add_attribute('n1',
+            initial_distribution=('normal', 10, 2),
+            valid_range = (6, 14),)
+    c1_data = Foo_data.add_class_attribute('c1',
+            initial_distribution=('uniform', -500, 500),)
+
+    for i in range(1000):
+        Foo()
+
+    # Verify that free'ing the data causes it to generate new values.
+    u1_orig = list(u1_data.get_data())
+    u1_data.free()
+    assert u1_orig != list(u1_data.get_data())
+    # Verify that free'ing class attributes also causes it to generate new values.
+    c1_orig = Foo.c1
+    c1_data.free()
+    assert c1_orig != Foo.c1
+
+    # Verify that outliers of the normal distribution are always inside the valid_range.
+    assert all((6 <= x <= 14) for x in n1_data.get_data())
+
+    # Verify that the random distributions are correct.
+    assert all((2 <= x <= 5) for x in u1_data.get_data())
+    u1_mean = np.mean(u1_data.get_data())
+    u1_std  = np.std( u1_data.get_data())
+    u1_std_correct = (5 - 2) / (12 ** .5)
+    assert u1_mean == pytest.approx(3.5, 0.01)
+    assert n1_std  == pytest.approx(u1_std_correct, 0.01)
+
+    assert -500 <= Foo.c1 <= 500
+
+    n1_mean = np.mean(n1_data.get_data())
+    n1_std  = np.std( n1_data.get_data())
+    assert n1_mean == pytest.approx(10, 0.01)
+    assert n1_std  == pytest.approx( 2, 0.01)
+
+    # Check that it raises errors when the distribution is outside of the valid_range.
+    with pytest.raises(ValueError):
+        Foo_data.add_attribute('qq',
+                initial_distribution=('uniform', 2, 5),
+                valid_range = (2, 4.5),)
+    with pytest.raises(ValueError):
+        Foo_data.add_attribute('zz',
+                initial_distribution=('normal', 10, 2),
+                valid_range = (-10, 11.5),)
