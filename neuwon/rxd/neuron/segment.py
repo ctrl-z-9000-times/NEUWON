@@ -58,7 +58,6 @@ class Segment(Tree, Geometry, Electric):
         """
         Returns a list of Segments.
         """
-        cls = type(self)
         maximum_segment_length = float(maximum_segment_length)
         assert maximum_segment_length > 0
         coords      = [float(x) for x in coordinates]
@@ -80,7 +79,7 @@ class Segment(Tree, Geometry, Electric):
         next(args)
         section = []
         for (x,y,z,d) in args:
-            self = cls(self, (x,y,z), d, segment_type=segment_type)
+            self = self.add_segment((x,y,z), d, segment_type=segment_type)
             section.append(self)
         return section
 
