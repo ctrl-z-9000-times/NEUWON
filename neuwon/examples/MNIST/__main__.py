@@ -11,6 +11,7 @@ from htm import SDR, Metrics
 from htm.algorithms import Classifier
 
 spacing = 10 # Microns
+height  = 10 * spacing
 stim = 1e-9 # Amps
 period = 10 # Milliseconds
 
@@ -28,8 +29,8 @@ default_parameters = {
         'hh': './nmodl_library/hh.mod',
     },
     'regions': {
-        'input_layer': ("Rectangle", [0,0,0], [28*spacing, .1,         28*spacing]),
-        'main_layer':  ("Rectangle", [0,0,0], [28*spacing, 10*spacing, 28*spacing]),
+        'input_layer': ("Rectangle", [0,0,0], [28*spacing, .1,     28*spacing]),
+        'main_layer':  ("Rectangle", [0,0,0], [28*spacing, height, 28*spacing]),
     },
     'neurons': {
         'input_neuron': [
@@ -45,20 +46,41 @@ default_parameters = {
                 'region': 'main_layer',
                 'diameter': .5,
                 'morphology': {
-                    'carrier_point_density': 0.0001,
+                    'carrier_point_density': 0.00005,
+                    'neuron_region': ('Cylinder', [0, 0, 0], [0, height, 0], 1.5 * spacing),
+                    'competitive': False,
                     'balancing_factor': .0,
-                    'extension_angle': pi / 6,
-                    'extension_distance': 60,
-                    'bifurcation_angle': pi / 3,
-                    'bifurcation_distance': 40,
                     'extend_before_bifurcate': True,
-                    'maximum_segment_length': 30,},
+                    'maximum_segment_length': 10,},
                 'mechanisms': {'hh': 1.0}
             },
         ],
-        # 'excit_neuron': [],
+        'excit_neuron': [
+            {
+                'segment_type': 'excit_soma',
+                'region': 'main_layer',
+                'number': 10,
+                'diameter': 10,
+            },
+            {
+                'segment_type': 'excit_prox_dend',
+                'region': 'main_layer',
+                'diameter': 2,
+                'morphology': {
+                    'carrier_point_density': 0.0001,
+                    'balancing_factor': .5,
+                    'maximum_segment_length': 7,},
+            },
+        ],
     },
-    'synapses': {},
+    'synapses': {
+        'ff_syn': {
+            'constraints': {},
+            'lifecycle': {},
+            'presynapse': {},
+            'postsynapse': {},
+        }
+    },
 }
 
 def main(parameters=default_parameters, verbose=True):
@@ -88,7 +110,7 @@ def main(parameters=default_parameters, verbose=True):
     sdrc.learn(SDR(len(outputs)), 9)
     # Setup the GUI.
     if verbose:
-        view = Viewport(camera_position=[14*spacing,28*spacing,14*spacing], fps=60)
+        view = Viewport(camera_position=[14*spacing,21*spacing,14*spacing], fps=60)
         view.set_scene(model)
     def update_viewport():
         if not verbose: return
