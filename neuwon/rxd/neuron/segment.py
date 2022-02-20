@@ -15,8 +15,7 @@ class Segment(Tree, Geometry, Electric):
         Electric._initialize(database, **electric_arguments)
         # Add type information.
         segment_data = database.get_class('Segment')
-        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer,
-                doc="Read-only attribute.")
+        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer)
         segment_cls = segment_data.get_instance_type()
         segment_cls.segment_types_list = []
         return segment_cls
