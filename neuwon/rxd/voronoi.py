@@ -4,7 +4,7 @@ import numba.types
 import math
 from neuwon.database import Real, epsilon, Pointer, NULL
 
-__all__ = ["voronoi_cell"] # Public API entry point.
+__all__ = ("voronoi_cell", "Neighbor")
 
 Plane = np.dtype([
     ("normal", Real, (3,)),
@@ -222,8 +222,12 @@ def sphere(r):
 
 @numba.njit(Tuple_t((Real_t, Neighbor_t[::1]))(Pointer_t, Real_t, Pointer_t[:], Real_t[:, ::1]), cache=True)
 def voronoi_cell(home_location, maximum_extent, neighbor_locations, coordinates):
-    """ Returns pair of (volume, neighbors) where neighbors is an array with
-    data type Neighbor. """
+    """
+    This is the public API entry point.
+
+    Returns pair of (volume, neighbors) where neighbors is an array with data
+    type Neighbor.
+    """
     triangles = sphere(maximum_extent)
     planes = np.empty(len(neighbor_locations), dtype=Plane)
     home_coordinates = coordinates[home_location]

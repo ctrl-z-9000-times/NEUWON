@@ -26,7 +26,7 @@ class Mechanism:
 class MechanismsFactory(dict):
     def __init__(self, rxd_model, parameters:dict):
         super().__init__()
-        self.rxd_model  = rxd_model
+        self._rxd_model = rxd_model
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters:dict) -> [Mechanism]:
@@ -42,7 +42,7 @@ class MechanismsFactory(dict):
             else:
                 raise ValueError("File extension not understood")
         if hasattr(mechanism, "initialize"):
-            retval = mechanism.initialize(self.rxd_model, name)
+            retval = mechanism.initialize(self._rxd_model, name)
             if retval is not None:
                 mechanism = retval
         self[name] = mechanism
