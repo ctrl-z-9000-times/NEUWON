@@ -8,7 +8,7 @@ import numpy as np
 
 class DataComponent(Documentation):
     """ Abstract class for all types of data storage. """
-    def __init__(self, db_class, name,
+    def __init__(self, db_class, name, *,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range,
                 class_attribute=False):
         Documentation.__init__(self, name, doc)
@@ -29,6 +29,7 @@ class DataComponent(Documentation):
             self.reference = self.db_class.database.get_class(dtype)
             self.reference.referenced_by.append(self)
             self.dtype = Pointer
+            assert initial_value is None
             self.initial_value = NULL
         except KeyError:
             self.dtype = np.dtype(dtype)
@@ -101,7 +102,7 @@ class DataComponent(Documentation):
         return self.data is None
 
     def check(self):
-        """ Check data for values which are: NaN, NULL, or Out of bounds. """
+        """ Check data for values which are: NaN, NULL, or out of bounds. """
         data = self.get_data()
         if isinstance(self, ClassAttribute):  data = np.array([data])
         elif isinstance(self, SparseMatrix): data = data.data
@@ -262,7 +263,7 @@ class Attribute(DataComponent):
         if not self.reference: return
         if self.data is None: return
         pointer_data = self.data[:len(self.db_class)]
-        destroyed_mask = self.reference.destroyed_mask
+        destroyed_mask = self.reference._destroyed_mask
         if destroyed_mask is None: return
         xp = cupy.get_array_module(destroyed_mask)
         target_is_dead = xp.take(destroyed_mask, pointer_data, axis=0, mode='clip')
@@ -278,7 +279,7 @@ class Attribute(DataComponent):
 
 class ClassAttribute(DataComponent):
     """ This is the database's internal representation of a class variable. """
-    def __init__(self, db_class, name:str, initial_value,
+    def __init__(self, db_class, name:str, initial_value, *,
                 dtype=Real, shape=(1,),
                 doc:str="", units:str="",
                 allow_invalid:bool=False, valid_range=(None, None),):
@@ -340,7 +341,7 @@ class SparseMatrix(DataComponent):
     #     coo = "coo"
     #     csr = "csr"
 
-    def __init__(self, db_class, name, column, dtype=Real, doc:str="", units:str="",
+    def __init__(self, db_class, name, column, *, dtype=Real, doc:str="", units:str="",
                 allow_invalid:bool=False, valid_range=(None, None),):
         """
         Add a sparse matrix that is indexed by DB_Objects. This is useful for
@@ -382,8 +383,8 @@ class SparseMatrix(DataComponent):
         if self.data is None: return
         self.to_coo()
         # Mask off the dead entries.
-        dead_rows = self.db_class.destroyed_mask
-        dead_cols = self.column.destroyed_mask
+        dead_rows = self.db_class._destroyed_mask
+        dead_cols = self.column._destroyed_mask
         masks = []
         if dead_rows is not None:
             masks.append(np.logical_not(dead_rows[self.data.row]))
@@ -554,7 +555,7 @@ class SparseMatrix(DataComponent):
 
 class ConnectivityMatrix(SparseMatrix):
     """ """ # TODO-DOC
-    def __init__(self, db_class, name, column, doc:str=""):
+    def __init__(self, db_class, name, column, *, doc:str=""):
         """ """ # TODO-DOC
         super().__init__(db_class, name, column, doc=doc, dtype=bool,)
 

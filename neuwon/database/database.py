@@ -303,8 +303,8 @@ class DB_Class(Documentation):
                     raise ValueError(f"Expected 'str', got '{type(k)}'")
         self._is_sorted = True
         self._init_instance_type(base_class, doc)
-        self.destroyed_list = []
-        self.destroyed_mask = None
+        self._destroyed_list = []
+        self._destroyed_mask = None
         self._init_methods()
 
     def _init_instance_type(self, users_class, doc):
@@ -413,29 +413,36 @@ class DB_Class(Documentation):
 
     def _destroy_instance(self, instance):
         idx = instance._idx
-        self.destroyed_list.append(idx)
-        if self.destroyed_mask is not None: self.destroyed_mask[idx] = True
+        self._destroyed_list.append(idx)
+        if self._destroyed_mask is not None: self._destroyed_mask[idx] = True
         self.instances[idx] = None
         instance._idx = NULL
         self._is_sorted = False # This leaves holes in the arrays so it *always* unsorts it.
 
-    # TODO: Make this into a proper attribute so that the user can see it more
-    # easily. Make it private ie '_destroyed'. Someday the user might want to
-    # run a little bit of computation on unsorted data, which I should support!
-    # Although it would have sub-optimal performance, sorting the data has a
-    # performance cost as well. Sorting also invalidates all unstable_index's.
-    # 
-    # But, on the other hand, if the user ever -god forbid- wrote to the
-    # destroyed mask then the DB *will* implode. The OOP instances need to be
-    # updated (BC the setter/getters to not check the flag).
-    #       Well, its private, so if they mess it up and die, thats really only their own fault.
-    def _set_destroyed_mask(self):
-        if self.destroyed_list:
-            xp = self.database.memory_space.array_module
-            self.destroyed_mask = mask = xp.zeros(len(self), dtype=bool)
-            mask[self.destroyed_list] = True
+    # TODO: Finish writing these docs and make this method public.
+    def _get_destroyed_mask(self):
+        """
+        Returns a boolean mask describing which instances have been destroyed.
+
+        The returned mask is READ ONLY!
+        All instances mush be destroyed via the method "DB_Object.destroy()".
+
+        Method Database.sort() removes all destroyed instances and clears this mask.
+        """
+        self._set_destroyed_mask()
+        if self._destroyed_mask is not None:
+            return self._destroyed_mask
         else:
-            self.destroyed_mask = None
+            xp = self.database.memory_space.array_module
+            return xp.zeros(len(self), dtype=bool)
+
+    def _set_destroyed_mask(self):
+        if self._destroyed_list:
+            xp = self.database.memory_space.array_module
+            self._destroyed_mask = mask = xp.zeros(len(self), dtype=bool)
+            mask[self._destroyed_list] = True
+        else:
+            self._destroyed_mask = None
 
     def get_instance_type(self) -> DB_Object:
         """ Get the public / external representation of this DB_Class. """
@@ -518,8 +525,8 @@ class DB_Class(Documentation):
         xp  = mem.get_array_module()
         # First compress out the dead instances.
         new_to_old = xp.arange(len(self))
-        if self.destroyed_list:
-            new_to_old = xp.compress(xp.logical_not(self.destroyed_mask), new_to_old)
+        if self._destroyed_list:
+            new_to_old = xp.compress(xp.logical_not(self._destroyed_mask), new_to_old)
         # Sort by each key.
         for key in reversed(self.sort_key):
             sort_key_data   = self.get(key).get_data()
@@ -530,7 +537,7 @@ class DB_Class(Documentation):
         # Make the forward transform map.
         old_to_new = xp.empty(len(self), dtype=Pointer)
         old_to_new[new_to_old] = xp.arange(len(new_to_old))
-        old_to_new[self.destroyed_list] = NULL
+        old_to_new[self._destroyed_list] = NULL
         # Apply the sort to each data component.
         for component in self.components.values():
             if component.is_free(): continue
@@ -567,8 +574,8 @@ class DB_Class(Documentation):
                 inst._idx = old_to_new[inst._idx]
         # Bookkeeping.
         self.size = len(new_to_old)
-        self.destroyed_list = []
-        self.destroyed_mask = None
+        self._destroyed_list = []
+        self._destroyed_mask = None
         self._is_sorted = True
 
     def check(self, name:str=None):
