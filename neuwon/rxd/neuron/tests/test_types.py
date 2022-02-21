@@ -16,6 +16,7 @@ def test_neuron_type():
         n1.neuron_type = 'q'
     # Check that types are correctly converted to unique integer ID's.
     n2 = Neuron([10,10,10], 5, neuron_type='x')
+    assert n1.neuron_type    == n2.neuron_type
     assert n1.neuron_type_id == n2.neuron_type_id
     n3 = Neuron([10,10,10], 5, neuron_type='y')
     assert n1.neuron_type_id != n3.neuron_type_id

@@ -20,7 +20,7 @@ class Neuron:
         segment_data.add_attribute('neuron', dtype='Neuron')
         # Add type information.
         neuron_cls.neuron_types_list  = []
-        neuron_data.add_attribute('neuron_type_id',  NULL, dtype=Pointer)
+        neuron_data.add_attribute('neuron_type_id',  NULL, dtype=Pointer) # TODO: Document what this is and how to use it.
         return neuron_cls # Return the entry point to the public API.
 
     @staticmethod
@@ -32,7 +32,7 @@ class Neuron:
         neuron_data.add_attribute('AP_detected', False, dtype=bool)
         neuron_data.add_attribute('_AP_true_state', False, dtype=bool)
 
-    def __init__(self, coordinates, diameter,
+    def __init__(self, coordinates, diameter, *,
                 neuron_type=None,
                 segment_type=None):
         self.neuron_type = neuron_type

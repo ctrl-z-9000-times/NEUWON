@@ -15,12 +15,12 @@ class Segment(Tree, Geometry, Electric):
         Electric._initialize(database, **electric_arguments)
         # Add type information.
         segment_data = database.get_class('Segment')
-        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer)
+        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer) # TODO: Document what this is and how to use it.
         segment_cls = segment_data.get_instance_type()
         segment_cls.segment_types_list = []
         return segment_cls
 
-    def __init__(self, parent, coordinates, diameter, segment_type=None):
+    def __init__(self, parent, coordinates, diameter, *, segment_type=None):
         self.segment_type = segment_type
         Tree.__init__(self, parent)
         Geometry.__init__(self, coordinates, diameter)
