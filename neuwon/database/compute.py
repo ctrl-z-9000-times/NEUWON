@@ -4,11 +4,11 @@ DEBUG = False
 
 
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database.database import Database, DB_Class, DB_Object
-from neuwon.database.data_components import ClassAttribute, Attribute, SparseMatrix
-from neuwon.database.doc import Documentation
-from neuwon.database.dtypes import *
-from neuwon.database.memory_spaces import host, cuda
+from .database import Database, DB_Class, DB_Object
+from .data_components import ClassAttribute, Attribute, SparseMatrix
+from .doc import Documentation
+from .dtypes import *
+from .memory_spaces import host, cuda
 import ast
 import inspect
 import numba

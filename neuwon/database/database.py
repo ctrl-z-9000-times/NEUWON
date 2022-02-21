@@ -1,7 +1,7 @@
 from graph_algorithms import topological_sort
-from neuwon.database import memory_spaces
-from neuwon.database.doc import Documentation
-from neuwon.database.dtypes import *
+from . import memory_spaces
+from .doc import Documentation
+from .dtypes import *
 import inspect
 import itertools
 import numpy as np
@@ -92,7 +92,7 @@ class Database:
 
     def add_clock(self, tick_period:float, units:str="") -> 'neuwon.database.Clock':
         """ Set the default clock for this database. """
-        from neuwon.database.time import Clock
+        from .time import Clock
         assert self.clock is None, "Database already has a default Clock!"
         if isinstance(tick_period, Clock):
             self.clock = tick_period
@@ -609,6 +609,6 @@ class DB_Class(Documentation):
 
 Database.add_class.__doc__ = DB_Class.__init__.__doc__
 
-from neuwon.database.data_components import (DataComponent, ClassAttribute, Attribute,
-                                            SparseMatrix, ConnectivityMatrix)
-from neuwon.database.compute import Compute
+from .data_components import (DataComponent, ClassAttribute, Attribute,
+                              SparseMatrix, ConnectivityMatrix)
+from .compute import Compute

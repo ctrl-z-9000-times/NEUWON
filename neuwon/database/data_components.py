@@ -1,8 +1,8 @@
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import memory_spaces
-from neuwon.database.database import DB_Class, DB_Object, Database
-from neuwon.database.doc import Documentation
-from neuwon.database.dtypes import *
+from . import memory_spaces
+from .database import DB_Class, DB_Object, Database
+from .doc import Documentation
+from .dtypes import *
 import cupy
 import numpy as np
 
