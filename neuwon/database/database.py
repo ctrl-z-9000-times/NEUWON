@@ -338,7 +338,24 @@ class DB_Class(Documentation):
                     init_doc = user_init_doc
                 else:
                     init_doc = ""
-        init_sig_no_self = init_sig.replace(parameters=tuple(init_sig.parameters.values())[1:])
+        # Format the arguments to the superclass's __init__ method.
+        init_args = []
+        init_args_iter = iter(init_sig.parameters.values())
+        next(init_args_iter) # Ignore the 'self' argument.
+        for param in init_args_iter:
+            param_name = param.name
+            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+                init_args.append(param_name)
+            elif param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
+                init_args.append(param_name)
+            elif param.kind == inspect.Parameter.VAR_POSITIONAL:
+                init_args.append(f'*{param_name}')
+            elif param.kind == inspect.Parameter.KEYWORD_ONLY:
+                init_args.append(f'{param_name}={param_name}')
+            elif param.kind == inspect.Parameter.VAR_KEYWORD:
+                init_args.append(f'**{param_name}')
+            else: raise NotImplementedError(param.kind)
+        init_args = ', '.join(init_args)
         def escape(s):
             """ Escape newlines so that doc-strings can be inserted into a single line string. """
             return s.encode("unicode_escape").decode("utf-8")
@@ -353,7 +370,7 @@ class DB_Class(Documentation):
                 def __init__{str(init_sig)}:
                     \"\"\"{escape(init_doc)}\"\"\"
                     self._db_class._init_instance(self)
-                    super().__init__{str(init_sig_no_self)}
+                    super().__init__({init_args})
 
                 def destroy(self):
                     \"\"\" \"\"\"
