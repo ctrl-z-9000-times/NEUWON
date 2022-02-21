@@ -1,7 +1,7 @@
 from .morphology import NeuronTypeFactory
 from .regions import RegionFactory
 from .rxd import RxD_Model
-from .synapse import SynapsesFactory
+from .synapses import SynapsesFactory
 
 class Model(RxD_Model):
     def __init__(self, rxd_parameters={},
