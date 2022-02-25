@@ -168,6 +168,13 @@ class DataComponent(Documentation):
     def __repr__(self):
         return "<%s: %s.%s %s>"%(type(self).__name__, self.db_class.name, self.name, self._type_info())
 
+    _initial_distribution_doc = """
+        Argument initial_distribution may be used instead of initial_value.
+                This argument has several valid configurations:
+                  * initial_distribution = ('uniform', lower_bound, upper_bound)
+                  * initial_distribution = ('normal', mean, standard_deviation)
+        """
+
     _units_doc = """
         Argument units is an optional documentation string for physical units.
         """
@@ -208,6 +215,7 @@ class Attribute(DataComponent):
         self.free()
 
     __init__.__doc__ += "".join((
+        DataComponent._initial_distribution_doc,
         DataComponent._dtype_doc,
         DataComponent._shape_doc,
         DataComponent._units_doc,
@@ -338,7 +346,7 @@ class ClassAttribute(DataComponent):
 
         All instance of the class will use a single shared value for this attribute.
 
-        Argument initial_value is required.
+        Argument initial_value or initial_distribution is required.
         """
         DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
@@ -351,6 +359,7 @@ class ClassAttribute(DataComponent):
         if self.reference: raise NotImplementedError
 
     __init__.__doc__ += "".join((
+        DataComponent._initial_distribution_doc,
         DataComponent._dtype_doc,
         DataComponent._shape_doc,
         DataComponent._units_doc,
