@@ -109,8 +109,9 @@ class Segment(Tree, Geometry, Electric):
             magnitude = float(mechanisms[mechanism_name])
             mechanism_class = all_mechanisms[mechanism_name]
             other_mechanisms = []
-            for dependancy in mechanism_class.other_mechanisms():
-                other_mechanisms.append(insert_recusive(dependancy))
+            if hasattr(mechanism_class, 'other_mechanisms'):
+                for dependancy in mechanism_class.other_mechanisms():
+                    other_mechanisms.append(insert_recusive(dependancy))
             mechanism = mechanism_class(self, magnitude, *other_mechanisms)
             instances[mechanism_name] = mechanism
             return mechanism
