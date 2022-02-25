@@ -21,6 +21,9 @@ class LocalMechanism:
     onto segments and can interact with other LocalMechanism's which are
     inserted onto the same segment.
     """
+
+    __slots__ = ()
+
     def initialize(self, model, mechanism_name:str):
         """
         Optional method to setup this mechanism.
