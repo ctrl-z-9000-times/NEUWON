@@ -10,7 +10,7 @@ class DataComponent(Documentation):
     """ Abstract class for all types of data storage. """
     def __init__(self, db_class, name, *,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range,
-                class_attribute=False):
+                initial_distribution=None, class_attribute=False):
         Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
         assert self.name not in db_class.components
@@ -45,12 +45,40 @@ class DataComponent(Documentation):
         self.valid_range = tuple(valid_range)
         if None not in self.valid_range: self.valid_range = tuple(sorted(self.valid_range))
         assert len(self.valid_range) == 2
+        self._setup_initial_distribution(initial_distribution)
         self.memory_space = self.db_class.database.memory_space
         setattr(self.db_class.instance_type, self.name,
                 property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
         if class_attribute:
             setattr(self.db_class.ClassAttrMeta, self.name,
                     property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
+
+    def _setup_initial_distribution(self, initial_distribution):
+        if initial_distribution is None:
+            self.initial_distribution = None
+            return
+        if self.initial_value is not None:
+            raise ValueError("initial_value and initial_distribution parameters are mutually exclusive!")
+        assert not isinstance(initial_distribution, str)
+        distribution_type, a, b = initial_distribution
+        lower_bound, upper_bound = self.valid_range
+        if distribution_type == 'uniform':
+            distr_lower = float(a)
+            distr_upper = float(b)
+            if distr_lower > distr_upper:
+                (distr_lower, distr_upper) = (distr_upper, distr_lower)
+            if lower_bound is not None: assert distr_lower >= lower_bound
+            if upper_bound is not None: assert distr_upper <= upper_bound
+            self.initial_distribution = (distribution_type, distr_lower, distr_upper)
+        elif distribution_type == 'normal':
+            mean    = float(a)
+            std_dev = float(b)
+            assert lower_bound <= mean <= upper_bound
+            assert lower_bound <= mean - std_dev
+            assert mean + std_dev <= upper_bound
+            self.initial_distribution = (distribution_type, mean, std_dev)
+        else:
+            raise ValueError(f'Unrecognized type of random distribution "{distribution_type}"!')
 
     def _getter_wrapper(self, instance):
         if instance._idx == NULL:
@@ -78,7 +106,12 @@ class DataComponent(Documentation):
     def get_units(self) -> str:             return self.units
     def get_dtype(self) -> np.dtype:        return self.dtype
     def get_shape(self) -> tuple:           return self.shape
-    def get_initial_value(self) -> object:  return self.initial_value
+    def get_initial_value(self):
+        """ Returns either the initial_value or the initial_distribution. """
+        if self.initial_distribution is not None:
+            return self.initial_distribution
+        else:
+            return self.initial_value
     def get_class(self) -> DB_Class:        return self.db_class
     def get_database(self) -> Database:     return self.db_class.database
 
@@ -95,6 +128,9 @@ class DataComponent(Documentation):
         """
         Release the memory used by this data component. The next time the data
         is accessed it will be reallocated and set to its initial_value.
+
+        If an initial_distribution is used instead of an initial_value,
+        then new values will be generated upon reallocation.
         """
         raise NotImplementedError(type(self))
 
@@ -157,8 +193,9 @@ class DataComponent(Documentation):
 
 class Attribute(DataComponent):
     """ This is the database's internal representation of an instance variable. """
-    def __init__(self, db_class, name:str, initial_value=None, dtype=Real, shape=(1,),
-                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
+    def __init__(self, db_class, name:str, initial_value=None, *, dtype=Real, shape=(1,),
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),
+                initial_distribution=None,):
         """ Add an instance variable to a class type.
 
         Argument initial_value is written to new instances of this attribute.
@@ -167,7 +204,7 @@ class Attribute(DataComponent):
         """
         DataComponent.__init__(self, db_class, name,
             doc=doc, units=units, dtype=dtype, shape=shape, initial_value=initial_value,
-            allow_invalid=allow_invalid, valid_range=valid_range)
+            allow_invalid=allow_invalid, valid_range=valid_range, initial_distribution=initial_distribution,)
         self.free()
 
     __init__.__doc__ += "".join((
@@ -183,11 +220,14 @@ class Attribute(DataComponent):
     def _alloc_if_free(self):
         if self.data is None:
             self.data = self._alloc(len(self.db_class))
-            if self.initial_value is not None:
-                self.data.fill(self.initial_value)
+            self._append(0, len(self.db_class))
 
     def _getter(self, instance):
-        if self.data is None: return self.initial_value
+        if self.data is None:
+            if self.initial_distribution is not None:
+                self._alloc_if_free()
+            else:
+                return self.initial_value
         value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
         if self.reference:
@@ -216,6 +256,16 @@ class Attribute(DataComponent):
             self.data = new_data
         if self.initial_value is not None:
             self.data[old_size:new_size].fill(self.initial_value)
+        elif self.initial_distribution is not None:
+            distr_type, a, b = self.initial_distribution
+            num_append = new_size - old_size
+            xp = self.memory_space.array_module
+            if distr_type == 'uniform':
+                self.data[old_size:new_size] = xp.random.uniform(a, b, size=num_append)
+            elif distr_type == 'normal':
+                self.data[old_size:new_size] = xp.random.normal(a, b, size=num_append).clip(*self.valid_range)
+            else:
+                raise NotImplementedError(distr_type)
 
     def _alloc(self, size):
         """ Returns an empty array. """
@@ -279,10 +329,11 @@ class Attribute(DataComponent):
 
 class ClassAttribute(DataComponent):
     """ This is the database's internal representation of a class variable. """
-    def __init__(self, db_class, name:str, initial_value, *,
+    def __init__(self, db_class, name:str, initial_value=None, *,
                 dtype=Real, shape=(1,),
                 doc:str="", units:str="",
-                allow_invalid:bool=False, valid_range=(None, None),):
+                allow_invalid:bool=False, valid_range=(None, None),
+                initial_distribution=None,):
         """ Add a class variable to a class type.
 
         All instance of the class will use a single shared value for this attribute.
@@ -291,9 +342,11 @@ class ClassAttribute(DataComponent):
         """
         DataComponent.__init__(self, db_class, name,
                 dtype=dtype, shape=shape, doc=doc, units=units, initial_value=initial_value,
-                allow_invalid=allow_invalid, valid_range=valid_range,
+                allow_invalid=allow_invalid, valid_range=valid_range, initial_distribution=initial_distribution,
                 class_attribute=True)
-        self.data = self.initial_value
+        if (self.initial_value is None) and (self.initial_distribution is None):
+            raise TypeError("Missing 1 required positional argument: 'initial_value'")
+        self.free()
         self.memory_space = memory_spaces.host
         if self.reference: raise NotImplementedError
 
@@ -318,7 +371,16 @@ class ClassAttribute(DataComponent):
         self.data = self.dtype.type(value)
 
     def free(self):
-        self.data = self.initial_value
+        if self.initial_distribution is not None:
+            distr_type, a, b = self.initial_distribution
+            if distr_type == 'uniform':
+                self.set_data(np.random.uniform(a, b))
+            elif distr_type == 'normal':
+                self.set_data(np.random.normal(a, b).clip(*self.valid_range))
+            else:
+                raise NotImplementedError(distr_type)
+        else:
+            self.data = self.initial_value
 
     def _remove_references_to_destroyed(self):
         pass

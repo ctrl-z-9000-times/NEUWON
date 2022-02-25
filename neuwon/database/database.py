@@ -518,22 +518,26 @@ class DB_Class(Documentation):
         """ Returns self, since this is the database_class. """
         return self
 
-    def add_attribute(self, name:str, initial_value=None, dtype=Real, shape=(1,),
-                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
+    def add_attribute(self, name:str, initial_value=None, *, dtype=Real, shape=(1,),
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),
+                initial_distribution=None):
         return Attribute(self, name, initial_value=initial_value, dtype=dtype, shape=shape,
-                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
+                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,
+                initial_distribution=initial_distribution)
 
-    def add_class_attribute(self, name:str, initial_value, dtype=Real, shape=(1,),
-                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
+    def add_class_attribute(self, name:str, initial_value=None, *, dtype=Real, shape=(1,),
+                doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),
+                initial_distribution=None):
         return ClassAttribute(self, name, initial_value, dtype=dtype, shape=shape,
-                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
+                doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,
+                initial_distribution=initial_distribution)
 
-    def add_sparse_matrix(self, name:str, column, dtype=Real,
+    def add_sparse_matrix(self, name:str, column, *, dtype=Real,
                 doc:str="", units:str="", allow_invalid:bool=False, valid_range=(None, None),):
         return SparseMatrix(self, name, column, dtype=dtype,
                 doc=doc, units=units, allow_invalid=allow_invalid, valid_range=valid_range,)
 
-    def add_connectivity_matrix(self, name:str, column, doc:str=""):
+    def add_connectivity_matrix(self, name:str, column, *, doc:str=""):
         return ConnectivityMatrix(self, name, column, doc=doc)
 
     def _sort(self):
