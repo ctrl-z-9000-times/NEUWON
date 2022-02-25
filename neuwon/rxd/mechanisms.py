@@ -31,7 +31,8 @@ class LocalMechanism:
         """
         pass
 
-    def other_mechanisms(self) -> [str]:
+    @classmethod
+    def other_mechanisms(cls) -> [str]:
         """
         Returns a list of LocalMechanism names which will be created and given
         to this mechanism's constructor.

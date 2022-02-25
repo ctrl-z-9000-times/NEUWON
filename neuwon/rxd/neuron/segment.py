@@ -1,4 +1,4 @@
-from collections.abc import Hashable
+from collections.abc import Iterable, Mapping, Hashable
 from .electric import Electric
 from .geometry import Geometry
 from .tree     import Tree
@@ -85,3 +85,36 @@ class Segment(Tree, Geometry, Electric):
     @Compute
     def _filter_by_type(self, neuron_mask, segment_mask) -> bool:
         return segment_mask[self.segment_type_id] and neuron_mask[self.neuron.neuron_type_id]
+
+    def insert(self, mechanisms: dict) -> dict:
+        """ """ # TODO: Documentation!
+        # Clean the input.
+        if isinstance(mechanisms, Mapping):
+            pass
+        elif isinstance(mechanisms, str):
+            mechanisms = {mechanisms: 1.0}
+        elif isinstance(mechanisms, Iterable):
+            mechanisms = {name: 1.0 for name in mechanisms}
+        else:
+            raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
+        # Setup and get ready for recusion.
+        all_mechanisms = type(self)._model.mechanisms
+        instances = {}
+        def insert_recusive(mechanism_name: str) -> 'instance':
+            # Return existing instance if it's already been created.
+            try: return instances[mechanism_name]
+            except KeyError: pass
+            # Create new instance of this mechanism.
+            assert isinstance(mechanism_name, str)
+            magnitude = float(mechanisms[mechanism_name])
+            mechanism_class = all_mechanisms[mechanism_name]
+            other_mechanisms = []
+            for dependancy in mechanism_class.other_mechanisms():
+                other_mechanisms.append(insert_recusive(dependancy))
+            mechanism = mechanism_class(self, magnitude, *other_mechanisms)
+            instances[mechanism_name] = mechanism
+            return mechanism
+        # 
+        for mechanism_name in mechanisms.keys():
+            insert_recusive(mechanism_name)
+        return instances
