@@ -106,6 +106,8 @@ class MechanismsFactory(dict):
             mechanism = retval
         if local:
             assert issubclass(mechanism, LocalMechanismInstance) and issubclass(mechanism, DB_Object)
+        elif omnipresent:
+            assert isinstance(mechanism, OmnipresentMechanism)
         self[name] = mechanism
         return mechanism
 
