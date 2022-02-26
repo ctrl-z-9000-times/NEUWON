@@ -76,15 +76,18 @@ class MechanismsFactory(dict):
         assert name not in self
         if isinstance(mechanism, str):
             parameters = {}
+        elif isinstance(mechanism, LocalMechanism) or isinstance(mechanism, OmnipresentMechanism):
+            parameters = {}
         else:
             mechanism, parameters = mechanism
         # Create the Mechanism object.
-        if mechanism.endswith(".mod"):
-            mechanism = neuwon.rxd.nmodl.NMODL(mechanism, parameters)
-        elif mechanism.endswith(".py"):
-            1/0 # TODO?
-        else:
-            raise ValueError("File extension not understood")
+        if isinstance(mechanism, str):
+            if mechanism.endswith(".mod"):
+                mechanism = neuwon.rxd.nmodl.NMODL(mechanism, parameters)
+            elif mechanism.endswith(".py"):
+                1/0 # TODO?
+            else:
+                raise ValueError("File extension not understood")
         # 
         if hasattr(mechanism, "initialize"):
             retval = mechanism.initialize(self._model, name)
