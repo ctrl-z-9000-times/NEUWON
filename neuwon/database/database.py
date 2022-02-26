@@ -61,7 +61,7 @@ class Database:
             obj = obj.get(attr)
         return obj
 
-    def get_class(self, name: str):
+    def get_class(self, name: str) -> 'DB_Class':
         """ Get the database's internal representation of a class.
 
         Argument name can be anything which `self.get(name)` accepts.
@@ -70,7 +70,11 @@ class Database:
         if isinstance(db_class, DataComponent): db_class = db_class.get_class()
         return db_class
 
-    def get_component(self, name: str):
+    def get_instance_type(self, name: str):
+        """ Get the public / external representation of the given DB_Class. """
+        return self.get_class(name).get_instance_type()
+
+    def get_component(self, name: str) -> 'DataComponent':
         component = self.get(name)
         assert isinstance(component, DataComponent)
         return component
@@ -515,7 +519,7 @@ class DB_Class(Documentation):
         return self.database
 
     def get_database_class(self) -> 'self':
-        """ Returns self, since this is the database_class. """
+        """ Returns self, since this is the DB_Class. """
         return self
 
     def add_attribute(self, name:str, initial_value=None, *, dtype=Real, shape=(1,),
