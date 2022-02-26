@@ -263,8 +263,7 @@ class NMODL(Mechanism):
             for name, (value, units) in self._parameters.items():
                 setattr(self, name, value * multiplier)
         else:
-            sa_units = (1e-6 * 1e-6) / (1e-2 * 1e-2) # Convert from NEUWONs um^2 to NEURONs cm^2.
-            x = multiplier * sa_units * self.segment.surface_area
+            x = multiplier * self.segment.surface_area
             for name, (value, units) in self._parameters.items():
                 setattr(self, name, value * x)
 
@@ -320,10 +319,14 @@ class ParameterTable(dict):
         parameters = {}
         for name, (value, units) in self.items():
             if units:
-                if not point_process and "/cm2" in units:
-                    parameters[name] = (value, units)
-                elif point_process:
-                    if ("/" + self.mechanism_name in units) or ("/1" in units):
+                if point_process:
+                    if "/" + self.mechanism_name in units:
+                        parameters[name] = (value, units)
+                else:
+                    if "/cm2" in units:
+                        # Convert from NEUWONs um^2 to NEURONs cm^2.
+                        value *= (1e-6 * 1e-6) / (1e-2 * 1e-2)
+                        units  = units.replace("/cm2", '')
                         parameters[name] = (value, units)
         return parameters
 
