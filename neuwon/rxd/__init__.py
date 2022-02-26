@@ -5,6 +5,11 @@ including the "Neuron" and "Segment" classes and the "advance()" method.
 """
 
 from .rxd_model import RxD_Model
-from .mechanisms import OmnipresentMechanism, LocalMechanism
+from .mechanisms import OmnipresentMechanism, LocalMechanismSpecification, LocalMechanismInstance
 
-__all__ = ('RxD_Model', 'OmnipresentMechanism', 'LocalMechanism',)
+__all__ = (
+    'RxD_Model',
+    'OmnipresentMechanism',
+    'LocalMechanismSpecification',
+    'LocalMechanismInstance',
+)
