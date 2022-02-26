@@ -17,8 +17,8 @@ def test_hh_smoke_test():
     hh = m.mechanisms['hh']
     help(hh)
     print('PARAMETERS:', hh._parameters)
-    print('ADVANCE PYCODE:')
-    print(hh._advance_pycode)
+    print('PYCODE:')
+    print(hh._pycode)
 
     hh.advance()
 

@@ -219,26 +219,34 @@ class NMODL(Mechanism):
             elif arg in self.initial_scope:
                 value = float(self.initial_scope[arg])
                 self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
-        self.advance_pycode = (
+        self.pycode = (
                 "@Compute\n"
                 "def advance(self):\n"
                 + code_gen.to_python(self.breakpoint_block, "    ", self.pointers))
-        breakpoint_globals = {
+        self.pycode += "\n"
+        self.pycode += "@Compute\n"
+        self.pycode += "def set_magnitude(self, magnitude):\n"
+        if self.point_process:
+            self.pycode += "    magnitude = float(magnitude)\n"
+        else:
+            self.pycode += "    magnitude = self.segment.surface_area * float(magnitude)\n"
+        for name, (value, units) in self.instance_parameters.items():
+            self.pycode += f"    self.{name} = {value} * magnitude # {units}\n"
+        globals_ = {
             'Compute': Compute,
-            # code_gen.mangle(name): km.advance for name, km in self.kinetic_models.items()
         }
-        code_gen.exec_string(self.advance_pycode, breakpoint_globals)
-        self.advance_bytecode = breakpoint_globals['advance']
+        code_gen.exec_string(self.pycode, globals_)
+        self.advance_bytecode       = globals_['advance']
+        self.set_magnitude_bytecode = globals_['set_magnitude']
 
     def _initialize_database(self, database):
         mechanism_superclass = type(self.name, (Mechanism,), {
             '__slots__': (),
-            '_point_process': self.point_process,
-            '_parameters': self.instance_parameters,
-            '__init__': NMODL._instance__init__,
-            'advance': self.advance_bytecode,
-            '_advance_pycode': self.advance_pycode,
-            'set_magnitude': NMODL._set_magnitude if self.instance_parameters else NMODL._no_magnitude,
+            '__init__':         NMODL._instance__init__,
+            '_parameters':      self.instance_parameters,
+            'advance':          self.advance_bytecode,
+            'set_magnitude':    self.set_magnitude_bytecode,
+            '_pycode':          self.pycode,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
@@ -255,25 +263,6 @@ class NMODL(Mechanism):
         """ Insert this mechanism. """
         self.segment = segment
         self.set_magnitude(magnitude)
-
-    @staticmethod
-    def _set_magnitude(self, multiplier):
-        multiplier = float(multiplier)
-        if self._point_process:
-            for name, (value, units) in self._parameters.items():
-                setattr(self, name, value * multiplier)
-        else:
-            x = multiplier * self.segment.surface_area
-            for name, (value, units) in self._parameters.items():
-                setattr(self, name, value * x)
-
-    @staticmethod
-    def _no_magnitude(self, multiplier):
-        if ((multiplier is None) or
-            (multiplier is False) or
-            (isinstance(multiplier, Number) and math.isnan(multiplier))):
-                return
-        raise TypeError(f"Mechanism {type(self).__name__} has no magnitude.")
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
