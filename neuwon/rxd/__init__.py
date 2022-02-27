@@ -2,6 +2,7 @@
 
 This module defines data structures and equations for neural simulations,
 including the "Neuron" and "Segment" classes and the "advance()" method.
+This module aims to be un-opinionated and applicable to any neural simulation.
 """
 
 from .rxd_model import RxD_Model

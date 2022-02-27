@@ -2,6 +2,7 @@ from collections.abc import Iterable, Mapping, Hashable
 from .electric import Electric
 from .geometry import Geometry
 from .tree     import Tree
+from ..mechanisms import LocalMechanismInstance
 from neuwon.database import Real, epsilon, Pointer, NULL, Compute
 import numpy as np
 
@@ -99,19 +100,21 @@ class Segment(Tree, Geometry, Electric):
             raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
         # Setup and get ready for recusion.
         all_mechanisms = type(self)._model.mechanisms
+        dependencies = all_mechanisms._local_dependencies
         instances = {}
         def insert_recusive(mechanism_name: str) -> 'instance':
             # Return existing instance if it's already been created.
-            try: return instances[mechanism_name]
-            except KeyError: pass
-            # Create new instance of this mechanism.
+            try:
+                return instances[mechanism_name]
+            except KeyError:
+                pass
+            # Create a new instance of this mechanism.
             assert isinstance(mechanism_name, str)
             magnitude = float(mechanisms[mechanism_name])
             mechanism_class = all_mechanisms[mechanism_name]
-            other_mechanisms = []
-            if hasattr(mechanism_class, 'other_mechanisms'):
-                for dependancy in mechanism_class.other_mechanisms():
-                    other_mechanisms.append(insert_recusive(dependancy))
+            assert issubclass(mechanism_class, LocalMechanismInstance)
+            other_mechanisms = dependencies[mechanism_name]
+            other_mechanisms = (insert_recusive(x) for x in other_mechanisms)
             mechanism = mechanism_class(self, magnitude, *other_mechanisms)
             instances[mechanism_name] = mechanism
             return mechanism

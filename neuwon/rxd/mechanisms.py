@@ -1,4 +1,5 @@
-from neuwon.database import Attribute, Real
+from neuwon.database import Real
+from neuwon.database.data_components import Attribute
 
 class OmnipresentMechanism:
     """
@@ -67,11 +68,11 @@ class MechanismsFactory(dict):
         self._local_dependencies = {}
         self.add_parameters(parameters)
 
-    def add_parameters(self, parameters:dict) -> [Mechanism]:
+    def add_parameters(self, parameters:dict) -> '[Mechanism]':
         return [self.add_mechanism(name, mechanism)
                     for name, mechanism in parameters.items()]
 
-    def add_mechanism(self, name, mechanism) -> Mechanism:
+    def add_mechanism(self, name, mechanism) -> 'Mechanism':
         """ """
         # Unpack the specification & parameters.
         name = str(name)
