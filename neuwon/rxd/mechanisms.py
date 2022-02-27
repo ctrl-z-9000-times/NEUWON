@@ -1,3 +1,4 @@
+from neuwon.database import Attribute, Real
 
 class OmnipresentMechanism:
     """
@@ -21,18 +22,15 @@ class LocalMechanismInstance:
     All subclasses must also inherit from `DB_Object`, meaning they must be
     created by the method `database.add_class()` and the retrieved by the
     method `database.get_instance_type()`.
+
+    All LocalMechanisms must have a "magnitude" attribute which controls the
+    strength of the element. A magnitude of one should always be a sensible
+    value.
     """
 
     __slots__ = ()
 
     def __init__(self, segment, magnitude, *other_mechanisms):
-        raise NotImplementedError(type(self))
-
-    def set_magnitude(self, magnitude):
-        """
-        Sets the strength of this element.
-        A magnitude of one should always be a sensible value.
-        """
         raise NotImplementedError(type(self))
 
     @classmethod
@@ -88,8 +86,8 @@ class MechanismsFactory(dict):
         if isinstance(mechanism, str):
             if mechanism.endswith(".mod"):
                 mechanism = neuwon.rxd.nmodl.NMODL(mechanism, parameters)
-            elif mechanism.endswith(".py"):
-                1/0 # TODO?
+            # elif mechanism.endswith(".py"):
+            #     1/0 # TODO?
             else:
                 raise ValueError("File extension not understood")
         omnipresent = isinstance(mechanism, OmnipresentMechanism)
@@ -104,11 +102,16 @@ class MechanismsFactory(dict):
         retval = mechanism.initialize(self._model, name)
         if local or (omnipresent and retval is not None):
             mechanism = retval
+        self[name] = mechanism
+        # Ye olde heap o' assert statements.
         if local:
             assert issubclass(mechanism, LocalMechanismInstance) and issubclass(mechanism, DB_Object)
+            magnitude = mechanism.get_database_class().get('magnitude')
+            assert isinstance(magnitude, Attribute)
+            assert magnitude.get_shape() == (1,)
+            assert magnitude.get_dtype() == Real
         elif omnipresent:
             assert isinstance(mechanism, OmnipresentMechanism)
-        self[name] = mechanism
         return mechanism
 
-import neuwon.rxd.nmodl
+import neuwon.rxd.nmodl # Import namespace after defining the Mechanisms API to prevent circular dependency.
