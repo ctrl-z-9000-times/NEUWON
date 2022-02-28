@@ -244,7 +244,7 @@ class AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False, operation='='):
         self.lhsn = str(lhsn) # Left hand side name.
         if isinstance(rhs, str):
-            rhs = sympy.simpify(rhs)
+            rhs = sympy.sympify(rhs)
         self.rhs = rhs # Right hand side.
         self.derivative = bool(derivative)
         self.operation = str(operation)
