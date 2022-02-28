@@ -1,6 +1,6 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Real, Compute
-from neuwon.rxd.mechanisms import Mechanism
+from neuwon.rxd.mechanisms import OmnipresentMechanism, LocalMechanismSpecification, LocalMechanismInstance
 from . import code_gen, cache, solver
 from .parser import (NmodlParser, ANT,
         SolveStatement,
@@ -24,7 +24,15 @@ def eprint(*args, **kwargs):
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
-class NMODL(Mechanism):
+# TODO: Move assignments to conductances to the end of the breakpoint block,
+# where they belong. This is needed because the nmodl library inserts
+# conductance hints and associated statements at the beginning of the block.
+# self.breakpoint_block.statements.sort(key=lambda stmt: bool(
+#         isinstance(stmt, AssignStatement)
+#         and stmt.pointer and "conductance" in stmt.pointer.name))
+
+
+class NMODL:
     def __init__(self, filename, parameters={}, use_cache=True):
         """
         Argument filename is an NMODL file to load.
@@ -48,6 +56,8 @@ class NMODL(Mechanism):
                 self.breakpoint_block = blocks['BREAKPOINT']
                 self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative}
                 self._gather_IO(parser)
+                if self.omnipresent:    self.__class__ = OmnipresentNmodlMechanism
+                else:                   self.__class__ = LocalNmodlMechanismSpecification
                 self._solve()
                 self._fixup_breakpoint_IO()
             except Exception:
@@ -76,14 +86,13 @@ class NMODL(Mechanism):
         """
         Determine what external data the mechanism accesses.
 
-        Sets attributes: "pointers" and "accumulators".
+        Sets attributes: "pointers", "accumulators", and "omnipresent".
         """
         self.pointers = {}
         self.accumulators = set()
+        self.omnipresent = False # TODO!
         for state in self.states:
             self.pointers[state] = f'self.{state}'
-        for param in self.parameters.get_instance_parameters(self.point_process):
-            self.pointers[param] = f'self.{param}'
         self.breakpoint_block.gather_arguments()
         self.initial_block.gather_arguments()
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
@@ -176,7 +185,10 @@ class NMODL(Mechanism):
             self.parameters.update(builtin_parameters, strict=True, override=False)
             self._run_initial_block(database)
             self._compile_breakpoint_block()
-            return self._initialize_database(database)
+            if self.omnipresent:
+                return self._initialize_omnipresent_mechanism_class(database)
+            else:
+                return self._initialize_local_mechanism_class(database)
         except Exception:
             eprint("ERROR while loading file", self.filename)
             raise
@@ -206,63 +218,61 @@ class NMODL(Mechanism):
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def _compile_breakpoint_block(self):
-        # Move assignments to conductances to the end of the block, where they
-        # belong. This is needed because the nmodl library inserts conductance
-        # hints and associated statements at the beginning of the block.
-        # self.breakpoint_block.statements.sort(key=lambda stmt: bool(
-        #         isinstance(stmt, AssignStatement)
-        #         and stmt.pointer and "conductance" in stmt.pointer.name))
         # 
         self.parameters.substitute(self.breakpoint_block)
+        # 
+        magnitude = sympy.Symbol('self.magnitude')
+        for name, (value, units) in self.instance_parameters.items():
+            self.breakpoint_block.statements.insert(0, AssignStatement(name, value * magnitude))
+        # 
         for arg in self.breakpoint_block.arguments:
-            if arg in self.pointers: pass
+            if arg in self.pointers: continue
             elif arg in self.initial_scope:
                 value = float(self.initial_scope[arg])
                 self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
-        self.pycode = (
+        # 
+        self.advance_pycode = (
                 "@Compute\n"
                 "def advance(self):\n"
                 + code_gen.to_python(self.breakpoint_block, "    ", self.pointers))
-        self.pycode += "\n"
-        self.pycode += "@Compute\n"
-        self.pycode += "def set_magnitude(self, magnitude):\n"
-        if self.point_process:
-            self.pycode += "    magnitude = float(magnitude)\n"
-        else:
-            self.pycode += "    magnitude = self.segment.surface_area * float(magnitude)\n"
-        for name, (value, units) in self.instance_parameters.items():
-            self.pycode += f"    self.{name} = {value} * magnitude # {units}\n"
         globals_ = {
-            'Compute': Compute,
+                'Compute': Compute,
         }
-        code_gen.exec_string(self.pycode, globals_)
-        self.advance_bytecode       = globals_['advance']
-        self.set_magnitude_bytecode = globals_['set_magnitude']
+        code_gen.exec_string(self.advance_pycode, globals_)
+        self.advance_bytecode = globals_['advance']
 
-    def _initialize_database(self, database):
-        mechanism_superclass = type(self.name, (Mechanism,), {
+    def _initialize_omnipresent_mechanism_class(self, database):
+        1/0 # TODO
+
+    def _initialize_local_mechanism_class(self, database):
+        mechanism_superclass = type(self.name, (LocalMechanismInstance,), {
             '__slots__': (),
             '__init__':         NMODL._instance__init__,
-            '_parameters':      self.instance_parameters,
+            '_point_process':   self.point_process,
             'advance':          self.advance_bytecode,
-            'set_magnitude':    self.set_magnitude_bytecode,
-            '_pycode':          self.pycode,
+            '_advance_pycode':  self.advance_pycode,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
-        for name, (value, units) in self.instance_parameters.items():
-            mech_data.add_attribute(name,
-                    initial_value=value if self.point_process else None,
-                    units=units,)
+        if self.point_process:
+            mech_data.add_attribute("magnitude", 1.0,
+                    doc="") # TODO?
+        else:
+            mech_data.add_attribute("magnitude",
+                    units = database.get('Segment.surface_area').get_units(),
+                    doc="") # TODO?
         for name in self.states:
             mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
         return mech_data.get_instance_type()
 
     @staticmethod
     def _instance__init__(self, segment, magnitude=1.0):
-        """ Insert this mechanism. """
+        """ Insert this mechanism onto the given segment. """
         self.segment = segment
-        self.set_magnitude(magnitude)
+        if self._point_process:
+            self.magnitude = magnitude
+        else:
+            self.magnitude = magnitude * segment.surface_area
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
@@ -335,3 +345,6 @@ class ParameterTable(dict):
                 name = solver.dt
             substitutions[name] = value
         block.substitute(substitutions)
+
+class OmnipresentNmodlMechanism(NMODL, OmnipresentMechanism): pass
+class LocalNmodlMechanismSpecification(NMODL, LocalMechanismSpecification): pass

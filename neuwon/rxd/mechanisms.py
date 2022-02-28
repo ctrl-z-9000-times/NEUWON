@@ -1,4 +1,4 @@
-from neuwon.database import Real
+from neuwon.database import Real, DB_Object
 from neuwon.database.data_components import Attribute
 
 class OmnipresentMechanism:
@@ -93,7 +93,8 @@ class MechanismsFactory(dict):
                 raise ValueError("File extension not understood")
         omnipresent = isinstance(mechanism, OmnipresentMechanism)
         local       = isinstance(mechanism, LocalMechanismSpecification)
-        assert (local != omnipresent)
+        assert local or omnipresent
+        assert not (local and omnipresent)
         # 
         if local:
             dependencies = mechanism.other_mechanisms()
