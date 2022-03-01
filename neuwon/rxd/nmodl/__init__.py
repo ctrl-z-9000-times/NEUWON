@@ -86,10 +86,11 @@ class NMODL:
         """
         Determine what external data the mechanism accesses.
 
-        Sets attributes: "pointers", "accumulators", and "omnipresent".
+        Sets attributes: "pointers", "accumulators", "other_mechanisms_", and "omnipresent".
         """
         self.pointers = {}
         self.accumulators = set()
+        self.other_mechanisms_ = []
         self.omnipresent = False # TODO!
         for state in self.states:
             self.pointers[state] = f'self.{state}'
@@ -140,6 +141,11 @@ class NMODL:
                 ion = x.ion.get_node_name()
                 self.pointers[var_name] = f"Segment.{ion}_conductance"
                 self.accumulators.add(var_name)
+        for x in parser.lookup(ANT.POINTER_VAR):
+            name = x.get_node_name()
+            self.other_mechanisms_.append(name)
+            self.pointers[name] = f"self.{name}.magnitude"
+        self.other_mechanisms_ = tuple(sorted(self.other_mechanisms_))
 
     def _solve(self):
         """
@@ -247,10 +253,11 @@ class NMODL:
     def _initialize_local_mechanism_class(self, database):
         mechanism_superclass = type(self.name, (LocalMechanismInstance,), {
             '__slots__': (),
-            '__init__':         NMODL._instance__init__,
-            '_point_process':   self.point_process,
-            'advance':          self.advance_bytecode,
-            '_advance_pycode':  self.advance_pycode,
+            '__init__':             NMODL._instance__init__,
+            '_point_process':       self.point_process,
+            '_other_mechanisms':    self.other_mechanisms_,
+            'advance':              self.advance_bytecode,
+            '_advance_pycode':      self.advance_pycode,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
@@ -263,16 +270,21 @@ class NMODL:
                     doc="") # TODO?
         for name in self.states:
             mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
+        for name in self.other_mechanisms_:
+            mech_data.add_attribute(name, dtype=name)
         return mech_data.get_instance_type()
 
     @staticmethod
-    def _instance__init__(self, segment, magnitude=1.0):
+    def _instance__init__(self, segment, magnitude=1.0, *other_mechanisms):
         """ Insert this mechanism onto the given segment. """
         self.segment = segment
         if self._point_process:
             self.magnitude = magnitude
         else:
             self.magnitude = magnitude * segment.surface_area
+        assert len(self._other_mechanisms) == len(other_mechanisms)
+        for name, ref in zip(self._other_mechanisms, other_mechanisms):
+            setattr(self, name, ref)
 
 class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
@@ -346,5 +358,9 @@ class ParameterTable(dict):
             substitutions[name] = value
         block.substitute(substitutions)
 
-class OmnipresentNmodlMechanism(NMODL, OmnipresentMechanism): pass
-class LocalNmodlMechanismSpecification(NMODL, LocalMechanismSpecification): pass
+class OmnipresentNmodlMechanism(NMODL, OmnipresentMechanism):
+    pass
+
+class LocalNmodlMechanismSpecification(NMODL, LocalMechanismSpecification):
+    def other_mechanisms(self):
+        return self.other_mechanisms_

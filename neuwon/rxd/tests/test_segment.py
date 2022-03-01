@@ -1,4 +1,4 @@
-from neuwon.database import Database
+from neuwon.database import Database, TimeSeries
 from neuwon.rxd import RxD_Model
 from neuwon.rxd.neuron.neuron import Neuron as NeuronSuperclass
 import pytest
@@ -48,7 +48,7 @@ def test_swc():
     assert pct_diff(volume,  3500.58) <= .05
     db.check()
 
-def test_basic_insertion():
+def test_insert_smoke_test():
     my_model = RxD_Model(
         mechanisms= {
             'hh': './nmodl_library/hh.mod',
@@ -58,12 +58,58 @@ def test_basic_insertion():
     my_segments = my_root.add_section([100,0,0], 3, maximum_segment_length=10)
 
     my_root.insert({})
-    instances = my_root.insert({'hh': 1})
+    instances = my_root.insert({'hh': 1}) # Insert mechanism with associated magnitude.
+    my_segments[2].insert('hh') # Insert by mechanism name.
+    my_segments[3].insert(['hh']) # Insert by list of names.
+    # Duplicate insert should not raise an error.
+    my_segments[4].insert({'hh': 1})
+    my_segments[4].insert({'hh': 1})
 
     assert instances['hh'].get_database_class().get_name() == 'hh'
     my_model.check()
 
-@pytest.mark.skip
-def test_other_mechanisms():
-    # TODO: Test inserting mechanisms that reference each other.
-    1/0
+def test_insert_interacting_mechanisms():
+    my_model = RxD_Model(
+        time_step = 0.1,
+        celsius = 6.3,
+        mechanisms = {
+            'hh': './nmodl_library/hh.mod',
+            'local': './neuwon/rxd/tests/local.mod',
+        },
+        species = {
+            'na': {'reversal_potential': +60,},
+            'k': {'reversal_potential': -88,},
+            'l': {'reversal_potential': -54.3,},
+        },)
+    my_neuron   = my_model.Neuron([0,0,0], 10)
+    my_root     = my_neuron.root
+    instances   = my_root.insert({'hh': 1, 'local': 1})
+    probe       = TimeSeries().record(my_root, 'voltage', discard_after=30)
+
+    print(my_model.mechanisms['hh']._advance_pycode)
+    print(my_model.mechanisms['local']._advance_pycode)
+
+    # Check for no spontaneous AP at start up.
+    while my_model.clock() < 20:
+        my_model.advance()
+    assert all(v < -20 for v in probe.get_data())
+
+    # Check that AP works.
+    my_model.clock.reset()
+    my_root.inject_current(.1e-9, .5)
+    while my_model.clock() < 20:
+        my_model.advance()
+    assert any(v > 20 for v in probe.get_data())
+
+    # Wait for "local" mechanism to cause hh magitude to decay.
+    while my_model.clock() < 500:
+        my_model.advance()
+
+    # Check that AP is gone.
+    my_model.clock.reset()
+    my_root.inject_current(.1e-9, .5)
+    while my_model.clock() < 20:
+        my_model.advance()
+    assert all(v < -20 for v in probe.get_data())
+
+    my_model.check()

@@ -11,6 +11,8 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
     if isinstance(self, CodeBlock):
         for stmt in self.statements:
             py += to_python(stmt, indent, pointers)
+        if not self.statements:
+            py += indent + "pass\n"
     elif isinstance(self, IfStatement):
         py += indent + "if %s:\n"%sympy_to_pycode(self.condition)
         py += to_python(self.main_block, indent + "    ", pointers)
