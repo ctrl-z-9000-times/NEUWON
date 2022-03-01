@@ -250,6 +250,20 @@ class NMODL:
     def _initialize_omnipresent_mechanism_class(self, database):
         1/0 # TODO
 
+        # NOTES:
+        # 
+        # Omnipresent mechanisms are used to implement chemical reactions.
+        # 
+        # Omnipresent mechanisms must have no state variables, instead they use
+        # species concentrations and (possibly?) the standard segment attributes.
+        # 
+        # All omnipresent mechanisms must be associated to a single entity type:
+        #       -> Intracellular
+        #       -> Extracellular
+        #       -> Segment
+        # And their advance method will be an anonymous method over all
+        # instances of the associated entity.
+
     def _initialize_local_mechanism_class(self, database):
         mechanism_superclass = type(self.name, (LocalMechanismInstance,), {
             '__slots__': (),
