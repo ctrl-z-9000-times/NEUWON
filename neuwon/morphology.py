@@ -239,7 +239,8 @@ class NeuronGrowthProgram:
             self.neurons.append(n)
             new_segments.append(n.root)
         self.segments.extend(new_segments)
-        self._insert_mechanisms(new_segments, mechanisms)
+        for segment in new_segments:
+            segment.insert(mechanisms)
 
     def _run_growth_algorithm(self, *,
                 segment_type,
