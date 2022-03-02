@@ -1,5 +1,5 @@
 from neuwon.rxd import RxD_Model
-from neuwon.synapse.constraints import Constraints
+from neuwon.synapses.constraints import Constraints
 
 def test_basic():
     rxd = RxD_Model(.1)

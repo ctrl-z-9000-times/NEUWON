@@ -4,7 +4,6 @@ and finds potential sites for growing new synapses.
 """
 
 from neuwon.database import Compute
-import itertools
 import math
 import numpy as np
 import scipy.spatial
@@ -39,10 +38,11 @@ class Constraints:
         presyn_tree  = scipy.spatial.cKDTree(coordinates[presyn_segs])
         postsyn_tree = scipy.spatial.cKDTree(coordinates[postsyn_segs])
         results = presyn_tree.query_ball_tree(postsyn_tree, self.maximum_distance)
-        results = list(itertools.chain.from_iterable(
-                ((presyn_segs[pre_idx], postsyn_segs[post_idx])
-                    for post_idx in inner) for pre_idx, inner in enumerate(results)))
-        return results
+        pairs = []
+        for pre_idx, inner in enumerate(results):
+            for post_idx in inner:
+                pairs.append((presyn_segs[pre_idx], postsyn_segs[post_idx]))
+        return pairs
 
     def get_presynapse_candidates(self):
         return self._filter_segments(self.presynapse_neuron_types, self.presynapse_segment_types, True)
