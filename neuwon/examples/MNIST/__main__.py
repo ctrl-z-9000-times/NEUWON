@@ -16,7 +16,7 @@ stim = 1e-9 # Amps
 period = 10 # Milliseconds
 
 default_parameters = {
-    'rxd_parameters': {
+    'simulation': {
         'time_step': .1,
         'celsius': 6.3,
     },
