@@ -289,7 +289,7 @@ class NMODL:
         return mech_data.get_instance_type()
 
     @staticmethod
-    def _instance__init__(self, segment, magnitude=1.0, *other_mechanisms):
+    def _instance__init__(self, segment, magnitude=1.0, *other_mechanisms, outside=None):
         """ Insert this mechanism onto the given segment. """
         self.segment = segment
         if self._point_process:

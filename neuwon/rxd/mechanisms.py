@@ -31,7 +31,7 @@ class LocalMechanismInstance:
 
     __slots__ = ()
 
-    def __init__(self, segment, magnitude, *other_mechanisms):
+    def __init__(self, segment, magnitude, *other_mechanisms, outside=None):
         raise NotImplementedError(type(self))
 
     @classmethod

@@ -87,7 +87,7 @@ class Segment(Tree, Geometry, Electric):
     def _filter_by_type(self, neuron_mask, segment_mask) -> bool:
         return segment_mask[self.segment_type_id] and neuron_mask[self.neuron.neuron_type_id]
 
-    def insert(self, mechanisms: dict) -> dict:
+    def insert(self, mechanisms: dict, outside=None) -> dict:
         """ """ # TODO: Documentation!
         # Clean the input.
         if isinstance(mechanisms, Mapping):
@@ -98,6 +98,11 @@ class Segment(Tree, Geometry, Electric):
             mechanisms = {name: 1.0 for name in mechanisms}
         else:
             raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
+        if outside is None:
+            outside = self.outside
+        kwargs = {
+                'outside': outside,
+        }
         # Setup and get ready for recusion.
         all_mechanisms = type(self)._model.mechanisms
         dependencies = all_mechanisms._local_dependencies
@@ -115,7 +120,7 @@ class Segment(Tree, Geometry, Electric):
             assert issubclass(mechanism_class, LocalMechanismInstance)
             other_mechanisms = dependencies[mechanism_name]
             other_mechanisms = (insert_recusive(x) for x in other_mechanisms)
-            mechanism = mechanism_class(self, magnitude, *other_mechanisms)
+            mechanism = mechanism_class(self, magnitude, *other_mechanisms, **kwargs)
             instances[mechanism_name] = mechanism
             return mechanism
         # 
