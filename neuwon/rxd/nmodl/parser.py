@@ -266,7 +266,7 @@ class SolveStatement:
 class ConserveStatement:
     def __init__(self, AST):
         conserved_expr = NmodlParser.parse_expression(AST.expr) - sympy.Symbol(AST.react.name.get_node_name())
-        self.states = sorted(str(x) for x in conserved_expr.free_symbols)
+        self.states = list(sympy.Symbol(str(x), real=True) for x in conserved_expr.free_symbols)
         # Assume that the conserve statement was once in the form: sum-of-states = constant-value
         sum_symbol = sympy.Symbol("_CONSERVED_SUM")
         assumed_form = sum_symbol
