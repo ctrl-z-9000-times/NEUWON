@@ -86,12 +86,14 @@ class NMODL:
         """
         Determine what external data the mechanism accesses.
 
-        Sets attributes: "pointers", "accumulators", "other_mechanisms_", and "omnipresent".
+        Sets attributes: "pointers", "accumulators", "other_mechanisms_", and
+        the following flags: "omnipresent", "outside".
         """
         self.pointers = {}
         self.accumulators = set()
         self.other_mechanisms_ = []
         self.omnipresent = False # TODO!
+        self.outside = False
         for state in self.states:
             self.pointers[state] = f'self.{state}'
         self.breakpoint_block.gather_arguments()
@@ -109,8 +111,8 @@ class NMODL:
             equilibrium = ('e' + ion, ion + '_equilibrium',)
             current     = ('i' + ion, ion + '_current',)
             conductance = ('g' + ion, ion + '_conductance',)
-            inside      = (ion + 'i', ion + '_inside',)
-            outside     = (ion + 'o', ion + '_outside',)
+            inside      = (ion + 'i', 'intra_' + ion,)
+            outside     = (ion + 'o', 'extra_' + ion,)
             for y in x.readlist:
                 var_name = y.name.value.eval()
                 if var_name in equilibrium:
@@ -118,7 +120,8 @@ class NMODL:
                 elif var_name in inside:
                     self.pointers[var_name] = "self.segment.inside_concentrations/%s"
                 elif var_name in outside:
-                    self.pointers[var_name] = "self.outside/concentrations/%s"
+                    self.pointers[var_name] = f"self.outside.{ion}"
+                    self.outside = True
                 else:
                     raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
             for y in x.writelist:
@@ -132,9 +135,11 @@ class NMODL:
                     self.pointers[var_name] = "self.segment.inside_delta_concentrations/%s"%ion
                     self.accumulators.add(var_name)
                 elif var_name in outside:
-                    self.pointers[var_name] = "outside/delta_concentrations/%s"
+                    self.pointers[var_name] = f"self.outside.{ion}_delta"
                     self.accumulators.add(var_name)
-                else: raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
+                    self.outside = True
+                else:
+                    raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
@@ -215,7 +220,7 @@ class NMODL:
                     initial_pointer_values[arg] = value
         self.initial_block.substitute(initial_pointer_values)
         self.initial_block.gather_arguments()
-        self.initial_scope = {self.pointers[x]: 0.0 for x in self.states}
+        self.initial_scope = {x: 0.0 for x in self.states}
         missing_arguments = set(self.initial_block.arguments) - set(self.initial_scope)
         if missing_arguments:
             raise ValueError(f"Missing initial values for {', '.join(missing_arguments)}.")
@@ -269,12 +274,15 @@ class NMODL:
             '__slots__': (),
             '__init__':             NMODL._instance__init__,
             '_point_process':       self.point_process,
+            '_outside':             self.outside,
             '_other_mechanisms':    self.other_mechanisms_,
             'advance':              self.advance_bytecode,
             '_advance_pycode':      self.advance_pycode,
         })
         mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
         mech_data.add_attribute("segment", dtype="Segment")
+        if self.outside:
+            mech_data.add_attribute("outside", dtype="Extracellular")
         if self.point_process:
             mech_data.add_attribute("magnitude", 1.0,
                     doc="") # TODO?
@@ -296,6 +304,11 @@ class NMODL:
             self.magnitude = magnitude
         else:
             self.magnitude = magnitude * segment.surface_area
+        if self._outside:
+            if outside is not None:
+                self.outside = outside
+            else:
+                self.outside = segment.outside
         assert len(self._other_mechanisms) == len(other_mechanisms)
         for name, ref in zip(self._other_mechanisms, other_mechanisms):
             setattr(self, name, ref)

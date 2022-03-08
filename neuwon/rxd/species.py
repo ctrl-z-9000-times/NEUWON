@@ -93,7 +93,6 @@ class SpeciesType:
     def __init__(self, name, factory, *,
                 charge = 0,
                 reversal_potential: '(None|float|"nerst"|"goldman_hodgkin_katz")' = None,
-                initial_concentration = None,
                 diffusivity = None,
                 inside = None,
                 outside = None,
@@ -129,18 +128,20 @@ class SpeciesType:
                         units="mV")
             factory.input_hook.register_callback(self._accumulate_conductance)
 
-        self.inside = None
-        self.outside = None
         if inside is not None:
             db_class = self.factory.database.get_class("Segment")
             geometry_component = 1/0
             self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
-                    geometry_component=None,
-                    **inside)
+                    geometry_component=None, **inside)
+        else:
+            self.inside = None
 
         if outside is not None:
-            self.outside_grid       = tuple(float(x) for x in outside_grid) if outside_grid is not None else None
-            self.outside = SpeciesInstance(**parameters['outside'])
+            db_class = self.factory.database.get_class("Extracellular")
+            self.outside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+                    geometry_component=None, **outside)
+        else:
+            self.outside = None
 
     def get_name(self) -> str:
         return self.name
