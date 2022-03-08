@@ -53,9 +53,8 @@ class Database:
         elif isinstance(name, str): pass
         else: raise KeyError(f"Expected 'str' got '{type(name)}'")
         db_class, _, attr = name.partition('.')
-        try:
-            obj = self.db_classes[db_class]
-        except KeyError:
+        obj = self.db_classes.get(db_class, None)
+        if obj is None:
             raise KeyError(f"No such DB_Class '{db_class}'")
         if attr:
             obj = obj.get(attr)
