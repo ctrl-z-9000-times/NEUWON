@@ -46,17 +46,9 @@ COMMENT
 -----------------------------------------------------------------------------
 ENDCOMMENT
 
-INDEPENDENT {t FROM 0 TO 1 WITH 1 (ms)}
-
 NEURON {
         POINT_PROCESS AMPA5
-        POINTER C
-        RANGE C0, C1, C2, D1, D2, O
-        RANGE g, gmax, rb
-        GLOBAL Erev
-        GLOBAL Rb, Ru1, Ru2, Rd, Rr, Ro, Rc
-        GLOBAL vmin, vmax
-        NONSPECIFIC_CURRENT i
+        USEION glu READ extra_glu
 }
 
 UNITS {
@@ -69,13 +61,7 @@ UNITS {
 }
 
 PARAMETER {
-
-        Erev    = 0    (mV)     : reversal potential
-        gmax    = 500  (pS)     : maximal conductance
-        vmin = -120     (mV)
-        vmax = 100      (mV)
-        
-: Rates
+        gmax    = 500 (pS/AMPA5)    : maximal conductance
 
         Rb      = 13   (/mM /ms): binding 
                                 : diffusion limited (DO NOT ADJUST)
@@ -85,15 +71,6 @@ PARAMETER {
         Rr      = 0.064 (/ms)   : resensitization 
         Ro      = 2.7    (/ms)  : opening
         Rc      = 0.2    (/ms)  : closing
-}
-
-ASSIGNED {
-        v               (mV)            : postsynaptic voltage
-        i               (nA)            : current = g*(v - Erev)
-        g               (pS)            : conductance
-        C               (mM)            : pointer to glutamate concentration
-
-        rb              (/ms)    : binding
 }
 
 STATE {
@@ -118,15 +95,15 @@ INITIAL {
 BREAKPOINT {
         SOLVE kstates METHOD sparse
 
-        g = gmax * O
-        i = (1e-6) * g * (v - Erev)
+        g = (1e-6) * gmax * O
+        gna = 0.5 * g
+        gk  = 0.5 * g
 }
 
 KINETIC kstates {
-        
-        rb = Rb * C 
+        rb = Rb * extra_glu 
 
-        ~ C0  <-> C1    (rb,Ru1)
+        ~ C0 <-> C1     (rb,Ru1)
         ~ C1 <-> C2     (rb,Ru2)
         ~ C1 <-> D1     (Rd,Rr)
         ~ C2 <-> D2     (Rd,Rr)
