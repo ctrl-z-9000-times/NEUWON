@@ -3,20 +3,20 @@ TITLE minimal model of AMPA receptors
 COMMENT
 -----------------------------------------------------------------------------
 
-	Minimal kinetic model for glutamate AMPA receptors
-	==================================================
+        Minimal kinetic model for glutamate AMPA receptors
+        ==================================================
 
   Model of Destexhe, Mainen & Sejnowski, 1994:
 
-	(closed) + T <-> (open)
+        (closed) + T <-> (open)
 
   The simplest kinetics are considered for the binding of transmitter (T)
   to open postsynaptic receptors.   The corresponding equations are in
   similar form as the Hodgkin-Huxley model:
 
-	dr/dt = alpha * [T] * (1-r) - beta * r
+        dr/dt = alpha * [T] * (1-r) - beta * r
 
-	I = gmax * [open] * (V-Erev)
+        I = gmax * [open] * (V-Erev)
 
   where [T] is the transmitter concentration and r is the fraction of 
   receptors in the open form.
@@ -67,108 +67,108 @@ ENDCOMMENT
 INDEPENDENT {t FROM 0 TO 1 WITH 1 (ms)}
 
 NEURON {
-	POINT_PROCESS AMPA
-	POINTER pre
-	RANGE C, R, R0, R1, g, gmax, lastrelease, TimeCount
-	NONSPECIFIC_CURRENT i
-	GLOBAL Cmax, Cdur, Alpha, Beta, Erev, Prethresh, Deadtime, Rinf, Rtau
+        POINT_PROCESS AMPA
+        POINTER pre
+        RANGE C, R, R0, R1, g, gmax, lastrelease, TimeCount
+        NONSPECIFIC_CURRENT i
+        GLOBAL Cmax, Cdur, Alpha, Beta, Erev, Prethresh, Deadtime, Rinf, Rtau
 }
 UNITS {
-	(nA) = (nanoamp)
-	(mV) = (millivolt)
-	(umho) = (micromho)
-	(mM) = (milli/liter)
+        (nA) = (nanoamp)
+        (mV) = (millivolt)
+        (umho) = (micromho)
+        (mM) = (milli/liter)
 }
 
 PARAMETER {
-	dt		(ms)
-	Cmax	= 1	(mM)		: max transmitter concentration
-	Cdur	= 1	(ms)		: transmitter duration (rising phase)
-	Alpha	= 1.1	(/ms mM)	: forward (binding) rate
-	Beta	= 0.19	(/ms)		: backward (unbinding) rate
-	Erev	= 0	(mV)		: reversal potential
-	Prethresh = 0 			: voltage level nec for release
-	Deadtime = 1	(ms)		: mimimum time between release events
-	gmax		(umho)		: maximum conductance
+        dt              (ms)
+        Cmax    = 1     (mM)            : max transmitter concentration
+        Cdur    = 1     (ms)            : transmitter duration (rising phase)
+        Alpha   = 1.1   (/ms mM)        : forward (binding) rate
+        Beta    = 0.19  (/ms)           : backward (unbinding) rate
+        Erev    = 0     (mV)            : reversal potential
+        Prethresh = 0                   : voltage level nec for release
+        Deadtime = 1    (ms)            : mimimum time between release events
+        gmax            (umho)          : maximum conductance
 }
 
 
 ASSIGNED {
-	v		(mV)		: postsynaptic voltage
-	i 		(nA)		: current = g*(v - Erev)
-	g 		(umho)		: conductance
-	C		(mM)		: transmitter concentration
-	R				: fraction of open channels
-	R0				: open channels at start of release
-	R1				: open channels at end of release
-	Rinf				: steady state channels open
-	Rtau		(ms)		: time constant of channel binding
-	pre 				: pointer to presynaptic variable
-	lastrelease	(ms)		: time of last spike
-	TimeCount	(ms)		: time counter
+        v               (mV)            : postsynaptic voltage
+        i               (nA)            : current = g*(v - Erev)
+        g               (umho)          : conductance
+        C               (mM)            : transmitter concentration
+        R                               : fraction of open channels
+        R0                              : open channels at start of release
+        R1                              : open channels at end of release
+        Rinf                            : steady state channels open
+        Rtau            (ms)            : time constant of channel binding
+        pre                             : pointer to presynaptic variable
+        lastrelease     (ms)            : time of last spike
+        TimeCount       (ms)            : time counter
 }
 
 INITIAL {
-	R = 0
-	C = 0
-	Rinf = Cmax*Alpha / (Cmax*Alpha + Beta)
-	Rtau = 1 / ((Alpha * Cmax) + Beta)
-	lastrelease = -1000
-	R1=0
-	TimeCount=-1
+        R = 0
+        C = 0
+        Rinf = Cmax*Alpha / (Cmax*Alpha + Beta)
+        Rtau = 1 / ((Alpha * Cmax) + Beta)
+        lastrelease = -1000
+        R1=0
+        TimeCount=-1
 }
 
 BREAKPOINT {
-	SOLVE release
-	g = gmax * R
-	i = g*(v - Erev)
+        SOLVE release
+        g = gmax * R
+        i = g*(v - Erev)
 }
 
 PROCEDURE release() {
-	:will crash if user hasn't set pre with the connect statement 
+        :will crash if user hasn't set pre with the connect statement 
 
-	TimeCount=TimeCount-dt			: time since last release ended
+        TimeCount=TimeCount-dt                  : time since last release ended
 
-						: ready for another release?
-	if (TimeCount < -Deadtime) {
-		if (pre > Prethresh) {		: spike occured?
-			C = Cmax			: start new release
-			R0 = R
-			lastrelease = t
-			TimeCount=Cdur
-		}
-						
-	} else if (TimeCount > 0) {		: still releasing?
-	
-		: do nothing
-	
-	} else if (C == Cmax) {			: in dead time after release
-		R1 = R
-		C = 0.
-	}
+                                                : ready for another release?
+        if (TimeCount < -Deadtime) {
+                if (pre > Prethresh) {          : spike occured?
+                        C = Cmax                        : start new release
+                        R0 = R
+                        lastrelease = t
+                        TimeCount=Cdur
+                }
+                                                
+        } else if (TimeCount > 0) {             : still releasing?
+        
+                : do nothing
+        
+        } else if (C == Cmax) {                 : in dead time after release
+                R1 = R
+                C = 0.
+        }
 
 
 
-	if (C > 0) {				: transmitter being released?
+        if (C > 0) {                            : transmitter being released?
 
-	   R = Rinf + (R0 - Rinf) * exptable (- (t - lastrelease) / Rtau)
-				
-	} else {				: no release occuring
+           R = Rinf + (R0 - Rinf) * exptable (- (t - lastrelease) / Rtau)
+                                
+        } else {                                : no release occuring
 
-  	   R = R1 * exptable (- Beta * (t - (lastrelease + Cdur)))
-	}
+           R = R1 * exptable (- Beta * (t - (lastrelease + Cdur)))
+        }
 
-	VERBATIM
-	return 0;
-	ENDVERBATIM
+        VERBATIM
+        return 0;
+        ENDVERBATIM
 }
 
 FUNCTION exptable(x) { 
-	TABLE  FROM -10 TO 10 WITH 2000
+        TABLE  FROM -10 TO 10 WITH 2000
 
-	if ((x > -10) && (x < 10)) {
-		exptable = exp(x)
-	} else {
-		exptable = 0.
-	}
+        if ((x > -10) && (x < 10)) {
+                exptable = exp(x)
+        } else {
+                exptable = 0.
+        }
 }
