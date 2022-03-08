@@ -161,7 +161,7 @@ class Database:
         # need to be checked more than once.
         def destructive_references(db_class) -> [DB_Class]:
             for component in db_class.components.values():
-                if component.reference and not component.allow_invalid:
+                if component.reference is not False and not component.allow_invalid:
                     yield component.reference
         dependencies = topological_sort(self.db_classes.values(), destructive_references)
         if False: # Diagnostic printout.
@@ -173,7 +173,7 @@ class Database:
         order_does_not_matter = [] # Then scan the remaining references.
         for db_class in reversed(dependencies):
             for component in db_class.components.values():
-                if component.reference and not component.allow_invalid:
+                if component.reference is not False and not component.allow_invalid:
                     order.append(component)
                 else:
                     order_does_not_matter.append(component)
@@ -207,7 +207,7 @@ class Database:
         def sort_order_dependencies(db_class):
             """ Yields all db_classes which must be sorted before this db_class can be sorted. """
             for component in db_class.sort_key:
-                if component.reference:
+                if component.reference is not False:
                     yield component.reference
         if self._sort_order is None:
             self._sort_order = topological_sort(self.db_classes.values(), sort_order_dependencies)
