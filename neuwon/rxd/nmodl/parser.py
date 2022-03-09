@@ -259,8 +259,10 @@ class SolveStatement:
         # The "block" attribute gets rewritten by the method gather_code_blocks().
         self.block = AST.block_name.get_node_name()
         self.steadystate = AST.steadystate
-        if AST.method: self.method = AST.method.get_node_name()
-        else: self.method = "sparse" # FIXME
+        if AST.method:
+            self.method = AST.method.get_node_name()
+        else:
+            self.method = "exact"
         AST.ifsolerr # TODO: What does this do?
 
 class ConserveStatement:
@@ -282,7 +284,7 @@ class ConserveStatement:
         true_sum = self.states[0]
         for state in self.states[1:]:
             true_sum = true_sum + state
-        replacement = [AssignStatement('_CORRECTION_FACTOR', true_sum / self.conserve_sum)]
+        replacement = [AssignStatement('_CORRECTION_FACTOR', self.conserve_sum / true_sum)]
         for state in self.states:
             replacement.append(
                     AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))

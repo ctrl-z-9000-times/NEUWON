@@ -57,26 +57,23 @@ def test_ampa5():
     my_seg = m.Neuron([0,0,0], 12).root
     my_ecs = ECS([0,0,0], .001)
     my_ampa = ampa(my_seg, .12345, outside=my_ecs)
-    m.database.check()
+    m.check()
 
+    # Check silent conditions.
     while m.clock() < 2:
         m.advance()
-
-    assert my_ampa.O == pytest.approx(0)
+    assert my_ampa.O < 0.000001
     assert my_seg.voltage < -50
 
-    ecs.glu += .001
-
-    m.advance()
-
-    assert my_ampa.O > .01
-
+    # Check active conditions.
+    my_ecs.glu += 1
+    m.clock.reset()
     while m.clock() < 2:
         m.advance()
 
+    assert my_ampa.O > .01
     assert my_seg.voltage > -50
-
-    m.database.check()
+    m.check()
 
 
 @pytest.mark.skip()

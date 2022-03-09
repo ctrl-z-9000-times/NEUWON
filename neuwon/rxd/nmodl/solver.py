@@ -3,22 +3,6 @@ import sympy
 
 dt = sympy.Symbol("time_step", real=True, positive=True)
 
-def solve(self: AssignStatement):
-    """ Solve this differential equation in-place. """
-    assert self.derivative
-    self.derivative = False
-    try:
-        sympy_solve_ode(self)
-        return
-    except Exception as x:
-        print("Warning Sympy solver failed: "+str(x))
-    try:
-        crank_nicholson(self)
-        return
-    except Exception as x:
-        print("Warning Crank-Nicholson failed: "+str(x))
-    raise ValueError(f"Failed to solve '{repr(self)}'")
-
 def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
     """ Analytically integrate this derivative equation.
 
@@ -31,6 +15,8 @@ def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
     Copyright (C) 2018-2019 Blue Brain Project. This method was part of the
     NMODL library distributed under the terms of the GNU Lesser General Public License.
     """
+    assert self.derivative
+    self.derivative = False
     # Only try to solve ODEs that are not too hard.
     ode_properties_require_all = {"separable"}
     ode_properties_require_one_of = {
@@ -93,18 +79,39 @@ def pade_approx(self: AssignStatement):
     NMODL library distributed under the terms of the GNU Lesser General Public License.
     """
     1/0 # unimplemented
-    taylor_series = sympy.Poly(sympy.series(solution, dt, 0, 3).removeO(), dt)
+    taylor_series = sympy.Poly(sympy.series(self.rhs, dt, 0, 3).removeO(), dt)
     _a0 = taylor_series.nth(0)
     _a1 = taylor_series.nth(1)
     _a2 = taylor_series.nth(2)
-    solution = (
+    self.rhs = (
         (_a0 * _a1 + (_a1 * _a1 - _a0 * _a2) * dt) / (_a1 - _a2 * dt)
     ).simplify()
     # Special case where above form gives 0/0 = NaN.
     if _a1 == 0 and _a2 == 0:
-        solution = _a0
+        self.rhs = _a0
+
+def forward_euler(self: AssignStatement):
+    assert self.derivative
+    self.derivative = False
+    init_state      = sympy.Symbol(self.lhsn, real=True)
+    self.rhs = init_state + self.rhs * dt
+    self.rhs = self.rhs.simplify()
+
+def backward_euler(self: AssignStatement):
+    assert self.derivative
+    self.derivative = False
+    init_state      = sympy.Symbol(self.lhsn, real=True)
+    next_state      = sympy.Symbol("_Future_" + self.lhsn, real=True)
+    implicit_deriv  = self.rhs.subs(init_state, next_state)
+    eq = sympy.Eq(next_state, init_state + implicit_deriv * dt)
+    backward_euler = sympy.solve(eq, next_state)
+    assert len(backward_euler) == 1, backward_euler
+    self.rhs = backward_euler.pop()
+    self.rhs = self.rhs.simplify()
 
 def crank_nicholson(self: AssignStatement):
+    assert self.derivative
+    self.derivative = False
     init_state      = sympy.Symbol(self.lhsn, real=True)
     next_state      = sympy.Symbol("_Future_" + self.lhsn, real=True)
     implicit_deriv  = self.rhs.subs(init_state, next_state)

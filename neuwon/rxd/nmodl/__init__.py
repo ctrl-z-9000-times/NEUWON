@@ -157,24 +157,34 @@ class NMODL:
         Replace SolveStatements with the solved equations to advance the systems
         of differential equations.
         """
-        sympy_methods = ("cnexp", "derivimplicit", "euler")
-        while True:
-            for idx, stmt in enumerate(self.breakpoint_block):
-                if not isinstance(stmt, SolveStatement): continue
-                syseq_block = stmt.block
-                if stmt.method in sympy_methods:
-                    if syseq_block.derivative:
-                        for stmt in syseq_block:
-                            if isinstance(stmt, AssignStatement) and stmt.derivative:
-                                solver.solve(stmt)
-                elif stmt.method == "sparse":
-                    1/0
-                # Splice the solved block into the breakpoint block.
-                bp_stmts = self.breakpoint_block.statements
-                self.breakpoint_block.statements = bp_stmts[:idx] + syseq_block.statements + bp_stmts[idx+1:]
-                break
+        ode_methods = {
+            'euler':            solver.forward_euler,
+            'derivimplicit':    solver.backward_euler,
+            'cnexp':            solver.crank_nicholson,
+            'exact':            solver.sympy_solve_ode,
+        }
+        idx = 0
+        while idx < len(self.breakpoint_block.statements):
+            solve_stmt = self.breakpoint_block.statements[idx]
+            if not isinstance(solve_stmt, SolveStatement):
+                idx += 1
+                continue
+            solve_block  = solve_stmt.block
+            solve_method = solve_stmt.method
+            if solve_method in ode_methods:
+                method = ode_methods[solve_method]
+                for stmt in solve_block:
+                    if isinstance(stmt, AssignStatement) and stmt.derivative:
+                        method(stmt)
+            elif solve_method == "sparse":
+                1/0
             else:
-                break
+                raise NotImplementedError(solve_method)
+            # Replace the solve statment with the solved block.
+            self.breakpoint_block.statements.pop(idx)
+            for stmt in solve_block:
+                self.breakpoint_block.statements.insert(idx, stmt)
+                idx += 1
 
     def _fixup_breakpoint_IO(self):
         for stmt in self.breakpoint_block:
