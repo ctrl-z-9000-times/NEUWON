@@ -250,8 +250,10 @@ class AssignStatement:
         self.operation = str(operation)
 
     def __repr__(self):
-        s = f'{self.lhsn} {self.operation} {str(self.rhs)}'
-        if self.derivative: s = "'" + s
+        lhsn = self.lhsn
+        if self.derivative:
+            lhsn = lhsn + "'"
+        s = f'{lhsn} {self.operation} {str(self.rhs)}'
         return s
 
 class SolveStatement:
