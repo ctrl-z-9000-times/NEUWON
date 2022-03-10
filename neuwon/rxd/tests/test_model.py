@@ -35,7 +35,7 @@ def test_filter_by_type():
 def test_model_hh(debug=False):
     dt = .01
     dt *= 4.56789 # Run faster with larger `dt`.
-    m = RxD_Model(time_step = dt, celsius = 6.3,
+    m = RxD_Model(time_step = dt, temperature = 6.3,
             species = {
                 'na': {'reversal_potential': 40},
                 'k':  {'reversal_potential': -80},

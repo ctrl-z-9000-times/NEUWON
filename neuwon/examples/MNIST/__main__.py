@@ -18,7 +18,7 @@ period = 10 # Milliseconds
 default_parameters = {
     'simulation': {
         'time_step': .1,
-        'celsius': 6.3,
+        'temperature': 6.3,
     },
     'species': {
         'na': {'reversal_potential': +60,},

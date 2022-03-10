@@ -7,7 +7,7 @@ import numpy as np
 
 class RxD_Model:
     def __init__(self, time_step: 'ms' = 0.1, *,
-                celsius = 37,
+                temperature: 'celsius' = 37,
                 initial_voltage: 'mv' = -70,
                 cytoplasmic_resistance = 100,
                 membrane_capacitance: 'uf/cm^2' = 1,
@@ -17,7 +17,7 @@ class RxD_Model:
                 mechanisms={},):
         """ """
         self.time_step      = float(time_step)
-        self.celsius        = float(celsius)
+        self.temperature    = float(temperature)
         self.database       = db = Database()
         self.input_hook                  = Clock(0.5 * self.time_step, units='ms')
         self.advance_hook   = self.clock = Clock(      self.time_step, units='ms')
@@ -31,10 +31,10 @@ class RxD_Model:
         self.Extracellular = Extracellular._initialize(db,
                 tortuosity       = extracellular_tortuosity,
                 maximum_distance = extracellular_max_distance,)
-        self.species = SpeciesFactory(species, db, self.input_hook, self.celsius)
+        self.species = SpeciesFactory(species, db, self.input_hook, self.temperature)
         self.mechanisms = MechanismsFactory(self, mechanisms)
 
-    def get_celsius(self) -> float:     return self.celsius
+    def get_temperature(self) -> float: return self.temperature
     def get_clock(self):                return self.clock
     def get_database(self):             return self.database
     def get_Extracellular(self):        return self.Extracellular

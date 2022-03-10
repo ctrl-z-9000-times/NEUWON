@@ -199,7 +199,7 @@ class NMODL:
         database = rxd_model.get_database()
         builtin_parameters = {
                 "time_step": rxd_model.get_time_step(),
-                "celsius":   rxd_model.get_celsius(),
+                "celsius":   rxd_model.get_temperature(),
         }
         self.name = str(name)
         try:

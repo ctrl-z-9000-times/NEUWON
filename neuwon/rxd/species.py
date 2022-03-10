@@ -227,12 +227,12 @@ def _efun(z):
         return z / (math.exp(z) - 1)
 
 class SpeciesFactory(dict):
-    def __init__(self, parameters: dict, database, input_hook, celsius):
+    def __init__(self, parameters: dict, database, input_hook, temperature):
         super().__init__()
-        self.database   = database
-        self.input_hook = input_hook
-        self.time_step  = input_hook.get_time_step()
-        self.celsius    = celsius
+        self.database       = database
+        self.input_hook     = input_hook
+        self.time_step      = input_hook.get_time_step()
+        self.temperature    = temperature
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters: dict):

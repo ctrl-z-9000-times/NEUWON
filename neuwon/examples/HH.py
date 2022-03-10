@@ -7,7 +7,7 @@ from math import pi
 def main(time_step = .1):
     model = Model({
             'time_step': time_step,
-            'celsius': 6.3,
+            'temperature': 6.3,
         },
         species = {
             'na': {'reversal_potential': +60,},

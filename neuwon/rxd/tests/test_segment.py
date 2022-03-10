@@ -71,7 +71,7 @@ def test_insert_smoke_test():
 def test_insert_interacting_mechanisms():
     my_model = RxD_Model(
         time_step = 0.1,
-        celsius = 6.3,
+        temperature = 6.3,
         mechanisms = {
             'hh': './nmodl_library/hh.mod',
             'local': './neuwon/rxd/tests/local.mod',
