@@ -37,9 +37,6 @@ class DataComponent(Documentation):
                 self.initial_value = None
             else:
                 self.initial_value = self.dtype.type(initial_value)
-            # NOTE: This is terrible. Always check "self.reference is not False",
-            # Because "bool(self.reference)" can return False the referenced
-            # DB_Class has no instances: "len(self.reference) == 0"
             self.reference = False
         self.units = str(units)
         self.allow_invalid = bool(allow_invalid)
@@ -127,6 +124,13 @@ class DataComponent(Documentation):
         """
         return self.memory_space
 
+    def is_reference(self):
+        """
+        Always use this method because "bool(self.reference)" can return False
+        if the referenced DB_Class has no instances: "len(self.reference) == 0"
+        """
+        return self.reference is not False
+
     def free(self):
         """
         Release the memory used by this data component. The next time the data
@@ -147,7 +151,7 @@ class DataComponent(Documentation):
         elif isinstance(self, SparseMatrix): data = data.data
         xp = cupy.get_array_module(data)
         if not self.allow_invalid:
-            if self.reference is not False:
+            if self.is_reference():
                 assert xp.all(xp.less(data, self.reference.size)), f"{self.qualname} is NULL"
             else:
                 if data.dtype.kind in ("f", "c"):
@@ -163,7 +167,7 @@ class DataComponent(Documentation):
 
     def _type_info(self):
         s = ""
-        if self.reference is not False: s += "ref:" + self.reference.name
+        if self.is_reference(): s += "ref:" + self.reference.name
         else: s += self.dtype.name
         if self.shape != (1,): s += repr(list(self.shape))
         return s
@@ -241,13 +245,13 @@ class Attribute(DataComponent):
                 return self.initial_value
         value = self.data[instance._idx]
         if hasattr(value, 'get'): value = value.get()
-        if self.reference is not False:
+        if self.is_reference():
             return self.reference.index_to_object(value)
         return self.dtype.type(value)
 
     def _setter(self, instance, value):
         self._alloc_if_free()
-        if self.reference is not False:
+        if self.is_reference():
             if value is None:
                 value = NULL
             else:
@@ -321,7 +325,7 @@ class Attribute(DataComponent):
         self.data = self.memory_space.array(value, dtype=self.dtype).reshape(shape)
 
     def _remove_references_to_destroyed(self):
-        if self.reference is False: return
+        if not self.is_reference(): return
         if self.data is None: return
         pointer_data = self.data[:len(self.db_class)]
         destroyed_mask = self.reference._destroyed_mask
@@ -359,7 +363,7 @@ class ClassAttribute(DataComponent):
             raise TypeError("Missing 1 required positional argument: 'initial_value'")
         self.free()
         self.memory_space = memory_spaces.host
-        if self.reference is not False: raise NotImplementedError
+        if self.is_reference(): raise NotImplementedError
 
     __init__.__doc__ += "".join((
         DataComponent._initial_distribution_doc,
@@ -434,7 +438,7 @@ class SparseMatrix(DataComponent):
         self.shape = (len(self.db_class), len(self.column))
         self.fmt = 'csr'
         self.free()
-        if self.reference is not False: raise NotImplementedError
+        if self.is_reference(): raise NotImplementedError
 
     __init__.__doc__ += "".join((
         DataComponent._dtype_doc,
