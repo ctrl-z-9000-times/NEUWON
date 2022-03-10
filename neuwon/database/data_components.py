@@ -241,10 +241,13 @@ class Attribute(DataComponent):
         if self.data is None:
             if self.initial_distribution is not None:
                 self._alloc_if_free()
+                value = self.data[instance._idx]
             else:
-                return self.initial_value
-        value = self.data[instance._idx]
-        if hasattr(value, 'get'): value = value.get()
+                value = self.initial_value
+        else:
+            value = self.data[instance._idx]
+        if self.memory_space is memory_spaces.cuda and hasattr(value, 'get'):
+            value = value.get()
         if self.is_reference():
             return self.reference.index_to_object(value)
         return self.dtype.type(value)

@@ -9,6 +9,14 @@ def test_smoke_test():
     m.advance()
     m.Neuron([0,0,0], 13)
     m.advance()
+    m.check()
+
+    # Test manually creating segments w/o an attached neuron.
+    tip = m.Segment(None, [-1,0,7], 5.7)
+    for x in range(10):
+        tip = m.Segment(tip, [x,0,7], 1)
+    m.advance()
+    # m.check() # Will fail BC neuron NULL and not allowed to be invalid.
 
 def test_filter_by_type():
     m = RxD_Model()
@@ -41,7 +49,7 @@ def test_model_hh(debug=False):
     print('Initial Values:')
     for comp in m.database.get('hh').get_all_components():
         print(comp.get_name(), '\t', comp.get_initial_value())
-    root = tip = m.Segment(None, [-1,0,7], 5.7)
+    root = tip = m.Neuron([-1,0,7], 5.7).root
     hh_instance = hh(root)
     for x in range(10):
         tip = m.Segment(tip, [x,0,7], 1)

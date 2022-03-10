@@ -76,7 +76,7 @@ def test_initial_distribution():
     c1_data = Foo_data.add_class_attribute('c1',
             initial_distribution=('uniform', -500, 500),)
 
-    for i in range(1000):
+    for i in range(10000):
         Foo()
 
     db.check()
