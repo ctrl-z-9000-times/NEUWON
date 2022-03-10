@@ -36,7 +36,7 @@ def test_hh():
 def test_ampa5():
     m = RxD_Model(time_step = .1,
         mechanisms={
-            'ampa': NMODL("./nmodl_library/Destexhe1994/ampa5.mod", use_cache=False),
+            'ampa': NMODL("./nmodl_library/Destexhe1998/ampa5.mod", use_cache=False),
         },
         species={
             'glu': {
