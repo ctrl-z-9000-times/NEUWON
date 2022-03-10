@@ -281,7 +281,8 @@ class NMODL:
 
     def _initialize_local_mechanism_class(self, database):
         mechanism_superclass = type(self.name, (LocalMechanismInstance,), {
-            '__slots__': (),
+            '__doc__':              self.title + "\n\n" + self.description,
+            '__slots__':            (),
             '__init__':             NMODL._instance__init__,
             '_point_process':       self.point_process,
             '_outside':             self.outside,
@@ -289,7 +290,7 @@ class NMODL:
             'advance':              self.advance_bytecode,
             '_advance_pycode':      self.advance_pycode,
         })
-        mech_data = database.add_class(self.name, mechanism_superclass, doc=self.description)
+        mech_data = database.add_class(mechanism_superclass)
         mech_data.add_attribute("segment", dtype="Segment")
         if self.outside:
             mech_data.add_attribute("outside", dtype="Extracellular")

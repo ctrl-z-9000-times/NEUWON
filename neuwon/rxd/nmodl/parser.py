@@ -5,6 +5,7 @@ import nmodl.dsl
 import nmodl.symtab
 import os.path
 import sympy
+import textwrap
 
 ANT = nmodl.ast.AstNodeType
 
@@ -45,11 +46,9 @@ class NmodlParser:
         else: point_process = False
         title = self.lookup(ANT.MODEL)
         title = title[0].title.eval().strip() if title else ""
-        if title.startswith(name + ".mod"):
-            title = title[len(name + ".mod"):].strip()
-        if title: title = title[0].title() + title[1:] # Capitalize the first letter.
         comments = self.lookup(ANT.BLOCK_COMMENT)
-        description = comments[0].statement.eval() if comments else ""
+        description = comments[0].statement.eval().strip() if comments else ""
+        description = textwrap.dedent(description)
         return (name, point_process, title, description)
 
     def gather_states(self):
