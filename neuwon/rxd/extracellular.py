@@ -3,6 +3,9 @@ import numpy as np
 
 class Extracellular:
     __slots__ = ()
+
+    _geometry_types_list = ('voxel', 'cleft', 'fh')
+
     @staticmethod
     def _initialize(database,
                 tortuosity = 1.55,
@@ -10,7 +13,7 @@ class Extracellular:
         ecs_data = database.add_class(Extracellular)
         ecs_data.add_attribute('coordinates', shape=(3,), units='μm')
         ecs_data.add_attribute('volume', units='μm³')
-        ecs_data.add_attribute('voxel', False, dtype=bool)
+        ecs_data.add_attribute('_geometry_type', dtype=np.uint8)
         ecs_data.add_class_attribute('tortuosity', tortuosity)
 
         ecs_data.add_sparse_matrix('neighbor_distances', Extracellular)
@@ -26,11 +29,16 @@ class Extracellular:
 
         return ecs_cls
 
-    def __init__(self, coordinates, volume):
+    def __init__(self, coordinates, volume, geometry_type='cleft'):
         self.coordinates = coordinates
         self.volume      = volume
         cls = type(self)
         cls._dirty = True
+        self._geometry_type = cls._geometry_types_list.index(geometry_type)
+
+    @property
+    def geometry_type(self):
+        return type(self)._geometry_types_list[self._geometry_type]
 
     def get_voxel(self, coordinates):
         # TODO: Return the voxel that contains the given coordinates.
