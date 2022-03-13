@@ -18,7 +18,8 @@ class Synapse:
         syn_data = database.add_class(str(synapse_type), cls)
         syn_cls  = syn_data.get_instance_type()
         syn_cls._maximum_distance = float(maximum_distance)
-        syn_cls._attachment_points = []
+        syn_cls._constraints = []
+        syn_cls._mechanisms  = []
         for index, parameters in enumerate(attachment_points):
             syn_cls._initialize_attachment_point(syn_data, index, **parameters)
         if cleft is not None:
@@ -30,7 +31,8 @@ class Synapse:
     def _initialize_attachment_point(syn_cls, syn_data, index, *, constraints={}, mechanisms={}):
         name = 'x' + str(index)
         syn_data.add_attribute(name, dtype='Segment')
-        syn_cls._attachment_points.append(mechanisms)
+        syn_cls._constraints.append(constraints)
+        syn_cls._mechanisms.append(mechanisms)
         for mechanism_name in mechanisms:
             mechanism_name = str(mechanism_name)
             syn_data.add_attribute(name + '_' + mechanism_name, dtype=mechanism_name)
@@ -61,7 +63,7 @@ class Synapse:
         for index, segment in enumerate(attachment_points):
             name = 'x' + str(index)
             setattr(self, name, segment)
-            mechanisms = syn_cls._attachment_points[index]
+            mechanisms = syn_cls._mechanisms[index]
             mechanisms = segment.insert(mechanisms, outside=cleft)
             for mechanism_name, mechanism_instance in mechanisms.items():
                 setattr(self, name + '_' + mechanism_name, mechanism_instance)
