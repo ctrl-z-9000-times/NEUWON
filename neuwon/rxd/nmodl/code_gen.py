@@ -1,8 +1,8 @@
-import math
 from neuwon.rxd.nmodl.parser import (CodeBlock,
         IfStatement, AssignStatement, SolveStatement, ConserveStatement)
+import math
 import tempfile
-
+import sympy.core.basic
 import sympy.printing.pycode as sympy_to_pycode
 
 def to_python(self, indent="", pointers={}, accumulators=set()):
@@ -21,15 +21,19 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
             py += indent + "else:\n"
             py += to_python(self.else_block, indent + "    ", pointers)
     elif isinstance(self, AssignStatement):
-        if not isinstance(self.rhs, str):
-            try: self.rhs = sympy_to_pycode(self.rhs.simplify())
-            except Exception:
-                eprint("Failed at:", repr(self))
-                raise
-        if self.derivative:
-            lhs = 'd' + self.lhsn
-            return indent + lhs + " += " + self.rhs + "\n"
-        return indent + self.lhsn + self.operation + self.rhs + "\n"
+        try:
+            if isinstance(self.rhs, sympy.core.basic.Basic):
+                self.rhs = sympy_to_pycode(self.rhs.simplify())
+            else:
+                self.rhs = str(self.rhs)
+            if self.derivative:
+                lhs = 'd' + self.lhsn
+                return indent + lhs + " += " + self.rhs + "\n"
+            else:
+                return indent + self.lhsn + self.operation + self.rhs + "\n"
+        except Exception:
+            print("Failed at:", repr(self), flush=True)
+            raise
     else:
         raise NotImplementedError(type(self))
     return py.rstrip() + "\n"
