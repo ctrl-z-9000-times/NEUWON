@@ -9,15 +9,15 @@ import numpy as np
 import scipy.spatial
 
 class Constraints:
-    def __init__(self, rxd, *,
+    def __init__(self, model, *,
                 presynapse_neuron_types=[],
                 presynapse_segment_types=[],
                 postsynapse_neuron_types=[],
                 postsynapse_segment_types=[],
                 maximum_distance=math.inf,
                 share_postsynapses=False,):
-        self.Neuron   = rxd.Neuron
-        self.Segment  = rxd.Segment
+        self.Neuron   = model.Neuron
+        self.Segment  = model.Segment
         self.presynapse_neuron_types = [self.Neuron.neuron_types_list.index(neuron_type)
                                     for neuron_type in presynapse_neuron_types]
         self.presynapse_segment_types = [self.Segment.segment_types_list.index(segment_type)

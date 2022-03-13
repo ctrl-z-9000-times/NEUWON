@@ -45,11 +45,14 @@ class SpeciesInstance:
             assert self.decay_period == math.inf
             assert self.diffusivity is None
 
-        add_attr = db_class.add_class_attribute if self.constant else db_class.add_attribute
-        self.concentrations = add_attr(f"{self.name}",
-                self.initial_concentration,
-                units="millimolar")
-        if not self.constant:
+        if self.constant:
+            self.concentrations = db_class.add_class_attribute(f"{self.name}",
+                    self.initial_concentration,
+                    units="millimolar")
+        else:
+            self.concentrations = db_class.add_attribute(f"{self.name}",
+                    self.initial_concentration,
+                    units="millimolar")
             self.deltas = db_class.add_attribute(f"{self.name}_delta",
                     initial_value=0.0,
                     units="millimolar / timestep")
