@@ -74,7 +74,11 @@ class NmodlParser:
             name = AST.name.get_node_name()
             code_block = self.parse_code_block(AST)
             blocks[name] = code_block
-        blocks['INITIAL']    = self.parse_code_block(self.lookup(ANT.INITIAL_BLOCK).pop())
+        initial_block = self.lookup(ANT.INITIAL_BLOCK)
+        if initial_block:
+            blocks['INITIAL'] = self.parse_code_block(initial_block.pop())
+        else:
+            blocks['INITIAL'] = EmptyCodeBlock('INITIAL')
         blocks['BREAKPOINT'] = self.parse_code_block(self.lookup(ANT.BREAKPOINT_BLOCK).pop())
         for b in blocks.values():
             for stmt in b:
@@ -228,6 +232,13 @@ class CodeBlock:
             else: raise NotImplementedError(stmt)
         self.arguments = sorted(self.arguments)
         self.assigned  = sorted(self.assigned)
+
+class EmptyCodeBlock(CodeBlock):
+    def __init__(self, name):
+        self.name = str(name)
+        self.derivative = False
+        self.statements = []
+        self.conserve_statements = []
 
 class IfStatement:
     def __init__(self, AST):
