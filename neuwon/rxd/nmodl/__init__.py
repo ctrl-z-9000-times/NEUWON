@@ -1,25 +1,16 @@
 from collections.abc import Callable, Iterable, Mapping
-from neuwon.database import Real, Compute
+from neuwon.database import Compute
 from neuwon.rxd.mechanisms import OmnipresentMechanism, LocalMechanismSpecification, LocalMechanismInstance
 from . import code_gen, cache, solver
 from .parser import (NmodlParser, ANT,
         SolveStatement,
         AssignStatement,
-        IfStatement,
         ConserveStatement)
-import math
-import numbers
-import numpy as np
 import os.path
 import re
 import sympy
-import sys
 
 __all__ = ["NMODL"]
-
-def eprint(*args, **kwargs):
-    """ Prints to standard error (sys.stderr). """
-    print(*args, file=sys.stderr, flush=True, **kwargs)
 
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
@@ -61,7 +52,7 @@ class NMODL:
                 self._solve()
                 self._fixup_breakpoint_IO()
             except Exception:
-                eprint("ERROR while loading file", self.filename)
+                print("ERROR while loading file", self.filename, flush=True)
                 raise
             cache.save(self.filename, self)
         self.parameters.update(parameters, strict=True)
@@ -211,7 +202,7 @@ class NMODL:
             else:
                 return self._initialize_local_mechanism_class(database)
         except Exception:
-            eprint("ERROR while loading file", self.filename)
+            print("ERROR while loading file", self.filename, flush=True)
             raise
 
     def _run_initial_block(self, database):
