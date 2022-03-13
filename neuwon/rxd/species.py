@@ -155,9 +155,8 @@ class SpeciesType:
     def _zero_input_accumulators(self):
         if self.electric:
             self.conductance.get_data().fill(0.0)
-        for instance in (self.inside, self.outside):
-            if instance is not None:
-                instance._zero_input_accumulators()
+        if self.inside  is not None: self.inside ._zero_input_accumulators()
+        if self.outside is not None: self.outside._zero_input_accumulators()
 
     def _accumulate_conductance(self):
         database            = self.factory.database
@@ -188,25 +187,26 @@ class SpeciesType:
         return x
 
     def _advance(self):
-        return # This function is not needed yet.
+        if False:
+            # This function is not needed yet.
 
-        # Calculate the transmembrane ion flows.
-        # if (self.electric and self.charge != 0):
-        reversal_potential = access("membrane/reversal_potentials/"+self.name)
-        g = access("membrane/conductances/"+self.name)
-        millimoles = g * (dt * reversal_potential - integral_v) / (self.charge * F)
-        if self.inside_diffusivity != 0:
-            if self.use_shells:
-                1/0
-            else:
-                volumes        = access("membrane/inside/volumes")
-                concentrations = access("membrane/inside/concentrations/"+self.name)
-                concentrations += millimoles / volumes
-        if self.outside_diffusivity != 0:
-            volumes = access("outside/volumes")
-            self.outside.concentrations -= millimoles / self.geometry.outside_volumes
+            # Calculate the transmembrane ion flows.
+            # if (self.electric and self.charge != 0):
+            reversal_potential = access("membrane/reversal_potentials/"+self.name)
+            g = access("membrane/conductances/"+self.name)
+            millimoles = g * (dt * reversal_potential - integral_v) / (self.charge * F)
+            if self.inside_diffusivity != 0:
+                if self.use_shells:
+                    1/0
+                else:
+                    volumes        = access("membrane/inside/volumes")
+                    concentrations = access("membrane/inside/concentrations/"+self.name)
+                    concentrations += millimoles / volumes
+            if self.outside_diffusivity != 0:
+                volumes = access("outside/volumes")
+                self.outside.concentrations -= millimoles / self.geometry.outside_volumes
 
-        if self.inside: self.inside._advance()
+        if self.inside:  self.inside._advance()
         if self.outside: self.outside._advance()
 
 def _nerst_potential(charge, T, inside_concentration, outside_concentration):

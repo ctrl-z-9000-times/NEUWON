@@ -105,7 +105,9 @@ class RxD_Model:
         self.species._zero_input_accumulators()
         for name, m in self.mechanisms.items():
             try: m.advance()
-            except Exception: raise RuntimeError("in mechanism " + name)
+            except Exception:
+                print(f"ERROR in mechanism {name}.")
+                raise
 
     def filter_segments_by_type(self, neuron_types, segment_types):
         assert self.database.is_sorted()
