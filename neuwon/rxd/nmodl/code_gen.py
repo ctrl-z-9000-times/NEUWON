@@ -17,8 +17,9 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
         py += indent + "if %s:\n"%sympy_to_pycode(self.condition)
         py += to_python(self.main_block, indent + "    ", pointers)
         assert not self.elif_blocks, "Unimplemented."
-        py += indent + "else:\n"
-        py += to_python(self.else_block, indent + "    ", pointers)
+        if self.else_block is not None:
+            py += indent + "else:\n"
+            py += to_python(self.else_block, indent + "    ", pointers)
     elif isinstance(self, AssignStatement):
         if not isinstance(self.rhs, str):
             try: self.rhs = sympy_to_pycode(self.rhs.simplify())
@@ -29,7 +30,8 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
             lhs = 'd' + self.lhsn
             return indent + lhs + " += " + self.rhs + "\n"
         return indent + self.lhsn + self.operation + self.rhs + "\n"
-    else: raise NotImplementedError(type(self))
+    else:
+        raise NotImplementedError(type(self))
     return py.rstrip() + "\n"
 
 def exec_string(python, globals_, locals_=None):
