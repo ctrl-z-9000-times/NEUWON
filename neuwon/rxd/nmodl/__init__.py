@@ -189,8 +189,8 @@ class NMODL:
     def initialize(self, rxd_model, name):
         database = rxd_model.get_database()
         builtin_parameters = {
-                "time_step": rxd_model.get_time_step(),
-                "celsius":   rxd_model.get_temperature(),
+                "dt":       rxd_model.get_time_step(),
+                "celsius":  rxd_model.get_temperature(),
         }
         self.name = str(name)
         try:
@@ -320,7 +320,7 @@ class ParameterTable(dict):
 
     builtin_parameters = {
         "celsius": (None, "degC"),
-        "time_step": (None, "ms"),
+        "dt":      (None, "ms"),
     }
 
     def __init__(self, parameters, mechanism_name):
@@ -382,9 +382,9 @@ class ParameterTable(dict):
         for name, (value, units) in self.items():
             if value is None:
                 continue
-            if name == "time_step":
-                name = solver.dt
             substitutions[name] = value
+            if name == "dt":
+                substitutions[solver.dt] = value
         block.substitute(substitutions)
 
 class OmnipresentNmodlMechanism(NMODL, OmnipresentMechanism):

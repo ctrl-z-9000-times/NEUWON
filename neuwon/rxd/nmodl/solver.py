@@ -1,7 +1,7 @@
 from neuwon.rxd.nmodl.parser import AssignStatement
 import sympy
 
-dt = sympy.Symbol("time_step", real=True, positive=True)
+dt = sympy.Symbol("dt", real=True, positive=True)
 
 def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
     """ Analytically integrate this derivative equation.
