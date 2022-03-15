@@ -109,45 +109,50 @@ class RxD_Model:
                 print(f"ERROR in mechanism {name}.")
                 raise
 
-    def filter_segments_by_type(self, neuron_types, segment_types):
+    def filter_segments_by_type(self, neuron_types=(), segment_types=(), _return_objects=True):
         assert self.database.is_sorted()
-        if not neuron_types and not segment_types:
-            segment_db_class = self.Segment.get_database_class()
-            return segment_db_class.get_all_instances()
+        # 
         neuron_types_list = self.Neuron.neuron_types_list
         if neuron_types:
             neuron_types = [neuron_types_list.index(x) for x in neuron_types]
             neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
             neuron_mask[neuron_types] = True
-        else:
-            neuron_mask = np.ones(len(neuron_types_list), dtype=bool)
         segment_types_list = self.Segment.segment_types_list
         if segment_types:
             segment_types = [segment_types_list.index(x) for x in segment_types]
             segment_mask  = np.zeros(len(segment_types_list), dtype=bool)
             segment_mask[segment_types] = True
+        # 
+        if neuron_types and segment_types:
+            filter_values = self.Segment._filter_by_type(None, neuron_mask, segment_mask)
+        elif neuron_types:
+            filter_values = self.Segment._filter_by_neuron_type(None, neuron_mask)
+        elif segment_types:
+            filter_values = self.Segment._filter_by_segment_type(None, segment_mask)
         else:
-            segment_mask = np.ones(len(segment_types_list), dtype=bool)
-        filter_values = self.Segment._filter_by_type(None, neuron_mask, segment_mask)
+            segment_db_class = self.Segment.get_database_class()
+            filter_values = np.ones(len(segment_db_class), dtype=bool)
+        # 
         index = np.nonzero(filter_values)[0]
-        if True:
+        if _return_objects:
             index_to_object = self.Segment.get_database_class().index_to_object
             return [index_to_object(x) for x in index]
         else:
             return index
 
-    def filter_neurons_by_type(self, neuron_types):
+    def filter_neurons_by_type(self, neuron_types=(), _return_objects=True):
         assert self.database.is_sorted()
-        if not neuron_types:
+        if neuron_types:
+            neuron_types_list = self.Neuron.neuron_types_list
+            neuron_types = [neuron_types_list.index(x) for x in neuron_types]
+            neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
+            neuron_mask[neuron_types] = True
+            filter_values = self.Neuron._filter_by_type(None, neuron_mask)
+        else:
             neuron_db_class = self.Neuron.get_database_class()
-            return neuron_db_class.get_all_instances()
-        neuron_types_list = self.Neuron.neuron_types_list
-        neuron_types = [neuron_types_list.index(x) for x in neuron_types]
-        neuron_mask  = np.zeros(len(neuron_types_list), dtype=bool)
-        neuron_mask[neuron_types] = True
-        filter_values = self.Neuron._filter_by_type(None, neuron_mask)
+            filter_values = np.ones(len(neuron_db_class), dtype=bool)
         index = np.nonzero(filter_values)[0]
-        if True:
+        if _return_objects:
             index_to_object = self.Neuron.get_database_class().index_to_object
             return [index_to_object(x) for x in index]
         else:

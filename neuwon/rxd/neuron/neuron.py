@@ -103,4 +103,6 @@ class Neuron:
 
     @Compute
     def _filter_by_type(self, neuron_mask) -> bool:
+        if self.neuron_type_id == NULL:
+            return False
         return neuron_mask[self.neuron_type_id]

@@ -84,7 +84,21 @@ class Segment(Tree, Geometry, Electric):
         return section
 
     @Compute
+    def _filter_by_segment_type(self, segment_mask) -> bool:
+        if self.segment_type_id == NULL:
+            return False
+        return segment_mask[self.segment_type_id]
+
+    @Compute
+    def _filter_by_neuron_type(self, neuron_mask) -> bool:
+        if self.neuron.neuron_type_id == NULL:
+            return False
+        return neuron_mask[self.neuron.neuron_type_id]
+
+    @Compute
     def _filter_by_type(self, neuron_mask, segment_mask) -> bool:
+        if self.segment_type_id == NULL or self.neuron.neuron_type_id == NULL:
+            return False
         return segment_mask[self.segment_type_id] and neuron_mask[self.neuron.neuron_type_id]
 
     def insert(self, mechanisms: dict, outside=None) -> dict:
