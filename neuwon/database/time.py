@@ -220,6 +220,18 @@ class TimeSeries:
             self.timestamps.popleft()
         self.record_duration -= self.clock.dt
 
+    @classmethod
+    def record_many(cls, db_objects: [DB_Object], component: str,
+            record_duration:float=np.inf,
+            discard_after:float=np.inf,
+            clock:Clock=None,) -> ['TimeSeries']:
+        """ Convenience method to record from multiple objects. """
+        return [cls().record(obj, component,
+                             record_duration=record_duration,
+                             discard_after=discard_after,
+                             clock=clock,)
+                for obj in db_objects]
+
     def play(self, db_object: DB_Object, component: str,
             mode:str="+=",
             loop:bool=False,
@@ -351,6 +363,26 @@ class TimeSeries:
         axes.set_ylabel(self.component.get_units())
         axes.set_xlabel(self.clock.get_units())
         return axes
+
+    @classmethod
+    def plot_many(cls, timeseries: ['TimeSeries'], spacing, *args, show:bool=True, **kwargs):
+        """ Plot multiple TimeSeries on a single matplotlib figure.
+
+        Argument spacing controls the distance between the line plots.
+        """
+        plt = matplotlib.pyplot
+        assert isinstance(timeseries, Iterable)
+        assert len(timeseries) > 0
+        self = timeseries[0]
+        self.plot(*args, show=False, **kwargs)
+        # Hide the Y-axis ticks and numbers. The Y-axis numbers are not valid
+        # because there are multiple lines plotted at various offsets.
+        plt.gca().yaxis.set_major_locator(matplotlib.ticker.NullLocator())
+        for idx, ts in enumerate(timeseries):
+            if idx == 0: continue
+            data = np.array(ts.get_data()) - idx * spacing
+            plt.plot(ts.get_timestamps(), data, *args, **kwargs)
+        if show: plt.show()
 
     def __len__(self):
         """ Returns the number of data samples in this buffer. """
