@@ -223,19 +223,23 @@ class NeuronGrowthProgram:
                 number=None,
                 density=None,
                 mechanisms={},):
+        # Clean the inputs.
+        segment_type = str(segment_type)
         region = self.model.regions.make_region(region)
+        assert (number is not None) or (density is not None), 'missing argument "number" or "density".'
         assert (number is None) != (density is None), "'number' and 'density' are mutually exclusive."
         if number is not None:
             coordinates = [region.sample_point() for _ in range(number)]
         else:
             coordinates = region.sample_points(density)
         diameter = _Distribution(diameter)
+
         new_segments = []
         for c in coordinates:
             d = diameter()
             while d <= epsilon:
                 d = diameter()
-            n = self.model.Neuron(c, d)
+            n = self.model.Neuron(c, d, segment_type=segment_type)
             self.neurons.append(n)
             new_segments.append(n.root)
         self.segments.extend(new_segments)
