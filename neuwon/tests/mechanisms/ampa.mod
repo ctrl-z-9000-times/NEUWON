@@ -7,7 +7,7 @@ NEURON {
 }
 
 PARAMETER {
-    max_conductance = .001 (S/mM/ampa)
+    max_conductance = .000001 (S/mM/ampa)
 }
 
 BREAKPOINT {

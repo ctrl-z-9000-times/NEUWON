@@ -6,11 +6,11 @@ NEURON {
 }
 
 PARAMETER {
-    release = .001 (/ms/glu_presyn)
+    release = .0001 (/ms/glu_presyn)
 }
 
 BREAKPOINT {
-    if (v > -37) {
+    if (v > 10) {
         gluo = release
     }
 }

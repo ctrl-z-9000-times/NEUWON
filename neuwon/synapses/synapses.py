@@ -17,6 +17,7 @@ class Synapse:
         database = model.get_database()
         syn_data = database.add_class(str(synapse_type), cls)
         syn_cls  = syn_data.get_instance_type()
+        syn_cls._model = model
         syn_cls._maximum_distance = float(maximum_distance)
         syn_cls._constraints = []
         syn_cls._mechanisms  = []
@@ -43,6 +44,38 @@ class Synapse:
         syn_cls._cleft_spillover_area   = float(spillover_area)
         syn_data.add_attribute('cleft', dtype='Extracellular')
 
+    @classmethod
+    def grow(syn_cls, number=1) -> ['Synapse']:
+        number = int(number)
+        assert len(syn_cls._constraints) == 2
+        candidates = syn_cls._find_growth_candidates(*syn_cls._constraints)
+        random.shuffle(candidates)
+        index_to_object = syn_cls._model.get_database().get_class('Segment').index_to_object
+        while number > 0 and candidates:
+            seg_1, seg_2 = candidates.pop()
+            # TODO: Reject candidates which are already taken.
+            pass
+            # Make the synapse.
+            seg_1 = index_to_object(seg_1)
+            seg_2 = index_to_object(seg_2)
+            syn_cls(seg_1, seg_2)
+            number -= 1
+
+    @classmethod
+    def _find_growth_candidates(syn_cls, constaints_1, constaints_2):
+        Segment     = syn_cls._model.Segment
+        segs_1      = syn_cls._model.filter_segments_by_type(**constaints_1, _return_objects=False)
+        segs_2      = syn_cls._model.filter_segments_by_type(**constaints_2, _return_objects=False)
+        coordinates = syn_cls._model.get_database().get_data('Segment.coordinates')
+        tree_1      = scipy.spatial.cKDTree(coordinates[segs_1])
+        tree_2      = scipy.spatial.cKDTree(coordinates[segs_2])
+        results     = tree_1.query_ball_tree(tree_2, syn_cls._maximum_distance)
+        pairs = []
+        for idx_1, inner in enumerate(results):
+            for idx_2 in inner:
+                pairs.append((segs_1[idx_1], segs_2[idx_2]))
+        return pairs
+
     def __init__(self, *attachment_points):
         syn_cls  = type(self)
         syn_data = syn_cls.get_database_class()
@@ -67,30 +100,6 @@ class Synapse:
             mechanisms = segment.insert(mechanisms, outside=cleft)
             for mechanism_name, mechanism_instance in mechanisms.items():
                 setattr(self, name + '_' + mechanism_name, mechanism_instance)
-
-    @classmethod
-    def grow(cls, number=1) -> ['Synapse']:
-        number = int(number)
-        candidates = []
-        # for at in :
-        #     cls.model.filter_segments_by_type(neuron_types, segment_types)
-        #     candidates.append()
-
-
-        pairs = self.constraints.find_all_candidates()
-        random.shuffle(pairs)
-        # Iterate over and filter out candidates which are already taken.
-        _num_presyn = self.database.get_data('Synapse._num_presyn')
-        index_to_object = self.Segment.get_database_class().index_to_object
-        while len(self.Synapse.database_class) < number and pairs:
-            presyn, postsyn = pairs.pop()
-            if not self.constraints.share_postsynapses and _num_presyn[postsyn]:
-                continue
-            # Make the synapse.
-            presyn  = index_to_object(presyn)
-            postsyn = index_to_object(postsyn)
-            self.Synapse(presyn, postsyn)
-
 
 class SynapsesFactory(dict):
     def __init__(self, rxd_model, parameters: dict):

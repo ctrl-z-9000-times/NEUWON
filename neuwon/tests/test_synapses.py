@@ -82,36 +82,38 @@ def test_network_ei():
     # There are a lot of interesting properties of E/I networks that I can easily verify.
     #       -> Use only point neurons w/o topology.
 
-    m = neuwon.Model(
+    model = neuwon.Model(
         species = {
             'glu': {
                 'outside': {
                     'initial_concentration': 0,
-                    'decay_period': 1,
+                    'decay_period': .5,
             },},
             'gaba': {
                 'outside': {
                     'initial_concentration': 0,
-                    'decay_period': 4,
+                    'decay_period': 2,
             },},
             'zero': {'reversal_potential': 0},
-            'na': {'reversal_potential': -60},
-            'k': {'reversal_potential': -80},
+            'na': {'reversal_potential': +60},
+            'k':  {'reversal_potential': -80},
         },
         mechanisms = {
-            'hh':           './neuwon/tests/mechanisms/hh.mod',
-            'glu_presyn':   './neuwon/tests/mechanisms/glu_presyn.mod',
-            'ampa':         './neuwon/tests/mechanisms/ampa.mod',
-            'leak':         './neuwon/tests/mechanisms/leak.mod',
+            'hh':               './neuwon/tests/mechanisms/hh.mod',
+            'glu_presyn':       './neuwon/tests/mechanisms/glu_presyn.mod',
+            'gaba_presyn':      './neuwon/tests/mechanisms/gaba_presyn.mod',
+            'ampa':             './neuwon/tests/mechanisms/ampa.mod',
+            'gaba_receptor':    './neuwon/tests/mechanisms/gaba_receptor.mod',
+            'leak':             './neuwon/tests/mechanisms/leak.mod',
         },
         regions = {
-            'main': ('Rectangle', [0,0,0], [100,100,100]),
+            'main': ('Rectangle', [0,0,0], [200,200,200]),
         },
         neurons = {
             'excit': ({
                     'segment_type': 'excit',
                     'region': 'main',
-                    'number': 50,
+                    'number': 200,
                     'diameter': 10,
                     'mechanisms': {
                         'hh',
@@ -120,7 +122,7 @@ def test_network_ei():
             'inhib': ({
                     'segment_type': 'inhib',
                     'region': 'main',
-                    'number': 10,
+                    'number': 40,
                     'diameter': 10,
                     'mechanisms': {
                         'hh',
@@ -129,7 +131,7 @@ def test_network_ei():
         },
         synapses = {
             'excit_syn': {
-                'number': 100,
+                'number': 200 * 50,
                 'cleft': {
                     'volume': 0.01,
                 },
@@ -147,7 +149,7 @@ def test_network_ei():
                     },},
             ),},
             'inhib_syn': {
-                'number': 25,
+                'number': 40 * 25,
                 'maximum_distance': 50,
                 'cleft': {
                     'volume': 0.01,
@@ -166,6 +168,34 @@ def test_network_ei():
                     },},
             ),},
     },)
+
+    hh = model.mechanisms['hh']
+    print(hh._advance_pycode)
+
+    max_v = 61
+    min_v = -81
+
+    import random
+    from neuwon.gui.viewport import Viewport
+    view = Viewport(camera_position=[0,0,400])
+    view.set_scene(model)
+    voltage = model.Segment.get_database_class().get("voltage")
+
+    excit = model.filter_segments_by_type(segment_types=['excit'])
+    next_stim = 0
+
+    while True:
+        if model.clock() >= next_stim:
+            n = random.choice(excit)
+            n.inject_current(2e-9, 1)
+            next_stim += 50
+
+        v = ((voltage.get_data() - min_v) / (max_v - min_v)).clip(0, 1)
+        colors = [(x, 0, 1-x) for x in v]
+        view.tick(colors)
+        model.advance()
+        model.check()
+
 
     1/0
 
