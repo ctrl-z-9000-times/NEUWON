@@ -1,8 +1,7 @@
 import math
 from neuwon.database import Compute, Real, epsilon
-from neuwon.rxd import Mechanism
 
-class STP(Mechanism):
+class STP:
     """ Model of Short-Term-Plasticity in presynapses.
 
     Reference:
@@ -11,21 +10,27 @@ class STP(Mechanism):
         doi: 10.1126/science.1150769.
     """
     __slots__ = ()
-    @staticmethod
-    def initialize(db_class, *,
-            minimum_utilization,
-            utilization_decay,
-            resource_recovery,):
+
+    def __init__(self, *
+                minimum_utilization,
+                utilization_decay,
+                resource_recovery):
+        self.minimum_utilization = float(minimum_utilization)
+        self.utilization_decay   = float(utilization_decay)
+        self.resource_recovery   = float(resource_recovery)
+
+    @classmethod
+    def initialize(db_class):
         db_class.add_class_attribute('minimum_utilization',
-                initial_value = minimum_utilization,
+                initial_value = self.minimum_utilization,
                 valid_range = (0.0, 1.0),
                 doc = "")
         db_class.add_class_attribute('utilization_decay',
-                initial_value = utilization_decay,
+                initial_value = self.utilization_decay,
                 valid_range = (epsilon, math.inf),
                 doc = "")
         db_class.add_class_attribute('resource_recovery',
-                initial_value = resource_recovery,
+                initial_value = self.resource_recovery,
                 valid_range = (epsilon, math.inf),
                 doc = "")
         db_class.add_attribute('last_update',
@@ -37,11 +42,10 @@ class STP(Mechanism):
                 valid_range = (0.0, 1.0),
                 doc = "")
         db_class.add_attribute('utilization',
-                initial_value = minimum_utilization,
+                initial_value = self.minimum_utilization,
                 valid_range = (0.0, 1.0),
                 doc = "")
 
-    @classmethod
     def reset_presynapses(cls):
         db_class = cls.get_database_class()
         db_class.get_data('last_update').fill(0.0)
