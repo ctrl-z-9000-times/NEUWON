@@ -1,4 +1,4 @@
-TITLE Nav1.2 ionic voltage-gated channel with kinetic scheme
+TITLE Nav1.9 ionic voltage-gated channel with kinetic scheme
 
 COMMENT
 A six-state markovian kinetic model of ionic channel.
@@ -7,7 +7,7 @@ Author: Piero Balbi, July 2016
 ENDCOMMENT
 
 NEURON {
-	SUFFIX na12a
+	SUFFIX na19a
 	USEION na READ ena WRITE ina
 	RANGE gbar, ina, g
 }
@@ -23,65 +23,65 @@ PARAMETER {
 	celsius (degC)
 	gbar  = 0.1	 (mho/cm2)
 	
-	C1C2b2	  = 16
-	C1C2v2    = -5
-	C1C2k2	  = -10
+	C1C2b2	  = 0.8
+	C1C2v2    = -21
+	C1C2k2	  = -9
 	
-	C2C1b1	  = 3
-	C2C1v1    = -35
+	C2C1b1	  = 0.05
+	C2C1v1    = -56
 	C2C1k1	  = 10
-	C2C1b2	  = 16
-	C2C1v2    = -5
-	C2C1k2	  = -10
+	C2C1b2	  = 0.8
+	C2C1v2    = -21
+	C2C1k2	  = -9
 
-	C2O1b2	  = 16
-	C2O1v2    = -10
-	C2O1k2	  = -10
+	C2O1b2	  = 0.8
+	C2O1v2    = -61
+	C2O1k2	  = -9
 	
-	O1C2b1	  = 3
-	O1C2v1    = -40
+	O1C2b1	  = 0.5
+	O1C2v1    = -96
 	O1C2k1	  = 10
-	O1C2b2	  = 16
-	O1C2v2    = -10
-	O1C2k2	  = -10
+	O1C2b2	  = 0.8
+	O1C2v2    = -61
+	O1C2k2	  = -9
 	
-	C2O2b2	  = 0.13
-	C2O2v2	  = -20
-	C2O2k2	  = -15
+	C2O2b2	  = 0.0001
+	C2O2v2	  = -5
+	C2O2k2	  = -8
 	
-	O2C2b1	  = 2
-	O2C2v1	  = -60
-	O2C2k1	  = 6
-	O2C2b2	  = 0.7
-	O2C2v2	  = -10
-	O2C2k2	  = -15
+	O2C2b1	  = 0.0001
+	O2C2v1	  = -65
+	O2C2k1	  = 7
+	O2C2b2	  = 0.0001
+	O2C2v2	  = -15
+	O2C2k2	  = -12
 	
-	O1I1b1	  = 3
-	O1I1v1	  = -41
-	O1I1k1	  = 12
-	O1I1b2	  = 16
-	O1I1v2	  = -11
-	O1I1k2	  = -12
+	O1I1b1	  = 0.04
+	O1I1v1	  = -59
+	O1I1k1	  = 8
+	O1I1b2	  = 0.8
+	O1I1v2	  = 1
+	O1I1k2	  = -10
 	
-	I1O1b1	  = 0.00001
-	I1O1v1	  = -42
-	I1O1k1	  = 10
+	I1O1b1	  = 0.0001
+	I1O1v1	  = -60
+	I1O1k1	  = 8
 	
-	I1C1b1	  = 0.55
-	I1C1v1	  = -65
-	I1C1k1	  = 7
+	I1C1b1	  = 0.06
+	I1C1v1	  = -59
+	I1C1k1	  = 8
 	
-	C1I1b2	  = 0.55
-	C1I1v2	  = -65
-	C1I1k2	  = -11
+	C1I1b2	  = 0.04
+	C1I1v2	  = -59
+	C1I1k2	  = -8
 	
-	I1I2b2	  = 0.0022
-	I1I2v2	  = -90
-	I1I2k2	  = -5
+	I1I2b2	  = 0.0016
+	I1I2v2	  = -60
+	I1I2k2	  = -20
 
-	I2I1b1	  = 0.017
-	I2I1v1	  = -90
-	I2I1k1	  = 15
+	I2I1b1	  = 0.0115
+	I2I1v1	  = -100
+	I2I1k1	  = 8
 	
 }
 
@@ -118,11 +118,11 @@ STATE {
 INITIAL {
 	Q10 = 3^((celsius-20(degC))/10 (degC))
 	SOLVE kin
-	STEADYSTATE sparse
+	STEADYSTATE cnexp
 }
 
 BREAKPOINT {
-	SOLVE kin METHOD sparse
+	SOLVE kin METHOD cnexp
 	g = gbar * (O1 + O2)	: (mho/cm2)
 	ina = g * (v - ena)   	: (mA/cm2)
 }
