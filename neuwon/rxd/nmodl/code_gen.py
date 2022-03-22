@@ -26,14 +26,12 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
                 self.rhs = sympy_to_pycode(self.rhs.simplify())
             else:
                 self.rhs = str(self.rhs)
-            if self.derivative:
-                lhs = 'd' + self.lhsn
-                return indent + lhs + " += " + self.rhs + "\n"
-            else:
-                return indent + self.lhsn + self.operation + self.rhs + "\n"
+            py += indent + self.lhsn + self.operation + self.rhs
         except Exception:
             print("Failed at:", repr(self), flush=True)
             raise
+    elif isinstance(self, ConserveStatement):
+        py += indent + "pass    # Warning: ignored CONSERVE statement here."
     else:
         raise NotImplementedError(type(self))
     return py.rstrip() + "\n"

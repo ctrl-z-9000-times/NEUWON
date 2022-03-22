@@ -42,10 +42,10 @@ class NMODL:
                 self.parameters = ParameterTable(parser.gather_parameters(), self.nmodl_name)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
-                self.all_blocks = list(blocks.values())
+                self.all_blocks = list(blocks.values()) # Unused?
                 self.initial_block = blocks['INITIAL']
                 self.breakpoint_block = blocks['BREAKPOINT']
-                self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative}
+                self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative} # Unused?
                 self._gather_IO(parser)
                 if self.omnipresent:    self.__class__ = OmnipresentNmodlMechanism
                 else:                   self.__class__ = LocalNmodlMechanismSpecification
@@ -167,15 +167,35 @@ class NMODL:
                 for stmt in solve_block:
                     if isinstance(stmt, AssignStatement) and stmt.derivative:
                         method(stmt)
+                # Replace the solve statment with the solved block.
+                self.breakpoint_block.statements.pop(idx)
+                for stmt in solve_block:
+                    self.breakpoint_block.statements.insert(idx, stmt)
+                    idx += 1
             elif solve_method == "sparse":
+                assert solve_block.derivative
+                deriv_block = self._compile_derivative_block(solve_block)
                 1/0
             else:
                 raise NotImplementedError(solve_method)
-            # Replace the solve statment with the solved block.
-            self.breakpoint_block.statements.pop(idx)
-            for stmt in solve_block:
-                self.breakpoint_block.statements.insert(idx, stmt)
-                idx += 1
+
+    def _compile_derivative_block(self, block):
+        assert block.derivative
+        self.parameters.substitute(block)
+        block.gather_arguments()
+        for stmt in block:
+            if isinstance(stmt, AssignStatement) and stmt.derivative:
+                stmt.operation = "+="
+                stmt.lhsn = '_d_' + stmt.lhsn
+                stmt.derivative = False
+        deriv_pycode = f"def {block.name}({', '.join(block.arguments)}):\n"
+        for state in self.states:
+            deriv_pycode += f"    _d_{state} = 0.0\n"
+        deriv_pycode += code_gen.to_python(block, "    ", {})
+        deriv_pycode += "    return {"
+        deriv_pycode += ', '.join(f"{state}: _d_{state}" for state in self.states)
+        deriv_pycode += "}\n\n"
+        print(deriv_pycode)
 
     def _fixup_breakpoint_IO(self):
         for stmt in self.breakpoint_block:
