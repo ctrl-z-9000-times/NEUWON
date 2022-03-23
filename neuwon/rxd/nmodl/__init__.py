@@ -88,7 +88,7 @@ class NMODL:
             self.pointers[state] = f'self.{state}'
         self._gather_segment_IO()
         for x in parser.lookup(ANT.USEION):
-            self._process_useion(x)
+            self._process_useion_statement(x)
         self._gather_conductance_hints(parser)
         self._gather_other_mechanisms_IO(parser)
 
@@ -166,12 +166,9 @@ class NMODL:
             'cnexp':            solver.crank_nicholson,
             'exact':            solver.sympy_solve_ode,
         }
-        idx = 0
-        while idx < len(self.breakpoint_block.statements):
-            solve_stmt = self.breakpoint_block.statements[idx]
+        def solve(solve_stmt):
             if not isinstance(solve_stmt, SolveStatement):
-                idx += 1
-                continue
+                return [solve_stmt]
             solve_block  = solve_stmt.block
             solve_method = solve_stmt.method
             if solve_method in ode_methods:
@@ -179,18 +176,10 @@ class NMODL:
                 for stmt in solve_block:
                     if isinstance(stmt, AssignStatement) and stmt.derivative:
                         method(stmt)
-                # Replace the solve statment with the solved block.
-                self.breakpoint_block.statements.pop(idx)
-                for stmt in solve_block:
-                    self.breakpoint_block.statements.insert(idx, stmt)
-                    idx += 1
-            elif solve_method == "sparse":
-                assert solve_block.derivative
-                # Sparse kinetic models are solved by the "initialize" method
-                # because solving them requires the time_step and temperature.
-                idx += 1
+                return solve_block.statements
             else:
-                raise NotImplementedError(solve_method)
+                return [solve_stmt]
+        self.breakpoint_block.map(solve)
 
     def _fixup_breakpoint_IO(self):
         for stmt in self.breakpoint_block:
@@ -248,7 +237,6 @@ class NMODL:
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
-
         # 
         for x in self.states:
             self.initial_block.statements.insert(0, AssignStatement(x, 0))

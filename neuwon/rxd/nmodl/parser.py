@@ -275,7 +275,7 @@ class SolveStatement:
             self.method = AST.method.get_node_name()
         else:
             self.method = "exact"
-        AST.ifsolerr # TODO: What does this do?
+        assert not AST.ifsolerr # Block to be executed on error, is not supported.
 
 class ConserveStatement:
     def __init__(self, AST):

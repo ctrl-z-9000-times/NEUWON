@@ -32,6 +32,8 @@ def to_python(self, indent="", pointers={}, accumulators=set()):
             raise
     elif isinstance(self, ConserveStatement):
         py += indent + "pass    # Warning: ignored CONSERVE statement here."
+    elif isinstance(self, SolveStatement):
+        raise NotImplementedError(f"SOLVE METHOD {self.method}")
     else:
         raise NotImplementedError(type(self))
     return py.rstrip() + "\n"
