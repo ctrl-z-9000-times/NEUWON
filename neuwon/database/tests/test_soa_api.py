@@ -107,7 +107,7 @@ def test_initial_distribution():
     n1_mean = np.mean(n1_data.get_data())
     n1_std  = np.std( n1_data.get_data())
     assert n1_mean == pytest.approx(10, rtol)
-    assert n1_std  == pytest.approx( 2, rtol)
+    assert n1_std  == pytest.approx( 2, rtol * 2)
 
     # Check that it raises errors when the distribution is outside of the valid_range.
     with pytest.raises(Exception):

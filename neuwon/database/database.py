@@ -460,7 +460,7 @@ class DB_Class(Documentation):
         if self._destroyed_list:
             xp = self.database.memory_space.array_module
             self._destroyed_mask = mask = xp.zeros(len(self), dtype=bool)
-            mask[self._destroyed_list] = True
+            xp.put(mask, self._destroyed_list, True)
         else:
             self._destroyed_mask = None
 
@@ -560,8 +560,8 @@ class DB_Class(Documentation):
             new_to_old      = new_to_old[sort_order]
         # Make the forward transform map.
         old_to_new = xp.empty(len(self), dtype=Pointer)
-        old_to_new[new_to_old] = xp.arange(len(new_to_old))
-        old_to_new[self._destroyed_list] = NULL
+        xp.put(old_to_new, new_to_old, xp.arange(len(new_to_old)))
+        xp.put(old_to_new, self._destroyed_list, NULL)
         # Apply the sort to each data component.
         for component in self.components.values():
             if component.is_free(): continue
