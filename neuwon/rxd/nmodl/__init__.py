@@ -75,18 +75,24 @@ class NMODL:
 
     def _gather_IO(self, parser):
         """
-        Determine what external data the mechanism accesses.
+        Determine what persistent data the mechanism accesses.
 
         Sets attributes: "pointers", "accumulators", "other_mechanisms_", and
         the following flags: "omnipresent", "outside".
         """
         self.pointers = {}
         self.accumulators = set()
-        self.other_mechanisms_ = []
         self.omnipresent = False # TODO!
         self.outside = False
         for state in self.states:
             self.pointers[state] = f'self.{state}'
+        self._gather_segment_IO()
+        for x in parser.lookup(ANT.USEION):
+            self._process_useion(x)
+        self._gather_conductance_hints(parser)
+        self._gather_other_mechanisms_IO(parser)
+
+    def _gather_segment_IO(self):
         self.breakpoint_block.gather_arguments()
         self.initial_block.gather_arguments()
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
@@ -96,47 +102,53 @@ class NMODL:
             self.pointers["area"] = "self.segment.surface_area"
         if "volume" in all_args:
             self.pointers["volume"] = "self.segment.inside_volume"
-        for x in parser.lookup(ANT.USEION):
-            ion = x.name.value.eval()
-            # Automatically generate the variable names for this ion.
-            equilibrium = ('e' + ion, ion + '_equilibrium',)
-            current     = ('i' + ion, ion + '_current',)
-            conductance = ('g' + ion, ion + '_conductance',)
-            inside      = (ion + 'i', 'intra_' + ion,)
-            outside     = (ion + 'o', 'extra_' + ion,)
-            for y in x.readlist:
-                var_name = y.name.value.eval()
-                if var_name in equilibrium:
-                    pass # Ignored, mechanisms output conductances instead of currents.
-                elif var_name in inside:
-                    self.pointers[var_name] = "self.segment.inside_concentrations/%s"
-                elif var_name in outside:
-                    self.pointers[var_name] = f"self.outside.{ion}"
-                    self.outside = True
-                else:
-                    raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
-            for y in x.writelist:
-                var_name = y.name.value.eval()
-                if var_name in current:
-                    pass # Ignored, mechanisms output conductances instead of currents.
-                elif var_name in conductance:
-                    self.pointers[var_name] = f"self.segment.{ion}_conductance"
-                    self.accumulators.add(var_name)
-                elif var_name in inside:
-                    self.pointers[var_name] = "self.segment.inside_delta_concentrations/%s"%ion
-                    self.accumulators.add(var_name)
-                elif var_name in outside:
-                    self.pointers[var_name] = f"self.outside.{ion}_delta"
-                    self.accumulators.add(var_name)
-                    self.outside = True
-                else:
-                    raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
+
+    def _process_useion_statement(self, stmt):
+        ion = stmt.name.value.eval()
+        # Automatically generate the variable names for this ion.
+        equilibrium = ('e' + ion, ion + '_equilibrium',)
+        current     = ('i' + ion, ion + '_current',)
+        conductance = ('g' + ion, ion + '_conductance',)
+        inside      = (ion + 'i', 'intra_' + ion,)
+        outside     = (ion + 'o', 'extra_' + ion,)
+        for y in stmt.readlist:
+            var_name = y.name.value.eval()
+            if var_name in equilibrium:
+                pass # Ignored, mechanisms output conductances instead of currents.
+            elif var_name in inside:
+                self.pointers[var_name] = f"self.segment.inside_concentrations_{ion}"
+            elif var_name in outside:
+                self.pointers[var_name] = f"self.outside.{ion}"
+                self.outside = True
+            else:
+                raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
+        for y in stmt.writelist:
+            var_name = y.name.value.eval()
+            if var_name in current:
+                pass # Ignored, mechanisms output conductances instead of currents.
+            elif var_name in conductance:
+                self.pointers[var_name] = f"self.segment.{ion}_conductance"
+                self.accumulators.add(var_name)
+            elif var_name in inside:
+                self.pointers[var_name] = f"self.segment.inside.{ion}_delta"
+                self.accumulators.add(var_name)
+            elif var_name in outside:
+                self.pointers[var_name] = f"self.outside.{ion}_delta"
+                self.accumulators.add(var_name)
+                self.outside = True
+            else:
+                raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
+
+    def _gather_conductance_hints(self, parser):
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
                 self.pointers[var_name] = f"Segment.{ion}_conductance"
                 self.accumulators.add(var_name)
+
+    def _gather_other_mechanisms_IO(self, parser):
+        self.other_mechanisms_ = []
         for x in parser.lookup(ANT.POINTER_VAR):
             name = x.get_node_name()
             self.other_mechanisms_.append(name)
