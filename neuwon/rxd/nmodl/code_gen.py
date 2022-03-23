@@ -5,21 +5,21 @@ import tempfile
 import sympy.core.basic
 import sympy.printing.pycode as sympy_to_pycode
 
-def to_python(self, indent="", pointers={}, accumulators=set()):
+def to_python(self, indent=""):
     """ Argument self is any parser CodeBlock or Statement. """
     py = ""
     if isinstance(self, CodeBlock):
         for stmt in self.statements:
-            py += to_python(stmt, indent, pointers)
+            py += to_python(stmt, indent)
         if not self.statements:
             py += indent + "pass\n"
     elif isinstance(self, IfStatement):
         py += indent + "if %s:\n"%sympy_to_pycode(self.condition)
-        py += to_python(self.main_block, indent + "    ", pointers)
+        py += to_python(self.main_block, indent + "    ")
         assert not self.elif_blocks, "Unimplemented."
         if self.else_block is not None:
             py += indent + "else:\n"
-            py += to_python(self.else_block, indent + "    ", pointers)
+            py += to_python(self.else_block, indent + "    ")
     elif isinstance(self, AssignStatement):
         try:
             if isinstance(self.rhs, sympy.core.basic.Basic):
