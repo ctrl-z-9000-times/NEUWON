@@ -230,6 +230,10 @@ class CodeBlock:
                 for name in target_block.assigned:  write_symbol(name)
             elif isinstance(stmt, ConserveStatement): pass
             else: raise NotImplementedError(stmt)
+        for arg in list(self.arguments):
+            if str(arg).startswith('self.'):
+                self.arguments.remove(arg)
+                self.arguments.add('self')
         self.arguments = sorted(self.arguments)
         self.assigned  = sorted(self.assigned)
 

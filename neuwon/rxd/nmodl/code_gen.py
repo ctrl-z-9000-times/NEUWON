@@ -33,7 +33,10 @@ def to_python(self, indent=""):
     elif isinstance(self, ConserveStatement):
         py += indent + "pass    # Warning: ignored CONSERVE statement here."
     elif isinstance(self, SolveStatement):
-        raise NotImplementedError(f"SOLVE METHOD {self.method}")
+        solve_block  = self.block
+        solve_method = self.method
+        arguments = ', '.join(sorted(solve_block.arguments))
+        py += f"{indent}{solve_block.name}({arguments})\n"
     else:
         raise NotImplementedError(type(self))
     return py.rstrip() + "\n"

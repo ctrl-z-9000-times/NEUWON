@@ -76,7 +76,27 @@ def test_ampa5():
     m.check()
 
 
-@pytest.mark.skip()
 def test_kinetic_model():
-    nav11 = NMODL("./nmodl_library/Balbi2017/Nav11_a.mod", use_cache=False)
+    m = RxD_Model(
+        mechanisms={
+            'Nav11': NMODL("./nmodl_library/Nav11.mod", use_cache=False),
+            'Kv11':  NMODL("./nmodl_library/Kv11.mod",  use_cache=False),
+        },
+        species={
+            'na': {'reversal_potential': +60,},
+            'k': {'reversal_potential': -88,},
+            'l': {'reversal_potential': -54.3,},
+        },
+    )
+    m.check()
+
+    Nav11 = m.mechanisms['Nav11']
+    help(Nav11)
+    print('ADVANCE PYCODE Nav11:\n' + Nav11._advance_pycode)
+
+    Kv11  = m.mechanisms['Kv11']
+    help(Kv11)
+    print('ADVANCE PYCODE Kv11:\n' + Kv11._advance_pycode)
+
+    1/0
 
