@@ -106,6 +106,7 @@ class DataComponent(Documentation):
     def get_units(self) -> str:             return self.units
     def get_dtype(self) -> np.dtype:        return self.dtype
     def get_shape(self) -> tuple:           return self.shape
+    def get_valid_range(self):              return self.valid_range
     def get_initial_value(self):
         """ Returns either the initial_value or the initial_distribution. """
         if self.initial_distribution is not None:
