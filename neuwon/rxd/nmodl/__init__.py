@@ -209,6 +209,39 @@ class NMODL:
             print("ERROR while loading file", self.filename, flush=True)
             raise
 
+    def _run_initial_block(self, database):
+        """
+        Use pythons built-in "exec" function to run the INITIAL_BLOCK.
+        Sets: initial_state and initial_scope.
+        """
+        # Zero-init the state variables.
+        for x in self.states:
+            self.initial_block.statements.insert(0, AssignStatement(x, 0.0))
+            try: self.initial_block.arguments.remove(x)
+            except ValueError: pass
+        # 
+        self.parameters.substitute(self.initial_block)
+        # Get the initial values from the database for any pointers that have them.
+        for arg in list(self.initial_block.arguments):
+            if arg not in self.pointers:
+                continue
+            db_access = self.pointers[arg]
+            db_access = re.sub(r'^self\.segment\.', 'Segment.', db_access)
+            db_access = re.sub(r'^self\.inside\.',  'Inside.',  db_access)
+            db_access = re.sub(r'^self\.outside\.', 'Outside.', db_access)
+            value = database.get(db_access).get_initial_value()
+            if value is not None:
+                self.initial_block.statements.insert(0, AssignStatement(arg, value))
+                self.initial_block.arguments.remove(arg)
+        # 
+        if self.initial_block.arguments:
+            raise ValueError(f"Missing initial values for {', '.join(self.initial_block.arguments)}.")
+        # 
+        self.initial_python = code_gen.to_python(self.initial_block)
+        self.initial_scope = {}
+        code_gen.exec_string(self.initial_python, {}, self.initial_scope)
+        self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
+
     def _compile_derivative_block(self, block):
         assert block.derivative
         self.parameters.substitute(block)
@@ -231,36 +264,13 @@ class NMODL:
         deriv_bytecode = globals_[block.name]
         return deriv_bytecode
 
-    def _run_initial_block(self, database):
-        """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
-        Sets: initial_state and initial_scope. """
-        # 
-        self.parameters.substitute(self.initial_block)
-        # Get the initial values from the database for any pointers that have them.
-        for arg in list(self.initial_block.arguments):
-            if arg not in self.pointers:
-                continue
-            db_access = self.pointers[arg]
-            db_access = re.sub(r'^self\.segment\.', 'Segment.', db_access)
-            db_access = re.sub(r'^self\.inside\.',  'Inside.',  db_access)
-            db_access = re.sub(r'^self\.outside\.', 'Outside.', db_access)
-            value = database.get(db_access).get_initial_value()
-            if value is not None:
-                self.initial_block.statements.insert(0, AssignStatement(arg, value))
-                self.initial_block.arguments.remove(arg)
-        # Zero-init the state variables.
-        for x in self.states:
-            self.initial_block.statements.insert(0, AssignStatement(x, 0.0))
-            try: self.initial_block.arguments.remove(x)
-            except ValueError: pass
-        # 
-        if self.initial_block.arguments:
-            raise ValueError(f"Missing initial values for {', '.join(self.initial_block.arguments)}.")
-        # 
-        self.initial_python = code_gen.to_python(self.initial_block)
-        self.initial_scope = {}
-        code_gen.exec_string(self.initial_python, {}, self.initial_scope)
-        self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
+    def _initialize_kinetic_model(self, block):
+        # Get the derivative function
+        pass
+        # Build the IRM table
+        pass
+        # Make Compute'd method to advance the state.
+        1/0
 
     def _substitute_initial_scope(self, block):
         block.gather_arguments()
