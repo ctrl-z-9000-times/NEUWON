@@ -174,28 +174,11 @@ class NMODL:
                     idx += 1
             elif solve_method == "sparse":
                 assert solve_block.derivative
-                deriv_block = self._compile_derivative_block(solve_block)
-                1/0
+                # Sparse kinetic models are solved by the "initialize" method
+                # because solving them requires the time_step and temperature.
+                idx += 1
             else:
                 raise NotImplementedError(solve_method)
-
-    def _compile_derivative_block(self, block):
-        assert block.derivative
-        self.parameters.substitute(block)
-        block.gather_arguments()
-        for stmt in block:
-            if isinstance(stmt, AssignStatement) and stmt.derivative:
-                stmt.operation = "+="
-                stmt.lhsn = '_d_' + stmt.lhsn
-                stmt.derivative = False
-        deriv_pycode = f"def {block.name}({', '.join(block.arguments)}):\n"
-        for state in self.states:
-            deriv_pycode += f"    _d_{state} = 0.0\n"
-        deriv_pycode += code_gen.to_python(block, "    ", {})
-        deriv_pycode += "    return {"
-        deriv_pycode += ', '.join(f"{state}: _d_{state}" for state in self.states)
-        deriv_pycode += "}\n\n"
-        print(deriv_pycode)
 
     def _fixup_breakpoint_IO(self):
         for stmt in self.breakpoint_block:
@@ -225,9 +208,39 @@ class NMODL:
             print("ERROR while loading file", self.filename, flush=True)
             raise
 
+    def _compile_derivative_block(self, block):
+        assert block.derivative
+        self.parameters.substitute(block)
+        block.gather_arguments()
+        for stmt in block:
+            if isinstance(stmt, AssignStatement) and stmt.derivative:
+                stmt.operation = "+="
+                stmt.lhsn = '_d_' + stmt.lhsn
+                stmt.derivative = False
+        deriv_pycode = f"def {block.name}({', '.join(sorted(block.arguments))}):\n"
+        for state in self.states:
+            deriv_pycode += f"    _d_{state} = 0.0\n"
+        deriv_pycode += code_gen.to_python(block, "    ", {})
+        deriv_pycode += "    return {"
+        deriv_pycode += ', '.join(f"'{state}': _d_{state}" for state in self.states)
+        deriv_pycode += "}\n\n"
+        print(deriv_pycode)
+        globals_ = {}
+        code_gen.exec_string(deriv_pycode, globals_)
+        deriv_bytecode = globals_[block.name]
+        return deriv_bytecode
+
+    def _solve_steadystate(self, block):
+        deriv = self._compile_derivative_block(block)
+
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
+
+        # 
+        for x in self.states:
+            self.initial_block.statements.insert(0, AssignStatement(x, 0))
+        # 
         self.parameters.substitute(self.initial_block)
         initial_pointer_values = {}
         for arg in self.initial_block.arguments:
@@ -240,13 +253,14 @@ class NMODL:
                 if value is not None:
                     initial_pointer_values[arg] = value
         self.initial_block.substitute(initial_pointer_values)
+        # 
         self.initial_block.gather_arguments()
-        self.initial_scope = {x: 0.0 for x in self.states}
-        missing_arguments = set(self.initial_block.arguments) - set(self.initial_scope)
-        if missing_arguments:
-            raise ValueError(f"Missing initial values for {', '.join(missing_arguments)}.")
-        initial_python = code_gen.to_python(self.initial_block)
-        code_gen.exec_string(initial_python, {}, self.initial_scope)
+        if self.initial_block.arguments:
+            raise ValueError(f"Missing initial values for {', '.join(self.initial_block.arguments)}.")
+        # 
+        self.initial_python = code_gen.to_python(self.initial_block)
+        self.initial_scope = {}
+        code_gen.exec_string(self.initial_python, {}, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
     def _compile_breakpoint_block(self):

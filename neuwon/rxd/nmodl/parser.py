@@ -253,7 +253,7 @@ class IfStatement:
 class AssignStatement:
     def __init__(self, lhsn, rhs, derivative=False, operation='='):
         self.lhsn = str(lhsn) # Left hand side name.
-        if isinstance(rhs, str):
+        if type(rhs) in (str, float, int):
             rhs = sympy.sympify(rhs)
         self.rhs = rhs # Right hand side.
         self.derivative = bool(derivative)

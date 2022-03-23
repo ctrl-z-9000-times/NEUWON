@@ -20,4 +20,4 @@ def test_destexhe1994():
     verify_file_parses("./nmodl_library/Destexhe1998/release.mod", check_for_v=False)
 
 def test_nav11():
-    verify_file_parses("./nmodl_library/Balbi2017/Nav11_a.mod")
+    verify_file_parses("./nmodl_library/Nav11.mod")
