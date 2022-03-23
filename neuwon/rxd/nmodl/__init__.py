@@ -188,7 +188,7 @@ class NMODL:
                     stmt.operation = '+='
         self.breakpoint_block.map(lambda stmt: stmt.simple_solution()
                                 if isinstance(stmt, ConserveStatement) else [stmt])
-        self.breakpoint_block.substitute(self.pointers)
+        self.breakpoint_block.rename_variables(self.pointers)
 
     def initialize(self, rxd_model, name):
         database = rxd_model.get_database()
@@ -221,7 +221,7 @@ class NMODL:
         deriv_pycode = f"def {block.name}({', '.join(sorted(block.arguments))}):\n"
         for state in self.states:
             deriv_pycode += f"    _d_{state} = 0.0\n"
-        deriv_pycode += code_gen.to_python(block, "    ", {})
+        deriv_pycode += code_gen.to_python(block, "    ")
         deriv_pycode += "    return {"
         deriv_pycode += ', '.join(f"'{state}': _d_{state}" for state in self.states)
         deriv_pycode += "}\n\n"
@@ -231,30 +231,29 @@ class NMODL:
         deriv_bytecode = globals_[block.name]
         return deriv_bytecode
 
-    def _solve_steadystate(self, block):
-        deriv = self._compile_derivative_block(block)
-
     def _run_initial_block(self, database):
         """ Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope. """
         # 
-        for x in self.states:
-            self.initial_block.statements.insert(0, AssignStatement(x, 0))
-        # 
         self.parameters.substitute(self.initial_block)
-        initial_pointer_values = {}
-        for arg in self.initial_block.arguments:
-            if arg in self.pointers:
-                db_access = self.pointers[arg]
-                db_access = re.sub(r'^self\.segment\.', 'Segment.', db_access)
-                db_access = re.sub(r'^self\.inside\.',  'Inside.',  db_access)
-                db_access = re.sub(r'^self\.outside\.', 'Outside.', db_access)
-                value = database.get(db_access).get_initial_value()
-                if value is not None:
-                    initial_pointer_values[arg] = value
-        self.initial_block.substitute(initial_pointer_values)
+        # Get the initial values from the database for any pointers that have them.
+        for arg in list(self.initial_block.arguments):
+            if arg not in self.pointers:
+                continue
+            db_access = self.pointers[arg]
+            db_access = re.sub(r'^self\.segment\.', 'Segment.', db_access)
+            db_access = re.sub(r'^self\.inside\.',  'Inside.',  db_access)
+            db_access = re.sub(r'^self\.outside\.', 'Outside.', db_access)
+            value = database.get(db_access).get_initial_value()
+            if value is not None:
+                self.initial_block.statements.insert(0, AssignStatement(arg, value))
+                self.initial_block.arguments.remove(arg)
+        # Zero-init the state variables.
+        for x in self.states:
+            self.initial_block.statements.insert(0, AssignStatement(x, 0.0))
+            try: self.initial_block.arguments.remove(x)
+            except ValueError: pass
         # 
-        self.initial_block.gather_arguments()
         if self.initial_block.arguments:
             raise ValueError(f"Missing initial values for {', '.join(self.initial_block.arguments)}.")
         # 
@@ -263,24 +262,37 @@ class NMODL:
         code_gen.exec_string(self.initial_python, {}, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
+    def _substitute_initial_scope(self, block):
+        block.gather_arguments()
+        for arg, value in self.initial_scope.items():
+            if arg in self.pointers:
+                continue
+            if arg not in block.arguments:
+                continue
+            block.statements.insert(0, AssignStatement(arg, value))
+            block.arguments.remove(arg)
+
     def _compile_breakpoint_block(self):
         # 
-        self.parameters.substitute(self.breakpoint_block)
+        for solve_stmt in self.breakpoint_block:
+            if not isinstance(solve_stmt, SolveStatement):
+                continue
+            solve_block = solve_stmt.block
+            self._substitute_initial_scope(solve_block)
+            self.parameters.substitute(solve_block)
+            # solve_block.arguments = sorted(set(solve_block.arguments) - set(self.states))
         # 
         magnitude = sympy.Symbol('self.magnitude')
         for name, (value, units) in self.instance_parameters.items():
             self.breakpoint_block.statements.insert(0, AssignStatement(name, value * magnitude))
         # 
-        for arg in self.breakpoint_block.arguments:
-            if arg in self.pointers: continue
-            elif arg in self.initial_scope:
-                value = float(self.initial_scope[arg])
-                self.breakpoint_block.statements.insert(0, AssignStatement(arg, value))
+        self._substitute_initial_scope(self.breakpoint_block)
+        self.parameters.substitute(self.breakpoint_block)
         # 
         self.advance_pycode = (
                 "@Compute\n"
                 "def advance(self):\n"
-                + code_gen.to_python(self.breakpoint_block, "    ", self.pointers))
+                + code_gen.to_python(self.breakpoint_block, "    "))
         globals_ = {
                 'Compute': Compute,
         }
@@ -412,14 +424,14 @@ class ParameterTable(dict):
         return parameters
 
     def substitute(self, block):
-        substitutions = {}
+        block.gather_arguments()
         for name, (value, units) in self.items():
             if value is None:
                 continue
-            substitutions[name] = value
-            if name == "dt":
-                substitutions[solver.dt] = value
-        block.substitute(substitutions)
+            if name not in block.arguments:
+                continue
+            block.statements.insert(0, AssignStatement(name, value))
+            block.arguments.remove(name)
 
 class OmnipresentNmodlMechanism(NMODL, OmnipresentMechanism):
     pass

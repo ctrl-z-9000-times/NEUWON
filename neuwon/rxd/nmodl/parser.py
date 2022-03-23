@@ -189,7 +189,7 @@ class CodeBlock:
             mapped_statements.extend(f(stmt))
         self.statements = mapped_statements
 
-    def substitute(self, substitutions: dict):
+    def rename_variables(self, substitutions: dict):
         substitution_symbols = {
                 sympy.Symbol(k, real=True) if isinstance(k, str) else k :
                 sympy.Symbol(v, real=True) if isinstance(v, str) else v
