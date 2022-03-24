@@ -274,8 +274,9 @@ class SolveStatement:
     def __init__(self, AST):
         # The "block" attribute gets rewritten by the method gather_code_blocks().
         self.block = AST.block_name.get_node_name()
-        self.steadystate = AST.steadystate
-        if AST.method:
+        if AST.steadystate:
+            self.method = AST.steadystate.get_node_name()
+        elif AST.method:
             self.method = AST.method.get_node_name()
         else:
             self.method = "exact"

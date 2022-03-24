@@ -2,6 +2,7 @@ from neuwon.rxd.nmodl.parser import (CodeBlock,
         IfStatement, AssignStatement, SolveStatement, ConserveStatement)
 import math
 import tempfile
+import textwrap
 import sympy.core.basic
 import sympy.printing.pycode as sympy_to_pycode
 
@@ -12,7 +13,7 @@ def to_python(self, indent=""):
         for stmt in self.statements:
             py += to_python(stmt, indent)
         if not self.statements:
-            py += indent + "pass\n"
+            py += indent + "pass"
     elif isinstance(self, IfStatement):
         py += indent + "if %s:\n"%sympy_to_pycode(self.condition)
         py += to_python(self.main_block, indent + "    ")
@@ -35,7 +36,9 @@ def to_python(self, indent=""):
     elif isinstance(self, SolveStatement):
         solve_block = self.block
         arguments = ', '.join(sorted(solve_block.arguments))
-        py += f"{indent}{solve_block.name}({arguments})\n"
+        py += f"{indent}{solve_block.name}({arguments})"
+    elif isinstance(self, str):
+        py += textwrap.indent(self, indent)
     else:
         raise NotImplementedError(type(self))
     return py.rstrip() + "\n"
