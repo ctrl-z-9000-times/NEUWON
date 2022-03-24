@@ -47,10 +47,9 @@ class NMODL:
                 self.all_blocks = list(blocks.values())
                 self.initial_block = blocks['INITIAL']
                 self.breakpoint_block = blocks['BREAKPOINT']
-                self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative}
+                self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
-                if self.omnipresent:    self.__class__ = OmnipresentNmodlMechanism
-                else:                   self.__class__ = LocalNmodlMechanismSpecification
+                self.__class__ = OmnipresentNmodlMechanism if self.omnipresent else LocalNmodlMechanismSpecification
                 self._solve()
                 self._fixup_breakpoint_IO()
             except Exception:
@@ -74,6 +73,14 @@ class NMODL:
         for x in disallow:
             if parser.lookup(getattr(ANT, x)):
                 raise ValueError("\"%s\"s are not allowed."%x)
+
+    def _gather_conserve_statements(self):
+        conserve_statements = []
+        for block in self.all_blocks:
+            for stmt in block:
+                if isinstance(stmt, ConserveStatement):
+                    conserve_statements.append(stmt)
+        return conserve_statements
 
     def _gather_IO(self, parser):
         """
@@ -174,6 +181,12 @@ class NMODL:
                 return [solve_stmt]
             solve_block  = solve_stmt.block
             solve_method = solve_stmt.method
+            # Move the CONSERVE statements to the end of the block.
+            solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
+            # Replace CONSERVE statements with a simple multiplicative solution.
+            solve_block.map(lambda stmt: stmt.simple_solution()
+                            if isinstance(stmt, ConserveStatement) else [stmt])
+            # 
             if solve_method in ode_methods:
                 method = ode_methods[solve_method]
                 assert solve_block.derivative
@@ -191,8 +204,6 @@ class NMODL:
             if isinstance(stmt, AssignStatement):
                 if stmt.lhsn in self.accumulators:
                     stmt.operation = '+='
-        self.breakpoint_block.map(lambda stmt: stmt.simple_solution()
-                                if isinstance(stmt, ConserveStatement) else [stmt])
         self.breakpoint_block.rename_variables(self.pointers)
 
     def initialize(self, rxd_model, name):
@@ -216,26 +227,17 @@ class NMODL:
 
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
-        conserve_statements = self._find_all_conserve_statements()
         init_state = {state: 0.0 for state in self.states}
-        if not conserve_statements:
+        if not self.conserve_statements:
             pass # Zero-init.
-        elif len(conserve_statements) == 1:
-            stmt = conserve_statements[0]
+        elif len(self.conserve_statements) == 1:
+            stmt = self.conserve_statements[0]
             init_value = stmt.conserve_sum / len(stmt.states)
             for state in stmt.states:
                 init_state[str(state)] += init_value
         else:
-            raise ValueError("Multiple CONSERVE statements are not allowed!")
+            raise ValueError("Multiple CONSERVE statements are not supported!")
         return init_state
-
-    def _find_all_conserve_statements(self):
-        conserve_statements = []
-        for block in self.all_blocks:
-            for stmt in block:
-                if isinstance(stmt, ConserveStatement):
-                    conserve_statements.append(stmt)
-        return conserve_statements
 
     def _run_initial_block(self, database):
         """
@@ -283,7 +285,8 @@ class NMODL:
         max_time   = 60*60*1000 # 1 hour in milliseconds.
         max_delta  = 1e-3
         nstates    = len(self.states)
-        py = f"def __{solve_name}_steadystate():\n"
+        py  = f'def __{solve_name}_steadystate():\n'
+        py += f'    global {state_list}\n'
         if solve_method == 'sparse':
             py += textwrap.indent(self._derivative_block_to_python(solve_block), "    ")
             py +=  '    import numpy as np\n'
@@ -319,14 +322,6 @@ class NMODL:
         deriv_pycode += code_gen.to_python(block, "    ")
         deriv_pycode += f"    return [{', '.join(f'_d_{state}' for state in self.states)}]\n\n"
         return deriv_pycode
-
-    def _initialize_kinetic_model(self, block):
-        # Get the derivative function
-        pass
-        # Build the IRM table
-        pass
-        # Make Compute'd method to advance the state.
-        1/0
 
     def _substitute_initial_scope(self, block):
         block.gather_arguments()
@@ -364,6 +359,17 @@ class NMODL:
         }
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
+
+
+    def _initialize_kinetic_model(self, block):
+        # Get the derivative function
+        pass
+        # Build the IRM table
+        pass
+        # Make Compute'd method to advance the state.
+        1/0
+
+
 
     def _initialize_omnipresent_mechanism_class(self, database):
         1/0 # TODO
