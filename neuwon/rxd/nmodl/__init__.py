@@ -184,8 +184,7 @@ class NMODL:
             # Move the CONSERVE statements to the end of the block.
             solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
             # Replace CONSERVE statements with a simple multiplicative solution.
-            solve_block.map(lambda stmt: stmt.simple_solution()
-                            if isinstance(stmt, ConserveStatement) else [stmt])
+            solve_block.map(solver.conserve_statement_solution)
             # 
             if solve_method in ode_methods:
                 method = ode_methods[solve_method]

@@ -1,4 +1,4 @@
-from neuwon.rxd.nmodl.parser import AssignStatement
+from neuwon.rxd.nmodl.parser import AssignStatement, ConserveStatement
 import sympy
 
 dt = sympy.Symbol("dt", real=True, positive=True)
@@ -120,3 +120,18 @@ def crank_nicholson(self: AssignStatement):
     assert len(backward_euler) == 1, backward_euler
     self.rhs = backward_euler.pop() * 2 - init_state
     self.rhs = self.rhs.simplify()
+
+def conserve_statement_solution(self: ConserveStatement):
+    """ Usage: CodeBlock.map(conserve_statement_solution) """
+    if not isinstance(self, ConserveStatement):
+        return [self]
+    if not self.states:
+        return []
+    true_sum = self.states[0]
+    for state in self.states[1:]:
+        true_sum = true_sum + state
+    replacement = [AssignStatement('_CORRECTION_FACTOR', self.conserve_sum / true_sum)]
+    for state in self.states:
+        replacement.append(
+                AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))
+    return replacement

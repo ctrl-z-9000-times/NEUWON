@@ -1,5 +1,4 @@
 import itertools
-import nmodl
 import nmodl.ast
 import nmodl.dsl
 import nmodl.symtab
@@ -294,15 +293,3 @@ class ConserveStatement:
         sum_solution = sympy.solvers.solve(sympy.Eq(conserved_expr, assumed_form), sum_symbol)
         assert(len(sum_solution) == 1)
         self.conserve_sum = sum_solution[0].evalf()
-
-    def simple_solution(self):
-        if not self.states:
-            return []
-        true_sum = self.states[0]
-        for state in self.states[1:]:
-            true_sum = true_sum + state
-        replacement = [AssignStatement('_CORRECTION_FACTOR', self.conserve_sum / true_sum)]
-        for state in self.states:
-            replacement.append(
-                    AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))
-        return replacement
