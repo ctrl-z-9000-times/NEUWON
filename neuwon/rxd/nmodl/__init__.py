@@ -42,10 +42,10 @@ class NMODL:
                 self.parameters = ParameterTable(parser.gather_parameters(), self.nmodl_name)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
-                self.all_blocks = list(blocks.values()) # Unused?
+                self.all_blocks = list(blocks.values())
                 self.initial_block = blocks['INITIAL']
                 self.breakpoint_block = blocks['BREAKPOINT']
-                self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative} # Unused?
+                self.derivative_blocks = {k:v for k,v in blocks.items() if v.derivative}
                 self._gather_IO(parser)
                 if self.omnipresent:    self.__class__ = OmnipresentNmodlMechanism
                 else:                   self.__class__ = LocalNmodlMechanismSpecification
@@ -209,15 +209,38 @@ class NMODL:
             print("ERROR while loading file", self.filename, flush=True)
             raise
 
+    def _estimate_initial_state(self):
+        # Find a reasonable initial state which respects any CONSERVE statements.
+        conserve_statements = self._find_all_conserve_statements()
+        init_state = {state: 0.0 for state in self.states}
+        if not conserve_statements:
+            pass # Zero-init.
+        elif len(conserve_statements) == 1:
+            stmt = conserve_statements[0]
+            init_value = stmt.conserve_sum / len(stmt.states)
+            for state in stmt.states:
+                init_state[str(state)] += init_value
+        else:
+            raise ValueError("Multiple CONSERVE statements are not allowed!")
+        return init_state
+
+    def _find_all_conserve_statements(self):
+        conserve_statements = []
+        for block in self.all_blocks:
+            for stmt in block:
+                if isinstance(stmt, ConserveStatement):
+                    conserve_statements.append(stmt)
+        return conserve_statements
+
     def _run_initial_block(self, database):
         """
         Use pythons built-in "exec" function to run the INITIAL_BLOCK.
         Sets: initial_state and initial_scope.
         """
-        # Zero-init the state variables.
-        for x in self.states:
-            self.initial_block.statements.insert(0, AssignStatement(x, 0.0))
-            try: self.initial_block.arguments.remove(x)
+        # Initialize the state variables.
+        for state, value in self._estimate_initial_state().items():
+            self.initial_block.statements.insert(0, AssignStatement(state, value))
+            try: self.initial_block.arguments.remove(state)
             except ValueError: pass
         # 
         self.parameters.substitute(self.initial_block)
