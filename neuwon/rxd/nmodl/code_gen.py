@@ -24,10 +24,11 @@ def to_python(self, indent=""):
     elif isinstance(self, AssignStatement):
         try:
             if isinstance(self.rhs, sympy.core.basic.Basic):
-                self.rhs = sympy_to_pycode(self.rhs.simplify())
+                self.rhs = self.rhs.simplify()
+                rhs = sympy_to_pycode(self.rhs.simplify())
             else:
-                self.rhs = str(self.rhs)
-            py += indent + self.lhsn + self.operation + self.rhs
+                rhs = str(self.rhs)
+            py += indent + self.lhsn + self.operation + rhs
         except Exception:
             print("Failed at:", repr(self), flush=True)
             raise

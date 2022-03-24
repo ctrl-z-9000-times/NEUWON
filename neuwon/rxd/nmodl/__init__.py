@@ -6,9 +6,11 @@ from .parser import (NmodlParser, ANT,
         SolveStatement,
         AssignStatement,
         ConserveStatement)
+import copy
 import os.path
 import re
 import sympy
+import textwrap
 
 __all__ = ["NMODL"]
 
@@ -167,16 +169,19 @@ class NMODL:
             'exact':            solver.sympy_solve_ode,
         }
         def solve(solve_stmt):
+            # Solve in-place but return a copy.
             if not isinstance(solve_stmt, SolveStatement):
                 return [solve_stmt]
             solve_block  = solve_stmt.block
             solve_method = solve_stmt.method
             if solve_method in ode_methods:
                 method = ode_methods[solve_method]
+                assert solve_block.derivative
+                solve_block.derivative = False
                 for stmt in solve_block:
                     if isinstance(stmt, AssignStatement) and stmt.derivative:
                         method(stmt)
-                return solve_block.statements
+                return [copy.copy(x) for x in solve_block.statements]
             else:
                 return [solve_stmt]
         self.breakpoint_block.map(solve)
@@ -260,32 +265,60 @@ class NMODL:
         if self.initial_block.arguments:
             raise ValueError(f"Missing initial values for {', '.join(self.initial_block.arguments)}.")
         # 
+        self.initial_block.map(self._solve_steadystate)
+        # 
         self.initial_python = code_gen.to_python(self.initial_block)
         self.initial_scope = {}
-        code_gen.exec_string(self.initial_python, {}, self.initial_scope)
+        code_gen.exec_string(self.initial_python, self.initial_scope)
         self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
 
-    def _compile_derivative_block(self, block):
+    def _solve_steadystate(self, solve_stmt):
+        """ Replace SOLVE STEADYSTATE statements with python code to solve them. """
+        if not isinstance(solve_stmt, SolveStatement):
+            return [solve_stmt]
+        solve_block  = solve_stmt.block
+        solve_name   = solve_block.name
+        solve_method = solve_stmt.method
+        state_list = ', '.join(sorted(self.states))
+        max_time   = 60*60*1000 # 1 hour in milliseconds.
+        max_delta  = 1e-3
+        nstates    = len(self.states)
+        py = f"def __{solve_name}_steadystate():\n"
+        if solve_method == 'sparse':
+            py += textwrap.indent(self._derivative_block_to_python(solve_block), "    ")
+            py +=  '    import numpy as np\n'
+            py +=  '    from scipy.linalg import expm\n'
+            py += f'    irm = np.empty(({nstates}, {nstates}))\n'
+            py += f'    for idx in range({nstates}):\n'
+            py += f'        impulse = [int(x == idx) for x in range({nstates})]\n'
+            py += f'        irm[:,idx] = {solve_name}(*impulse)\n'
+            py += f'    irm = expm(irm * {max_time})\n'
+            py += f'    return irm.dot([{state_list}])\n'
+        else:
+            assert not solve_block.derivative # Should already be solved!
+            py += f"    prev_state = [{state_list}]\n"
+            py += f"    for _ in range(int(round({max_time} / dt))):\n"
+            py += textwrap.indent(code_gen.to_python(solve_block), "        ")
+            py += f"        state = [{state_list}]\n"
+            py += f"        if max(abs(a-b) for a,b in zip(prev_state, state)) < {max_delta}: break\n"
+            py +=  "        prev_state = state\n"
+            py += f"    return state\n"
+        py += f'{state_list} = __{solve_name}_steadystate()\n'
+        return [py]
+
+    def _derivative_block_to_python(self, block):
         assert block.derivative
-        self.parameters.substitute(block)
-        block.gather_arguments()
         for stmt in block:
             if isinstance(stmt, AssignStatement) and stmt.derivative:
-                stmt.operation = "+="
-                stmt.lhsn = '_d_' + stmt.lhsn
+                assert stmt.lhsn in self.states
+                stmt.lhsn = f'_d_{stmt.lhsn}'
                 stmt.derivative = False
-        deriv_pycode = f"def {block.name}({', '.join(sorted(block.arguments))}):\n"
+        deriv_pycode = f"def {block.name}({', '.join(self.states)}):\n"
         for state in self.states:
             deriv_pycode += f"    _d_{state} = 0.0\n"
         deriv_pycode += code_gen.to_python(block, "    ")
-        deriv_pycode += "    return {"
-        deriv_pycode += ', '.join(f"'{state}': _d_{state}" for state in self.states)
-        deriv_pycode += "}\n\n"
-        print(deriv_pycode)
-        globals_ = {}
-        code_gen.exec_string(deriv_pycode, globals_)
-        deriv_bytecode = globals_[block.name]
-        return deriv_bytecode
+        deriv_pycode += f"    return [{', '.join(f'_d_{state}' for state in self.states)}]\n\n"
+        return deriv_pycode
 
     def _initialize_kinetic_model(self, block):
         # Get the derivative function
