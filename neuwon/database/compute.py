@@ -1,8 +1,3 @@
-
-
-DEBUG = False
-
-
 from collections.abc import Callable, Iterable, Mapping
 from .database import Database, DB_Class, DB_Object
 from .data_components import ClassAttribute, Attribute, SparseMatrix
@@ -390,8 +385,7 @@ class _JIT:
 
 class _ReferenceRewriter(ast.NodeTransformer):
     def __init__(self, db_class, reference_name, body_ast, target):
-        if DEBUG:
-            print(f'Rewriting references to {reference_name} ({db_class.get_name()}).')
+        # print(f'Rewriting references to {reference_name} ({db_class.get_name()}).')
         ast.NodeTransformer.__init__(self)
         self.db_class       = db_class
         self.reference_name = str(reference_name)

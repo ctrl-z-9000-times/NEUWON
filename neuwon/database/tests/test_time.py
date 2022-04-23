@@ -125,71 +125,54 @@ def test_waveform_frequency():
             plt.xlim(0, max(freq))
             plt.show()
 
-def test_traces():
-    # Test no samples / very few samples.
-    for samples in range(4):
-        inner_test_traces(
-            period      = 100,
-            samples     = samples,
-            start       = True,
-            mean        = 42,
-            std         = 0,
-            tolerance   = 1e-9,)
-
-    inner_test_traces(
-        period      =   50,
-        samples     = 1000,
-        start       = False, # Test no-start
-        mean        = 12,
-        std         = 0.5,
-        tolerance   = 0.1,)
-
-    for device in [False, True]: # Test on GPU.
-        # Test num-samples == period
-        inner_test_traces(
-            period      = 100,
-            samples     = 100,
-            start       = True,
-            mean        = 4000,
-            std         =  600,
-            tolerance   = 0.1,
-            device      = device,)
-
-def test_trace_averages():
-    """ period >> num-samples. """
-    inner_test_traces(
-        period      = 1e9,
-        samples     = 2e3,
-        start       = True,
-        mean        = -120,
-        std         = 0.3,
-        tolerance   = 0.03,)
-
-def inner_test_traces(period, samples, start, mean, std, tolerance, device=False):
+def test_obj_trace():
     m = Model()
     f = m.Foo()
+    # Test short run behavior, on startup.
+    f.bar = 42
+    t = Trace(f, "bar", 100)
+    for _ in range(3):
+        f.bar = 42
+        m.clock.tick()
+    assert t.get_mean()                 == approx(42)
+    assert t.get_standard_deviation()   == approx(0)
+    # Test short run behavior, immediately after reset.
+    t.reset()
+    f.bar = 64
+    m.clock.tick()
+    assert t.get_mean()                 == approx(64)
+    assert t.get_standard_deviation()   == approx(0)
+    # Test long run behavior.
+    for _ in range(2000):
+        f.bar = np.random.normal(12, 5)
+        m.clock.tick()
+    assert t.get_mean()                 == approx(12, rel=.05)
+    assert t.get_standard_deviation()   == approx(5,  rel=.05)
+    m.db.check()
+    t.reset()
+
+def test_attr_trace():
+    mean = -120
+    std  = 0.3
+    m = Model()
     for _ in range(32):
         m.Foo()
     num_foo = len(m.db.get("Foo"))
     m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
-
-    trace_obj  = Trace((f, "bar"), period)
-    trace_attr = Trace(m.db.get("Foo.bar"), period, start=start)
-    while m.db.clock() < samples:
+    t = TraceAll(m.db.get("Foo.bar"), 100)
+    for i in range(5000):
         m.db.set_data("Foo.bar", np.random.normal(mean, std, num_foo))
-        if device:
+        if i % 2 == 1:
             with m.db.using_memory_space('cuda'):
                 gpu_array = m.db.get_data("Foo.bar")
-        m.clock.tick()
+                m.clock.tick()
+        else:
+            m.clock.tick()
 
-    assert trace_obj.get_mean()                 == approx(mean, tolerance)
-    assert trace_obj.get_standard_deviation()   == approx(std,  tolerance)
-
-    trace_mean = trace_attr.get_mean()
-    trace_std  = trace_attr.get_standard_deviation()
+    trace_mean = t.get_mean()
+    trace_std  = t.get_standard_deviation()
     for idx in range(num_foo):
-        assert trace_mean[idx]  == approx(mean, tolerance)
-        assert trace_std[idx]   == approx(std,  tolerance)
+        assert trace_mean[idx]  == approx(mean, rel=.05)
+        assert trace_std[idx]   == approx(std,  rel=.10)
     m.db.check()
-    trace_obj.reset()
-    trace_attr.reset()
+    t.reset()

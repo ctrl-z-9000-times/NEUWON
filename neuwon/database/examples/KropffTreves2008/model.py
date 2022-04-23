@@ -1,7 +1,6 @@
 from htm import SDR
 from htm.encoders.coordinate import CoordinateEncoder
 from neuwon.database import *
-from neuwon.database.time import Trace
 import math
 import numpy as np
 import random
@@ -39,12 +38,12 @@ class Model:
 
         self.PlaceCell.add_attribute("r", doc="Firing rate")
         self.PlaceCell.add_sparse_matrix("J", self.GridCell, doc="Synapse weights")
-        Trace(self.PlaceCell.get("r"), self.learning_desensitization_period, variance=False, start=False)
+        TraceAll(self.PlaceCell.get("r"), self.learning_desensitization_period)
 
         self.GridCell.add_attribute("psi", doc="Firing rate")
         self.GridCell.add_attribute("r_act", 0)
         self.GridCell.add_attribute("r_inact", 0)
-        Trace(self.GridCell.get("psi"), self.learning_desensitization_period, variance=False, start=False)
+        TraceAll(self.GridCell.get("psi"), self.learning_desensitization_period)
 
         PC = self.PlaceCell.get_instance_type()
         GC = self.GridCell.get_instance_type()
