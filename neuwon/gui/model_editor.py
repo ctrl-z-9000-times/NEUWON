@@ -20,7 +20,7 @@ class ModelEditor:
         self.filemenu.add_command(label="Close", command=lambda: 1/0)
 
         self.tab_ctrl = ttk.Notebook(self.root)
-        self.tab_ctrl.grid()
+        self.tab_ctrl.grid(sticky='nesw')
 
         self.simulation = Simulation(self.tab_ctrl)
         self.tab_ctrl.add(self.simulation.frame, text='Simulation')
@@ -43,56 +43,73 @@ class ModelEditor:
 class ControlPanel:
     def __init__(self, root):
         self.frame = ttk.Frame(root)
-        self.frame.grid()
+        self.padx = 5
+        self.pady = 1
+        self.frame.grid(sticky='nesw')
         self.row_idx = 0
 
-    def add_slider(self, text, variable, from_, to):
+    def add_empty_space(self, size=10):
+        self.frame.rowconfigure(self.row_idx, minsize=size)
+        self.row_idx += 1
+
+    def add_checkbox(self, text, variable):
+        label  = ttk.Label(self.frame, text=text)
+        button = ttk.Checkbutton(self.frame, variable=variable,)
+        label .grid(row=self.row_idx, column=0, sticky='w', padx=self.padx, pady=self.pady)
+        button.grid(row=self.row_idx, column=1, sticky='w', padx=self.padx, pady=self.pady)
+        self.row_idx += 1
+
+    def add_slider(self, text, variable, from_, to, units=""):
         label = ttk.Label(self.frame, text=text)
         value = ttk.Label(self.frame)
         def value_changed_callback(v):
             v = float(v)
             v = round(v, 3)
-            value.configure(text=str(v).ljust(5))
+            v = str(v) + " " + units
+            value.configure(text=v.ljust(5))
         scale = ttk.Scale(self.frame, variable=variable,
                 from_=from_, to=to,
                 command = value_changed_callback,
                 orient = 'horizontal',)
         value_changed_callback(scale.get())
         # 
-        label.grid(row=self.row_idx, column=0, sticky='w')
-        scale.grid(row=self.row_idx, column=1, sticky='ew')
-        value.grid(row=self.row_idx, column=2, sticky='w')
+        label.grid(row=self.row_idx, column=0, sticky='w', padx=self.padx, pady=self.pady)
+        scale.grid(row=self.row_idx, column=1, sticky='ew',pady=self.pady)
+        value.grid(row=self.row_idx, column=2, sticky='w', padx=self.padx, pady=self.pady)
         self.row_idx += 1
 
-    def add_number_entry(self, text, variable):
+    def add_number_entry(self, text, variable, units=""):
         label = ttk.Label(self.frame, text=text)
-        entry = tk.Entry(self.frame, textvar = variable,)
+        entry = tk.Entry(self.frame, textvar = variable, justify='right')
+        units = ttk.Label(self.frame, text=units, justify='left')
         # 
-        label.grid(row=self.row_idx, column=0, sticky='w')
-        entry.grid(row=self.row_idx, column=1, sticky='w')
+        label.grid(row=self.row_idx, column=0, sticky='w', padx=self.padx, pady=self.pady)
+        entry.grid(row=self.row_idx, column=1, sticky='w', pady=self.pady)
+        units.grid(row=self.row_idx, column=2, sticky='w', padx=self.padx, pady=self.pady)
         self.row_idx += 1
 
 
 class Simulation(ControlPanel):
     def __init__(self, root):
         super().__init__(root)
+        self.add_empty_space()
 
-        self.time_step = tk.DoubleVar(self.frame)
-        self.add_number_entry("Time Step", self.time_step)
+        self.time_step = tk.DoubleVar(self.frame, 0.1)
+        self.add_number_entry("Time Step", self.time_step, units='ms')
 
-        self.temperature = tk.DoubleVar(self.frame)
-        self.add_number_entry("Temperature", self.temperature)
+        self.temperature = tk.DoubleVar(self.frame, 37.0)
+        self.add_number_entry("Temperature", self.temperature, units='°C')
 
-        self.initial_voltage = tk.DoubleVar(self.frame)
-        self.add_number_entry("Initial Voltage", self.initial_voltage)
+        self.initial_voltage = tk.DoubleVar(self.frame, -70.0)
+        self.add_number_entry("Initial Voltage", self.initial_voltage, units='mV')
 
-        self.resistance = tk.DoubleVar(self.frame)
-        self.add_number_entry("Cytoplasmic Resistance", self.resistance)
+        self.resistance = tk.DoubleVar(self.frame, 100.0)
+        self.add_number_entry("Cytoplasmic Resistance", self.resistance, units='')
 
-        self.capacitance = tk.DoubleVar(self.frame)
-        self.add_number_entry("Membrane Capacitance", self.capacitance)
+        self.capacitance = tk.DoubleVar(self.frame, 1.0)
+        self.add_number_entry("Membrane Capacitance", self.capacitance, units='μf/cm^2')
 
-        # Load mechanisms from file?
+        # TODO: Load mechanisms from file?
 
 
 class Species:
@@ -171,10 +188,7 @@ class Morphology(ControlPanel):
         self.row_idx += 1
 
         self.competitive = tk.BooleanVar(self.frame, True)
-        ttk.Checkbutton(self.frame, text = "Competitive Growth",
-                variable = self.competitive,
-                ).grid(row=self.row_idx, column=0)
-        self.row_idx += 1
+        self.add_checkbox("Competitive Growth", self.competitive)
 
         self.balancing_factor = tk.DoubleVar(self.frame, False)
         self.add_slider("Balancing Factor", self.balancing_factor, 0, 1)
@@ -182,25 +196,23 @@ class Morphology(ControlPanel):
         self.carrier_point_density = tk.DoubleVar(self.frame, 0)
         self.add_number_entry("Carrier Point Density", self.carrier_point_density)
 
-        self.max_segment_length = tk.DoubleVar(self.frame, 0)
-        self.add_number_entry("Maximum Segment Length", self.max_segment_length)
+        self.max_segment_length = tk.DoubleVar(self.frame, 10)
+        self.add_number_entry("Maximum Segment Length", self.max_segment_length, units='μm')
 
-        self.extension_angle = tk.DoubleVar(self.frame, 0)
-        self.extension_angle.set(60)
-        self.add_slider("Maximum Extension Angle ", self.extension_angle, 0, 180)
+        self.extension_angle = tk.DoubleVar(self.frame, 60)
+        self.add_slider("Maximum Extension Angle ", self.extension_angle, 0, 180, units='°')
 
-        self.extension_distance = tk.DoubleVar(self.frame, 0)
-        self.add_number_entry("Maximum Extension Distance", self.extension_distance)
+        self.extension_distance = tk.DoubleVar(self.frame, 100)
+        self.add_number_entry("Maximum Extension Distance", self.extension_distance, units='μm')
 
-        self.branch_angle = tk.DoubleVar(self.frame, 0)
-        self.branch_angle.set(60)
-        self.add_slider("Maximum Branch Angle ", self.branch_angle, 0, 180)
+        self.branch_angle = tk.DoubleVar(self.frame, 60)
+        self.add_slider("Maximum Branch Angle ", self.branch_angle, 0, 180, units='°')
 
-        self.branch_distance = tk.DoubleVar(self.frame, 0)
-        self.add_number_entry("Maximum Branch Distance", self.branch_distance)
+        self.branch_distance = tk.DoubleVar(self.frame, 100)
+        self.add_number_entry("Maximum Branch Distance", self.branch_distance, units='μm')
 
-        self.diameter = tk.DoubleVar(self.frame, 0)
-        self.add_number_entry("Diameter", self.diameter)
+        self.diameter = tk.DoubleVar(self.frame, 3)
+        self.add_number_entry("Diameter", self.diameter, units='μm')
 
         # neuron region (drop down menu?)
         # global region
