@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog, font
 import bisect
+import math
 import os.path
 import pprint
 
@@ -42,8 +43,11 @@ class ModelEditor:
 
         add_tab(tk.Frame(self.tab_ctrl), 'Regions')
 
-        self.cell_builder = CellBuilder(self.tab_ctrl)
-        add_tab(self.cell_builder.frame, 'Neurons')
+        self.segments = Segments(self.tab_ctrl)
+        add_tab(self.segments.frame, 'Segments')
+
+        self.neurons = Neurons(self.tab_ctrl)
+        add_tab(self.neurons.frame, 'Neurons')
 
         add_tab(tk.Frame(self.tab_ctrl), 'Synapses')
 
@@ -98,7 +102,7 @@ class ModelEditor:
             f.write('\n')
 
     def save_as(self):
-        save_as_filename = filedialog.asksaveasfilename()
+        save_as_filename = filedialog.asksaveasfilename(defaultextension='.py')
         if not save_as_filename:
             return
         self.filename = save_as_filename
@@ -112,11 +116,19 @@ class ModelEditor:
         return {
             "simulation":   self.simulation.get_parameters(),
             "species":      self.species.get_parameters(),
+            "mechanisms":   self.mechanisms.get_parameters(),
+            "segments":     self.segments.get_parameters(),
+            "neurons":      self.neurons.get_parameters(),
         }
 
     def set_parameters(self, parameters):
-        self.simulation.set_parameters( parameters["simulation"])
-        self.species.set_parameters(    parameters["species"])
+        parameters = dict(parameters)
+        self.simulation.set_parameters(     parameters.pop("simulation", {}))
+        self.species.set_parameters(        parameters.pop("species", {}))
+        self.mechanisms.set_parameters(     parameters.pop("mechanisms", {}))
+        self.segments.set_parameters(       parameters.pop("segments", {}))
+        self.neurons.set_parameters(        parameters.pop("neurons", {}))
+        assert not parameters
 
 
 class ControlPanel:
@@ -224,12 +236,13 @@ class ControlPanel:
         units.grid(row=self.row_idx, column=2, sticky='w', padx=padx, pady=pady)
         self.row_idx += 1
 
+
 class SelectionPanel:
     """ GUI element for managing lists. """
     def __init__(self, root, command, title=""):
         self.frame = ttk.Frame(root)
         self.frame.grid(sticky='nesw')
-        self._on_select = command
+        self._on_select_callback = command
         self._current_selection = ()
         # 
         if title:
@@ -241,25 +254,32 @@ class SelectionPanel:
         self.column_idx = 0 # Index for appending buttons.
         # 
         self.listbox = tk.Listbox(self.frame, selectmode='single', exportselection=True)
-        self.listbox.bind('<<ListboxSelect>>', self._callback)
+        self.listbox.bind('<<ListboxSelect>>', self._on_select)
         self.listbox.grid(row=2, column=0, sticky='nesw')
 
-    def _callback(self, _, deselect=False):
+    def _on_select(self, event, deselect=False):
         indices = self.listbox.curselection()
         items   = tuple(self.listbox.get(idx) for idx in indices)
         if items == self._current_selection:
             return
         if not items and not deselect:
             return
-        self._on_select(self._current_selection, items)
+        self._on_select_callback(self._current_selection, items)
         self._current_selection = items
 
     def touch(self):
         """ Issue an event as though the user just selected the current items. """
-        self._on_select(self._current_selection, self._current_selection)
+        self._on_select_callback(self._current_selection, self._current_selection)
 
-    def add_button(self, text, command):
-        button = ttk.Button(self.button_panel, text=text, command=command)
+    def add_button(self, text, command, require_selection=False):
+        if require_selection:
+            def callback():
+                if not self.get():
+                    return
+                command()
+        else:
+            callback = command
+        button = tk.Button(self.button_panel, text=text, command=callback, font=font.BOLD,)
         button.grid(row=1, column=self.column_idx, sticky='w', padx=padx, pady=pady)
         self.column_idx += 1
 
@@ -267,7 +287,7 @@ class SelectionPanel:
         """ Replace the current contents of this Listbox with the given list of items. """
         self.listbox.delete(0, tk.END)
         self.listbox.insert(0, *items)
-        self._callback(None, deselect=True)
+        self._on_select(None, deselect=True)
 
     def get(self):
         return self._current_selection
@@ -278,30 +298,31 @@ class SelectionPanel:
     def select(self, item):
         idx = self.get_all().index(item)
         self.listbox.selection_set(idx)
-        self._callback(None)
+        self._on_select(None)
 
     def clear(self):
         """ Deselect everything. """
         self.listbox.selection_clear(0, tk.END)
-        self._callback(None, deselect=True)
+        self._on_select(None, deselect=True)
 
     def insert_sorted(self, item):
         idx = bisect.bisect(self.get_all(), item)
         self.listbox.insert(idx, item)
+        self.listbox.selection_clear(0, tk.END)
         self.listbox.selection_set(idx)
-        self._callback(None)
+        self._on_select(None)
 
     def rename(self, old_item, new_item):
         idx = self.get_all().index(old_item)
         self.listbox.delete(idx)
         self.listbox.insert(idx, new_item)
         self.listbox.selection_set(idx)
-        self._callback(None)
+        self._on_select(None)
 
     def delete(self, item):
         idx = self.get_all().index(item)
         self.listbox.delete(idx)
-        self._callback(None, deselect=True)
+        self._on_select(None, deselect=True)
 
 
 class Simulation(ControlPanel):
@@ -340,28 +361,41 @@ class Species:
         self.species_ctrl.frame.grid(row=0, column=1, padx=padx, pady=pady, sticky='nw')
 
         self.species_list.add_button("New", self.create_species)
-        self.species_list.add_button("Delete", self.destroy_species)
-        self.species_list.add_button("Rename", self.rename_species)
+        self.species_list.add_button("Delete", self.destroy_species, require_selection=True)
+        self.species_list.add_button("Rename", self.rename_species, require_selection=True)
 
         self.init_species_control_panel()
         self._default_parameters = {str(v): v.get() for v in self.species_ctrl.variables}
+        self._default_parameters["decay_period"] = math.inf
+        self._default_parameters["reversal_potential"] = "Const"
         self.species_list.touch()
 
     def init_species_control_panel(self):
-
         self.species_ctrl.add_label(
                 textvariable=tk.StringVar(self.frame, name="current_species_title"),
                 font=font.BOLD,
                 relief='raised')
+
         self.species_ctrl.add_empty_space()
 
-        self.species_ctrl.add_entry("Charge", tk.IntVar(self.frame, name="charge"))
+        self.species_ctrl.add_entry("Diffusivity",
+                tk.DoubleVar(self.frame, name='diffusivity'),
+                units='')
+        self.species_ctrl.add_entry("Decay Period",
+                tk.DoubleVar(self.frame, name='decay_period'),
+                units='ms')
+        self.species_ctrl.add_entry("Charge",
+                tk.IntVar(self.frame, name="charge"),
+                units='e')
         self.species_ctrl.add_radio_buttons("Reversal Potential", 
                 ["Const", "Nerst", "GHK"],
                 tk.StringVar(self.frame, name="reversal_potential"))
-        # TODO: constant reversal_potential
+        self.species_ctrl.add_entry("",
+                tk.DoubleVar(self.frame, name='const_reversal_potential'),
+                units='mV')
 
         self.species_ctrl.add_empty_space()
+
         self.species_ctrl.add_checkbox("Intracellular",
                 tk.BooleanVar(self.frame, name='inside'))
         self.species_ctrl.add_checkbox("Global Constant",
@@ -369,13 +403,9 @@ class Species:
         self.species_ctrl.add_entry("Initial Concentration",
                 tk.DoubleVar(self.frame, name='inside_initial_concentration'),
                 units='mmol')
-        self.species_ctrl.add_entry("Diffusivity",
-                tk.DoubleVar(self.frame, name='inside_diffusivity'))
-        self.species_ctrl.add_entry("Decay Period",
-                tk.DoubleVar(self.frame, name='inside_decay_period'),
-                units='ms')
 
         self.species_ctrl.add_empty_space()
+
         self.species_ctrl.add_checkbox("Extracellular",
                 tk.BooleanVar(self.frame, name='outside'))
         self.species_ctrl.add_checkbox("Global Constant",
@@ -383,11 +413,6 @@ class Species:
         self.species_ctrl.add_entry("Initial Concentration",
                 tk.DoubleVar(self.frame, name='outside_initial_concentration'),
                 units='mmol')
-        self.species_ctrl.add_entry("Diffusivity",
-                tk.DoubleVar(self.frame, name='outside_diffusivity'))
-        self.species_ctrl.add_entry("Decay Period",
-                tk.DoubleVar(self.frame, name='outside_decay_period'),
-                units='ms')
 
     def select_species(self, old_species, new_species):
         # Save the current parameters from the ControlPanel.
@@ -405,6 +430,8 @@ class Species:
 
     def create_species(self):
         species_name = simpledialog.askstring("Create Species", "Enter Species Name:")
+        if species_name is None:
+            return
         species_name = species_name.strip()
         if not species_name:
             return
@@ -419,10 +446,7 @@ class Species:
                 f'Species "{species_name}" is already defined!')
 
     def destroy_species(self):
-        selected = self.species_list.get()
-        if not selected:
-            return
-        (species_name,) = selected
+        (species_name,) = self.species_list.get()
         confirmation = messagebox.askyesno("Confirm Delete Species",
                 f"Are you sure you want to delete species '{species_name}'?")
         if not confirmation:
@@ -431,12 +455,11 @@ class Species:
         self.parameters.pop(species_name)
 
     def rename_species(self):
-        selected = self.species_list.get()
-        if not selected:
-            return
-        (species_name,) = selected
+        (species_name,) = self.species_list.get()
         new_name = simpledialog.askstring("Rename Species",
                 f'Rename Species "{species_name}" to')
+        if new_name is None:
+            return
         new_name = new_name.strip()
         if not new_name:
             return
@@ -463,41 +486,97 @@ class Mechanisms:
         self.parameters = {}
         self.frame = ttk.Frame(root)
 
-        self.mech_list = SelectionPanel(self.frame, self.select_mech)
+        self.mech_list = SelectionPanel(self.frame, self.select_mechanism)
         self.mech_ctrl = ControlPanel(self.frame)
         self.mech_list.frame.grid(row=0, column=0, padx=padx, pady=pady, sticky='nsw')
         self.mech_ctrl.frame.grid(row=0, column=1, padx=padx, pady=pady, sticky='nw')
 
-    def select_mech(self, event):
-        1/0
+        self.mech_list.add_button("Import", self.import_mechanisms)
+        self.mech_list.add_button("Remove", self.remove_mechanism)
+
+    def import_mechanisms(self):
+        files = filedialog.askopenfilenames(
+                title="Import Mechanisms",
+                filetypes=[('NMODL', '.mod')])
+        for abspath in files:
+            name = os.path.splitext(os.path.basename(abspath))[0]
+            self.parameters[name] = abspath
+            self.mech_list.insert_sorted(name)
+
+    def remove_mechanism(self):
+        selected = self.mech_list.get()
+        if not selected:
+            return
+        (selected,) = selected
+        confirmation = messagebox.askyesno("Confirm Remove Mechanism",
+                f"Are you sure you want to remove mechanism '{selected}'?")
+        if not confirmation:
+            return
+        self.mech_list.delete(selected)
+        self.parameters.pop(selected)
+
+    def select_mechanism(self, old_item, new_item):
+        pass
 
     def get_parameters(self):
-        1/0
+        self.mech_list.touch()
+        return self.parameters
+
     def set_parameters(self, parameters):
-        1/0
+        self.parameters = parameters
+        self.mech_list.set(sorted(self.parameters.keys()))
 
 
-class Regions:
+class MechanismSelector:
     def __init__(self, root):
+        self.parameters = {}
         self.frame = ttk.Frame(root)
-        self.regions_list = SelectionPanel(self.frame)
-        self.regions_ctrl = ControlPanel(self.frame)
-        self.regions_list.frame.grid(row=0, column=0)
-        self.regions_ctrl.frame.grid(row=0, column=1)
-        # The problem with this is that using numbers is a terrible way to
-        # specify the regions. They're spatial coordinate, I should have some
-        # way to visualize where they are & what they look like. But that's
-        # really complicated to implement.
-        1/0
+        self.list = SelectionPanel(self.frame, self.select_mechanism)
+        self.list.add_button("Insert", self.insert_mechanism)
+        self.list.add_button("Remove", self.remove_mechanism)
+
+    def select_mechanism(self, old_item, new_item):
+        pass
+
+    def insert_mechanism(self):
+        pass
+
+    def remove_mechanism(self):
+        pass
+
+
+
+
+class Segments:
+    def __init__(self, root):
+        self.parameters = {}
+        self.frame = ttk.Frame(root)
+        self.frame.grid()
+        self.segments_list = SelectionPanel(self.frame, (lambda event: None), "Segment Types")
+        self.segments_list.frame.grid(row=0, column=1)
+
+        tab_ctrl = ttk.Notebook(self.frame)
+        tab_ctrl.grid(row=0, column=2)
+
+        tab_ctrl.add(ttk.Frame(tab_ctrl), text='Soma')
+
+        self.morphology = Morphology(tab_ctrl)
+        tab_ctrl.add(self.morphology.frame, text='Morphology')
+
+        self.mechanisms = MechanismSelector(tab_ctrl)
+        tab_ctrl.add(self.mechanisms.frame, text='Mechanisms')
 
     def get_parameters(self):
-        1/0
+        return self.parameters
+
     def set_parameters(self, parameters):
-        1/0
+        self.parameters = parameters
 
 
-class CellBuilder:
+
+class Neurons:
     def __init__(self, root):
+        self.parameters = {}
         self.frame = ttk.Frame(root)
         self.frame.grid()
         self.neuron_list = SelectionPanel(self.frame, (lambda event: None), "Neuron Types")
@@ -514,6 +593,12 @@ class CellBuilder:
         tab_ctrl.add(self.morphology.frame, text='Morphology')
 
         tab_ctrl.add(ttk.Frame(tab_ctrl), text='Mechanisms')
+
+    def get_parameters(self):
+        return self.parameters
+
+    def set_parameters(self, parameters):
+        self.parameters = parameters
 
 
 class Morphology(ControlPanel):
@@ -587,6 +672,26 @@ class Morphology(ControlPanel):
         # region
         # diameter
         # number to grow
+
+
+class Regions:
+    def __init__(self, root):
+        self.frame = ttk.Frame(root)
+        self.regions_list = SelectionPanel(self.frame)
+        self.regions_ctrl = ControlPanel(self.frame)
+        self.regions_list.frame.grid(row=0, column=0)
+        self.regions_ctrl.frame.grid(row=0, column=1)
+        # The problem with this is that using numbers is a terrible way to
+        # specify the regions. They're spatial coordinate, I should have some
+        # way to visualize where they are & what they look like. But that's
+        # really complicated to implement.
+        1/0
+
+    def get_parameters(self):
+        1/0
+
+    def set_parameters(self, parameters):
+        1/0
 
 
 if __name__ == '__main__':
