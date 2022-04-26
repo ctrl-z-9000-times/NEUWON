@@ -1,17 +1,20 @@
 import tkinter as tk
 from tkinter import ttk
-from tkinter import filedialog, messagebox, simpledialog, font
+from tkinter import filedialog, messagebox, simpledialog
 import bisect
 
 padx = 5
 pady = 1
 pad_top = 10
 
+# IDEA: If horizontal space becomes a problem then make an option for the
+# SettingsPanel to compress/interleave the two columns into vertically stacked widgets.
+
 class SettingsPanel:
     """ GUI element for editing a table of parameters. """
     def __init__(self, root):
         self.frame = ttk.Frame(root)
-        self.row_idx = 0
+        self.row_idx = 0 # Index for appending widgets.
         self.variables = []
 
     def get_parameters(self):
@@ -48,6 +51,7 @@ class SettingsPanel:
         label .grid(row=self.row_idx, column=0, sticky='w', padx=padx, pady=pady)
         button.grid(row=self.row_idx, column=1, sticky='w', padx=padx, pady=pady)
         self.row_idx += 1
+        return button
 
     def add_slider(self, text, variable, from_, to, units=""):
         self.variables.append(variable)
@@ -73,8 +77,8 @@ class SettingsPanel:
     def add_entry(self, text, variable, units=""):
         self.variables.append(variable)
         label = ttk.Label(self.frame, text=text)
-        entry = ttk.Entry(self.frame, textvar = variable, justify='right')
-        units = ttk.Label(self.frame, text=units, justify='left')
+        entry = ttk.Entry(self.frame, textvar=variable, justify='right')
+        units = ttk.Label(self.frame, text=units)
         # 
         if isinstance(variable, tk.BooleanVar):
             validate_type = bool
@@ -116,6 +120,7 @@ class SelectorPanel:
         # The button_panel is a row of buttons.
         self.button_panel = ttk.Frame(self.frame)
         self.button_panel.grid(row=0, column=0, sticky='nesw')
+        self.buttons_requiring_selection = []
         self.column_idx = 0 # Index for appending buttons.
         # 
         self.listbox = tk.Listbox(self.frame, selectmode='single', exportselection=True)
@@ -132,6 +137,12 @@ class SelectorPanel:
             return
         if item is None and not deselect:
             return
+        if item is None:
+            for button in self.buttons_requiring_selection:
+                button.configure(state='disabled')
+        elif self._current_selection is None:
+            for button in self.buttons_requiring_selection:
+                button.configure(state='normal')
         self._on_select_callback(self._current_selection, item)
         self._current_selection = item
 
@@ -140,19 +151,14 @@ class SelectorPanel:
         self._on_select_callback(self._current_selection, self._current_selection)
 
     def add_button(self, text, command, require_selection=False):
-        if require_selection:
-            def callback():
-                item = self.get()
-                if item is None:
-                    return
-                command(item)
-        else:
-            def callback():
-                item = self.get()
-                command(item)
-        button = tk.Button(self.button_panel, text=text, command=callback, font=font.BOLD,)
-        button.grid(row=1, column=self.column_idx, sticky='w', padx=padx, pady=pady)
+        button = tk.Button(self.button_panel, text=text, command=lambda: command(self._current_selection))
+        button.grid(row=1, column=self.column_idx, sticky='w', pady=pady)
         self.column_idx += 1
+        if require_selection:
+            self.buttons_requiring_selection.append(button)
+            if self.get() is None:
+                button.configure(state='disabled')
+        return button
 
     def set(self, items):
         """ Replace the current contents of this Listbox with the given list of items. """
@@ -200,24 +206,32 @@ class SelectorPanel:
         self._on_select(None, deselect=True)
 
 class ManagementPanel:
-    def __init__(self, root, title, on_select_callback):
+    """ GUI element to combine SelectorPanel's and SettingsPanel's. """
+    def __init__(self, root, title, on_select_callback, init_settings_panel=True):
         self.title = str(title)
         self._on_select_callback = on_select_callback
         self.selector = SelectorPanel(root, self._on_select)
         self.frame    = self.selector.frame
-        self.settings = SettingsPanel(self.frame)
-        self.settings.frame.grid(row=1, column=2, sticky='nesw')
-        # Cosmetic bar between the two halves of the panel.
-        bar = ttk.Separator(self.frame, orient='vertical')
-        bar.grid(row=0, rowspan=2, column=1, sticky='nesw', padx=padx, pady=pady)
+        if init_settings_panel:
+            self.settings = SettingsPanel(self.frame)
+            self.insert_settings_frame(self.settings.frame)
+        # Cosmetic spacing between the two halves of the panel.
+        self.frame.columnconfigure(1, minsize=padx)
         # Display the title and the currently selected item.
-        label = ttk.Label(self.frame,
-                textvariable=tk.StringVar(self.frame, name="__title"),
-                font=font.BOLD,
-                relief='raised',
-                padding=padx)
-        label.grid(row=0, column=2, sticky='w', padx=padx, pady=pady)
+        self._title_var = tk.StringVar()
+        ttk.Label(self.frame, textvariable=self._title_var,
+                relief='raised', padding=padx, anchor='center',
+        ).grid(row=0, column=2, sticky='ew', padx=padx, pady=pady)
+        self._set_title(None)
+
+    def insert_settings_frame(self, frame):
+        frame.grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
+
+    def _set_title(self, item):
+        if item is None:
+            item = "-none selected-"
+        self._title_var.set(f"{self.title}: {item}")
 
     def _on_select(self, old_item, new_item):
-        self.frame.setvar("__title", f"{self.title}: {new_item}")
+        self._set_title(new_item)
         self._on_select_callback(old_item, new_item)

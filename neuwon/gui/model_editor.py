@@ -1,71 +1,68 @@
 from .gui_widgets import *
 import tkinter as tk
 from tkinter import ttk
-from tkinter import filedialog, messagebox, simpledialog, font
-import bisect
+from tkinter import filedialog, messagebox, simpledialog
 import math
 import os.path
 import json
 
-padx = 5
-pady = 1
-pad_top = 10
-
 class ModelEditor:
     def __init__(self):
         self.root = tk.Tk()
-
         self.menubar = tk.Menu(self.root)
         self.root.config(menu = self.menubar)
-        self._init_file_menu(self.menubar)
-
-        self.tab_ctrl = ttk.Notebook(self.root)
-        self.tab_ctrl.grid(sticky='nesw')
-
-        def add_tab(frame, text):
-            self.tab_ctrl.add(frame, text=text,
-                    sticky='nesw',
-                    padding=(padx, pad_top))
-
-        self.simulation = Simulation(self.tab_ctrl)
-        add_tab(self.simulation.frame, 'Simulation')
-
-        self.species = Species(self.tab_ctrl)
-        add_tab(self.species.frame, 'Species')
-
-        self.mechanisms = Mechanisms(self.tab_ctrl)
-        add_tab(self.mechanisms.frame, 'Mechanisms')
-
-        add_tab(tk.Frame(self.tab_ctrl), 'Regions')
-
-        self.segments = Segments(self.tab_ctrl)
-        add_tab(self.segments.frame, 'Segments')
-
-        self.neurons = Neurons(self.tab_ctrl)
-        add_tab(self.neurons.frame, 'Neurons')
-
-        add_tab(tk.Frame(self.tab_ctrl), 'Synapses')
-
-        add_tab(tk.Frame(self.tab_ctrl), 'Preview')
-
+        self.filemenu = self._init_file_menu(self.menubar)
+        self.tab_ctrl = self._init_main_panel(self.root)
         self.new_model()
 
     def _init_file_menu(self, parent_menu):
-        self.filemenu = tk.Menu(parent_menu, tearoff=False)
-        parent_menu.add_cascade(label="File", menu=self.filemenu)
+        filemenu = tk.Menu(parent_menu, tearoff=False)
+        parent_menu.add_cascade(label="File", menu=filemenu)
 
-        self.filemenu.add_command(label="New Model", underline=0, command=self.new_model)
+        filemenu.add_command(label="New Model", underline=0, command=self.new_model)
 
-        self.filemenu.add_command(label="Open", underline=0, accelerator="Ctrl+O", command=self.open)
+        filemenu.add_command(label="Open", underline=0, accelerator="Ctrl+O", command=self.open)
         self.root.bind_all("<Control-o>", self.open)
 
-        self.filemenu.add_command(label="Save", underline=0, accelerator="Ctrl+S", command=self.save)
+        filemenu.add_command(label="Save", underline=0, accelerator="Ctrl+S", command=self.save)
         self.root.bind_all("<Control-s>", self.save)
 
-        self.filemenu.add_command(label="Save As", underline=5, accelerator="Ctrl+Shift+S", command=self.save_as)
+        filemenu.add_command(label="Save As", underline=5, accelerator="Ctrl+Shift+S", command=self.save_as)
         self.root.bind_all("<Control-S>", self.save_as)
 
-        self.filemenu.add_command(label="Quit", underline=0, command=self.close)
+        filemenu.add_command(label="Quit", underline=0, command=self.close)
+        return filemenu
+
+    def _init_main_panel(self, root):
+        tab_ctrl = ttk.Notebook(root)
+        tab_ctrl.grid(sticky='nesw')
+
+        def add_tab(frame, text):
+            tab_ctrl.add(frame, text=text,
+                    sticky='nesw',
+                    padding=(padx, pad_top))
+
+        self.simulation = Simulation(tab_ctrl)
+        add_tab(self.simulation.frame, 'Simulation')
+
+        self.species = Species(tab_ctrl)
+        add_tab(self.species.frame, 'Species')
+
+        self.mechanisms = MechanismManager(tab_ctrl)
+        add_tab(self.mechanisms.frame, 'Mechanisms')
+
+        add_tab(tk.Frame(tab_ctrl), 'Regions')
+
+        self.segments = Segments(tab_ctrl, self.mechanisms)
+        add_tab(self.segments.frame, 'Segments')
+
+        self.neurons = Neurons(tab_ctrl)
+        add_tab(self.neurons.frame, 'Neurons')
+
+        add_tab(tk.Frame(tab_ctrl), 'Synapses')
+
+        add_tab(tk.Frame(tab_ctrl), 'Preview')
+        return tab_ctrl
 
     def set_title(self):
         title = "NEUWON Model Editor"
@@ -92,7 +89,7 @@ class ModelEditor:
         })
 
     def open(self, event=None):
-        open_filename = filedialog.askopenfilename()
+        open_filename = filedialog.askopenfilename(filetypes=[('Model File', '.json')])
         if not open_filename:
             return
         with open(open_filename, 'rt') as f:
@@ -105,8 +102,10 @@ class ModelEditor:
         if not self.filename:
             self.save_as()
         else:
+            self.root.focus_set() # Unfocusing triggers input validation.
+            parameters = self.get_parameters() # Successfully get the parameters before truncating the output file.
             with open(self.filename, 'wt') as f:
-                json.dump(self.get_parameters(), f, indent=4)
+                json.dump(parameters, f, indent=4)
 
     def save_as(self, event=None):
         save_as_filename = filedialog.asksaveasfilename(defaultextension='.json')
@@ -282,20 +281,16 @@ class Species:
         self.mgmt_panel.selector.set(sorted(self.parameters.keys()))
 
 
-class Mechanisms:
+class MechanismManager:
     def __init__(self, root):
         self.parameters = {}
-        self.frame = ttk.Frame(root)
+        self.mgmt = ManagementPanel(root, "Mechanism", self.select_mechanism)
+        self.frame = self.mgmt.frame
 
-        self.mech_list = SelectorPanel(self.frame, self.select_mechanism)
-        self.mech_ctrl = SettingsPanel(self.frame)
-        self.mech_list.frame.grid(row=0, column=0, padx=padx, pady=pady, sticky='nsw')
-        self.mech_ctrl.frame.grid(row=0, column=1, padx=padx, pady=pady, sticky='nw')
-
-        self.mech_list.add_button("Import", self.import_mechanisms)
-        self.mech_list.add_button("Remove", self.remove_mechanism, require_selection=True)
-
-        self.mech_ctrl.add_empty_space()
+        self.mgmt.selector.add_button("Import", self.import_mechanisms)
+        self.mgmt.selector.add_button("Remove", self.remove_mechanism, require_selection=True)
+        self.mgmt.selector.add_button("Rename", self.rename_mechanism, require_selection=True)
+        self.mgmt.selector.add_button("Info",   self.info_on_mechanism,require_selection=True)
 
     def import_mechanisms(self, selected):
         files = filedialog.askopenfilenames(
@@ -305,76 +300,147 @@ class Mechanisms:
             name = os.path.splitext(os.path.basename(abspath))[0]
             if name in self.parameters:
                 continue
-            self.parameters[name] = (abspath, {})
-            self.mech_list.insert_sorted(name)
+            self.parameters[name] = [abspath, {}]
+            self.mgmt.selector.insert_sorted(name)
 
     def remove_mechanism(self, selected):
         confirmation = messagebox.askyesno("Confirm Remove Mechanism",
                 f"Are you sure you want to remove mechanism '{selected}'?")
         if not confirmation:
             return
-        self.mech_list.delete(selected)
+        self.mgmt.selector.delete(selected)
         self.parameters.pop(selected)
+
+    def rename_mechanism(self, selected):
+        1/0
+
+    def info_on_mechanism(self, selected):
+        info = tk.Toplevel()
+        info.title(selected)
+
+        # Hacks to make this selectable so that the user can copy-paste it.
+        filename = self.parameters[selected][0]
+        v = tk.StringVar(info, value=filename)
+        tk.Entry(info, textvar=v, state='readonly',
+        ).grid(row=0, column=0, padx=padx, pady=pady, sticky='new')
+
+        docs = "TODO:\nScrape title & comments from NMODL file \n and display them here."
+        tk.Message(info, text=docs, justify='left',
+        ).grid(row=1, column=0, padx=padx, pady=pady, sticky='nw')
+        v.set(filename)
 
     def select_mechanism(self, old_item, new_item):
         # Save the current parameters from the SettingsPanel.
         if old_item is not None:
-            self.parameters[old_item] = self.mech_ctrl.get_parameters()
+            self.parameters[old_item][1] = self.mgmt.settings.get_parameters()
         # Load the selected mechanism into the SettingsPanel.
         if new_item is not None:
-            self.frame.setvar("current_mechanism_title", f"Mechanism: {new_item}")
-            self.mech_ctrl.set_parameters(self.parameters[new_item][1])
-        else:
-            self.frame.setvar("current_mechanism_title", f"Mechanism: None")
+            self.mgmt.settings.set_parameters(self.parameters[new_item][1])
 
     def get_parameters(self):
-        self.mech_list.touch()
+        self.mgmt.selector.touch()
         return self.parameters
 
     def set_parameters(self, parameters):
         self.parameters = parameters
-        self.mech_list.set(sorted(self.parameters.keys()))
+        self.mgmt.selector.set(sorted(self.parameters.keys()))
 
 
 class MechanismSelector:
-    def __init__(self, root, mechanisms):
+    def __init__(self, root, mechanism_manager):
         self.parameters = {}
-        self.mechanisms = mechanisms
-        self.frame = ttk.Frame(root)
-        self.list = SelectorPanel(self.frame, self.select_mechanism)
-        self.list.add_button("Insert", self.insert_mechanism)
-        self.list.add_button("Remove", self.remove_mechanism)
+        self.mechanisms = mechanism_manager
+        self.mgmt = ManagementPanel(root, "Mechanism", self.select_mechanism)
+        self.frame = self.mgmt.frame
+        self.mgmt.selector.add_button("Insert", self.insert_mechanism)
+        self.mgmt.selector.add_button("Remove", self.remove_mechanism, require_selection=True)
+        self.mgmt.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True)
+        self.mgmt.settings.add_empty_space()
+        self.mgmt.settings.add_entry("Magnitude", tk.DoubleVar(name='magnitude', value=1.0))
 
     def select_mechanism(self, old_item, new_item):
-        pass
+        if old_item is not None:
+            settings = self.mgmt.settings.get_parameters()
+            self.parameters[old_item] = settings['magnitude']
+        if new_item is not None:
+            self.mgmt.settings.set_parameters({"magnitude": self.parameters[new_item]})
 
     def insert_mechanism(self, selected):
-        pass
+        dialog = tk.Toplevel()
+        dialog.title("Select Mechanisms to Insert")
+        mechanisms = sorted(self.mechanisms.parameters)
+        listbox = tk.Listbox(dialog, selectmode='extended', exportselection=True)
+        listbox.grid(row=0, column=0, columnspan=2, padx=padx, pady=pad_top)
+        listbox.insert(0, *mechanisms)
+        selection = []
+        def ok_callback():
+            for idx in listbox.curselection():
+                selection.append(mechanisms[idx])
+            dialog.destroy()
+        ok = ttk.Button(dialog, text="Ok",     command=ok_callback,)
+        no = ttk.Button(dialog, text="Cancel", command=dialog.destroy,)
+        ok.grid(row=1, column=0, padx=2*padx, pady=pad_top)
+        no.grid(row=1, column=1, padx=2*padx, pady=pad_top)
+        dialog.bind("<Escape>", lambda event: dialog.destroy)
+        # Make the dialog window modal. This prevents user interaction with
+        # any other application window until this dialog is resolved.
+        dialog.focus_set()
+        dialog.grab_set()
+        dialog.transient(self.frame)
+        dialog.wait_window(dialog)
+        # 
+        for x in selection:
+            if x in self.parameters:
+                continue
+            self.parameters[x] = 1.0
+            self.mgmt.selector.insert_sorted(x)
 
     def remove_mechanism(self, selected):
-        pass
+        self.mgmt.selector.delete(selected)
+        self.parameters.pop(selected)
 
+    def get_parameters(self):
+        self.mgmt.selector.touch()
+        return self.parameters
 
+    def set_parameters(self, parameters):
+        self.parameters = parameters
+        self.mgmt.selector.set(sorted(self.parameters.keys()))
 
 
 class Segments:
-    def __init__(self, root):
+    def __init__(self, root, mechanism_manager):
         self.parameters = {}
-        self.frame = ttk.Frame(root)
-        self.frame.grid()
-        self.segments_list = SelectorPanel(self.frame, (lambda event: None))
-        self.segments_list.frame.grid(row=0, column=1)
+        self.mgmt = ManagementPanel(root, "Segment", self.select_segment,
+                                    init_settings_panel=False)
+        self.frame = self.mgmt.frame
+
+        self.mgmt.selector.add_button("New",    self.new_segment)
+        self.mgmt.selector.add_button("Delete", self.delete_segment, require_selection=True)
+        self.mgmt.selector.add_button("Rename", self.rename_segment, require_selection=True)
 
         tab_ctrl = ttk.Notebook(self.frame)
-        tab_ctrl.grid(row=0, column=2)
+        self.mgmt.insert_settings_frame(tab_ctrl)
 
         tab_ctrl.add(ttk.Frame(tab_ctrl), text='Soma')
 
         self.morphology = Morphology(tab_ctrl)
         tab_ctrl.add(self.morphology.frame, text='Morphology')
 
-        self.mechanisms = MechanismSelector(tab_ctrl, {})
+        self.mechanisms = MechanismSelector(tab_ctrl, mechanism_manager)
         tab_ctrl.add(self.mechanisms.frame, text='Mechanisms')
+
+    def select_segment(self, old_item, new_item):
+        pass
+
+    def new_segment(self, selected):
+        pass
+
+    def delete_segment(self, selected):
+        pass
+
+    def rename_segment(self, selected):
+        pass
 
     def get_parameters(self):
         return self.parameters
