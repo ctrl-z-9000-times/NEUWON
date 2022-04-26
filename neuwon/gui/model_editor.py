@@ -131,7 +131,7 @@ class ModelEditor:
         assert not parameters
 
 
-class ControlPanel:
+class SettingsPanel:
     """ GUI element for editing a table of parameters. """
     def __init__(self, root):
         self.frame = ttk.Frame(root)
@@ -237,48 +237,50 @@ class ControlPanel:
         self.row_idx += 1
 
 
-class SelectionPanel:
+class SelectorPanel:
     """ GUI element for managing lists. """
-    def __init__(self, root, command, title=""):
+    def __init__(self, root, on_select_callback):
         self.frame = ttk.Frame(root)
         self.frame.grid(sticky='nesw')
-        self._on_select_callback = command
-        self._current_selection = ()
-        # 
-        if title:
-            title = ttk.Label(self.frame, text=title)
-            title.grid(row=0, column=0)
+        self._on_select_callback = on_select_callback
+        self._current_selection = None
         # The button_panel is a row of buttons.
         self.button_panel = ttk.Frame(self.frame)
-        self.button_panel.grid(row=1, column=0, sticky='nesw')
+        self.button_panel.grid(row=0, column=0, sticky='nesw')
         self.column_idx = 0 # Index for appending buttons.
         # 
         self.listbox = tk.Listbox(self.frame, selectmode='single', exportselection=True)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
-        self.listbox.grid(row=2, column=0, sticky='nesw')
+        self.listbox.grid(row=1, column=0, sticky='nesw')
 
     def _on_select(self, event, deselect=False):
         indices = self.listbox.curselection()
-        items   = tuple(self.listbox.get(idx) for idx in indices)
-        if items == self._current_selection:
+        if indices:
+            item = self.listbox.get(indices[0])
+        else:
+            item = None
+        if item == self._current_selection:
             return
-        if not items and not deselect:
+        if item is None and not deselect:
             return
-        self._on_select_callback(self._current_selection, items)
-        self._current_selection = items
+        self._on_select_callback(self._current_selection, item)
+        self._current_selection = item
 
     def touch(self):
-        """ Issue an event as though the user just selected the current items. """
+        """ Issue an event as though the user just selected the current item. """
         self._on_select_callback(self._current_selection, self._current_selection)
 
     def add_button(self, text, command, require_selection=False):
         if require_selection:
             def callback():
-                if not self.get():
+                item = self.get()
+                if item is None:
                     return
-                command()
+                command(item)
         else:
-            callback = command
+            def callback():
+                item = self.get()
+                command(item)
         button = tk.Button(self.button_panel, text=text, command=callback, font=font.BOLD,)
         button.grid(row=1, column=self.column_idx, sticky='w', padx=padx, pady=pady)
         self.column_idx += 1
@@ -295,9 +297,14 @@ class SelectionPanel:
     def get_all(self):
         return self.listbox.get(0, tk.END)
 
+    def _select_idx(self, idx):
+        self.listbox.selection_clear(0, tk.END)
+        self.listbox.selection_set(idx)
+        self.listbox.activate(idx)
+
     def select(self, item):
         idx = self.get_all().index(item)
-        self.listbox.selection_set(idx)
+        self._select_idx(idx)
         self._on_select(None)
 
     def clear(self):
@@ -308,15 +315,14 @@ class SelectionPanel:
     def insert_sorted(self, item):
         idx = bisect.bisect(self.get_all(), item)
         self.listbox.insert(idx, item)
-        self.listbox.selection_clear(0, tk.END)
-        self.listbox.selection_set(idx)
+        self._select_idx(idx)
         self._on_select(None)
 
     def rename(self, old_item, new_item):
         idx = self.get_all().index(old_item)
         self.listbox.delete(idx)
         self.listbox.insert(idx, new_item)
-        self.listbox.selection_set(idx)
+        self._select_idx(idx)
         self._on_select(None)
 
     def delete(self, item):
@@ -325,7 +331,7 @@ class SelectionPanel:
         self._on_select(None, deselect=True)
 
 
-class Simulation(ControlPanel):
+class Simulation(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
 
@@ -355,8 +361,8 @@ class Species:
         self.parameters = {}
         self.frame = ttk.Frame(root)
 
-        self.species_list = SelectionPanel(self.frame, self.select_species)
-        self.species_ctrl = ControlPanel(self.frame)
+        self.species_list = SelectorPanel(self.frame, self.select_species)
+        self.species_ctrl = SettingsPanel(self.frame)
         self.species_list.frame.grid(row=0, column=0, padx=padx, pady=pady, sticky='nsw')
         self.species_ctrl.frame.grid(row=0, column=1, padx=padx, pady=pady, sticky='nw')
 
@@ -415,20 +421,18 @@ class Species:
                 units='mmol')
 
     def select_species(self, old_species, new_species):
-        # Save the current parameters from the ControlPanel.
-        if old_species:
-            (old_species,) = old_species
+        # Save the current parameters from the SettingsPanel.
+        if old_species is not None:
             self.parameters[old_species] = self.species_ctrl.get_parameters()
-        # Load the newly selected species parameters into the ControlPanel.
-        if new_species:
-            (new_species,) = new_species
+        # Load the newly selected species parameters into the SettingsPanel.
+        if new_species is not None:
             self.frame.setvar("current_species_title", f"Species: {new_species}")
             self.species_ctrl.set_parameters(self.parameters[new_species])
         else:
             self.frame.setvar("current_species_title", f"Species: None")
             self.species_ctrl.set_parameters(self._default_parameters)
 
-    def create_species(self):
+    def create_species(self, selected_species):
         species_name = simpledialog.askstring("Create Species", "Enter Species Name:")
         if species_name is None:
             return
@@ -445,8 +449,7 @@ class Species:
         messagebox.showerror("Species Name Error",
                 f'Species "{species_name}" is already defined!')
 
-    def destroy_species(self):
-        (species_name,) = self.species_list.get()
+    def destroy_species(self, species_name):
         confirmation = messagebox.askyesno("Confirm Delete Species",
                 f"Are you sure you want to delete species '{species_name}'?")
         if not confirmation:
@@ -454,8 +457,7 @@ class Species:
         self.species_list.delete(species_name)
         self.parameters.pop(species_name)
 
-    def rename_species(self):
-        (species_name,) = self.species_list.get()
+    def rename_species(self, species_name):
         new_name = simpledialog.askstring("Rename Species",
                 f'Rename Species "{species_name}" to')
         if new_name is None:
@@ -486,28 +488,33 @@ class Mechanisms:
         self.parameters = {}
         self.frame = ttk.Frame(root)
 
-        self.mech_list = SelectionPanel(self.frame, self.select_mechanism)
-        self.mech_ctrl = ControlPanel(self.frame)
+        self.mech_list = SelectorPanel(self.frame, self.select_mechanism)
+        self.mech_ctrl = SettingsPanel(self.frame)
         self.mech_list.frame.grid(row=0, column=0, padx=padx, pady=pady, sticky='nsw')
         self.mech_ctrl.frame.grid(row=0, column=1, padx=padx, pady=pady, sticky='nw')
 
         self.mech_list.add_button("Import", self.import_mechanisms)
-        self.mech_list.add_button("Remove", self.remove_mechanism)
+        self.mech_list.add_button("Remove", self.remove_mechanism, require_selection=True)
 
-    def import_mechanisms(self):
+        self.mech_ctrl.add_label(
+                textvariable=tk.StringVar(self.frame, name="current_mechanism_title"),
+                font=font.BOLD,
+                relief='raised')
+
+        self.mech_ctrl.add_empty_space()
+
+    def import_mechanisms(self, selected):
         files = filedialog.askopenfilenames(
                 title="Import Mechanisms",
                 filetypes=[('NMODL', '.mod')])
         for abspath in files:
             name = os.path.splitext(os.path.basename(abspath))[0]
-            self.parameters[name] = abspath
+            if name in self.parameters:
+                continue
+            self.parameters[name] = (abspath, {})
             self.mech_list.insert_sorted(name)
 
-    def remove_mechanism(self):
-        selected = self.mech_list.get()
-        if not selected:
-            return
-        (selected,) = selected
+    def remove_mechanism(self, selected):
         confirmation = messagebox.askyesno("Confirm Remove Mechanism",
                 f"Are you sure you want to remove mechanism '{selected}'?")
         if not confirmation:
@@ -516,7 +523,15 @@ class Mechanisms:
         self.parameters.pop(selected)
 
     def select_mechanism(self, old_item, new_item):
-        pass
+        # Save the current parameters from the SettingsPanel.
+        if old_item is not None:
+            self.parameters[old_item] = self.mech_ctrl.get_parameters()
+        # Load the selected mechanism into the SettingsPanel.
+        if new_item is not None:
+            self.frame.setvar("current_mechanism_title", f"Mechanism: {new_item}")
+            self.mech_ctrl.set_parameters(self.parameters[new_item][1])
+        else:
+            self.frame.setvar("current_mechanism_title", f"Mechanism: None")
 
     def get_parameters(self):
         self.mech_list.touch()
@@ -528,20 +543,21 @@ class Mechanisms:
 
 
 class MechanismSelector:
-    def __init__(self, root):
+    def __init__(self, root, mechanisms):
         self.parameters = {}
+        self.mechanisms = mechanisms
         self.frame = ttk.Frame(root)
-        self.list = SelectionPanel(self.frame, self.select_mechanism)
+        self.list = SelectorPanel(self.frame, self.select_mechanism)
         self.list.add_button("Insert", self.insert_mechanism)
         self.list.add_button("Remove", self.remove_mechanism)
 
     def select_mechanism(self, old_item, new_item):
         pass
 
-    def insert_mechanism(self):
+    def insert_mechanism(self, selected):
         pass
 
-    def remove_mechanism(self):
+    def remove_mechanism(self, selected):
         pass
 
 
@@ -552,7 +568,7 @@ class Segments:
         self.parameters = {}
         self.frame = ttk.Frame(root)
         self.frame.grid()
-        self.segments_list = SelectionPanel(self.frame, (lambda event: None), "Segment Types")
+        self.segments_list = SelectorPanel(self.frame, (lambda event: None))
         self.segments_list.frame.grid(row=0, column=1)
 
         tab_ctrl = ttk.Notebook(self.frame)
@@ -563,7 +579,7 @@ class Segments:
         self.morphology = Morphology(tab_ctrl)
         tab_ctrl.add(self.morphology.frame, text='Morphology')
 
-        self.mechanisms = MechanismSelector(tab_ctrl)
+        self.mechanisms = MechanismSelector(tab_ctrl, {})
         tab_ctrl.add(self.mechanisms.frame, text='Mechanisms')
 
     def get_parameters(self):
@@ -579,9 +595,9 @@ class Neurons:
         self.parameters = {}
         self.frame = ttk.Frame(root)
         self.frame.grid()
-        self.neuron_list = SelectionPanel(self.frame, (lambda event: None), "Neuron Types")
+        self.neuron_list = SelectorPanel(self.frame, (lambda event: None))
         self.neuron_list.frame.grid(row=0, column=0)
-        self.segment_list = SelectionPanel(self.frame, (lambda event: None), "Segment Types")
+        self.segment_list = SelectorPanel(self.frame, (lambda event: None))
         self.segment_list.frame.grid(row=0, column=1)
 
         tab_ctrl = ttk.Notebook(self.frame)
@@ -601,7 +617,7 @@ class Neurons:
         self.parameters = parameters
 
 
-class Morphology(ControlPanel):
+class Morphology(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
 
@@ -677,8 +693,8 @@ class Morphology(ControlPanel):
 class Regions:
     def __init__(self, root):
         self.frame = ttk.Frame(root)
-        self.regions_list = SelectionPanel(self.frame)
-        self.regions_ctrl = ControlPanel(self.frame)
+        self.regions_list = SelectorPanel(self.frame)
+        self.regions_ctrl = SettingsPanel(self.frame)
         self.regions_list.frame.grid(row=0, column=0)
         self.regions_ctrl.frame.grid(row=0, column=1)
         # The problem with this is that using numbers is a terrible way to
