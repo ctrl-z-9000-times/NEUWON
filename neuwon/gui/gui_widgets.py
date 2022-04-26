@@ -204,16 +204,19 @@ class ManagementPanel:
         self.title = str(title)
         self._on_select_callback = on_select_callback
         self.selector = SelectorPanel(root, self._on_select)
-        self.settings = SettingsPanel(self.selector.frame)
-        self.settings.frame.grid(row=1, column=1, sticky='nesw')
-        self.frame = self.selector.frame
-
+        self.frame    = self.selector.frame
+        self.settings = SettingsPanel(self.frame)
+        self.settings.frame.grid(row=1, column=2, sticky='nesw')
+        # Cosmetic bar between the two halves of the panel.
+        bar = ttk.Separator(self.frame, orient='vertical')
+        bar.grid(row=0, rowspan=2, column=1, sticky='nesw', padx=padx, pady=pady)
+        # Display the title and the currently selected item.
         label = ttk.Label(self.frame,
                 textvariable=tk.StringVar(self.frame, name="__title"),
                 font=font.BOLD,
                 relief='raised',
                 padding=padx)
-        label.grid(row=0, column=1, sticky='w', padx=padx, pady=pady)
+        label.grid(row=0, column=2, sticky='w', padx=padx, pady=pady)
 
     def _on_select(self, old_item, new_item):
         self.frame.setvar("__title", f"{self.title}: {new_item}")

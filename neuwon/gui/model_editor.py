@@ -5,7 +5,7 @@ from tkinter import filedialog, messagebox, simpledialog, font
 import bisect
 import math
 import os.path
-import pprint
+import json
 
 padx = 5
 pady = 1
@@ -17,13 +17,7 @@ class ModelEditor:
 
         self.menubar = tk.Menu(self.root)
         self.root.config(menu = self.menubar)
-        self.filemenu = tk.Menu(self.menubar, tearoff=False)
-        self.menubar.add_cascade(label="File", menu=self.filemenu)
-        self.filemenu.add_command(label="New Model", command=self.new_model)
-        self.filemenu.add_command(label="Open", command=self.open)
-        self.filemenu.add_command(label="Save", command=self.save)
-        self.filemenu.add_command(label="Save As", command=self.save_as)
-        self.filemenu.add_command(label="Close", command=self.close)
+        self._init_file_menu(self.menubar)
 
         self.tab_ctrl = ttk.Notebook(self.root)
         self.tab_ctrl.grid(sticky='nesw')
@@ -56,6 +50,23 @@ class ModelEditor:
 
         self.new_model()
 
+    def _init_file_menu(self, parent_menu):
+        self.filemenu = tk.Menu(parent_menu, tearoff=False)
+        parent_menu.add_cascade(label="File", menu=self.filemenu)
+
+        self.filemenu.add_command(label="New Model", underline=0, command=self.new_model)
+
+        self.filemenu.add_command(label="Open", underline=0, accelerator="Ctrl+O", command=self.open)
+        self.root.bind_all("<Control-o>", self.open)
+
+        self.filemenu.add_command(label="Save", underline=0, accelerator="Ctrl+S", command=self.save)
+        self.root.bind_all("<Control-s>", self.save)
+
+        self.filemenu.add_command(label="Save As", underline=5, accelerator="Ctrl+Shift+S", command=self.save_as)
+        self.root.bind_all("<Control-S>", self.save_as)
+
+        self.filemenu.add_command(label="Quit", underline=0, command=self.close)
+
     def set_title(self):
         title = "NEUWON Model Editor"
         if self.filename:
@@ -67,7 +78,7 @@ class ModelEditor:
             title += ": " + filename
         self.root.title(title)
 
-    def new_model(self):
+    def new_model(self, event=None):
         self.filename = None
         self.set_title()
         self.set_parameters({
@@ -78,39 +89,34 @@ class ModelEditor:
                     "cytoplasmic_resistance": 100.0,
                     "membrane_capacitance": 1.0,
                 },
-                'species': {},
-                'mechanisms': {},
         })
 
-    def open(self):
+    def open(self, event=None):
         open_filename = filedialog.askopenfilename()
         if not open_filename:
             return
         with open(open_filename, 'rt') as f:
-            parameters = f.read()
-        parameters = eval(parameters)
+            parameters = json.load(f)
         self.set_parameters(parameters)
         self.filename = open_filename
         self.set_title()
 
-    def save(self):
+    def save(self, event=None):
         if not self.filename:
             self.save_as()
-        parameters = self.get_parameters()
-        parameters = pprint.pformat(parameters)
-        with open(self.filename, 'wt') as f:
-            f.write(parameters)
-            f.write('\n')
+        else:
+            with open(self.filename, 'wt') as f:
+                json.dump(self.get_parameters(), f, indent=4)
 
-    def save_as(self):
-        save_as_filename = filedialog.asksaveasfilename(defaultextension='.py')
+    def save_as(self, event=None):
+        save_as_filename = filedialog.asksaveasfilename(defaultextension='.json')
         if not save_as_filename:
             return
         self.filename = save_as_filename
-        self.set_title()
         self.save()
+        self.set_title()
 
-    def close(self):
+    def close(self, event=None):
         self.root.destroy()
 
     def get_parameters(self):
@@ -288,11 +294,6 @@ class Mechanisms:
 
         self.mech_list.add_button("Import", self.import_mechanisms)
         self.mech_list.add_button("Remove", self.remove_mechanism, require_selection=True)
-
-        self.mech_ctrl.add_label(
-                textvariable=tk.StringVar(self.frame, name="current_mechanism_title"),
-                font=font.BOLD,
-                relief='raised')
 
         self.mech_ctrl.add_empty_space()
 
