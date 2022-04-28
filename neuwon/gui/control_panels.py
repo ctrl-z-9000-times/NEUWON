@@ -264,6 +264,34 @@ class SettingsPanel(Panel):
         self._row_idx += 1
         return entry
 
+class CustomSettingsPanel(Panel):
+    """ GUI element to show different SettingsPanels depending on the current parameters. """
+    def __init__(self, parent, key_parameter):
+        self.frame    = ttk.Frame(parent)
+        self._key     = str(key_parameter)
+        self._options = {}
+        self._current = None
+
+    def add_panel(self, name, panel):
+        self._options[str(name)] = panel
+
+    def get_parameters(self):
+        if self._current is not None:
+            return self._current.get_parameters()
+        else:
+            return {}
+
+    def set_parameters(self, parameters):
+        if self._current is not None:
+            self._current.get_widget().grid_remove()
+            self._current = None
+        if not parameters:
+            return # Leave the panel blank.
+        option = parameters[self._key]
+        self._current = self._options[option]
+        self._current.get_widget().grid()
+        self._current.set_parameters(parameters)
+
 class SelectorPanel:
     """ GUI element for managing lists. """
     def __init__(self, parent, on_select_callback):
@@ -404,7 +432,7 @@ class ManagementPanel(Panel):
         self.parameters = parameters
         self.selector.set_list(sorted(self.parameters.keys()))
 
-    def _duplicate_name_error(self, name):
+    def duplicate_name_error(self, name):
         self.frame.bell()
         messagebox.showerror(f"{self.title} Name Error",
                 f'{self.title} "{name}" is already defined!')
@@ -419,7 +447,7 @@ class ManagementPanel(Panel):
             if not name:
                 return
             if name in self.parameters:
-                self._duplicate_name_error(name)
+                self.duplicate_name_error(name)
                 return
             if self.selector.get() is None:
                 self.parameters[name] = self.settings.get_parameters()
@@ -454,7 +482,7 @@ class ManagementPanel(Panel):
             elif new_name == name:
                 return
             elif new_name in self.parameters:
-                self._duplicate_name_error(new_name)
+                self.duplicate_name_error(new_name)
                 return
             self.parameters[new_name] = self.parameters[name]
             self.selector.rename(name, new_name)
@@ -471,7 +499,7 @@ class ManagementPanel(Panel):
             if not new_name:
                 return
             elif new_name in self.parameters:
-                self._duplicate_name_error(new_name)
+                self.duplicate_name_error(new_name)
                 return
             self.parameters[new_name] = dict(self.parameters[name])
             self.selector.insert(new_name)

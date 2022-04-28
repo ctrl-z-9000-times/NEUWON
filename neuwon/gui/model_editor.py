@@ -42,6 +42,7 @@ class ModelEditor(OrganizerPanel):
         self.add_tab('simulation', Simulation(frame))
         self.add_tab('mechanisms', MechanismManager(frame))
         self.add_tab('species',    Species(frame))
+        self.add_tab('regions',    Regions(frame))
         self.add_tab('segments',   Segments(frame, self.tabs['mechanisms']))
         self.add_tab('neurons',    Neurons( frame, self.tabs['mechanisms']))
         frame.grid(sticky='nesw')
@@ -107,6 +108,10 @@ class ModelEditor(OrganizerPanel):
 
     def close(self, event=None):
         self.root.destroy()
+
+    def run(self):
+        """ Blocks calling thread until the ModelEditor is closed. """
+        self.root.mainloop()
 
 
 class Simulation(SettingsPanel):
@@ -178,7 +183,8 @@ class Species(ManagementPanel):
 
         self.settings.add_section("Intracellular")
         self.settings.add_checkbox('inside_constant', tk.BooleanVar(),
-                title       = "Global Constant")
+                title       = "Global Constant",
+                default     = True)
         self.settings.add_entry('inside_initial_concentration', tk.DoubleVar(),
                 title       = "Initial Concentration",
                 valid_range = (highest_negative, inf),
@@ -186,7 +192,8 @@ class Species(ManagementPanel):
 
         self.settings.add_section("Extracellular")
         self.settings.add_checkbox('outside_constant', tk.BooleanVar(),
-                title       = "Global Constant")
+                title       = "Global Constant",
+                default     = True)
         self.settings.add_entry('outside_initial_concentration', tk.DoubleVar(),
                 title       = "Initial Concentration",
                 valid_range = (highest_negative, inf),
@@ -377,14 +384,100 @@ class Morphology(SettingsPanel):
         # number to grow
 
 
-class Regions:
+class Regions(ManagementPanel):
     def __init__(self, root):
-        1/0
-        # The problem with this is that using numbers is a terrible way to
-        # specify the regions. They're spatial coordinate, I should have some
-        # way to visualize where they are & what they look like. But that's
-        # really complicated to implement.
+        super().__init__(root, "Region", init_settings_panel=False)
+
+        self.selector.add_button("New", self.create_region)
+        self.add_button_delete()
+        self.add_button_rename()
+        self.add_button_duplicate()
+
+        self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "region_type"))
+
+        rectangle = SettingsPanel(self.settings.get_widget())
+        self.settings.add_panel("Rectangle", rectangle)
+        rectangle.add_section("Rectangle")
+        rectangle.add_entry("lower_x", tk.DoubleVar(), units = 'μm')
+        rectangle.add_entry("lower_y", tk.DoubleVar(), units = 'μm')
+        rectangle.add_entry("lower_z", tk.DoubleVar(), units = 'μm')
+        rectangle.add_entry("upper_x", tk.DoubleVar(), units = 'μm')
+        rectangle.add_entry("upper_y", tk.DoubleVar(), units = 'μm')
+        rectangle.add_entry("upper_z", tk.DoubleVar(), units = 'μm')
+
+        sphere = SettingsPanel(self.settings.get_widget())
+        self.settings.add_panel("Sphere", sphere)
+        sphere.add_section("Sphere")
+        sphere.add_entry("center_x", tk.DoubleVar(), units = 'μm')
+        sphere.add_entry("center_y", tk.DoubleVar(), units = 'μm')
+        sphere.add_entry("center_z", tk.DoubleVar(), units = 'μm')
+        sphere.add_entry("radius",   tk.DoubleVar(), units = 'μm')
+
+        cylinder = SettingsPanel(self.settings.get_widget())
+        self.settings.add_panel("Cylinder", cylinder)
+        cylinder.add_section("Cylinder")
+        cylinder.add_entry("end_point_x", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("end_point_y", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("end_point_z", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("other_end_point_x", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("other_end_point_y", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("other_end_point_z", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("radius", tk.DoubleVar(), units = 'μm')
+
+        union = SettingsPanel(self.settings.get_widget())
+        self.settings.add_panel("Union", union)
+        union.add_section("Union")
+
+        intersection = SettingsPanel(self.settings.get_widget())
+        self.settings.add_panel("Intersection", intersection)
+        intersection.add_section("Intersection")
+
+        inverse = SettingsPanel(self.settings.get_widget())
+        self.settings.add_panel("Not", inverse)
+        inverse.add_section("Not")
+
+    def create_region(self, _):
+        dialog = CreateRegion(self.get_widget())
+        name   = dialog.name.strip()
+        region = dialog.region
+        if not name:
+            return
+        elif name in self.parameters:
+            self.duplicate_name_error(name)
+            return
+        self.parameters[name] = {'region_type': dialog.region}
+        self.selector.insert(name)
+
+class CreateRegion(simpledialog.Dialog):
+    def __init__(self, parent):
+        self.name   = ""
+        self.region = None
+        self.shape_options = ['Rectangle', 'Sphere', 'Cylinder']
+        self.csg_options   = ['Union', 'Intersection', 'Not']
+        super().__init__(parent, "Create Region")
+
+    def body(self, parent):
+        self.name_var   = tk.StringVar()
+        self.region_var = tk.StringVar(value=self.shape_options[0])
+        label = ttk.Label(parent, text="Enter new region name:")
+        entry = ttk.Entry(parent, textvar=self.name_var)
+        shape = ttk.Frame(parent)
+        label.grid(row=0)
+        entry.grid(row=1)
+        shape.grid(row=2)
+        for idx, value in enumerate(self.shape_options):
+            button = ttk.Radiobutton(shape, text=value, variable=self.region_var, value=value)
+            button.grid(row=idx, column=0, sticky='w')
+        for idx, value in enumerate(self.csg_options):
+            button = ttk.Radiobutton(shape, text=value, variable=self.region_var, value=value)
+            button.grid(row=idx, column=1, sticky='w')
+        return entry
+
+    def validate(self):
+        self.name   = self.name_var.get()
+        self.region = self.region_var.get()
+        return True
 
 
 if __name__ == '__main__':
-    ModelEditor().root.mainloop()
+    ModelEditor().run()
