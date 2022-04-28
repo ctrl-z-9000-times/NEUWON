@@ -97,7 +97,7 @@ class ModelEditor(OrganizerPanel):
 
 class Simulation(SettingsPanel):
     def __init__(self, root):
-        super().__init__(root, True)
+        super().__init__(root)
 
         self.add_entry("Time Step",
                 tk.DoubleVar(self.frame, name="time_step", value=0.1),
@@ -118,13 +118,6 @@ class Simulation(SettingsPanel):
         self.add_entry("Membrane Capacitance",
                 tk.DoubleVar(self.frame, name="membrane_capacitance", value=1.0),
                 units='μf/cm^2',)
-
-        self.add_radio_buttons("TESTING", ["A", "B"],
-                tk.StringVar(value="B"))
-
-        self.add_checkbox("TESTING BOX", tk.BooleanVar(value=True))
-
-        self.add_slider("TEST SLIDER", tk.DoubleVar(value=3.3), 0, 100, )
 
 
 class Species(ManagementPanel):
@@ -194,7 +187,7 @@ class MechanismManager(ManagementPanel):
             if name in self.parameters:
                 continue
             self.parameters[name] = {'filename': abspath, 'parameters': {}}
-            self.selector.insert_sorted(name)
+            self.selector.insert(name)
 
     def info_on_mechanism(self, selected):
         info = tk.Toplevel()
@@ -249,8 +242,8 @@ class MechanismSelector(ManagementPanel):
         for x in selection:
             if x in self.parameters:
                 continue
-            self.parameters[x] = 1.0
-            self.selector.insert_sorted(x)
+            self.parameters[x] = {}
+            self.selector.insert(x)
 
 
 class Segments(ManagementPanel):

@@ -312,7 +312,7 @@ class SelectorPanel:
         self._listbox.selection_clear(0, tk.END)
         self._on_select(None, deselect=True)
 
-    def insert_sorted(self, item):
+    def insert(self, item):
         idx = bisect.bisect(self.get_list(), item)
         self._listbox.insert(idx, item)
         self._select_idx(idx)
@@ -321,7 +321,7 @@ class SelectorPanel:
     def rename(self, old_item, new_item):
         idx = self.get_list().index(old_item)
         self._listbox.delete(idx)
-        self.insert_sorted(new_item)
+        self.insert(new_item)
 
     def delete(self, item):
         idx = self.get_list().index(item)
@@ -395,7 +395,7 @@ class ManagementPanel(Panel):
                 self.parameters[name] = self.settings.get_parameters()
             else:
                 self.parameters[name] = {}
-            self.selector.insert_sorted(name)
+            self.selector.insert(name)
         self.selector.add_button("New", _callback)
 
     def add_button_delete(self, text="Delete", require_confirmation=True):
@@ -443,7 +443,7 @@ class ManagementPanel(Panel):
                 self._duplicate_name_error(new_name)
                 return
             self.parameters[new_name] = dict(self.parameters[name])
-            self.selector.rename(name, new_name)
+            self.selector.insert(new_name)
         self.selector.add_button("Duplicate", _callback, require_selection=True)
 
 class OrganizerPanel(Panel):
