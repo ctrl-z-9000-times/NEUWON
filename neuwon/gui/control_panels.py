@@ -26,7 +26,7 @@ class SettingsPanel(Panel):
         self.frame = ttk.Frame(parent)
         self._row_idx = 0 # Index for appending widgets.
         self._parameters = {} # Preserve extra parameters that aren't used by this panel.
-        self._variables = []
+        self._variables = {}
         self._defaults = {}
         self._override_mode = bool(override_mode)
         if self._override_mode:
@@ -42,18 +42,17 @@ class SettingsPanel(Panel):
             s.configure('Changed.TEntry', fieldbackground=color)
 
     def get_parameters(self):
-        for variable in self._variables:
-            name = str(variable)
+        for name, variable in self._variables.items():
             if not self._override_mode or name in self._changed:
                 self._parameters[name] = variable.get()
         return self._parameters
 
     def set_parameters(self, parameters):
         self._parameters = parameters
-        for variable in self._variables:
-            name = str(variable)
+        # Set the widget variables so that they display the new values.
+        for name, variable in self._variables.items():
             try:
-                value = parameters[name]
+                value = self._parameters[name]
             except KeyError:
                 value = self._defaults[name]
                 if self._override_mode:
@@ -65,9 +64,9 @@ class SettingsPanel(Panel):
 
     def set_defaults(self, parameters):
         self._defaults = parameters
+        # Update the widget variables for the non-overridden parameters to display the new default values.
         if self._override_mode:
-            for variable in self._variables:
-                name = str(variable)
+            for name, variable in self._variables.items():
                 if name not in self._changed:
                     variable.set(self._defaults[name])
 
@@ -87,7 +86,8 @@ class SettingsPanel(Panel):
 
     def add_radio_buttons(self, text, options, variable):
         variable_name = str(variable)
-        self._variables.append(variable)
+        assert variable_name not in self._variables
+        self._variables[variable_name] = variable
         self._defaults[variable_name] = variable.get()
         # Create the widgets.
         label   = ttk.Label(self.frame, text=text)
@@ -131,7 +131,8 @@ class SettingsPanel(Panel):
 
     def add_checkbox(self, text, variable):
         variable_name = str(variable)
-        self._variables.append(variable)
+        assert variable_name not in self._variables
+        self._variables[variable_name] = variable
         self._defaults[variable_name] = variable.get()
         # Create the widgets.
         label  = ttk.Label(self.frame, text=text)
@@ -157,7 +158,8 @@ class SettingsPanel(Panel):
 
     def add_slider(self, text, variable, from_, to, units=""):
         variable_name = str(variable)
-        self._variables.append(variable)
+        assert variable_name not in self._variables
+        self._variables[variable_name] = variable
         self._defaults[str(variable)] = variable.get()
         # Create the widgets.
         label = ttk.Label(self.frame, text=text)
@@ -193,7 +195,8 @@ class SettingsPanel(Panel):
 
     def add_entry(self, text, variable, valid_range=(None, None), units=""):
         variable_name = str(variable)
-        self._variables.append(variable)
+        assert variable_name not in self._variables
+        self._variables[variable_name] = variable
         self._defaults[variable_name] = variable.get()
         # Create the widgets.
         label = ttk.Label(self.frame, text=text)
