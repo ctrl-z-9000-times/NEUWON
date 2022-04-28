@@ -84,13 +84,14 @@ class SettingsPanel(Panel):
         label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
 
-    def add_radio_buttons(self, text, options, variable):
-        variable_name = str(variable)
+    def add_radio_buttons(self, variable_name, variable, options, *, title=None, default=None):
+        # Clean and save the arguments.
         assert variable_name not in self._variables
         self._variables[variable_name] = variable
-        self._defaults[variable_name] = variable.get()
+        if title is None: title = variable_name.replace('_', ' ').title()
+        self._defaults[variable_name] = default if default is not None else variable.get()
         # Create the widgets.
-        label   = ttk.Label(self.frame, text=text)
+        label   = ttk.Label(self.frame, text=title)
         btn_row = ttk.Frame(self.frame)
         buttons = []
         for idx, x in enumerate(options):
@@ -129,13 +130,14 @@ class SettingsPanel(Panel):
             button.grid(row=0, column=column)
         return buttons
 
-    def add_checkbox(self, text, variable):
-        variable_name = str(variable)
+    def add_checkbox(self, variable_name, variable, *, title=None, default=None):
+        # Clean and save the arguments.
         assert variable_name not in self._variables
         self._variables[variable_name] = variable
-        self._defaults[variable_name] = variable.get()
+        if title is None: title = variable_name.replace('_', ' ').title()
+        self._defaults[variable_name] = default if default is not None else variable.get()
         # Create the widgets.
-        label  = ttk.Label(self.frame, text=text)
+        label  = ttk.Label(self.frame, text=title)
         button = ttk.Checkbutton(self.frame, variable=variable,)
         # Highlight changed values.
         if self._override_mode:
@@ -156,13 +158,15 @@ class SettingsPanel(Panel):
         self._row_idx += 1
         return button
 
-    def add_slider(self, text, variable, from_, to, units=""):
-        variable_name = str(variable)
+    def add_slider(self, variable_name, variable, valid_range, *, title=None, default=None, units=""):
+        # Clean and save the arguments.
         assert variable_name not in self._variables
         self._variables[variable_name] = variable
-        self._defaults[str(variable)] = variable.get()
+        if title is None: title = variable_name.replace('_', ' ').title()
+        self._defaults[variable_name] = default if default is not None else variable.get()
+        from_, to = valid_range
         # Create the widgets.
-        label = ttk.Label(self.frame, text=text)
+        label = ttk.Label(self.frame, text=title)
         scale = ttk.Scale(self.frame, variable=variable,
                 from_=from_, to=to,
                 orient = 'horizontal',)
@@ -193,13 +197,14 @@ class SettingsPanel(Panel):
         self._row_idx += 1
         return scale
 
-    def add_entry(self, text, variable, valid_range=(None, None), units=""):
-        variable_name = str(variable)
+    def add_entry(self, variable_name, variable, *, title=None, valid_range=(None, None), default=None, units=""):
+        # Clean and save the arguments.
         assert variable_name not in self._variables
         self._variables[variable_name] = variable
-        self._defaults[variable_name] = variable.get()
+        if title is None: title = variable_name.replace('_', ' ').title()
+        self._defaults[variable_name] = default if default is not None else variable.get()
         # Create the widgets.
-        label = ttk.Label(self.frame, text=text)
+        label = ttk.Label(self.frame, text=title)
         entry = ttk.Entry(self.frame, textvar=variable, justify='right')
         units = ttk.Label(self.frame, text=units)
         # Highlight changed values.

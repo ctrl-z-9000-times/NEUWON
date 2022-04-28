@@ -7,7 +7,7 @@ import json
 import pprint
 import numpy as np
 
-largest_negative = np.nextafter(0, -1)
+highest_negative = np.nextafter(0, -1)
 inf = np.inf
 
 class ModelEditor(OrganizerPanel):
@@ -113,29 +113,29 @@ class Simulation(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
 
-        self.add_entry("Time Step",
-                tk.DoubleVar(name="time_step", value=0.1),
-                valid_range=(0, None),
-                units='ms',)
+        self.add_entry("time_step", tk.DoubleVar(),
+                valid_range = (0, inf),
+                default     = 0.1,
+                units       = 'ms')
 
-        self.add_entry("Temperature",
-                tk.DoubleVar(name="temperature", value=37.0),
-                valid_range=(0, 100),
-                units='°C',)
+        self.add_entry("temperature", tk.DoubleVar(),
+                valid_range = (0, 100),
+                default     = 37.0,
+                units       = '°C')
 
-        self.add_entry("Initial Voltage",
-                tk.DoubleVar(name="initial_voltage", value=-70.0),
-                units='mV',)
+        self.add_entry("initial_voltage", tk.DoubleVar(),
+                default     = -70.0,
+                units       = 'mV')
 
-        self.add_entry("Cytoplasmic Resistance",
-                tk.DoubleVar(name="cytoplasmic_resistance", value=100.0),
-                valid_range=(0, None),
-                units='',)
+        self.add_entry("cytoplasmic_resistance", tk.DoubleVar(),
+                valid_range = (0, inf),
+                default     = 100.0,
+                units       = '')
 
-        self.add_entry("Membrane Capacitance",
-                tk.DoubleVar(name="membrane_capacitance", value=1.0),
-                valid_range=(0, None),
-                units='μf/cm^2',)
+        self.add_entry("membrane_capacitance", tk.DoubleVar(),
+                valid_range = (0, inf),
+                default     = 1.0,
+                units       = 'μf/cm^2')
 
 
 class Species(ManagementPanel):
@@ -146,50 +146,51 @@ class Species(ManagementPanel):
         self.add_button_delete()
         self.add_button_rename()
 
-        settings = self.settings
+        self.settings.add_empty_space()
 
-        settings.add_empty_space()
+        self.settings.add_entry("charge", tk.IntVar(),
+                valid_range = (-inf, inf),
+                units       = 'e')
 
-        settings.add_entry("Charge",
-                tk.IntVar(name="charge"),
-                units='e')
-        settings.add_entry("Diffusivity",
-                tk.DoubleVar(name='diffusivity'),
-                valid_range=(largest_negative,None),
-                units='')
-        settings.add_entry("Decay Period",
-                tk.DoubleVar(name='decay_period', value=inf),
-                valid_range=(0,None),
-                units='ms')
-        rv_type = tk.StringVar(name="reversal_potential", value="Const")
-        settings.add_radio_buttons("Reversal Potential", 
-                ["Const", "Nerst", "GHK"], rv_type)
-        rv_entry = settings.add_entry("",
-                tk.DoubleVar(name='const_reversal_potential'),
-                valid_range=(-inf, inf),
-                units='mV')
+        self.settings.add_entry('diffusivity', tk.DoubleVar(),
+                valid_range = (highest_negative, inf),
+                units       = '')
+
+        self.settings.add_entry('decay_period', tk.DoubleVar(),
+                valid_range = (0, None),
+                default     = inf,
+                units       = 'ms')
+
+        reversal_type_var = tk.StringVar()
+        self.settings.add_radio_buttons("reversal_potential", reversal_type_var,
+                ["Const", "Nerst", "GHK"],
+                default = "Const")
+        reversal_entrybox = self.settings.add_entry("const_reversal_potential", tk.DoubleVar(),
+                title       = "",
+                valid_range = (-inf, inf),
+                units       = 'mV')
         def const_entrybox_control(*args):
-            if rv_type.get() == "Const":
-                rv_entry.configure(state='enabled')
+            if reversal_type_var.get() == "Const":
+                reversal_entrybox.configure(state='enabled')
             else:
-                rv_entry.configure(state='readonly')
-        rv_type.trace_add("write", const_entrybox_control)
+                reversal_entrybox.configure(state='readonly')
+        reversal_type_var.trace_add("write", const_entrybox_control)
 
-        settings.add_section("Intracellular")
-        settings.add_checkbox("Global Constant",
-                tk.BooleanVar(name='inside_constant'))
-        settings.add_entry("Initial Concentration",
-                tk.DoubleVar(name='inside_initial_concentration'),
-                valid_range=(largest_negative,None),
-                units='mmol')
+        self.settings.add_section("Intracellular")
+        self.settings.add_checkbox('inside_constant', tk.BooleanVar(),
+                title       = "Global Constant")
+        self.settings.add_entry('inside_initial_concentration', tk.DoubleVar(),
+                title       = "Initial Concentration",
+                valid_range = (highest_negative, inf),
+                units       = 'mmol')
 
-        settings.add_section("Extracellular")
-        settings.add_checkbox("Global Constant",
-                tk.BooleanVar(name='outside_constant'))
-        settings.add_entry("Initial Concentration",
-                tk.DoubleVar(name='outside_initial_concentration'),
-                valid_range=(largest_negative,None),
-                units='mmol')
+        self.settings.add_section("Extracellular")
+        self.settings.add_checkbox('outside_constant', tk.BooleanVar(),
+                title       = "Global Constant")
+        self.settings.add_entry('outside_initial_concentration', tk.DoubleVar(),
+                title       = "Initial Concentration",
+                valid_range = (highest_negative, inf),
+                units       = 'mmol')
 
 
 class MechanismManager(ManagementPanel):
@@ -235,7 +236,7 @@ class MechanismSelector(ManagementPanel):
         self.add_button_delete("Remove", require_confirmation=False)
         self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True)
         self.settings.add_empty_space()
-        self.settings.add_entry("Magnitude", tk.DoubleVar(name='magnitude', value=1.0))
+        self.settings.add_entry('magnitude', tk.DoubleVar(), default=1.0)
 
     def insert_mechanism(self, selected):
         dialog = tk.Toplevel()
@@ -315,50 +316,54 @@ class Morphology(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
 
-        self.add_radio_buttons("", ["Dendrite", "Axon"],
-                tk.BooleanVar(self.frame, name="extend_before_bifurcate"))
+        self.add_radio_buttons("extend_before_bifurcate", tk.BooleanVar(),
+                ["Dendrite", "Axon"],
+                title="")
 
-        self.add_checkbox("Competitive Growth",
-                tk.BooleanVar(name="competitive", value=True))
+        self.add_checkbox("competitive", tk.BooleanVar(),
+                title   = "Competitive Growth",
+                default = True)
 
-        self.add_slider("Balancing Factor",
-                tk.DoubleVar(name="balancing_factor", value=False),
-                0, 1)
+        self.add_slider("balancing_factor", tk.DoubleVar(),
+                valid_range = (0, 1))
 
-        self.add_entry("Carrier Point Density",
-                tk.DoubleVar(name="carrier_point_density", value=0),
-                valid_range=(largest_negative, None),
-                units="")
+        self.add_entry("carrier_point_density", tk.DoubleVar(),
+                valid_range = (highest_negative, None),
+                units       = "")
 
-        self.add_entry("Maximum Segment Length",
-                tk.DoubleVar(name="maximum_segment_length", value=10),
-                valid_range=(0, None),
-                units='μm')
+        self.add_entry("maximum_segment_length", tk.DoubleVar(),
+                valid_range = (0, None),
+                default     = 10,
+                units       = 'μm')
 
-        self.add_slider("Maximum Extension Angle ",
-                tk.DoubleVar(name="extension_angle", value=60),
-                0, 180,
-                units='°')
+        self.add_slider("extension_angle", tk.DoubleVar(),
+                title       = "Maximum Extension Angle",
+                valid_range = (0, 180),
+                default     = 60,
+                units       = '°')
 
-        self.add_entry("Maximum Extension Distance",
-                tk.DoubleVar(name="extension_distance", value=100),
-                valid_range=(largest_negative, None),
-                units='μm')
+        self.add_entry("extension_distance", tk.DoubleVar(),
+                title       = "Maximum Extension Distance",
+                valid_range = (highest_negative, None),
+                default     = 100,
+                units       = 'μm')
 
-        self.add_slider("Maximum Branch Angle ",
-                tk.DoubleVar(name="bifurcation_angle", value=60),
-                0, 180,
-                units='°')
+        self.add_slider("bifurcation_angle", tk.DoubleVar(),
+                title       = "Maximum Branch Angle",
+                valid_range = (0, 180),
+                default     = 60,
+                units       = '°')
 
-        self.add_entry("Maximum Branch Distance",
-                tk.DoubleVar(name="bifurcation_distance", value=100),
-                valid_range=(largest_negative, None),
-                units='μm')
+        self.add_entry("bifurcation_distance", tk.DoubleVar(),
+                title       = "Maximum Branch Distance",
+                valid_range = (highest_negative, None),
+                default     = 100,
+                units       = 'μm')
 
-        self.add_entry("Diameter",
-                tk.DoubleVar(name="diameter", value=3),
-                valid_range=(0, None),
-                units='μm')
+        self.add_entry("diameter", tk.DoubleVar(),
+                valid_range = (0, None),
+                default     = 3,
+                units       = 'μm')
 
         # neuron region (drop down menu?)
         # global region
