@@ -1,3 +1,5 @@
+""" General purpose GUI elements for making complex settings menus. """
+
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox, simpledialog
@@ -71,6 +73,16 @@ class SettingsPanel(Panel):
 
     def add_empty_space(self, size=pad_top):
         self.frame.rowconfigure(self._row_idx, minsize=size)
+        self._row_idx += 1
+
+    def add_section(self, title):
+        """ Cosmetic, add a label and dividing line over a group of settings. """
+        bar = ttk.Separator(self.frame, orient='horizontal')
+        bar.grid(row=self._row_idx, column=0, columnspan=2, sticky='ew', padx=padx, pady=pady)
+        self.frame.rowconfigure(self._row_idx, minsize=pad_top)
+        self._row_idx += 1
+        label = ttk.Label(self.frame, text=title)
+        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
 
     def add_radio_buttons(self, text, options, variable):
@@ -149,17 +161,14 @@ class SettingsPanel(Panel):
         self._defaults[str(variable)] = variable.get()
         # Create the widgets.
         label = ttk.Label(self.frame, text=text)
-        value = ttk.Label(self.frame)
-        def value_changed_callback(v):
-            v = float(v)
-            v = round(v, 3)
-            v = str(v) + " " + units
-            value.configure(text=v.ljust(5))
         scale = ttk.Scale(self.frame, variable=variable,
                 from_=from_, to=to,
-                command = value_changed_callback,
                 orient = 'horizontal',)
-        value_changed_callback(scale.get())
+        value = ttk.Label(self.frame)
+        def update_value_label(*args):
+            v = round(variable.get(), 3)
+            value.configure(text=(str(v) + " " + units))
+        variable.trace_add("write", update_value_label)
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
@@ -170,7 +179,6 @@ class SettingsPanel(Panel):
                     variable.set(self._defaults[variable_name])
                     self._changed.discard(variable_name)
                     scale.configure(style="Horizontal.TScale")
-                value_changed_callback(variable.get())
             self._set_changed_state[variable_name] = set_changed_state
             scale.configure(command=lambda v: set_changed_state(True))
             scale.bind("<BackSpace>", lambda event: set_changed_state(False))
@@ -183,7 +191,7 @@ class SettingsPanel(Panel):
         self._row_idx += 1
         return scale
 
-    def add_entry(self, text, variable, units=""):
+    def add_entry(self, text, variable, valid_range=(None, None), units=""):
         variable_name = str(variable)
         self._variables.append(variable)
         self._defaults[variable_name] = variable.get()
@@ -203,6 +211,7 @@ class SettingsPanel(Panel):
                     entry.configure(style="TEntry")
             self._set_changed_state[variable_name] = set_changed_state
         # Custom input validation.
+        minimum, maximum = valid_range
         if isinstance(variable, tk.BooleanVar):
             validate_type = bool
         elif isinstance(variable, tk.IntVar):
@@ -223,8 +232,12 @@ class SettingsPanel(Panel):
             else:
                 try:
                     vv = validate_type(text)
+                    if minimum is not None and vv <= minimum: raise ValueError()
+                    if maximum is not None and vv >= maximum: raise ValueError()
                 except ValueError:
                     vv = value
+                    entry.bell()
+                if vv == 0: vv = abs(vv) # Cosmetic fix: no negative zeros.
                 variable.set(vv)
                 if self._override_mode and vv != value:
                     set_changed_state(True)
@@ -249,14 +262,14 @@ class SelectorPanel:
         self._buttons_requiring_selection = []
         self._column_idx = 0 # Index for appending buttons.
         # 
-        self._listbox = tk.Listbox(self.frame, selectmode='single', exportselection=True)
-        self._listbox.bind('<<ListboxSelect>>', self._on_select)
-        self._listbox.grid(row=1, column=0, sticky='nesw')
+        self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=True)
+        self.listbox.bind('<<ListboxSelect>>', self._on_select)
+        self.listbox.grid(row=1, column=0, sticky='nesw')
 
     def _on_select(self, event, deselect=False):
-        indices = self._listbox.curselection()
+        indices = self.listbox.curselection()
         if indices:
-            item = self._listbox.get(indices[0])
+            item = self.listbox.get(indices[0])
         else:
             item = None
         if item == self._current_selection:
@@ -288,20 +301,20 @@ class SelectorPanel:
 
     def set_list(self, items):
         """ Replace the current contents of this Listbox with the given list of items. """
-        self._listbox.delete(0, tk.END)
-        self._listbox.insert(0, *items)
+        self.listbox.delete(0, tk.END)
+        self.listbox.insert(0, *items)
         self._on_select(None, deselect=True)
 
     def get(self):
         return self._current_selection
 
     def get_list(self):
-        return self._listbox.get(0, tk.END)
+        return self.listbox.get(0, tk.END)
 
     def _select_idx(self, idx):
-        self._listbox.selection_clear(0, tk.END)
-        self._listbox.selection_set(idx)
-        self._listbox.activate(idx)
+        self.listbox.selection_clear(0, tk.END)
+        self.listbox.selection_set(idx)
+        self.listbox.activate(idx)
 
     def select(self, item):
         idx = self.get_list().index(item)
@@ -309,23 +322,23 @@ class SelectorPanel:
         self._on_select(None)
 
     def clear_selection(self):
-        self._listbox.selection_clear(0, tk.END)
+        self.listbox.selection_clear(0, tk.END)
         self._on_select(None, deselect=True)
 
     def insert(self, item):
         idx = bisect.bisect(self.get_list(), item)
-        self._listbox.insert(idx, item)
+        self.listbox.insert(idx, item)
         self._select_idx(idx)
         self._on_select(None)
 
     def rename(self, old_item, new_item):
         idx = self.get_list().index(old_item)
-        self._listbox.delete(idx)
+        self.listbox.delete(idx)
         self.insert(new_item)
 
     def delete(self, item):
         idx = self.get_list().index(item)
-        self._listbox.delete(idx)
+        self.listbox.delete(idx)
         self._on_select(None, deselect=True)
 
 class ManagementPanel(Panel):
@@ -407,7 +420,9 @@ class ManagementPanel(Panel):
                     return
             self.selector.delete(name)
             self.parameters.pop(name)
-        self.selector.add_button(text, _callback, require_selection=True)
+        button = self.selector.add_button(text, _callback, require_selection=True)
+        self.selector.listbox.bind("<Delete>",    lambda event: button.invoke())
+        self.selector.listbox.bind("<BackSpace>", lambda event: button.invoke())
 
     def add_button_rename(self):
         def _callback(name):

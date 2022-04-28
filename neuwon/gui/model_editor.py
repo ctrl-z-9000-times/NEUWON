@@ -1,35 +1,39 @@
-from .gui_widgets import *
+from .control_panels import *
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog
 import os.path
 import json
+import pprint
+import numpy as np
+
+largest_negative = np.nextafter(0, -1)
+inf = np.inf
 
 class ModelEditor(OrganizerPanel):
     def __init__(self):
         self.root = tk.Tk()
-        self.menubar = tk.Menu(self.root)
-        self.root.config(menu = self.menubar)
-        self.filemenu = self._init_file_menu(self.menubar)
+        self._init_menu(self.root)
         self._init_main_panel(self.root)
         self.new_model()
+
+    def _init_menu(self, parent):
+        self.menubar = tk.Menu(parent)
+        parent.config(menu = self.menubar)
+        self.filemenu = self._init_file_menu(self.menubar)
 
     def _init_file_menu(self, parent_menu):
         filemenu = tk.Menu(parent_menu, tearoff=False)
         parent_menu.add_cascade(label="File", menu=filemenu)
-
         filemenu.add_command(label="New Model", underline=0, command=self.new_model)
-
-        filemenu.add_command(label="Open", underline=0, accelerator="Ctrl+O", command=self.open)
+        filemenu.add_command(label="Open",      underline=0, command=self.open,    accelerator="Ctrl+O")
+        filemenu.add_command(label="Save",      underline=0, command=self.save,    accelerator="Ctrl+S")
+        filemenu.add_command(label="Save As",   underline=5, command=self.save_as, accelerator="Ctrl+Shift+S")
+        filemenu.add_command(label="Export",    underline=1, command=self.export)
+        filemenu.add_command(label="Quit",      underline=0, command=self.close)
         self.root.bind_all("<Control-o>", self.open)
-
-        filemenu.add_command(label="Save", underline=0, accelerator="Ctrl+S", command=self.save)
         self.root.bind_all("<Control-s>", self.save)
-
-        filemenu.add_command(label="Save As", underline=5, accelerator="Ctrl+Shift+S", command=self.save_as)
         self.root.bind_all("<Control-S>", self.save_as)
-
-        filemenu.add_command(label="Quit", underline=0, command=self.close)
         return filemenu
 
     def _init_main_panel(self, parent):
@@ -42,7 +46,7 @@ class ModelEditor(OrganizerPanel):
         self.add_tab('neurons',    Neurons( frame, self.tabs['mechanisms']))
         frame.grid(sticky='nesw')
 
-    def set_title(self):
+    def _set_title(self):
         title = "NEUWON Model Editor"
         if self.filename:
             filename = os.path.abspath(self.filename)
@@ -55,18 +59,19 @@ class ModelEditor(OrganizerPanel):
 
     def new_model(self, event=None):
         self.filename = None
-        self.set_title()
+        self._set_title()
         self.set_parameters({})
 
     def open(self, event=None):
-        open_filename = filedialog.askopenfilename(filetypes=[('Model File', '.json')])
+        open_filename = filedialog.askopenfilename(title="Open Model",
+                        filetypes=[('Model File', '.json')])
         if not open_filename:
             return
         with open(open_filename, 'rt') as f:
             parameters = json.load(f)
         self.set_parameters(parameters)
         self.filename = open_filename
-        self.set_title()
+        self._set_title()
 
     def save(self, event=None):
         if not self.filename:
@@ -76,6 +81,7 @@ class ModelEditor(OrganizerPanel):
             parameters = self.get_parameters() # Successfully get the parameters before truncating the output file.
             with open(self.filename, 'wt') as f:
                 json.dump(parameters, f, indent=4)
+                f.flush()
 
     def save_as(self, event=None):
         save_as_filename = filedialog.asksaveasfilename(defaultextension='.json')
@@ -83,16 +89,24 @@ class ModelEditor(OrganizerPanel):
             return
         self.filename = save_as_filename
         self.save()
-        self.set_title()
-
-    def close(self, event=None):
-        self.root.destroy()
+        self._set_title()
 
     def export(self):
+        parameters = self.get_NEUWON_parameters()
+        parameters = pprint.pformat(parameters)
+        export_filename = filedialog.asksaveasfilename(defaultextension='.py')
+        with open(export_filename, 'wt') as f:
+            f.write(parameters)
+            f.write('\n')
+            f.flush()
+
+    def get_NEUWON_parameters(self):
         """ Fixup the programs internal parameters into NEUWON's parameter structure. """
         parameters = self.get_parameters()
         1/0
-        return parameters
+
+    def close(self, event=None):
+        self.root.destroy()
 
 
 class Simulation(SettingsPanel):
@@ -100,23 +114,27 @@ class Simulation(SettingsPanel):
         super().__init__(root)
 
         self.add_entry("Time Step",
-                tk.DoubleVar(self.frame, name="time_step", value=0.1),
+                tk.DoubleVar(name="time_step", value=0.1),
+                valid_range=(0, None),
                 units='ms',)
 
         self.add_entry("Temperature",
-                tk.DoubleVar(self.frame, name="temperature", value=37.0),
+                tk.DoubleVar(name="temperature", value=37.0),
+                valid_range=(0, 100),
                 units='°C',)
 
         self.add_entry("Initial Voltage",
-                tk.DoubleVar(self.frame, name="initial_voltage", value=-70.0),
+                tk.DoubleVar(name="initial_voltage", value=-70.0),
                 units='mV',)
 
         self.add_entry("Cytoplasmic Resistance",
-                tk.DoubleVar(self.frame, name="cytoplasmic_resistance", value=100.0),
+                tk.DoubleVar(name="cytoplasmic_resistance", value=100.0),
+                valid_range=(0, None),
                 units='',)
 
         self.add_entry("Membrane Capacitance",
-                tk.DoubleVar(self.frame, name="membrane_capacitance", value=1.0),
+                tk.DoubleVar(name="membrane_capacitance", value=1.0),
+                valid_range=(0, None),
                 units='μf/cm^2',)
 
 
@@ -129,44 +147,48 @@ class Species(ManagementPanel):
         self.add_button_rename()
 
         settings = self.settings
-        frame    = settings.frame
 
         settings.add_empty_space()
 
+        settings.add_entry("Charge",
+                tk.IntVar(name="charge"),
+                units='e')
         settings.add_entry("Diffusivity",
-                tk.DoubleVar(frame, name='diffusivity'),
+                tk.DoubleVar(name='diffusivity'),
+                valid_range=(largest_negative,None),
                 units='')
         settings.add_entry("Decay Period",
-                tk.DoubleVar(frame, name='decay_period', value=float('inf')),
+                tk.DoubleVar(name='decay_period', value=inf),
+                valid_range=(0,None),
                 units='ms')
-        settings.add_entry("Charge",
-                tk.IntVar(frame, name="charge"),
-                units='e')
+        rv_type = tk.StringVar(name="reversal_potential", value="Const")
         settings.add_radio_buttons("Reversal Potential", 
-                ["Const", "Nerst", "GHK"],
-                tk.StringVar(frame, name="reversal_potential", value="Const"))
-        settings.add_entry("",
-                tk.DoubleVar(frame, name='const_reversal_potential'),
+                ["Const", "Nerst", "GHK"], rv_type)
+        rv_entry = settings.add_entry("",
+                tk.DoubleVar(name='const_reversal_potential'),
+                valid_range=(-inf, inf),
                 units='mV')
+        def const_entrybox_control(*args):
+            if rv_type.get() == "Const":
+                rv_entry.configure(state='enabled')
+            else:
+                rv_entry.configure(state='readonly')
+        rv_type.trace_add("write", const_entrybox_control)
 
-        settings.add_empty_space()
-
-        settings.add_checkbox("Intracellular",
-                tk.BooleanVar(frame, name='inside'))
+        settings.add_section("Intracellular")
         settings.add_checkbox("Global Constant",
-                tk.BooleanVar(frame, name='inside_constant'))
+                tk.BooleanVar(name='inside_constant'))
         settings.add_entry("Initial Concentration",
-                tk.DoubleVar(frame, name='inside_initial_concentration'),
+                tk.DoubleVar(name='inside_initial_concentration'),
+                valid_range=(largest_negative,None),
                 units='mmol')
 
-        settings.add_empty_space()
-
-        settings.add_checkbox("Extracellular",
-                tk.BooleanVar(frame, name='outside'))
+        settings.add_section("Extracellular")
         settings.add_checkbox("Global Constant",
-                tk.BooleanVar(frame, name='outside_constant'))
+                tk.BooleanVar(name='outside_constant'))
         settings.add_entry("Initial Concentration",
-                tk.DoubleVar(frame, name='outside_initial_concentration'),
+                tk.DoubleVar(name='outside_initial_concentration'),
+                valid_range=(largest_negative,None),
                 units='mmol')
 
 
@@ -231,7 +253,8 @@ class MechanismSelector(ManagementPanel):
         no = ttk.Button(dialog, text="Cancel", command=dialog.destroy,)
         ok.grid(row=1, column=0, padx=2*padx, pady=pad_top)
         no.grid(row=1, column=1, padx=2*padx, pady=pad_top)
-        dialog.bind("<Escape>", lambda event: dialog.destroy)
+        dialog.bind("<Escape>", lambda event: dialog.destroy())
+        listbox.bind("<Double-Button-1>", lambda event: ok_callback())
         # Make the dialog window modal. This prevents user interaction with
         # any other application window until this dialog is resolved.
         dialog.focus_set()
@@ -275,14 +298,17 @@ class Neurons(ManagementPanel):
         tab_ctrl = OrganizerPanel(self.segment_list.frame)
         tab_ctrl.get_widget().grid(row=1, column=2)
 
-        self.soma = SettingsPanel(tab_ctrl.get_widget())
-        tab_ctrl.add_tab('soma', self.soma)
+        tab_ctrl.add_tab('soma', self._init_settings_panel(tab_ctrl.get_widget()))
 
         self.morphology = Morphology(tab_ctrl.get_widget())
         tab_ctrl.add_tab('morphology', self.morphology)
 
         self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
         tab_ctrl.add_tab('mechanisms', self.mechanisms)
+
+    def _init_settings_panel(self, parent):
+        settings = SettingsPanel(parent)
+        return settings
 
 
 class Morphology(SettingsPanel):
@@ -293,57 +319,45 @@ class Morphology(SettingsPanel):
                 tk.BooleanVar(self.frame, name="extend_before_bifurcate"))
 
         self.add_checkbox("Competitive Growth",
-                tk.BooleanVar(self.frame,
-                    value=True,
-                    name="competitive"))
+                tk.BooleanVar(name="competitive", value=True))
 
         self.add_slider("Balancing Factor",
-                tk.DoubleVar(self.frame,
-                    value=False,
-                    name="balancing_factor"),
+                tk.DoubleVar(name="balancing_factor", value=False),
                 0, 1)
 
         self.add_entry("Carrier Point Density",
-                tk.DoubleVar(self.frame,
-                    value=0,
-                    name="carrier_point_density"))
+                tk.DoubleVar(name="carrier_point_density", value=0),
+                valid_range=(largest_negative, None),
+                units="")
 
         self.add_entry("Maximum Segment Length",
-                tk.DoubleVar(self.frame,
-                    value=10,
-                    name="maximum_segment_length"),
+                tk.DoubleVar(name="maximum_segment_length", value=10),
+                valid_range=(0, None),
                 units='μm')
 
         self.add_slider("Maximum Extension Angle ",
-                tk.DoubleVar(self.frame,
-                    value=60,
-                    name="extension_angle"),
+                tk.DoubleVar(name="extension_angle", value=60),
                 0, 180,
                 units='°')
 
         self.add_entry("Maximum Extension Distance",
-                tk.DoubleVar(self.frame,
-                    value=100,
-                    name="extension_distance"),
+                tk.DoubleVar(name="extension_distance", value=100),
+                valid_range=(largest_negative, None),
                 units='μm')
 
         self.add_slider("Maximum Branch Angle ",
-                tk.DoubleVar(self.frame,
-                    value=60,
-                    name="bifurcation_angle"),
+                tk.DoubleVar(name="bifurcation_angle", value=60),
                 0, 180,
                 units='°')
 
         self.add_entry("Maximum Branch Distance",
-                tk.DoubleVar(self.frame,
-                    value=100,
-                    name="bifurcation_distance"),
+                tk.DoubleVar(name="bifurcation_distance", value=100),
+                valid_range=(largest_negative, None),
                 units='μm')
 
         self.add_entry("Diameter",
-                tk.DoubleVar(self.frame,
-                    value=3,
-                    name="diameter"),
+                tk.DoubleVar(name="diameter", value=3),
+                valid_range=(0, None),
                 units='μm')
 
         # neuron region (drop down menu?)
