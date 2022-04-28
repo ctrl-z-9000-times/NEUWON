@@ -2,17 +2,16 @@ from .gui_widgets import *
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog
-import math
 import os.path
 import json
 
-class ModelEditor:
+class ModelEditor(OrganizerPanel):
     def __init__(self):
         self.root = tk.Tk()
         self.menubar = tk.Menu(self.root)
         self.root.config(menu = self.menubar)
         self.filemenu = self._init_file_menu(self.menubar)
-        self.tab_ctrl = self._init_main_panel(self.root)
+        self._init_main_panel(self.root)
         self.new_model()
 
     def _init_file_menu(self, parent_menu):
@@ -33,36 +32,15 @@ class ModelEditor:
         filemenu.add_command(label="Quit", underline=0, command=self.close)
         return filemenu
 
-    def _init_main_panel(self, root):
-        tab_ctrl = ttk.Notebook(root)
-        tab_ctrl.grid(sticky='nesw')
-
-        def add_tab(frame, text):
-            tab_ctrl.add(frame, text=text,
-                    sticky='nesw',
-                    padding=(padx, pad_top))
-
-        self.simulation = Simulation(tab_ctrl)
-        add_tab(self.simulation.frame, 'Simulation')
-
-        self.species = Species(tab_ctrl)
-        add_tab(self.species.frame, 'Species')
-
-        self.mechanisms = MechanismManager(tab_ctrl)
-        add_tab(self.mechanisms.frame, 'Mechanisms')
-
-        add_tab(tk.Frame(tab_ctrl), 'Regions')
-
-        self.segments = Segments(tab_ctrl, self.mechanisms)
-        add_tab(self.segments.frame, 'Segments')
-
-        self.neurons = Neurons(tab_ctrl)
-        add_tab(self.neurons.frame, 'Neurons')
-
-        add_tab(tk.Frame(tab_ctrl), 'Synapses')
-
-        add_tab(tk.Frame(tab_ctrl), 'Preview')
-        return tab_ctrl
+    def _init_main_panel(self, parent):
+        super().__init__(parent)
+        frame = self.get_widget()
+        self.add_tab('simulation', Simulation(frame))
+        self.add_tab('mechanisms', MechanismManager(frame))
+        self.add_tab('species',    Species(frame))
+        self.add_tab('segments',   Segments(frame, self.tabs['mechanisms']))
+        self.add_tab('neurons',    Neurons( frame, self.tabs['mechanisms']))
+        frame.grid(sticky='nesw')
 
     def set_title(self):
         title = "NEUWON Model Editor"
@@ -78,15 +56,7 @@ class ModelEditor:
     def new_model(self, event=None):
         self.filename = None
         self.set_title()
-        self.set_parameters({
-                'simulation': {
-                    "time_step": 0.1,
-                    "temperature": 37.0,
-                    "initial_voltage": -70.0,
-                    "cytoplasmic_resistance": 100.0,
-                    "membrane_capacitance": 1.0,
-                },
-        })
+        self.set_parameters({})
 
     def open(self, event=None):
         open_filename = filedialog.askopenfilename(filetypes=[('Model File', '.json')])
@@ -118,68 +88,54 @@ class ModelEditor:
     def close(self, event=None):
         self.root.destroy()
 
-    def get_parameters(self):
-        return {
-            "simulation":   self.simulation.get_parameters(),
-            "species":      self.species.get_parameters(),
-            "mechanisms":   self.mechanisms.get_parameters(),
-            "segments":     self.segments.get_parameters(),
-            "neurons":      self.neurons.get_parameters(),
-        }
-
-    def set_parameters(self, parameters):
-        parameters = dict(parameters)
-        self.simulation.set_parameters(     parameters.pop("simulation", {}))
-        self.species.set_parameters(        parameters.pop("species", {}))
-        self.mechanisms.set_parameters(     parameters.pop("mechanisms", {}))
-        self.segments.set_parameters(       parameters.pop("segments", {}))
-        self.neurons.set_parameters(        parameters.pop("neurons", {}))
-        assert not parameters
+    def export(self):
+        """ Fixup the programs internal parameters into NEUWON's parameter structure. """
+        parameters = self.get_parameters()
+        1/0
+        return parameters
 
 
 class Simulation(SettingsPanel):
     def __init__(self, root):
-        super().__init__(root)
+        super().__init__(root, True)
 
         self.add_entry("Time Step",
-                tk.DoubleVar(self.frame, name="time_step"),
+                tk.DoubleVar(self.frame, name="time_step", value=0.1),
                 units='ms',)
 
         self.add_entry("Temperature",
-                tk.DoubleVar(self.frame, name="temperature"),
+                tk.DoubleVar(self.frame, name="temperature", value=37.0),
                 units='°C',)
 
         self.add_entry("Initial Voltage",
-                tk.DoubleVar(self.frame, name="initial_voltage"),
+                tk.DoubleVar(self.frame, name="initial_voltage", value=-70.0),
                 units='mV',)
 
         self.add_entry("Cytoplasmic Resistance",
-                tk.DoubleVar(self.frame, name="cytoplasmic_resistance"),
+                tk.DoubleVar(self.frame, name="cytoplasmic_resistance", value=100.0),
                 units='',)
 
         self.add_entry("Membrane Capacitance",
-                tk.DoubleVar(self.frame, name="membrane_capacitance"),
+                tk.DoubleVar(self.frame, name="membrane_capacitance", value=1.0),
                 units='μf/cm^2',)
 
+        self.add_radio_buttons("TESTING", ["A", "B"],
+                tk.StringVar(value="B"))
 
-class Species:
+        self.add_checkbox("TESTING BOX", tk.BooleanVar(value=True))
+
+        self.add_slider("TEST SLIDER", tk.DoubleVar(value=3.3), 0, 100, )
+
+
+class Species(ManagementPanel):
     def __init__(self, root):
-        self.parameters = {}
-        self.mgmt_panel = ManagementPanel(root, "Species", self.select_species)
-        self.frame = self.mgmt_panel.frame
+        super().__init__(root, "Species", lambda: None)
 
-        self.mgmt_panel.selector.add_button("New", self.create_species)
-        self.mgmt_panel.selector.add_button("Delete", self.destroy_species, require_selection=True)
-        self.mgmt_panel.selector.add_button("Rename", self.rename_species, require_selection=True)
+        self.add_button_create()
+        self.add_button_delete()
+        self.add_button_rename()
 
-        self.init_species_control_panel()
-        self._default_parameters = {str(v): v.get() for v in self.mgmt_panel.settings.variables}
-        self._default_parameters["decay_period"] = math.inf
-        self._default_parameters["reversal_potential"] = "Const"
-        self.mgmt_panel.selector.touch()
-
-    def init_species_control_panel(self):
-        settings = self.mgmt_panel.settings
+        settings = self.settings
         frame    = settings.frame
 
         settings.add_empty_space()
@@ -188,14 +144,14 @@ class Species:
                 tk.DoubleVar(frame, name='diffusivity'),
                 units='')
         settings.add_entry("Decay Period",
-                tk.DoubleVar(frame, name='decay_period'),
+                tk.DoubleVar(frame, name='decay_period', value=float('inf')),
                 units='ms')
         settings.add_entry("Charge",
                 tk.IntVar(frame, name="charge"),
                 units='e')
         settings.add_radio_buttons("Reversal Potential", 
                 ["Const", "Nerst", "GHK"],
-                tk.StringVar(frame, name="reversal_potential"))
+                tk.StringVar(frame, name="reversal_potential", value="Const"))
         settings.add_entry("",
                 tk.DoubleVar(frame, name='const_reversal_potential'),
                 units='mV')
@@ -220,77 +176,14 @@ class Species:
                 tk.DoubleVar(frame, name='outside_initial_concentration'),
                 units='mmol')
 
-    def select_species(self, old_species, new_species):
-        # Save the current parameters from the SettingsPanel.
-        if old_species is not None:
-            self.parameters[old_species] = self.mgmt_panel.settings.get_parameters()
-        # Load the newly selected species parameters into the SettingsPanel.
-        if new_species is not None:
-            self.mgmt_panel.settings.set_parameters(self.parameters[new_species])
-        else:
-            self.mgmt_panel.settings.set_parameters(self._default_parameters)
 
-    def create_species(self, selected_species):
-        species_name = simpledialog.askstring("Create Species", "Enter Species Name:")
-        if species_name is None:
-            return
-        species_name = species_name.strip()
-        if not species_name:
-            return
-        if species_name in self.parameters:
-            self._duplicate_species_name_error(species_name)
-            return
-        self.parameters[species_name] = dict(self._default_parameters)
-        self.mgmt_panel.selector.insert_sorted(species_name)
-
-    def _duplicate_species_name_error(self, species_name):
-        messagebox.showerror("Species Name Error",
-                f'Species "{species_name}" is already defined!')
-
-    def destroy_species(self, species_name):
-        confirmation = messagebox.askyesno("Confirm Delete Species",
-                f"Are you sure you want to delete species '{species_name}'?")
-        if not confirmation:
-            return
-        self.mgmt_panel.selector.delete(species_name)
-        self.parameters.pop(species_name)
-
-    def rename_species(self, species_name):
-        new_name = simpledialog.askstring("Rename Species",
-                f'Rename Species "{species_name}" to')
-        if new_name is None:
-            return
-        new_name = new_name.strip()
-        if not new_name:
-            return
-        elif new_name == species_name:
-            return
-        elif new_name in self.parameters:
-            self._duplicate_species_name_error(new_name)
-            return
-        self.parameters[new_name] = self.parameters[species_name]
-        self.mgmt_panel.selector.rename(species_name, new_name)
-        self.parameters.pop(species_name)
-
-    def get_parameters(self):
-        self.mgmt_panel.selector.touch()
-        return self.parameters
-
-    def set_parameters(self, parameters):
-        self.parameters = parameters
-        self.mgmt_panel.selector.set(sorted(self.parameters.keys()))
-
-
-class MechanismManager:
+class MechanismManager(ManagementPanel):
     def __init__(self, root):
-        self.parameters = {}
-        self.mgmt = ManagementPanel(root, "Mechanism", self.select_mechanism)
-        self.frame = self.mgmt.frame
-
-        self.mgmt.selector.add_button("Import", self.import_mechanisms)
-        self.mgmt.selector.add_button("Remove", self.remove_mechanism, require_selection=True)
-        self.mgmt.selector.add_button("Rename", self.rename_mechanism, require_selection=True)
-        self.mgmt.selector.add_button("Info",   self.info_on_mechanism,require_selection=True)
+        super().__init__(root, "Mechanism")
+        self.selector.add_button("Import", self.import_mechanisms)
+        self.add_button_delete("Remove")
+        self.add_button_rename()
+        self.selector.add_button("Info",   self.info_on_mechanism,require_selection=True)
 
     def import_mechanisms(self, selected):
         files = filedialog.askopenfilenames(
@@ -300,19 +193,8 @@ class MechanismManager:
             name = os.path.splitext(os.path.basename(abspath))[0]
             if name in self.parameters:
                 continue
-            self.parameters[name] = [abspath, {}]
-            self.mgmt.selector.insert_sorted(name)
-
-    def remove_mechanism(self, selected):
-        confirmation = messagebox.askyesno("Confirm Remove Mechanism",
-                f"Are you sure you want to remove mechanism '{selected}'?")
-        if not confirmation:
-            return
-        self.mgmt.selector.delete(selected)
-        self.parameters.pop(selected)
-
-    def rename_mechanism(self, selected):
-        1/0
+            self.parameters[name] = {'filename': abspath, 'parameters': {}}
+            self.selector.insert_sorted(name)
 
     def info_on_mechanism(self, selected):
         info = tk.Toplevel()
@@ -329,41 +211,16 @@ class MechanismManager:
         ).grid(row=1, column=0, padx=padx, pady=pady, sticky='nw')
         v.set(filename)
 
-    def select_mechanism(self, old_item, new_item):
-        # Save the current parameters from the SettingsPanel.
-        if old_item is not None:
-            self.parameters[old_item][1] = self.mgmt.settings.get_parameters()
-        # Load the selected mechanism into the SettingsPanel.
-        if new_item is not None:
-            self.mgmt.settings.set_parameters(self.parameters[new_item][1])
 
-    def get_parameters(self):
-        self.mgmt.selector.touch()
-        return self.parameters
-
-    def set_parameters(self, parameters):
-        self.parameters = parameters
-        self.mgmt.selector.set(sorted(self.parameters.keys()))
-
-
-class MechanismSelector:
+class MechanismSelector(ManagementPanel):
     def __init__(self, root, mechanism_manager):
-        self.parameters = {}
         self.mechanisms = mechanism_manager
-        self.mgmt = ManagementPanel(root, "Mechanism", self.select_mechanism)
-        self.frame = self.mgmt.frame
-        self.mgmt.selector.add_button("Insert", self.insert_mechanism)
-        self.mgmt.selector.add_button("Remove", self.remove_mechanism, require_selection=True)
-        self.mgmt.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True)
-        self.mgmt.settings.add_empty_space()
-        self.mgmt.settings.add_entry("Magnitude", tk.DoubleVar(name='magnitude', value=1.0))
-
-    def select_mechanism(self, old_item, new_item):
-        if old_item is not None:
-            settings = self.mgmt.settings.get_parameters()
-            self.parameters[old_item] = settings['magnitude']
-        if new_item is not None:
-            self.mgmt.settings.set_parameters({"magnitude": self.parameters[new_item]})
+        super().__init__(root, "Mechanism")
+        self.selector.add_button("Insert", self.insert_mechanism)
+        self.add_button_delete("Remove", require_confirmation=False)
+        self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True)
+        self.settings.add_empty_space()
+        self.settings.add_entry("Magnitude", tk.DoubleVar(name='magnitude', value=1.0))
 
     def insert_mechanism(self, selected):
         dialog = tk.Toplevel()
@@ -393,88 +250,46 @@ class MechanismSelector:
             if x in self.parameters:
                 continue
             self.parameters[x] = 1.0
-            self.mgmt.selector.insert_sorted(x)
-
-    def remove_mechanism(self, selected):
-        self.mgmt.selector.delete(selected)
-        self.parameters.pop(selected)
-
-    def get_parameters(self):
-        self.mgmt.selector.touch()
-        return self.parameters
-
-    def set_parameters(self, parameters):
-        self.parameters = parameters
-        self.mgmt.selector.set(sorted(self.parameters.keys()))
+            self.selector.insert_sorted(x)
 
 
-class Segments:
+class Segments(ManagementPanel):
     def __init__(self, root, mechanism_manager):
-        self.parameters = {}
-        self.mgmt = ManagementPanel(root, "Segment", self.select_segment,
-                                    init_settings_panel=False)
-        self.frame = self.mgmt.frame
+        super().__init__(root, "Segment", init_settings_panel=False)
 
-        self.mgmt.selector.add_button("New",    self.new_segment)
-        self.mgmt.selector.add_button("Delete", self.delete_segment, require_selection=True)
-        self.mgmt.selector.add_button("Rename", self.rename_segment, require_selection=True)
+        self.add_button_create()
+        self.add_button_delete()
+        self.add_button_rename()
+        self.add_button_duplicate()
 
-        tab_ctrl = ttk.Notebook(self.frame)
-        self.mgmt.insert_settings_frame(tab_ctrl)
+        tab_ctrl = OrganizerPanel(self.frame)
+        self.set_settings_panel(tab_ctrl)
 
-        tab_ctrl.add(ttk.Frame(tab_ctrl), text='Soma')
+        self.morphology = Morphology(tab_ctrl.get_widget())
+        tab_ctrl.add_tab('morphology', self.morphology)
 
-        self.morphology = Morphology(tab_ctrl)
-        tab_ctrl.add(self.morphology.frame, text='Morphology')
-
-        self.mechanisms = MechanismSelector(tab_ctrl, mechanism_manager)
-        tab_ctrl.add(self.mechanisms.frame, text='Mechanisms')
-
-    def select_segment(self, old_item, new_item):
-        pass
-
-    def new_segment(self, selected):
-        pass
-
-    def delete_segment(self, selected):
-        pass
-
-    def rename_segment(self, selected):
-        pass
-
-    def get_parameters(self):
-        return self.parameters
-
-    def set_parameters(self, parameters):
-        self.parameters = parameters
+        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
+        tab_ctrl.add_tab('mechanisms', self.mechanisms)
 
 
+class Neurons(ManagementPanel):
+    def __init__(self, root, mechanism_manager):
+        super().__init__(root, "Neurons", init_settings_panel=False)
 
-class Neurons:
-    def __init__(self, root):
-        self.parameters = {}
-        self.frame = ttk.Frame(root)
-        self.frame.grid()
-        self.neuron_list = SelectorPanel(self.frame, (lambda event: None))
-        self.neuron_list.frame.grid(row=0, column=0)
-        self.segment_list = SelectorPanel(self.frame, (lambda event: None))
-        self.segment_list.frame.grid(row=0, column=1)
+        self.segment_list = ManagementPanel(self.frame, "Segments")
+        self.segment_list.frame.grid(row=1, column=2)
 
-        tab_ctrl = ttk.Notebook(self.frame)
-        tab_ctrl.grid(row=0, column=2)
+        tab_ctrl = OrganizerPanel(self.segment_list.frame)
+        tab_ctrl.get_widget().grid(row=1, column=2)
 
-        tab_ctrl.add(ttk.Frame(tab_ctrl), text='Soma')
+        self.soma = SettingsPanel(tab_ctrl.get_widget())
+        tab_ctrl.add_tab('soma', self.soma)
 
-        self.morphology = Morphology(tab_ctrl)
-        tab_ctrl.add(self.morphology.frame, text='Morphology')
+        self.morphology = Morphology(tab_ctrl.get_widget())
+        tab_ctrl.add_tab('morphology', self.morphology)
 
-        tab_ctrl.add(ttk.Frame(tab_ctrl), text='Mechanisms')
-
-    def get_parameters(self):
-        return self.parameters
-
-    def set_parameters(self, parameters):
-        self.parameters = parameters
+        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
+        tab_ctrl.add_tab('mechanisms', self.mechanisms)
 
 
 class Morphology(SettingsPanel):
@@ -552,22 +367,11 @@ class Morphology(SettingsPanel):
 
 class Regions:
     def __init__(self, root):
-        self.frame = ttk.Frame(root)
-        self.regions_list = SelectorPanel(self.frame)
-        self.regions_ctrl = SettingsPanel(self.frame)
-        self.regions_list.frame.grid(row=0, column=0)
-        self.regions_ctrl.frame.grid(row=0, column=1)
+        1/0
         # The problem with this is that using numbers is a terrible way to
         # specify the regions. They're spatial coordinate, I should have some
         # way to visualize where they are & what they look like. But that's
         # really complicated to implement.
-        1/0
-
-    def get_parameters(self):
-        1/0
-
-    def set_parameters(self, parameters):
-        1/0
 
 
 if __name__ == '__main__':
