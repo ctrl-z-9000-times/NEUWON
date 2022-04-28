@@ -24,22 +24,25 @@ class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
     def __init__(self, parent, override_mode=False):
         self.frame = ttk.Frame(parent)
-        self._row_idx = 0 # Index for appending widgets.
-        self._parameters = {} # Preserve extra parameters that aren't used by this panel.
-        self._variables = {}
-        self._defaults = {}
         self._override_mode = bool(override_mode)
+        self._row_idx    = 0  # Index for appending widgets.
+        self._parameters = {} # Preserves extra parameters that aren't used by this panel.
+        self._variables  = {} # Store the anonymous tkinter variable objects.
+        self._defaults   = {}
         if self._override_mode:
             self._changed = set()
-            self._set_changed_state = {}
-            color = 'yellow'
-            s = ttk.Style()
-            s.configure('Changed.TRadiobutton', background=color, highlightcolor=color)
-            s.map(      'Changed.TRadiobutton', background=[('active', color)],)
-            s.configure('Changed.TCheckbutton', background=color)
-            s.map(      'Changed.TCheckbutton', background=[('active', color)],)
-            s.configure('Changed.Horizontal.TScale', troughcolor=color)
-            s.configure('Changed.TEntry', fieldbackground=color)
+            self._set_changed_state = {} # Function for each variable.
+            self._init_changed_style()
+
+    def _init_changed_style(self):
+        color = 'yellow'
+        s = ttk.Style()
+        s.configure('Changed.TRadiobutton', background=color, highlightcolor=color)
+        s.map(      'Changed.TRadiobutton', background=[('active', color)],)
+        s.configure('Changed.TCheckbutton', background=color)
+        s.map(      'Changed.TCheckbutton', background=[('active', color)],)
+        s.configure('Changed.Horizontal.TScale', troughcolor=color)
+        s.configure('Changed.TEntry', fieldbackground=color)
 
     def get_parameters(self):
         for name, variable in self._variables.items():
@@ -121,6 +124,7 @@ class SettingsPanel(Panel):
             for button in buttons:
                 button.configure(command=change)
                 button.bind("<BackSpace>", lambda event: set_changed_state(False))
+                button.bind("<Delete>",    lambda event: set_changed_state(False))
         # Arrange the widgets.
         label  .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         btn_row.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady,
@@ -150,8 +154,9 @@ class SettingsPanel(Panel):
                     self._changed.discard(variable_name)
                     button.configure(style="TCheckbutton")
             self._set_changed_state[variable_name] = set_changed_state
-            button.configure(command=lambda: set_changed_state(True))
+            button.configure(command = lambda:       set_changed_state(True))
             button.bind("<BackSpace>", lambda event: set_changed_state(False))
+            button.bind("<Delete>",    lambda event: set_changed_state(False))
         # Arrange the widgets.
         label .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         button.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady)
@@ -186,8 +191,9 @@ class SettingsPanel(Panel):
                     self._changed.discard(variable_name)
                     scale.configure(style="Horizontal.TScale")
             self._set_changed_state[variable_name] = set_changed_state
-            scale.configure(command=lambda v: set_changed_state(True))
+            scale.configure(command = lambda v:     set_changed_state(True))
             scale.bind("<BackSpace>", lambda event: set_changed_state(False))
+            scale.bind("<Delete>",    lambda event: set_changed_state(False))
             # By default mouse-1 doesn't focus on the slider, which is needed for the backspace binding.
             scale.bind("<Button-1>", lambda event: scale.focus_set())
         # Arrange the widgets.
@@ -234,8 +240,8 @@ class SettingsPanel(Panel):
             value = variable.get()
         def focus_out(event):
             entry.selection_clear()
-            text = entry.get()
-            if self._override_mode and not text.strip():
+            text = entry.get().strip()
+            if self._override_mode and not text:
                 set_changed_state(False)
             else:
                 try:
@@ -352,7 +358,7 @@ class SelectorPanel:
 class ManagementPanel(Panel):
     """ GUI element to use a SelectorPanel to control another panel. """
     def __init__(self, parent, title, init_settings_panel=True):
-        self.title      = str(title)
+        self.title      = str(title).title()
         self.parameters = {}
         self.selector   = SelectorPanel(parent, self._on_select)
         self.frame      = self.selector.frame
@@ -383,9 +389,10 @@ class ManagementPanel(Panel):
             self.parameters[old_item] = self.settings.get_parameters()
         # Load the newly selected parameters into the SettingsPanel.
         if new_item is not None:
-            self.settings.set_parameters(self.parameters[new_item])
+            parameters = self.parameters[new_item]
         else:
-            self.settings.set_parameters({})
+            parameters = {}
+        self.settings.set_parameters(parameters)
 
     def get_parameters(self):
         item = self.selector.get()
@@ -398,12 +405,14 @@ class ManagementPanel(Panel):
         self.selector.set_list(sorted(self.parameters.keys()))
 
     def _duplicate_name_error(self, name):
+        self.frame.bell()
         messagebox.showerror(f"{self.title} Name Error",
                 f'{self.title} "{name}" is already defined!')
 
     def add_button_create(self):
-        def _callback(selection):
-            name = simpledialog.askstring(f"Create {self.title}", f"Enter {self.title} Name:")
+        def _callback(name):
+            name = simpledialog.askstring(f"Create {self.title}",
+                                          f"Enter new {self.title.lower()} name:")
             if name is None:
                 return
             name = name.strip()
@@ -420,6 +429,7 @@ class ManagementPanel(Panel):
         self.selector.add_button("New", _callback)
 
     def add_button_delete(self, text="Delete", require_confirmation=True):
+        text = text.title()
         def _callback(name):
             if require_confirmation:
                 confirmation = messagebox.askyesno(f"Confirm {text} {self.title}",
@@ -435,7 +445,7 @@ class ManagementPanel(Panel):
     def add_button_rename(self):
         def _callback(name):
             new_name = simpledialog.askstring(f"Rename {self.title}",
-                    f'Rename {self.title} "{name}" to')
+                    f'Rename {self.title.lower()} "{name}" to:')
             if new_name is None:
                 return
             new_name = new_name.strip()
@@ -454,13 +464,11 @@ class ManagementPanel(Panel):
     def add_button_duplicate(self):
         def _callback(name):
             new_name = simpledialog.askstring(f"Duplicate {self.title}",
-                                              f"Enter {self.title} Name:")
+                                              f"Enter new {self.title.lower()} name:")
             if new_name is None:
                 return
             new_name = new_name.strip()
             if not new_name:
-                return
-            elif new_name == name:
                 return
             elif new_name in self.parameters:
                 self._duplicate_name_error(new_name)
