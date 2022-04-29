@@ -171,13 +171,37 @@ class SettingsPanel(Panel):
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
-        variable.set(self._defaults[variable_name])
         from_, to = valid_range
+        # ttk does not support changing the resolution (up/down increments).
+        # Reimplement it by: creating a new variable, keeping it in sync with
+        # the users variable, and applying a scale conversion between them.
+        divisions  = 20
+        resolution = (to - from_) / divisions
+        from_ /= resolution
+        to    /= resolution
+        rescaled = type(variable)()
+        bridge_active = False # This flag prevents infinite recursion.
+        def bridge_to_tkinter(*args):
+            nonlocal bridge_active
+            if bridge_active: return
+            app_value = variable.get()
+            bridge_active = True
+            rescaled.set(app_value / resolution)
+            bridge_active = False
+        def bridge_to_application(*args):
+            nonlocal bridge_active
+            if bridge_active: return
+            ttk_value = rescaled.get()
+            bridge_active = True
+            variable.set(ttk_value * resolution)
+            bridge_active = False
+        variable.trace_add("write", bridge_to_tkinter)
+        rescaled.trace_add("write", bridge_to_application)
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
-        scale = ttk.Scale(self.frame, variable=variable,
+        scale = ttk.Scale(self.frame, variable=rescaled,
                 from_=from_, to=to,
-                orient = 'horizontal',)
+                orient = 'horizontal')
         value = ttk.Label(self.frame)
         def update_value_label(*args):
             v = round(variable.get(), 3)
@@ -204,6 +228,8 @@ class SettingsPanel(Panel):
         scale.grid(row=self._row_idx, column=1, sticky='ew',pady=pady)
         value.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
+        # Set the initial value and force tkinter to call all of the bound events.
+        variable.set(self._defaults[variable_name])
         return scale
 
     def add_entry(self, variable_name, variable, *, title=None, valid_range=(None, None), default=None, units=""):
