@@ -90,12 +90,13 @@ class SettingsPanel(Panel):
         self.frame.rowconfigure(self._row_idx, minsize=pad_top)
         self._row_idx += 1
         label = ttk.Label(self.frame, text=title)
-        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
+        label.grid(row=self._row_idx, column=0, columnspan=2, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
 
-    def add_radio_buttons(self, variable_name, variable, options, *, title=None, default=None):
+    def add_radio_buttons(self, variable_name, options, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
         assert variable_name not in self._variables
+        if variable is None: variable = tk.StringVar()
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
@@ -141,9 +142,10 @@ class SettingsPanel(Panel):
             button.grid(row=0, column=column)
         return buttons
 
-    def add_checkbox(self, variable_name, variable, *, title=None, default=None):
+    def add_checkbox(self, variable_name, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
         assert variable_name not in self._variables
+        if variable is None: variable = tk.BooleanVar()
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
@@ -171,9 +173,10 @@ class SettingsPanel(Panel):
         self._row_idx += 1
         return button
 
-    def add_slider(self, variable_name, variable, valid_range, *, title=None, default=None, units=""):
+    def add_slider(self, variable_name, valid_range, variable=None, *, title=None, default=None, units=""):
         # Clean and save the arguments.
         assert variable_name not in self._variables
+        if variable is None: variable = tk.DoubleVar()
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
@@ -241,9 +244,10 @@ class SettingsPanel(Panel):
         variable.set(self._defaults[variable_name])
         return scale
 
-    def add_entry(self, variable_name, variable, *, title=None, valid_range=(None, None), default=None, units=""):
+    def add_entry(self, variable_name, variable=None, *, title=None, valid_range=(None, None), default=None, units=""):
         # Clean and save the arguments.
         assert variable_name not in self._variables
+        if variable is None: variable = tk.DoubleVar()
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         # Create the widgets.

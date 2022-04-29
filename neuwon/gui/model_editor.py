@@ -118,26 +118,26 @@ class Simulation(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
 
-        self.add_entry("time_step", tk.DoubleVar(),
+        self.add_entry("time_step",
                 valid_range = (0, inf),
                 default     = 0.1,
                 units       = 'ms')
 
-        self.add_entry("temperature", tk.DoubleVar(),
+        self.add_entry("temperature",
                 valid_range = (0, 100),
                 default     = 37.0,
                 units       = '°C')
 
-        self.add_entry("initial_voltage", tk.DoubleVar(),
+        self.add_entry("initial_voltage",
                 default     = -70.0,
                 units       = 'mV')
 
-        self.add_entry("cytoplasmic_resistance", tk.DoubleVar(),
+        self.add_entry("cytoplasmic_resistance",
                 valid_range = (0, inf),
                 default     = 100.0,
                 units       = '')
 
-        self.add_entry("membrane_capacitance", tk.DoubleVar(),
+        self.add_entry("membrane_capacitance",
                 valid_range = (0, inf),
                 default     = 1.0,
                 units       = 'μf/cm^2')
@@ -157,20 +157,20 @@ class Species(ManagementPanel):
                 valid_range = (-inf, inf),
                 units       = 'e')
 
-        self.settings.add_entry('diffusivity', tk.DoubleVar(),
+        self.settings.add_entry('diffusivity',
                 valid_range = (highest_negative, inf),
                 units       = '')
 
-        self.settings.add_entry('decay_period', tk.DoubleVar(),
+        self.settings.add_entry('decay_period',
                 valid_range = (0, None),
                 default     = inf,
                 units       = 'ms')
 
         reversal_type_var = tk.StringVar()
-        self.settings.add_radio_buttons("reversal_potential", reversal_type_var,
-                ["Const", "Nerst", "GHK"],
+        self.settings.add_radio_buttons("reversal_potential", ["Const", "Nerst", "GHK"],
+                reversal_type_var,
                 default = "Const")
-        reversal_entrybox = self.settings.add_entry("const_reversal_potential", tk.DoubleVar(),
+        reversal_entrybox = self.settings.add_entry("const_reversal_potential",
                 title       = "",
                 valid_range = (-inf, inf),
                 units       = 'mV')
@@ -182,19 +182,19 @@ class Species(ManagementPanel):
         reversal_type_var.trace_add("write", const_entrybox_control)
 
         self.settings.add_section("Intracellular")
-        self.settings.add_checkbox('inside_constant', tk.BooleanVar(),
+        self.settings.add_checkbox('inside_constant',
                 title       = "Global Constant",
                 default     = True)
-        self.settings.add_entry('inside_initial_concentration', tk.DoubleVar(),
+        self.settings.add_entry('inside_initial_concentration',
                 title       = "Initial Concentration",
                 valid_range = (highest_negative, inf),
                 units       = 'mmol')
 
         self.settings.add_section("Extracellular")
-        self.settings.add_checkbox('outside_constant', tk.BooleanVar(),
+        self.settings.add_checkbox('outside_constant',
                 title       = "Global Constant",
                 default     = True)
-        self.settings.add_entry('outside_initial_concentration', tk.DoubleVar(),
+        self.settings.add_entry('outside_initial_concentration',
                 title       = "Initial Concentration",
                 valid_range = (highest_negative, inf),
                 units       = 'mmol')
@@ -243,7 +243,7 @@ class MechanismSelector(ManagementPanel):
         self.add_button_delete("Remove", require_confirmation=False)
         self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True)
         self.settings.add_empty_space()
-        self.settings.add_entry('magnitude', tk.DoubleVar(), default=1.0)
+        self.settings.add_entry('magnitude', default=1.0)
 
     def insert_mechanism(self, selected):
         dialog = tk.Toplevel()
@@ -363,51 +363,51 @@ class Morphology(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
 
-        self.add_radio_buttons("extend_before_bifurcate", tk.BooleanVar(),
-                ["Dendrite", "Axon"],
+        self.add_radio_buttons("extend_before_bifurcate", ["Dendrite", "Axon"],
+                tk.BooleanVar(),
                 title="")
 
-        self.add_checkbox("competitive", tk.BooleanVar(),
+        self.add_checkbox("competitive",
                 title   = "Competitive Growth",
                 default = True)
 
-        self.add_slider("balancing_factor", tk.DoubleVar(),
+        self.add_slider("balancing_factor",
                 valid_range = (0, 1))
 
-        self.add_entry("carrier_point_density", tk.DoubleVar(),
+        self.add_entry("carrier_point_density",
                 valid_range = (highest_negative, None),
                 units       = "")
 
-        self.add_entry("maximum_segment_length", tk.DoubleVar(),
+        self.add_entry("maximum_segment_length",
                 valid_range = (0, None),
                 default     = 10,
                 units       = 'μm')
 
-        self.add_slider("extension_angle", tk.DoubleVar(),
+        self.add_slider("extension_angle",
                 title       = "Maximum Extension Angle",
                 valid_range = (0, 180),
                 default     = 60,
                 units       = '°')
 
-        self.add_entry("extension_distance", tk.DoubleVar(),
+        self.add_entry("extension_distance",
                 title       = "Maximum Extension Distance",
                 valid_range = (highest_negative, None),
                 default     = 100,
                 units       = 'μm')
 
-        self.add_slider("bifurcation_angle", tk.DoubleVar(),
+        self.add_slider("bifurcation_angle",
                 title       = "Maximum Branch Angle",
                 valid_range = (0, 180),
                 default     = 60,
                 units       = '°')
 
-        self.add_entry("bifurcation_distance", tk.DoubleVar(),
+        self.add_entry("bifurcation_distance",
                 title       = "Maximum Branch Distance",
                 valid_range = (highest_negative, None),
                 default     = 100,
                 units       = 'μm')
 
-        self.add_entry("diameter", tk.DoubleVar(),
+        self.add_entry("diameter",
                 valid_range = (0, None),
                 default     = 3,
                 units       = 'μm')
@@ -441,31 +441,31 @@ class Regions(ManagementPanel):
         rectangle = SettingsPanel(self.settings.get_widget())
         self.settings.add_panel("Rectangle", rectangle)
         rectangle.add_section("Rectangle")
-        rectangle.add_entry("lower_x", tk.DoubleVar(), units = 'μm')
-        rectangle.add_entry("lower_y", tk.DoubleVar(), units = 'μm')
-        rectangle.add_entry("lower_z", tk.DoubleVar(), units = 'μm')
-        rectangle.add_entry("upper_x", tk.DoubleVar(), units = 'μm')
-        rectangle.add_entry("upper_y", tk.DoubleVar(), units = 'μm')
-        rectangle.add_entry("upper_z", tk.DoubleVar(), units = 'μm')
+        rectangle.add_entry("lower_x", units = 'μm')
+        rectangle.add_entry("lower_y", units = 'μm')
+        rectangle.add_entry("lower_z", units = 'μm')
+        rectangle.add_entry("upper_x", units = 'μm')
+        rectangle.add_entry("upper_y", units = 'μm')
+        rectangle.add_entry("upper_z", units = 'μm')
 
         sphere = SettingsPanel(self.settings.get_widget())
         self.settings.add_panel("Sphere", sphere)
         sphere.add_section("Sphere")
-        sphere.add_entry("center_x", tk.DoubleVar(), units = 'μm')
-        sphere.add_entry("center_y", tk.DoubleVar(), units = 'μm')
-        sphere.add_entry("center_z", tk.DoubleVar(), units = 'μm')
-        sphere.add_entry("radius",   tk.DoubleVar(), units = 'μm')
+        sphere.add_entry("center_x", units = 'μm')
+        sphere.add_entry("center_y", units = 'μm')
+        sphere.add_entry("center_z", units = 'μm')
+        sphere.add_entry("radius",   units = 'μm')
 
         cylinder = SettingsPanel(self.settings.get_widget())
         self.settings.add_panel("Cylinder", cylinder)
         cylinder.add_section("Cylinder")
-        cylinder.add_entry("end_point_x", tk.DoubleVar(), units = 'μm')
-        cylinder.add_entry("end_point_y", tk.DoubleVar(), units = 'μm')
-        cylinder.add_entry("end_point_z", tk.DoubleVar(), units = 'μm')
-        cylinder.add_entry("other_end_point_x", tk.DoubleVar(), units = 'μm')
-        cylinder.add_entry("other_end_point_y", tk.DoubleVar(), units = 'μm')
-        cylinder.add_entry("other_end_point_z", tk.DoubleVar(), units = 'μm')
-        cylinder.add_entry("radius", tk.DoubleVar(), units = 'μm')
+        cylinder.add_entry("end_point_x", units = 'μm')
+        cylinder.add_entry("end_point_y", units = 'μm')
+        cylinder.add_entry("end_point_z", units = 'μm')
+        cylinder.add_entry("other_end_point_x", units = 'μm')
+        cylinder.add_entry("other_end_point_y", units = 'μm')
+        cylinder.add_entry("other_end_point_z", units = 'μm')
+        cylinder.add_entry("radius", units = 'μm')
 
         union = SettingsPanel(self.settings.get_widget())
         self.settings.add_panel("Union", union)
