@@ -3,6 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox, simpledialog
+import numpy as np
 import bisect
 from decimal import Decimal, ROUND_HALF_EVEN
 
@@ -20,6 +21,10 @@ class Panel:
 
 # IDEA: If horizontal space becomes a problem then make an option for the
 # SettingsPanel to compress/interleave the two columns into vertically stacked widgets.
+
+# IDEA: Make the SelectorPanel have multiple rows of buttons to save horizontal space.
+
+# TODO: Add a vertical scroll bar to the SelectorPanel.
 
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
@@ -452,6 +457,9 @@ class SelectorPanel:
                 idx = bisect.bisect(self.get_list(), item)
             else:
                 idx = len(self.get_list())
+        else:
+            idx = round(idx)
+            assert not self._keep_sorted
         self.listbox.insert(idx, item)
         self._select_idx(idx)
         self._on_select(None)
@@ -539,28 +547,54 @@ class ManagementPanel(Panel):
         self.parameters = parameters
         self.selector.set_list(self.parameters.keys())
 
-    def duplicate_name_error(self, name):
-        self.frame.bell()
-        messagebox.showerror(f"{self.title} Name Error",
-                f'{self.title} "{name}" is already defined!')
+    def _clean_new_name(self, name, old_name=None):
+        """ Either returns the cleaned name or raises a ValueError. """
+        if name is None:
+            raise ValueError()
+        name = str(name).strip()
+        if not name:
+            raise ValueError()
+        # If user renames something to the same old name, then fail to validate
+        # but also don't show the error message or ring the bell.
+        if name == old_name:
+            raise ValueError()
+        if name in self.parameters:
+            self.frame.bell()
+            messagebox.showerror(f"{self.title} Name Error",
+                    f'{self.title} "{name}" is already defined!')
+            raise ValueError()
+        return name
 
-    def add_button_create(self):
-        def _callback(name):
-            name = simpledialog.askstring(f"Create {self.title}",
-                                          f"Enter new {self.title.lower()} name:")
-            if name is None:
-                return
-            name = name.strip()
-            if not name:
-                return
-            if name in self.parameters:
-                self.duplicate_name_error(name)
-                return
-            if self.selector.get() is None:
-                self.parameters[name] = self.settings.get_parameters()
-            else:
-                self.parameters[name] = {}
-            self.selector.insert(name)
+    def add_button_create(self, radio_options=None):
+        title  = f"Create {self.title}"
+        prompt = f"Enter new {self.title.lower()} name:"
+        if radio_options is not None:
+            key, options = radio_options.popitem()
+            assert not radio_options
+            # Arrange the options in a 2D array.
+            options = np.array(options)
+            if options.ndim < 2:
+                options = options.reshape(-1, 1)
+            def _callback(name):
+                dialog = _AskStringWithRadioButtons(self.frame, title, prompt, options)
+                try:
+                    name = self._clean_new_name(dialog.name)
+                except ValueError:
+                    return
+                self.parameters[name] = {key: dialog.choice}
+                self.selector.insert(name)
+        else:
+            def _callback(name):
+                name = simpledialog.askstring(title, prompt)
+                try:
+                    name = self._clean_new_name(name)
+                except ValueError:
+                    return
+                if self.selector.get() is None:
+                    self.parameters[name] = self.settings.get_parameters()
+                else:
+                    self.parameters[name] = {}
+                self.selector.insert(name)
         self.selector.add_button("New", _callback)
 
     def add_button_delete(self, text="Delete", require_confirmation=True):
@@ -581,15 +615,9 @@ class ManagementPanel(Panel):
         def _callback(name):
             new_name = simpledialog.askstring(f"Rename {self.title}",
                     f'Rename {self.title.lower()} "{name}" to:')
-            if new_name is None:
-                return
-            new_name = new_name.strip()
-            if not new_name:
-                return
-            elif new_name == name:
-                return
-            elif new_name in self.parameters:
-                self.duplicate_name_error(new_name)
+            try:
+                new_name = self._clean_new_name(new_name, name)
+            except ValueError:
                 return
             self.parameters[new_name] = self.parameters[name]
             self.selector.rename(name, new_name)
@@ -600,15 +628,11 @@ class ManagementPanel(Panel):
         def _callback(name):
             new_name = simpledialog.askstring(f"Duplicate {self.title}",
                                               f"Enter new {self.title.lower()} name:")
-            if new_name is None:
+            try:
+                new_name = self._clean_new_name(new_name)
+            except ValueError:
                 return
-            new_name = new_name.strip()
-            if not new_name:
-                return
-            elif new_name in self.parameters:
-                self.duplicate_name_error(new_name)
-                return
-            self.parameters[new_name] = dict(self.parameters[name])
+            self.parameters[new_name] = dict(self.parameters[name]) # Should this be a deep-copy?
             self.selector.insert(new_name)
         self.selector.add_button("Duplicate", _callback, require_selection=True)
 
@@ -617,6 +641,34 @@ class ManagementPanel(Panel):
         down = lambda name: self.selector.move(name, +1)
         self.selector.add_button("Move Up",   up,   require_selection=True)
         self.selector.add_button("Move Down", down, require_selection=True)
+
+class _AskStringWithRadioButtons(simpledialog.Dialog):
+    def __init__(self, parent, title, prompt, options_grid):
+        self.name    = None
+        self.choice  = None
+        self.prompt  = prompt
+        self.options = options_grid
+        super().__init__(parent, title)
+
+    def body(self, parent):
+        self.name_var   = tk.StringVar()
+        self.choice_var = tk.StringVar(value=self.options[0][0])
+        label = ttk.Label(parent, text=self.prompt)
+        entry = ttk.Entry(parent, textvar=self.name_var)
+        radio = ttk.Frame(parent)
+        label.grid(row=0)
+        entry.grid(row=1)
+        radio.grid(row=2)
+        for row_idx, row_data in enumerate(self.options):
+            for col_idx, value in enumerate(row_data):
+                button = ttk.Radiobutton(radio, text=value, variable=self.choice_var, value=value)
+                button.grid(row=row_idx, column=col_idx, sticky='w')
+        return entry
+
+    def validate(self):
+        self.name   = self.name_var.get()
+        self.choice = self.choice_var.get()
+        return True
 
 class OrganizerPanel(Panel):
     def __init__(self, parent):

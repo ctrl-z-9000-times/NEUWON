@@ -428,7 +428,10 @@ class Regions(ManagementPanel):
     def __init__(self, root):
         super().__init__(root, "Region", init_settings_panel=False)
 
-        self.selector.add_button("New", self.create_region)
+        shape_options = ['Rectangle', 'Sphere', 'Cylinder']
+        csg_options   = ['Union', 'Intersection', 'Not']
+        options_grid  = np.array([shape_options, csg_options]).T
+        self.add_button_create(radio_options={"region_type": options_grid})
         self.add_button_delete()
         self.add_button_rename()
         self.add_button_duplicate()
@@ -475,48 +478,6 @@ class Regions(ManagementPanel):
         inverse = SettingsPanel(self.settings.get_widget())
         self.settings.add_panel("Not", inverse)
         inverse.add_section("Not")
-
-    def create_region(self, _):
-        dialog = _CreateRegion(self.get_widget())
-        name   = dialog.name.strip()
-        region = dialog.region
-        if not name:
-            return
-        elif name in self.parameters:
-            self.duplicate_name_error(name)
-            return
-        self.parameters[name] = {'region_type': dialog.region}
-        self.selector.insert(name)
-
-class _CreateRegion(simpledialog.Dialog):
-    def __init__(self, parent):
-        self.name   = ""
-        self.region = None
-        self.shape_options = ['Rectangle', 'Sphere', 'Cylinder']
-        self.csg_options   = ['Union', 'Intersection', 'Not']
-        super().__init__(parent, "Create Region")
-
-    def body(self, parent):
-        self.name_var   = tk.StringVar()
-        self.region_var = tk.StringVar(value=self.shape_options[0])
-        label = ttk.Label(parent, text="Enter new region name:")
-        entry = ttk.Entry(parent, textvar=self.name_var)
-        shape = ttk.Frame(parent)
-        label.grid(row=0)
-        entry.grid(row=1)
-        shape.grid(row=2)
-        for idx, value in enumerate(self.shape_options):
-            button = ttk.Radiobutton(shape, text=value, variable=self.region_var, value=value)
-            button.grid(row=idx, column=0, sticky='w')
-        for idx, value in enumerate(self.csg_options):
-            button = ttk.Radiobutton(shape, text=value, variable=self.region_var, value=value)
-            button.grid(row=idx, column=1, sticky='w')
-        return entry
-
-    def validate(self):
-        self.name   = self.name_var.get()
-        self.region = self.region_var.get()
-        return True
 
 
 if __name__ == '__main__':
