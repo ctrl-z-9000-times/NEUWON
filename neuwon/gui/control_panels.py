@@ -446,14 +446,25 @@ class ManagementPanel(Panel):
         self.settings.set_parameters(parameters)
 
     def get_parameters(self):
+        # Save the currently selected item out of the SettingsPanel.
         item = self.selector.get()
         if item is not None:
             self.parameters[item] = self.settings.get_parameters()
+        # Remake the parameters as an ordered-dict using the current ordering of
+        # the items in the selector panel.
+        ordered_dict = {}
+        for item in self.selector.get_list():
+            ordered_dict[item] = self.parameters.pop(item)
+        ordered_dict.update(self.parameters)
+        self.parameters = ordered_dict
         return self.parameters
 
     def set_parameters(self, parameters):
+        # Force the currently selected item out of the settings panel and into
+        # the old parameters dict before assigning a new parameters dict.
+        self.selector.clear_selection()
         self.parameters = parameters
-        self.selector.set_list(sorted(self.parameters.keys()))
+        self.selector.set_list(self.parameters.keys())
 
     def duplicate_name_error(self, name):
         self.frame.bell()
