@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox, simpledialog
 import bisect
+from decimal import Decimal, ROUND_HALF_EVEN
 
 padx = 5
 pady = 1
@@ -175,10 +176,8 @@ class SettingsPanel(Panel):
         # ttk does not support changing the resolution (up/down increments).
         # Reimplement it by: creating a new variable, keeping it in sync with
         # the users variable, and applying a scale conversion between them.
-        divisions  = 20
+        divisions  = 30
         resolution = (to - from_) / divisions
-        from_ /= resolution
-        to    /= resolution
         rescaled = type(variable)()
         bridge_active = False # This flag prevents infinite recursion.
         def bridge_to_tkinter(*args):
@@ -200,11 +199,16 @@ class SettingsPanel(Panel):
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
         scale = ttk.Scale(self.frame, variable=rescaled,
-                from_=from_, to=to,
-                orient = 'horizontal')
+                from_   = from_ / resolution,
+                to      = to    / resolution,
+                orient  = 'horizontal')
         value = ttk.Label(self.frame)
+        n_digits = 3 # Try to show this number of digits in the label.
+        round_to = max(0, n_digits - len(str(round(to))))
         def update_value_label(*args):
-            v = round(variable.get(), 3)
+            v = round(variable.get(), round_to)
+            if round_to == 0:
+                v = int(v)
             value.configure(text=(str(v) + " " + units))
         variable.trace_add("write", update_value_label)
         # Highlight changed values.
@@ -237,8 +241,6 @@ class SettingsPanel(Panel):
         assert variable_name not in self._variables
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
-        self._defaults[variable_name] = default if default is not None else variable.get()
-        variable.set(self._defaults[variable_name])
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
         entry = ttk.Entry(self.frame, textvar=variable, justify='right')
@@ -255,7 +257,6 @@ class SettingsPanel(Panel):
                     entry.configure(style="TEntry")
             self._set_changed_state[variable_name] = set_changed_state
         # Custom input validation.
-        minimum, maximum = valid_range
         if isinstance(variable, tk.BooleanVar):
             validate_type = bool
         elif isinstance(variable, tk.IntVar):
@@ -264,34 +265,80 @@ class SettingsPanel(Panel):
             validate_type = float
         else:
             validate_type = lambda x: x
+        minimum, maximum = valid_range
+        def validate_range(x):
+            if minimum is not None:
+                if x <= minimum:
+                    raise ValueError()
+            if maximum is not None:
+                if x >= maximum:
+                    raise ValueError()
+        def clean_input(old_value, new_value):
+            try:
+                vv = validate_type(new_value)
+                validate_range(vv)
+            except ValueError:
+                vv = old_value
+                entry.bell()
+            # Cosmetic fix: no negative zeros.
+            if isinstance(variable, tk.DoubleVar):
+                if vv == 0: vv = abs(vv)
+            return vv
+        # Perform the input validation when the user moves keyboard focus
+        # into/out of the entry box.
         value = None # Save the initial value from before the user edits it.
-        def focus_in(event):
+        def focus_in(event=None):
             nonlocal value
             value = variable.get()
-        def focus_out(event):
+        def focus_out(event=None):
             entry.selection_clear()
             text = entry.get().strip()
             if self._override_mode and not text:
                 set_changed_state(False)
             else:
-                try:
-                    vv = validate_type(text)
-                    if minimum is not None and vv <= minimum: raise ValueError()
-                    if maximum is not None and vv >= maximum: raise ValueError()
-                except ValueError:
-                    vv = value
-                    entry.bell()
-                if vv == 0: vv = abs(vv) # Cosmetic fix: no negative zeros.
+                vv = clean_input(value, text)
                 variable.set(vv)
-                if self._override_mode and vv != value:
+                if self._override_mode and value != vv:
                     set_changed_state(True)
-        entry.bind('<FocusIn>', focus_in)
+        entry.bind('<FocusIn>',  focus_in)
         entry.bind('<FocusOut>', focus_out)
+        # Up/Down Arrow key controls.
+        def arrow_key_control(direction, control_key):
+            focus_out()
+            value = vv = variable.get()
+            if isinstance(variable, tk.BooleanVar):
+                vv = not vv
+            elif isinstance(variable, tk.IntVar):
+                if not control_key:
+                    delta = 1  * direction
+                else:
+                    delta = 10 * direction
+            elif isinstance(variable, tk.DoubleVar):
+                if not control_key:
+                    delta = .1 * direction
+                else:
+                    delta = 10 * direction
+            quantum = Decimal(10) ** -14
+            vv      = Decimal(vv)   .quantize(quantum, ROUND_HALF_EVEN)
+            delta   = Decimal(delta).quantize(quantum, ROUND_HALF_EVEN)
+            vv = float(vv + delta)
+            vv = clean_input(value, vv)
+            variable.set(vv)
+            if self._override_mode and value != vv:
+                set_changed_state(True)
+        entry.bind("<Up>",           lambda event: arrow_key_control(+1, False))
+        entry.bind("<Down>",         lambda event: arrow_key_control(-1, False))
+        entry.bind("<Control-Up>",   lambda event: arrow_key_control(+1, True))
+        entry.bind("<Control-Down>", lambda event: arrow_key_control(-1, True))
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         entry.grid(row=self._row_idx, column=1, sticky='w', pady=pady)
         units.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
+        # Set the default/initial value and also convert it to the correct datatype.
+        default_value = validate_type(default if default is not None else variable.get())
+        self._defaults[variable_name] = default_value
+        variable.set(default_value)
         return entry
 
 class CustomSettingsPanel(Panel):
