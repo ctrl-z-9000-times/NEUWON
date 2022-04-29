@@ -34,17 +34,10 @@ COMMENT
 -----------------------------------------------------------------------------
 ENDCOMMENT
 
-INDEPENDENT {t FROM 0 TO 1 WITH 1 (ms)}
-
 NEURON {
     POINT_PROCESS AMPA13
-    POINTER C
-    RANGE C0, C1, C2, C3, C4, D1, D2, D3, D4, O1, O2, O3, O4
-    RANGE g, gmax, rb1, rb2, rb3, rb4, Q10_binding, Q10_desensitization, Q10_opening, Q10_unbinding
-    GLOBAL Erev
-    GLOBAL Rb1, Rb2, Rb3, Rb4, Ru1, Ru2, Ru3, Ru4, Rd1, Rd2, Rd3, Rd4, Rr1, Rr2, Rr3, Rr4, Ro1, Ro2, Ro3, Ro4, Rc1, Rc2, Rc3, Rc4
-    GLOBAL vmin, vmax
-    NONSPECIFIC_CURRENT i
+    USEION glu READ gluo
+    USEION zero WRITE gzero
 }
 
 UNITS {
@@ -159,16 +152,15 @@ INITIAL {
 BREAKPOINT {
     SOLVE kstates METHOD sparse
 
-    g = gmax * (O4 + 0.75*O3 + 0.5*O2 + 0.25*O1)
-    i = (1e-6) * g * (v - Erev)
+    gzero = (1e-6) * gmax * (O4 + 0.75*O3 + 0.5*O2 + 0.25*O1)
 }
 
 KINETIC kstates {
     
-    rb1 = Rb1 * C 
-    rb2 = Rb2 * C
-    rb3 = Rb3 * C
-    rb4 = Rb4 * C
+    rb1 = Rb1 * gluo 
+    rb2 = Rb2 * gluo
+    rb3 = Rb3 * gluo
+    rb4 = Rb4 * gluo
     ~ C0 <-> C1 (rb1*Q10b,Ru1*Q10u)
     ~ C1 <-> C2 (rb2*Q10b,Ru2*Q10u)
     ~ C2 <-> C3 (rb3*Q10b,Ru3*Q10u)

@@ -1,6 +1,7 @@
 import neuwon
 import pytest
 
+@pytest.mark.skip()
 def test_basic_mechanisms():
     # Make a single very simple synapse and verify approximate behavior.
     # Do NOT test the growth routines, manual setup.
@@ -102,7 +103,8 @@ def test_network_ei():
             'hh':               './neuwon/tests/mechanisms/hh.mod',
             'glu_presyn':       './neuwon/tests/mechanisms/glu_presyn.mod',
             'gaba_presyn':      './neuwon/tests/mechanisms/gaba_presyn.mod',
-            'ampa':             './neuwon/tests/mechanisms/ampa.mod',
+            'ampa':             './nmodl_library/AMPA.mod',
+            'nmda':             './nmodl_library/NMDA.mod',
             'gaba_receptor':    './neuwon/tests/mechanisms/gaba_receptor.mod',
             'leak':             './neuwon/tests/mechanisms/leak.mod',
         },
@@ -113,7 +115,7 @@ def test_network_ei():
             'excit': ({
                     'segment_type': 'excit',
                     'region': 'main',
-                    'number': 200,
+                    'number': 50,
                     'diameter': 10,
                     'mechanisms': {
                         'hh',
@@ -131,7 +133,7 @@ def test_network_ei():
         },
         synapses = {
             'excit_syn': {
-                'number': 200 * 50,
+                'number': 50 * 50,
                 'cleft': {
                     'volume': 0.01,
                 },
@@ -141,7 +143,7 @@ def test_network_ei():
                             'segment_types': ('excit',),
                         },
                         'mechanisms': {
-                            'glu_presyn',
+                            'glu_presyn': 0.1,
                     },},
                     {
                         'mechanisms': {
@@ -177,24 +179,29 @@ def test_network_ei():
 
     import random
     from neuwon.gui.viewport import Viewport
-    view = Viewport(camera_position=[0,0,400])
-    view.set_scene(model)
+    # view = Viewport(camera_position=[0,0,400])
+    # view.set_scene(model)
     voltage = model.Segment.get_database_class().get("voltage")
 
     excit = model.filter_segments_by_type(segment_types=['excit'])
+    inhib = model.filter_segments_by_type(segment_types=['inhib'])
     next_stim = 0
 
-    while True:
+    data = neuwon.TimeSeries.record_many(excit, 'voltage')
+
+    while model.clock() < 500:
         if model.clock() >= next_stim:
             n = random.choice(excit)
-            n.inject_current(2e-9, 1)
-            next_stim += 50
+            n.inject_current(1e-9, 1)
+            next_stim += 100
 
-        v = ((voltage.get_data() - min_v) / (max_v - min_v)).clip(0, 1)
-        colors = [(x, 0, 1-x) for x in v]
-        view.tick(colors)
+        # v = ((voltage.get_data() - min_v) / (max_v - min_v)).clip(0, 1)
+        # colors = [(x, 0, 1-x) for x in v]
+        # view.tick(colors)
         model.advance()
-        model.check()
+        # model.check()
+
+    neuwon.TimeSeries.plot_many(data, 100, color='k')
 
 
     1/0

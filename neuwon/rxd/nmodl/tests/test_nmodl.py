@@ -33,10 +33,10 @@ def test_hh():
     assert my_seg.na_conductance > 0
 
 
-def test_ampa5():
+def test_ampa():
     m = RxD_Model(time_step = .1,
         mechanisms={
-            'ampa': NMODL("./nmodl_library/Destexhe1998/ampa5.mod", use_cache=False),
+            'ampa': NMODL("./nmodl_library/AMPA.mod", use_cache=False),
         },
         species={
             'glu': {
@@ -44,8 +44,7 @@ def test_ampa5():
                     'initial_concentration': 0,
                     'decay_period': 5,
             }},
-            'na': {'reversal_potential': +60,},
-            'k': {'reversal_potential': -88,},
+            'zero': {'reversal_potential': +60,},
         },
     )
     ampa = m.mechanisms['ampa']
@@ -62,7 +61,7 @@ def test_ampa5():
     # Check silent conditions.
     while m.clock() < 2:
         m.advance()
-    assert my_ampa.O < 0.000001
+    assert my_ampa.O1 < 0.000001
     assert my_seg.voltage < -50
 
     # Check active conditions.
@@ -71,11 +70,12 @@ def test_ampa5():
     while m.clock() < 2:
         m.advance()
 
-    assert my_ampa.O > .01
+    assert my_ampa.O1 > .01
     assert my_seg.voltage > -50
     m.check()
 
 
+@pytest.mark.skip()
 def test_kinetic_model():
     m = RxD_Model(
         mechanisms={
@@ -99,4 +99,3 @@ def test_kinetic_model():
     print('ADVANCE PYCODE Kv11:\n' + Kv11._advance_pycode)
 
     1/0
-

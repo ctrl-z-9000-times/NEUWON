@@ -119,11 +119,11 @@ STATE {
 INITIAL {
 	Q10 = 3^((celsius-20(degC))/10 (degC))
 	SOLVE kin
-	STEADYSTATE cnexp
+	STEADYSTATE sparse
 }
 
 BREAKPOINT {
-	SOLVE kin METHOD cnexp
+	SOLVE kin METHOD sparse
 	g = gbar * (O1 + O2)	: (mho/cm2)
 	ina = g * (v - ena)   	: (mA/cm2)
 }

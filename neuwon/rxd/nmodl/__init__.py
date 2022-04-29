@@ -181,12 +181,12 @@ class NMODL:
                 return [solve_stmt]
             solve_block  = solve_stmt.block
             solve_method = solve_stmt.method
-            # Move the CONSERVE statements to the end of the block.
-            solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
-            # Replace CONSERVE statements with a simple multiplicative solution.
-            solve_block.map(solver.conserve_statement_solution)
-            # 
             if solve_method in ode_methods:
+                # Move the CONSERVE statements to the end of the block.
+                solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
+                # Replace CONSERVE statements with a simple multiplicative solution.
+                solve_block.map(solver.conserve_statement_solution)
+                # 
                 method = ode_methods[solve_method]
                 assert solve_block.derivative
                 solve_block.derivative = False
@@ -333,14 +333,22 @@ class NMODL:
             block.arguments.remove(arg)
 
     def _compile_breakpoint_block(self):
-        # 
+        globals_ = {
+                'Compute': Compute,
+        }
+        # Insert parameters & initial-values into the solve blocks.
         for solve_stmt in self.breakpoint_block:
             if not isinstance(solve_stmt, SolveStatement):
                 continue
-            solve_block = solve_stmt.block
+            solve_block  = solve_stmt.block
+            solve_name   = solve_block.name
+            solve_method = solve_stmt.method
             self._substitute_initial_scope(solve_block)
             self.parameters.substitute(solve_block)
-            # solve_block.arguments = sorted(set(solve_block.arguments) - set(self.states))
+            if solve_method == 'sparse':
+                globals_[solve_name] = self._initialize_kinetic_model(solve_block)
+            else:
+                raise ValueError(f'Unsupported SOLVE method {solve_method}.')
         # 
         magnitude = sympy.Symbol('self.magnitude')
         for name, (value, units) in self.instance_parameters.items():
@@ -353,20 +361,22 @@ class NMODL:
                 "@Compute\n"
                 "def advance(self):\n"
                 + code_gen.to_python(self.breakpoint_block, "    "))
-        globals_ = {
-                'Compute': Compute,
-        }
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
 
 
     def _initialize_kinetic_model(self, block):
+        assert block.derivative
+
+
         # Get the derivative function
         pass
         # Build the IRM table
         pass
         # Make Compute'd method to advance the state.
-        1/0
+        pass
+
+        return advance_function
 
 
 

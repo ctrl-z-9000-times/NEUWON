@@ -10,9 +10,9 @@ class RxD_Model:
                 temperature: 'celsius' = 37,
                 initial_voltage: 'mv' = -70,
                 cytoplasmic_resistance = 100,
-                membrane_capacitance: 'uf/cm^2' = 1,
+                membrane_capacitance: 'μf/cm^2' = 1,
                 extracellular_tortuosity = 1.55,
-                extracellular_max_distance: 'um' = 20e-6,
+                extracellular_max_distance: 'μm' = 20e-6,
                 species={},
                 mechanisms={},):
         """ """

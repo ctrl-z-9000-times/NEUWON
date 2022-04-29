@@ -9,7 +9,7 @@ class Neuron:
     def _initialize(database, **electric_arguments):
         """ This also initializes the Segment class. """
         neuron_data  = database.add_class(Neuron)
-        segment_data = database.add_class(Segment)
+        segment_data = database.add_class(Segment, sort_key='neuron')
         neuron_cls   = neuron_data .get_instance_type()
         segment_cls  = segment_data.get_instance_type()
         neuron_cls._Segment = segment_cls # Save the segment class constructor.

@@ -75,11 +75,32 @@ default_parameters = {
     },
     'synapses': {
         'ff_syn': {
-            'constraints': {},
-            'lifecycle': {},
-            'presynapse': {},
-            'postsynapse': {},
-        }
+            'number': 300,
+            'maximum_distance': 3,
+            'cleft': {
+                'volume': 0.01,
+                'spillover_area': 0,
+            },
+            'attachment_points': [
+                {
+                    'constraints': {
+                        'segment_types': ['input_axon'],
+                    },
+                    'mechanisms': {
+                        # 'glu_presyn': 1,
+                    },
+                },
+                {
+                    'constraints': {
+                        'segment_types': ['excit_prox_dend'],
+                        'maximum_connections': 3,
+                    },
+                    'mechanisms': {
+                        'AMPA': 1,
+                    },
+                },
+            ],
+        },
     },
 }
 

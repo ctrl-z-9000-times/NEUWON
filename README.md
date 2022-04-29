@@ -91,7 +91,7 @@ serialization formats, such as JSON and YAML.
 
 The root of the parameter structure is a `dict` with the following entries:
 
-|Entry | Description |
+|Entry Name | Description |
 |:---|:---|
 |simulation | This section contains the global simulation-wide parameters. |
 |species | This section specifies simple chemical substances and their properties. These chemicals may diffuse and so they cannot be restricted to arbitrary areas of the model. |
@@ -110,7 +110,7 @@ and linking to it.]
 |Parameter Name | Default | Units | Description |
 |:---|---:|:---|---|
 |time_step | 0.1 | Milliseconds |
-|celsius | 37 | °C |
+|temperature | 37 | °C |
 |initial_voltage | -70 | mV | |
 |cytoplasmic_resistance | 100 | | |
 |membrane_capacitance |  1.0 | uf/cm^2 | |
@@ -141,7 +141,12 @@ and linking to it.]
 
 ### Synapse Parameters
 
-|Synapse Parameters | Description |
+|Parameter | Description |
 |:---|:---|
+|number | |
+|region | |
+|cleft_volume | |
+|cleft_spillover_area | |
+|attachment_points | |
 | | |
 
