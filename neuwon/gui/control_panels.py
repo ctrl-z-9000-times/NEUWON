@@ -93,6 +93,7 @@ class SettingsPanel(Panel):
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
+        variable.set(self._defaults[variable_name])
         # Create the widgets.
         label   = ttk.Label(self.frame, text=title)
         btn_row = ttk.Frame(self.frame)
@@ -140,6 +141,7 @@ class SettingsPanel(Panel):
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
+        variable.set(self._defaults[variable_name])
         # Create the widgets.
         label  = ttk.Label(self.frame, text=title)
         button = ttk.Checkbutton(self.frame, variable=variable,)
@@ -169,6 +171,7 @@ class SettingsPanel(Panel):
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
+        variable.set(self._defaults[variable_name])
         from_, to = valid_range
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
@@ -209,6 +212,7 @@ class SettingsPanel(Panel):
         self._variables[variable_name] = variable
         if title is None: title = variable_name.replace('_', ' ').title()
         self._defaults[variable_name] = default if default is not None else variable.get()
+        variable.set(self._defaults[variable_name])
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
         entry = ttk.Entry(self.frame, textvar=variable, justify='right')
@@ -294,10 +298,11 @@ class CustomSettingsPanel(Panel):
 
 class SelectorPanel:
     """ GUI element for managing lists. """
-    def __init__(self, parent, on_select_callback):
+    def __init__(self, parent, on_select_callback, keep_sorted=True):
         self.frame = ttk.Frame(parent)
         self._on_select_callback = on_select_callback
-        self._current_selection = None
+        self._current_selection  = None
+        self._keep_sorted        = bool(keep_sorted)
         # The add buttons in a row along the top of the panel.
         self._button_panel = ttk.Frame(self.frame)
         self._button_panel.grid(row=0, column=0, sticky='nesw')
@@ -316,7 +321,7 @@ class SelectorPanel:
             item = None
         if item == self._current_selection:
             return
-        if item is None and not deselect:
+        elif item is None and not deselect:
             return
         if item is None:
             for button in self._buttons_requiring_selection:
@@ -343,6 +348,7 @@ class SelectorPanel:
 
     def set_list(self, items):
         """ Replace the current contents of this Listbox with the given list of items. """
+        if self._keep_sorted: items = sorted(items)
         self.listbox.delete(0, tk.END)
         self.listbox.insert(0, *items)
         self._on_select(None, deselect=True)
@@ -367,8 +373,12 @@ class SelectorPanel:
         self.listbox.selection_clear(0, tk.END)
         self._on_select(None, deselect=True)
 
-    def insert(self, item):
-        idx = bisect.bisect(self.get_list(), item)
+    def insert(self, item, idx=None):
+        if idx is None:
+            if self._keep_sorted:
+                idx = bisect.bisect(self.get_list(), item)
+            else:
+                idx = len(self.get_list())
         self.listbox.insert(idx, item)
         self._select_idx(idx)
         self._on_select(None)
@@ -376,19 +386,32 @@ class SelectorPanel:
     def rename(self, old_item, new_item):
         idx = self.get_list().index(old_item)
         self.listbox.delete(idx)
-        self.insert(new_item)
+        if self._keep_sorted:
+            self.insert(new_item)
+        else:
+            self.insert(new_item, idx)
 
     def delete(self, item):
         idx = self.get_list().index(item)
         self.listbox.delete(idx)
         self._on_select(None, deselect=True)
 
+    def move(self, item, direction):
+        assert not self._keep_sorted
+        items_list  = self.get_list()
+        old_idx     = items_list.index(item)
+        new_idx     = min(len(items_list) - 1, max(0, old_idx + direction))
+        self.listbox.delete(old_idx)
+        self.listbox.insert(new_idx, item)
+        self._select_idx(new_idx)
+        self._on_select(None)
+
 class ManagementPanel(Panel):
     """ GUI element to use a SelectorPanel to control another panel. """
-    def __init__(self, parent, title, init_settings_panel=True):
+    def __init__(self, parent, title, init_settings_panel=True, keep_sorted=True):
         self.title      = str(title).title()
         self.parameters = {}
-        self.selector   = SelectorPanel(parent, self._on_select)
+        self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
         if init_settings_panel:
             self.set_settings_panel(SettingsPanel(self.frame))
@@ -504,6 +527,12 @@ class ManagementPanel(Panel):
             self.parameters[new_name] = dict(self.parameters[name])
             self.selector.insert(new_name)
         self.selector.add_button("Duplicate", _callback, require_selection=True)
+
+    def add_buttons_up_down(self):
+        up   = lambda name: self.selector.move(name, -1)
+        down = lambda name: self.selector.move(name, +1)
+        self.selector.add_button("Move Up",   up,   require_selection=True)
+        self.selector.add_button("Move Down", down, require_selection=True)
 
 class OrganizerPanel(Panel):
     def __init__(self, parent):
