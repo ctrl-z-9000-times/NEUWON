@@ -86,11 +86,11 @@ class SettingsPanel(Panel):
     def add_section(self, title):
         """ Cosmetic, add a label and dividing line over a group of settings. """
         bar = ttk.Separator(self.frame, orient='horizontal')
-        bar.grid(row=self._row_idx, column=0, columnspan=2, sticky='ew', padx=padx, pady=pady)
+        bar.grid(row=self._row_idx, column=0, columnspan=3, sticky='ew', padx=padx, pady=pady)
         self.frame.rowconfigure(self._row_idx, minsize=pad_top)
         self._row_idx += 1
         label = ttk.Label(self.frame, text=title)
-        label.grid(row=self._row_idx, column=0, columnspan=2, sticky='w', padx=padx, pady=pady)
+        label.grid(row=self._row_idx, column=0, columnspan=3, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
 
     def add_radio_buttons(self, variable_name, options, variable=None, *, title=None, default=None):
@@ -387,13 +387,15 @@ class SelectorPanel:
         self._keep_sorted        = bool(keep_sorted)
         # The add buttons in a row along the top of the panel.
         self._button_panel = ttk.Frame(self.frame)
-        self._button_panel.grid(row=0, column=0, sticky='nesw')
+        self._button_panel.grid(row=0, column=0)
         self._buttons_requiring_selection = []
         self._column_idx = 0 # Index for appending buttons.
         # 
         self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=True)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
-        self.listbox.grid(row=1, column=0, sticky='nesw')
+        self.listbox.grid(row=1, column=0, sticky='nsw')
+        self.frame.grid_rowconfigure(1, weight=1)
+        self.frame.grid_columnconfigure(0, weight=0)
 
     def _on_select(self, event, deselect=False):
         indices = self.listbox.curselection()
@@ -506,7 +508,7 @@ class ManagementPanel(Panel):
         self._title_var = tk.StringVar()
         ttk.Label(self.frame, textvariable=self._title_var,
                   relief='raised', padding=padx, anchor='center',
-        ).grid(row=0, column=2, sticky='ew', padx=padx, pady=pady)
+        ).grid(row=0, column=2, sticky='new', padx=padx, pady=pady)
         self._set_title(None)
 
     def set_settings_panel(self, panel):
