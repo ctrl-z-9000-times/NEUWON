@@ -51,8 +51,17 @@ class SettingsPanel(Panel):
         s.configure('Changed.TEntry', fieldbackground=color)
 
     def get_parameters(self):
-        for name, variable in self._variables.items():
-            if not self._override_mode or name in self._changed:
+        if self._override_mode:
+            for name, variable in self._variables.items():
+                if name in self._changed:
+                    self._parameters[name] = variable.get()
+                else:
+                    try:
+                        self._parameters.pop(name)
+                    except KeyError:
+                        pass
+        else:
+            for name, variable in self._variables.items():
                 self._parameters[name] = variable.get()
         return self._parameters
 
@@ -361,6 +370,15 @@ class CustomSettingsPanel(Panel):
     def add_panel(self, name, panel):
         self._options[str(name)] = panel
 
+    def add_custom_settings_panel(self, name, override_mode=False) -> SettingsPanel:
+        """
+        Convenience method to create a new SettingsPanel and add it to this
+        custom SettingsPanel switcher.
+        """
+        settings_panel = SettingsPanel(self.frame, override_mode=override_mode)
+        self.add_panel(name, settings_panel)
+        return settings_panel
+
     def get_parameters(self):
         if self._current is not None:
             return self._current.get_parameters()
@@ -591,7 +609,7 @@ class ManagementPanel(Panel):
                 self.selector.insert(name)
         else:
             def _callback(name):
-                name = simpledialog.askstring(title, prompt)
+                name = simpledialog.askstring(title, prompt, parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
                 except ValueError:
@@ -601,14 +619,15 @@ class ManagementPanel(Panel):
                 else:
                     self.parameters[name] = {}
                 self.selector.insert(name)
-        self.selector.add_button("New", _callback)
+        button = self.selector.add_button("New", _callback)
 
     def add_button_delete(self, text="Delete", require_confirmation=True):
         text = text.title()
         def _callback(name):
             if require_confirmation:
                 confirmation = messagebox.askyesno(f"Confirm {text} {self.title}",
-                        f"Are you sure you want to {text.lower()} {self.title.lower()} '{name}'?")
+                        f"Are you sure you want to {text.lower()} {self.title.lower()} '{name}'?",
+                        parent=self.frame)
                 if not confirmation:
                     return
             self.selector.delete(name)
@@ -620,7 +639,8 @@ class ManagementPanel(Panel):
     def add_button_rename(self):
         def _callback(name):
             new_name = simpledialog.askstring(f"Rename {self.title}",
-                    f'Rename {self.title.lower()} "{name}" to:')
+                    f'Rename {self.title.lower()} "{name}" to:',
+                    parent=self.frame)
             try:
                 new_name = self._clean_new_name(new_name, name)
             except ValueError:
@@ -633,7 +653,8 @@ class ManagementPanel(Panel):
     def add_button_duplicate(self):
         def _callback(name):
             new_name = simpledialog.askstring(f"Duplicate {self.title}",
-                                              f"Enter new {self.title.lower()} name:")
+                                              f"Enter new {self.title.lower()} name:",
+                                              parent=self.frame)
             try:
                 new_name = self._clean_new_name(new_name)
             except ValueError:
