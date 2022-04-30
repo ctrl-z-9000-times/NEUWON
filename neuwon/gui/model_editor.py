@@ -4,7 +4,6 @@ from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog
 import os.path
 import json
-import pprint
 import numpy as np
 
 highest_negative = np.nextafter(0, -1)
@@ -94,11 +93,9 @@ class ModelEditor(OrganizerPanel):
 
     def export(self):
         parameters = self.get_NEUWON_parameters()
-        parameters = pprint.pformat(parameters)
         export_filename = filedialog.asksaveasfilename(defaultextension='.py')
         with open(export_filename, 'wt') as f:
-            f.write(parameters)
-            f.write('\n')
+            json.dump(parameters, f, indent=4)
             f.flush()
 
     def get_NEUWON_parameters(self):
@@ -307,7 +304,7 @@ class Neurons(ManagementPanel):
 
         self.set_settings_panel(ManagementPanel(self.frame, "Segment", keep_sorted=False))
         self.settings.selector.add_button("Add", self._select_segment)
-        self.settings.add_button_delete()
+        self.settings.add_button_delete("Remove")
         self.settings.add_buttons_up_down()
 
         tab_ctrl = OrganizerPanel(self.settings.frame)
@@ -323,6 +320,9 @@ class Neurons(ManagementPanel):
 
     def _init_settings_panel(self, parent):
         settings = SettingsPanel(parent)
+        settings.add_entry("Number", tk.IntVar(),
+                valid_range = (-1, inf),
+                units       = 'cells')
         return settings
 
     def _select_segment(self, selected):
