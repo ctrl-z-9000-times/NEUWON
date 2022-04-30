@@ -62,9 +62,9 @@ class SpeciesEditor(ManagementPanel):
 
     def export(self):
         sim = {}
-        for name, gui in self.get_parameters():
+        for name, gui in self.get_parameters().items():
             sim[name] = {}
-            1/0 # TODO
+        return sim
 
 if __name__ == "__main__":
     root = tk.Tk()

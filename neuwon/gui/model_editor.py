@@ -103,8 +103,14 @@ class ModelEditor(OrganizerPanel):
 
     def get_NEUWON_parameters(self):
         """ Fixup the programs internal parameters into NEUWON's parameter structure. """
-        parameters = self.get_parameters()
-        1/0
+        return {
+            'simulation':   self.tabs["simulation"].get_parameters(),
+            'mechanisms':   self.tabs["mechanisms"].export(),
+            'species':      self.tabs["species"].export(),
+            'regions':      self.tabs["regions"].export(),
+            # segments
+            # neurons
+        }
 
     def close(self, event=None):
         self.root.destroy()
@@ -202,6 +208,110 @@ class MechanismManager(ManagementPanel):
         docs = ttk.Label(window, text=self.documentation[filename], justify='left', padding=padx)
         docs.grid(row=1, column=0, columnspan=2, padx=padx, pady=pady)
 
+    def export(self):
+        sim = {}
+        for name, gui in self.get_parameters().items():
+            gui = dict(gui)
+            sim[name] = (gui.pop("filename"), gui)
+        return sim
+
+
+
+class Segments(ManagementPanel):
+    def __init__(self, root, mechanism_manager):
+        super().__init__(root, "Segment", init_settings_panel=False)
+
+        self.add_button_create()
+        self.add_button_delete()
+        self.add_button_rename()
+        self.add_button_duplicate()
+
+        tab_ctrl = OrganizerPanel(self.frame)
+        self.set_settings_panel(tab_ctrl)
+
+        self.morphology = Morphology(tab_ctrl.get_widget())
+        tab_ctrl.add_tab('morphology', self.morphology)
+
+        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
+        tab_ctrl.add_tab('mechanisms', self.mechanisms)
+
+
+class Neurons(ManagementPanel):
+    def __init__(self, root, segment_manager, mechanism_manager):
+        self.segment_manager = segment_manager
+        super().__init__(root, "Neuron", init_settings_panel=False)
+        self.add_button_create()
+        self.add_button_delete()
+        self.add_button_rename()
+        self.add_button_duplicate()
+
+        self.segments = ManagementPanel(self.frame, "Segment", keep_sorted=False)
+        self.set_settings_panel(self.segments)
+        self.segments.selector.add_button("Add", self._add_segment_to_neuron)
+        self.segments.add_button_delete("Remove")
+        self.segments.add_buttons_up_down()
+
+        tab_ctrl = OrganizerPanel(self.segments.frame)
+        tab_ctrl.get_widget().grid(row=1, column=2)
+
+        tab_ctrl.add_tab('soma', self._init_settings_panel(tab_ctrl.get_widget()))
+
+        self.morphology = Morphology(tab_ctrl.get_widget(), override_mode=True)
+        tab_ctrl.add_tab('morphology', self.morphology)
+
+        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
+        tab_ctrl.add_tab('mechanisms', self.mechanisms)
+
+    def _init_settings_panel(self, parent):
+        settings = SettingsPanel(parent)
+        settings.add_entry("Number", tk.IntVar(),
+                valid_range = (-1, inf),
+                units       = 'cells')
+        return settings
+
+    def _add_segment_to_neuron(self, selected):
+        seg_types = sorted(self.segment_manager.get_parameters().keys())
+        dialog    = _AddSegmentToNeuron(self.segments.get_widget(), seg_types)
+        selected  = dialog.selected
+        if selected is None:
+            return
+        if selected in self.segments.parameters:
+            return
+        self.segments.parameters[selected] = {}
+        self.segments.selector.insert(selected)
+
+    def _set_defaults(self,):
+        selected = self.segments.selector.get()
+        if selected is None:
+            return
+        defaults = self.segment_manager.get_parameters()[selected]
+        self.morphology.set_defaults(defaults["morphology"])
+        self.mechanisms.set_defaults(defaults["mechanisms"])
+
+class _AddSegmentToNeuron(simpledialog.Dialog):
+    def __init__(self, parent, segment_types):
+        self.selected = None
+        self.segment_types = segment_types
+        super().__init__(parent, "Select Segment")
+
+    def body(self, parent):
+        parent = ttk.Frame(parent)
+        parent.grid(sticky='nesw')
+        label = ttk.Label(parent, text="Select a segment type to\nadd to the neuron type:")
+        label.grid(row=0)
+        self.listbox = tk.Listbox(parent, selectmode='browse', exportselection=True)
+        self.listbox.insert(0, *self.segment_types)
+        self.listbox.grid(row=1, padx=padx, pady=pad_top)
+        self.listbox.bind("<Double-Button-1>", self.ok)
+        return self.listbox
+
+    def validate(self):
+        idx = self.listbox.curselection()
+        if not idx:
+            return False
+        self.selected = self.segment_types[idx[0]]
+        return True
+
 
 class MechanismSelector(ManagementPanel):
     def __init__(self, root, mechanism_manager):
@@ -245,94 +355,9 @@ class MechanismSelector(ManagementPanel):
             self.selector.insert(x)
 
 
-class Segments(ManagementPanel):
-    def __init__(self, root, mechanism_manager):
-        super().__init__(root, "Segment", init_settings_panel=False)
-
-        self.add_button_create()
-        self.add_button_delete()
-        self.add_button_rename()
-        self.add_button_duplicate()
-
-        tab_ctrl = OrganizerPanel(self.frame)
-        self.set_settings_panel(tab_ctrl)
-
-        self.morphology = Morphology(tab_ctrl.get_widget())
-        tab_ctrl.add_tab('morphology', self.morphology)
-
-        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
-        tab_ctrl.add_tab('mechanisms', self.mechanisms)
-
-
-class Neurons(ManagementPanel):
-    def __init__(self, root, segment_manager, mechanism_manager):
-        self.segment_manager = segment_manager
-        super().__init__(root, "Neuron", init_settings_panel=False)
-        self.add_button_create()
-        self.add_button_delete()
-        self.add_button_rename()
-        self.add_button_duplicate()
-
-        self.set_settings_panel(ManagementPanel(self.frame, "Segment", keep_sorted=False))
-        self.settings.selector.add_button("Add", self._select_segment)
-        self.settings.add_button_delete("Remove")
-        self.settings.add_buttons_up_down()
-
-        tab_ctrl = OrganizerPanel(self.settings.frame)
-        tab_ctrl.get_widget().grid(row=1, column=2)
-
-        tab_ctrl.add_tab('soma', self._init_settings_panel(tab_ctrl.get_widget()))
-
-        self.morphology = Morphology(tab_ctrl.get_widget())
-        tab_ctrl.add_tab('morphology', self.morphology)
-
-        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
-        tab_ctrl.add_tab('mechanisms', self.mechanisms)
-
-    def _init_settings_panel(self, parent):
-        settings = SettingsPanel(parent)
-        settings.add_entry("Number", tk.IntVar(),
-                valid_range = (-1, inf),
-                units       = 'cells')
-        return settings
-
-    def _select_segment(self, selected):
-        seg_types = sorted(self.segment_manager.get_parameters().keys())
-        dialog    = _SelectSegment(self.settings.get_widget(), seg_types)
-        selected  = dialog.selected
-        if selected is None:
-            return
-        if selected in self.settings.parameters:
-            return
-        self.settings.parameters[selected] = {}
-        self.settings.selector.insert(selected)
-
-class _SelectSegment(simpledialog.Dialog):
-    def __init__(self, parent, segment_types):
-        self.selected = None
-        self.segment_types = segment_types
-        super().__init__(parent, "Select Segment")
-
-    def body(self, parent):
-        label = ttk.Label(parent, text="Select a segment type to\nadd to the neuron type:")
-        label.grid(row=0)
-        self.listbox = tk.Listbox(parent, selectmode='browse', exportselection=True)
-        self.listbox.insert(0, *self.segment_types)
-        self.listbox.grid(row=1, padx=padx, pady=pad_top)
-        self.listbox.bind("<Double-Button-1>", self.ok)
-        return self.listbox
-
-    def validate(self):
-        idx = self.listbox.curselection()
-        if not idx:
-            return False
-        self.selected = self.segment_types[idx[0]]
-        return True
-
-
 class Morphology(SettingsPanel):
-    def __init__(self, root):
-        super().__init__(root)
+    def __init__(self, root, override_mode=False):
+        super().__init__(root, override_mode=override_mode)
 
         self.add_radio_buttons("extend_before_bifurcate", ["Dendrite", "Axon"],
                 tk.BooleanVar(),

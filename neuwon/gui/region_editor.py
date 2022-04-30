@@ -79,9 +79,10 @@ class RegionEditor(ManagementPanel):
                 sim[name] = (key, )
             elif key == 'Not':
                 sim[name] = (key, )
+        return sim
 
 if __name__ == "__main__":
-    print("RegionEditor Test")
     root = tk.Tk()
+    root.title("RegionEditor Test")
     RegionEditor(root).get_widget().grid()
     root.mainloop()
