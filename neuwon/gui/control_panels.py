@@ -2,7 +2,7 @@
 
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
 import numpy as np
 import bisect
 from decimal import Decimal, ROUND_HALF_EVEN
@@ -533,6 +533,7 @@ class ManagementPanel(Panel):
         self._set_title(None)
 
     def set_settings_panel(self, panel):
+        assert not hasattr(self, "settings")
         self.settings = panel
         self.settings.get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
 
@@ -548,10 +549,9 @@ class ManagementPanel(Panel):
             self.parameters[old_item] = self.settings.get_parameters()
         # Load the newly selected parameters into the SettingsPanel.
         if new_item is not None:
-            parameters = self.parameters[new_item]
+            self.settings.set_parameters(self.parameters[new_item])
         else:
-            parameters = {}
-        self.settings.set_parameters(parameters)
+            self.settings.set_parameters({})
 
     def get_parameters(self):
         # Save the currently selected item out of the SettingsPanel.
@@ -576,9 +576,6 @@ class ManagementPanel(Panel):
 
     def _clean_new_name(self, name, old_name=None):
         """ Either returns the cleaned name or raises a ValueError. """
-        if name is None:
-            raise ValueError()
-        name = str(name).strip()
         if not name:
             raise ValueError()
         # If user renames something to the same old name, then fail to validate
@@ -603,16 +600,16 @@ class ManagementPanel(Panel):
             if options.ndim < 2:
                 options = options.reshape(-1, 1)
             def _callback(name):
-                dialog = _AskStringWithRadioButtons(self.frame, title, prompt, options)
+                name, choice = _askstring(title, prompt, options, parent=self.frame)
                 try:
-                    name = self._clean_new_name(dialog.name)
+                    name = self._clean_new_name(name)
                 except ValueError:
                     return
-                self.parameters[name] = {key: dialog.choice}
+                self.parameters[name] = {key: choice}
                 self.selector.insert(name)
         else:
             def _callback(name):
-                name = simpledialog.askstring(title, prompt, parent=self.frame)
+                name = _askstring(title, prompt, parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
                 except ValueError:
@@ -641,7 +638,7 @@ class ManagementPanel(Panel):
 
     def add_button_rename(self):
         def _callback(name):
-            new_name = simpledialog.askstring(f"Rename {self.title}",
+            new_name = _askstring(f"Rename {self.title}",
                     f'Rename {self.title.lower()} "{name}" to:',
                     parent=self.frame)
             try:
@@ -655,7 +652,7 @@ class ManagementPanel(Panel):
 
     def add_button_duplicate(self):
         def _callback(name):
-            new_name = simpledialog.askstring(f"Duplicate {self.title}",
+            new_name = _askstring(f"Duplicate {self.title}",
                                               f"Enter new {self.title.lower()} name:",
                                               parent=self.frame)
             try:
@@ -672,33 +669,57 @@ class ManagementPanel(Panel):
         self.selector.add_button("Move Up",   up,   require_selection=True)
         self.selector.add_button("Move Down", down, require_selection=True)
 
-class _AskStringWithRadioButtons(simpledialog.Dialog):
-    def __init__(self, parent, title, prompt, options_grid):
-        self.name    = None
-        self.choice  = None
-        self.prompt  = prompt
-        self.options = options_grid
-        super().__init__(parent, title)
-
-    def body(self, parent):
-        self.name_var   = tk.StringVar()
-        self.choice_var = tk.StringVar(value=self.options[0][0])
-        label = ttk.Label(parent, text=self.prompt)
-        entry = ttk.Entry(parent, textvar=self.name_var)
-        radio = ttk.Frame(parent)
-        label.grid(row=0)
-        entry.grid(row=1)
-        radio.grid(row=2)
-        for row_idx, row_data in enumerate(self.options):
+def _askstring(title, prompt, options_grid=None, *, parent):
+    # 
+    response = tk.StringVar()
+    def ok_callback(event=None):
+        if not response.get().strip():
+            entry.bell()
+            entry.focus_set()
+        else:
+            dialog.destroy()
+    def cancel_callback(event=None):
+        response.set("")
+        dialog.destroy()
+    # Make the widgets.
+    dialog = tk.Toplevel()
+    dialog.title(title)
+    dialog.rowconfigure(   0, weight=1)
+    dialog.columnconfigure(0, weight=1)
+    frame = ttk.Frame(dialog)
+    frame.grid(sticky='nesw')
+    label  = ttk.Label(frame, text=prompt)
+    entry  = ttk.Entry(frame, textvar=response)
+    radio  = ttk.Frame(frame)
+    ok     = ttk.Button(frame, text="Ok",     command=ok_callback,)
+    cancel = ttk.Button(frame, text="Cancel", command=cancel_callback,)
+    # Arrange the widgets.
+    label.grid(row=0, columnspan=2, padx=padx, pady=pady)
+    entry.grid(row=1, columnspan=2, padx=padx, pady=pady, sticky='ew')
+    radio.grid(row=2, columnspan=2, padx=padx, pady=pady)
+    ok    .grid(row=3, column=0, padx=2*padx, pady=pady)
+    cancel.grid(row=3, column=1, padx=2*padx, pady=pady)
+    # 
+    if options_grid is not None:
+        choice = tk.StringVar(value=options_grid[0][0])
+        for row_idx, row_data in enumerate(options_grid):
             for col_idx, value in enumerate(row_data):
-                button = ttk.Radiobutton(radio, text=value, variable=self.choice_var, value=value)
-                button.grid(row=row_idx, column=col_idx, sticky='w')
-        return entry
-
-    def validate(self):
-        self.name   = self.name_var.get()
-        self.choice = self.choice_var.get()
-        return True
+                button = ttk.Radiobutton(radio, text=value, variable=choice, value=value)
+                button.grid(row=row_idx, column=col_idx, sticky='w', padx=padx, pady=pady)
+    # 
+    entry .bind("<Return>", ok_callback)
+    dialog.bind("<Escape>", cancel_callback)
+    entry.focus_set()
+    # Make the dialog window modal. This prevents user interaction with
+    # any other application window until this dialog is resolved.
+    dialog.grab_set()
+    dialog.transient(parent)
+    dialog.wait_window(dialog)
+    # 
+    if options_grid is not None:
+        return (response.get().strip(), choice.get())
+    else:
+        return response.get().strip()
 
 class OrganizerPanel(Panel):
     def __init__(self, parent):
