@@ -11,6 +11,15 @@ padx = 5
 pady = 1
 pad_top = 10
 
+def Toplevel(title):
+    window = tk.Toplevel()
+    window.title(title)
+    window.rowconfigure(   0, weight=1)
+    window.columnconfigure(0, weight=1)
+    frame = ttk.Frame(window)
+    frame.grid(sticky='nesw')
+    return window, frame
+
 class Panel:
     def get_widget(self):
         return self.frame

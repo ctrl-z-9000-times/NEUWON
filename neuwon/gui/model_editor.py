@@ -3,6 +3,7 @@ from .region_editor import RegionEditor
 from .species_editor import SpeciesEditor
 from neuwon.rxd.nmodl.parser import NmodlParser
 import tkinter as tk
+from ttkthemes import ThemedTk
 from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog
 import os.path
@@ -14,7 +15,9 @@ inf = np.inf
 
 class ModelEditor(OrganizerPanel):
     def __init__(self):
-        self.root = tk.Tk()
+        self.root = ThemedTk()
+        self.root.rowconfigure(   0, weight=1)
+        self.root.columnconfigure(0, weight=1)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
         self.new_model()
@@ -23,6 +26,8 @@ class ModelEditor(OrganizerPanel):
         self.menubar = tk.Menu(parent)
         parent.config(menu = self.menubar)
         self.filemenu = self._init_file_menu(self.menubar)
+
+        self.menubar.add_command(label="Themes", command=lambda: pick_theme(self.root))
 
     def _init_file_menu(self, parent_menu):
         filemenu = tk.Menu(parent_menu, tearoff=False)
@@ -45,7 +50,7 @@ class ModelEditor(OrganizerPanel):
         self.add_tab('mechanisms', MechanismManager(frame))
         self.add_tab('species',    SpeciesEditor(frame))
         self.add_tab('regions',    RegionEditor(frame))
-        self.add_tab('segments',   Segments(frame, self.tabs['mechanisms']))
+        self.add_tab('segments',   SegmentEditor(frame, self.tabs['mechanisms']))
         self.add_tab('neurons',    Neurons( frame, self.tabs['segments'], self.tabs['mechanisms']))
         frame.grid(sticky='nesw')
 
@@ -120,6 +125,25 @@ class ModelEditor(OrganizerPanel):
         self.root.mainloop()
 
 
+def pick_theme(root):
+    # TODO: This should save the selected theme to a hidden file in the users
+    # home folder, and automatically load the saved theme at start up.
+    window, frame = Toplevel("Select a Theme")
+    themes = sorted(root.get_themes())
+    rows   = int(len(themes) ** .5)
+    cols   = int(np.ceil(len(themes) / rows))
+    for idx, name in enumerate(themes):
+        def make_closure():
+            current_name = name
+            return lambda: root.set_theme(current_name)
+        button = ttk.Button(frame, text=name, command=make_closure())
+        button.grid(row=idx//cols, column=idx%cols, padx=padx, pady=pady)
+    for row in range(rows):
+        frame.rowconfigure(row, weight=1)
+    for col in range(cols):
+        frame.columnconfigure(col, weight=1)
+
+
 class Simulation(SettingsPanel):
     def __init__(self, root):
         super().__init__(root)
@@ -190,22 +214,19 @@ class MechanismManager(ManagementPanel):
         self.documentation[filename] = title + "\n\n" + description
 
     def info_on_mechanism(self, selected):
-        window = tk.Toplevel()
-        window.title(selected + " Documentation")
-        window = ttk.Frame(window)
-        window.grid(sticky='nesw')
+        window, frame = Toplevel(selected + " Documentation")
         # Display filename in a raised box.
         filename = self.parameters[selected]["filename"]
-        fn = ttk.Label(window, text=filename, padding=padx, relief='raised')
+        fn = ttk.Label(frame, text=filename, padding=padx, relief='raised')
         fn.grid(row=0, column=0, padx=padx, pady=pad_top, sticky='e')
         # Button to copy the filename to the clipboard.
         def copy_filename():
             window.clipboard_clear()
             window.clipboard_append(filename)
-        copy = ttk.Button(window, text="Copy", command=copy_filename)
+        copy = ttk.Button(frame, text="Copy", command=copy_filename)
         copy.grid(row=0, column=1, padx=padx, pady=pad_top, sticky='w')
         # Show documentation scraped from the NMODL file.
-        docs = ttk.Label(window, text=self.documentation[filename], justify='left', padding=padx)
+        docs = ttk.Label(frame, text=self.documentation[filename], justify='left', padding=padx)
         docs.grid(row=1, column=0, columnspan=2, padx=padx, pady=pady)
 
     def export(self):
@@ -216,8 +237,7 @@ class MechanismManager(ManagementPanel):
         return sim
 
 
-
-class Segments(ManagementPanel):
+class SegmentEditor(ManagementPanel):
     def __init__(self, root, mechanism_manager):
         super().__init__(root, "Segment", init_settings_panel=False)
 
@@ -237,22 +257,22 @@ class Segments(ManagementPanel):
 
 
 class Neurons(ManagementPanel):
-    def __init__(self, root, segment_manager, mechanism_manager):
-        self.segment_manager = segment_manager
+    def __init__(self, root, segment_editor, mechanism_manager):
+        self.segment_editor = segment_editor
         super().__init__(root, "Neuron", init_settings_panel=False)
         self.add_button_create()
         self.add_button_delete()
         self.add_button_rename()
         self.add_button_duplicate()
 
-        self.segments = ManagementPanel(self.frame, "Segment", keep_sorted=False)
+        self.segments = ManagementPanel(self.frame, "Segment", keep_sorted=False, init_settings_panel=False)
         self.set_settings_panel(self.segments)
         self.segments.selector.add_button("Add", self._add_segment_to_neuron)
         self.segments.add_button_delete("Remove")
         self.segments.add_buttons_up_down()
 
         tab_ctrl = OrganizerPanel(self.segments.frame)
-        tab_ctrl.get_widget().grid(row=1, column=2)
+        self.segments.set_settings_panel(tab_ctrl)
 
         tab_ctrl.add_tab('soma', self._init_settings_panel(tab_ctrl.get_widget()))
 
@@ -270,7 +290,7 @@ class Neurons(ManagementPanel):
         return settings
 
     def _add_segment_to_neuron(self, selected):
-        seg_types = sorted(self.segment_manager.get_parameters().keys())
+        seg_types = sorted(self.segment_editor.get_parameters().keys())
         dialog    = _AddSegmentToNeuron(self.segments.get_widget(), seg_types)
         selected  = dialog.selected
         if selected is None:
@@ -284,7 +304,7 @@ class Neurons(ManagementPanel):
         selected = self.segments.selector.get()
         if selected is None:
             return
-        defaults = self.segment_manager.get_parameters()[selected]
+        defaults = self.segment_editor.get_parameters()[selected]
         self.morphology.set_defaults(defaults["morphology"])
         self.mechanisms.set_defaults(defaults["mechanisms"])
 
@@ -324,29 +344,29 @@ class MechanismSelector(ManagementPanel):
         self.settings.add_entry('magnitude', default=1.0)
 
     def insert_mechanism(self, selected):
-        dialog = tk.Toplevel()
-        dialog.title("Select Mechanisms to Insert")
+        window, frame = Toplevel("Select Mechanisms to Insert")
         mechanisms = sorted(self.mechanisms.parameters)
-        listbox = tk.Listbox(dialog, selectmode='extended', exportselection=True)
+        listbox = tk.Listbox(frame, selectmode='extended', exportselection=True)
         listbox.grid(row=0, column=0, columnspan=2, padx=padx, pady=pad_top)
         listbox.insert(0, *mechanisms)
         selection = []
         def ok_callback():
             for idx in listbox.curselection():
                 selection.append(mechanisms[idx])
-            dialog.destroy()
-        ok = ttk.Button(dialog, text="Ok",     command=ok_callback,)
-        no = ttk.Button(dialog, text="Cancel", command=dialog.destroy,)
+            window.destroy()
+        ok = ttk.Button(frame, text="Ok",     command=ok_callback,)
+        no = ttk.Button(frame, text="Cancel", command=window.destroy,)
         ok.grid(row=1, column=0, padx=2*padx, pady=pad_top)
         no.grid(row=1, column=1, padx=2*padx, pady=pad_top)
-        dialog.bind("<Escape>", lambda event: dialog.destroy())
+        # 
+        listbox.focus_set()
         listbox.bind("<Double-Button-1>", lambda event: ok_callback())
+        window .bind("<Escape>", lambda event: window.destroy())
         # Make the dialog window modal. This prevents user interaction with
         # any other application window until this dialog is resolved.
-        dialog.focus_set()
-        dialog.grab_set()
-        dialog.transient(self.frame)
-        dialog.wait_window(dialog)
+        window.grab_set()
+        window.transient(self.frame)
+        window.wait_window(window)
         # 
         for x in selection:
             if x in self.parameters:
