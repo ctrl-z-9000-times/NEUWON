@@ -1,5 +1,6 @@
 from .control_panels import *
 from .region_editor import RegionEditor
+from .species_editor import SpeciesEditor
 from neuwon.rxd.nmodl.parser import NmodlParser
 import tkinter as tk
 from tkinter import ttk
@@ -42,7 +43,7 @@ class ModelEditor(OrganizerPanel):
         frame = self.get_widget()
         self.add_tab('simulation', Simulation(frame))
         self.add_tab('mechanisms', MechanismManager(frame))
-        self.add_tab('species',    Species(frame))
+        self.add_tab('species',    SpeciesEditor(frame))
         self.add_tab('regions',    RegionEditor(frame))
         self.add_tab('segments',   Segments(frame, self.tabs['mechanisms']))
         self.add_tab('neurons',    Neurons( frame, self.tabs['segments'], self.tabs['mechanisms']))
@@ -140,63 +141,6 @@ class Simulation(SettingsPanel):
                 valid_range = (0, inf),
                 default     = 1.0,
                 units       = 'μf/cm^2')
-
-
-class Species(ManagementPanel):
-    def __init__(self, root):
-        super().__init__(root, "Species", lambda: None)
-
-        self.add_button_create()
-        self.add_button_delete()
-        self.add_button_rename()
-
-        self.settings.add_empty_space()
-
-        self.settings.add_entry("charge", tk.IntVar(),
-                valid_range = (-inf, inf),
-                units       = 'e')
-
-        self.settings.add_entry('diffusivity',
-                valid_range = (highest_negative, inf),
-                units       = '')
-
-        self.settings.add_entry('decay_period',
-                valid_range = (0, None),
-                default     = inf,
-                units       = 'ms')
-
-        reversal_type_var = tk.StringVar()
-        self.settings.add_radio_buttons("reversal_potential", ["Const", "Nerst", "GHK"],
-                reversal_type_var,
-                default = "Const")
-        reversal_entrybox = self.settings.add_entry("const_reversal_potential",
-                title       = "",
-                valid_range = (-inf, inf),
-                units       = 'mV')
-        def const_entrybox_control(*args):
-            if reversal_type_var.get() == "Const":
-                reversal_entrybox.configure(state='enabled')
-            else:
-                reversal_entrybox.configure(state='readonly')
-        reversal_type_var.trace_add("write", const_entrybox_control)
-
-        self.settings.add_section("Intracellular")
-        self.settings.add_checkbox('inside_constant',
-                title       = "Global Constant",
-                default     = True)
-        self.settings.add_entry('inside_initial_concentration',
-                title       = "Initial Concentration",
-                valid_range = (highest_negative, inf),
-                units       = 'mmol')
-
-        self.settings.add_section("Extracellular")
-        self.settings.add_checkbox('outside_constant',
-                title       = "Global Constant",
-                default     = True)
-        self.settings.add_entry('outside_initial_concentration',
-                title       = "Initial Concentration",
-                valid_range = (highest_negative, inf),
-                units       = 'mmol')
 
 
 class MechanismManager(ManagementPanel):
