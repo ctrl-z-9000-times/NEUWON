@@ -1,4 +1,5 @@
 from .control_panels import *
+from neuwon.rxd.nmodl.parser import NmodlParser
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox, simpledialog
@@ -199,11 +200,13 @@ class Species(ManagementPanel):
 
 class MechanismManager(ManagementPanel):
     def __init__(self, root):
-        super().__init__(root, "Mechanism")
+        super().__init__(root, "Mechanism", init_settings_panel=False)
         self.selector.add_button("Import", self.import_mechanisms)
         self.add_button_delete("Remove")
         self.add_button_rename()
-        self.selector.add_button("Info",   self.info_on_mechanism,require_selection=True)
+        self.selector.add_button("Info", self.info_on_mechanism,require_selection=True)
+        self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "filename"))
+        self.documentation = {}
 
     def import_mechanisms(self, selected):
         files = filedialog.askopenfilenames(
@@ -213,23 +216,46 @@ class MechanismManager(ManagementPanel):
             name = os.path.splitext(os.path.basename(abspath))[0]
             if name in self.parameters:
                 continue
-            self.parameters[name] = {'filename': abspath, 'parameters': {}}
+            self.parameters[name] = {'filename': abspath}
+            self._make_nmodl_settings_panel(abspath)
             self.selector.insert(name)
 
+    def set_parameters(self, parameters):
+        for mech_name, mech_parameters in parameters.items():
+            self._make_nmodl_settings_panel(mech_parameters["filename"])
+        super().set_parameters(parameters)
+
+    def _make_nmodl_settings_panel(self, filename):
+        try:
+            self.settings.get_panel(filename)
+            return
+        except KeyError:
+            pass
+        settings_panel = self.settings.add_custom_settings_panel(filename, override_mode=True)
+        parser = NmodlParser(filename)
+        for name, (value, units) in parser.gather_parameters().items():
+            settings_panel.add_entry(name, title=name, default=value, units=units)
+        name, point_process, title, description = parser.gather_documentation()
+        self.documentation[filename] = title + "\n\n" + description
+
     def info_on_mechanism(self, selected):
-        info = tk.Toplevel()
-        info.title(selected)
-
-        # Hacks to make this selectable so that the user can copy-paste it.
-        filename = self.parameters[selected][0]
-        v = tk.StringVar(info, value=filename)
-        tk.Entry(info, textvar=v, state='readonly',
-        ).grid(row=0, column=0, padx=padx, pady=pady, sticky='new')
-
-        docs = "TODO:\nScrape title & comments from NMODL file \n and display them here."
-        tk.Message(info, text=docs, justify='left',
-        ).grid(row=1, column=0, padx=padx, pady=pady, sticky='nw')
-        v.set(filename)
+        window = tk.Toplevel()
+        window.title(selected + " Documentation")
+        window = ttk.Frame(window)
+        window.grid(sticky='nesw')
+        # Display filename in a raised box.
+        filename = self.parameters[selected]["filename"]
+        fn = ttk.Label(window, text=filename, padding=padx, relief='raised')
+        fn.grid(row=0, column=0, padx=padx, pady=pad_top, sticky='e')
+        # Button to copy the filename to the clipboard.
+        def copy_filename():
+            window.clipboard_clear()
+            window.clipboard_append(filename)
+        copy = ttk.Button(window, text="Copy", command=copy_filename)
+        copy.grid(row=0, column=1, padx=padx, pady=pad_top, sticky='w')
+        # Show documentation scraped from the NMODL file.
+        docs = ttk.Label(window, text=self.documentation[filename], justify='left', padding=padx)
+        docs.grid(row=1, column=0, columnspan=2, padx=padx, pady=pady)
 
 
 class MechanismSelector(ManagementPanel):
@@ -438,8 +464,7 @@ class Regions(ManagementPanel):
 
         self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "region_type"))
 
-        rectangle = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel("Rectangle", rectangle)
+        rectangle = self.settings.add_custom_settings_panel("Rectangle")
         rectangle.add_section("Rectangle")
         rectangle.add_entry("lower_x", units = 'μm')
         rectangle.add_entry("lower_y", units = 'μm')
@@ -448,16 +473,14 @@ class Regions(ManagementPanel):
         rectangle.add_entry("upper_y", units = 'μm')
         rectangle.add_entry("upper_z", units = 'μm')
 
-        sphere = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel("Sphere", sphere)
+        sphere = self.settings.add_custom_settings_panel("Sphere")
         sphere.add_section("Sphere")
         sphere.add_entry("center_x", units = 'μm')
         sphere.add_entry("center_y", units = 'μm')
         sphere.add_entry("center_z", units = 'μm')
         sphere.add_entry("radius",   units = 'μm')
 
-        cylinder = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel("Cylinder", cylinder)
+        cylinder = self.settings.add_custom_settings_panel("Cylinder")
         cylinder.add_section("Cylinder")
         cylinder.add_entry("end_point_x", units = 'μm')
         cylinder.add_entry("end_point_y", units = 'μm')
@@ -467,16 +490,13 @@ class Regions(ManagementPanel):
         cylinder.add_entry("other_end_point_z", units = 'μm')
         cylinder.add_entry("radius", units = 'μm')
 
-        union = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel("Union", union)
+        union = self.settings.add_custom_settings_panel("Union")
         union.add_section("Union")
 
-        intersection = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel("Intersection", intersection)
+        intersection = self.settings.add_custom_settings_panel("Intersection")
         intersection.add_section("Intersection")
 
-        inverse = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel("Not", inverse)
+        inverse = self.settings.add_custom_settings_panel("Not")
         inverse.add_section("Not")
 
 
