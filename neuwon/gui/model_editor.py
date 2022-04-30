@@ -1,4 +1,5 @@
 from .control_panels import *
+from .region_editor import RegionEditor
 from neuwon.rxd.nmodl.parser import NmodlParser
 import tkinter as tk
 from tkinter import ttk
@@ -42,7 +43,7 @@ class ModelEditor(OrganizerPanel):
         self.add_tab('simulation', Simulation(frame))
         self.add_tab('mechanisms', MechanismManager(frame))
         self.add_tab('species',    Species(frame))
-        self.add_tab('regions',    Regions(frame))
+        self.add_tab('regions',    RegionEditor(frame))
         self.add_tab('segments',   Segments(frame, self.tabs['mechanisms']))
         self.add_tab('neurons',    Neurons( frame, self.tabs['segments'], self.tabs['mechanisms']))
         frame.grid(sticky='nesw')
@@ -448,56 +449,6 @@ class Morphology(SettingsPanel):
         # region
         # diameter
         # number to grow
-
-
-class Regions(ManagementPanel):
-    def __init__(self, root):
-        super().__init__(root, "Region", init_settings_panel=False)
-
-        shape_options = ['Rectangle', 'Sphere', 'Cylinder']
-        csg_options   = ['Union', 'Intersection', 'Not']
-        options_grid  = np.array([shape_options, csg_options]).T
-        self.add_button_create(radio_options={"region_type": options_grid})
-        self.add_button_delete()
-        self.add_button_rename()
-        self.add_button_duplicate()
-
-        self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "region_type"))
-
-        rectangle = self.settings.add_custom_settings_panel("Rectangle")
-        rectangle.add_section("Rectangle")
-        rectangle.add_entry("lower_x", units = 'μm')
-        rectangle.add_entry("lower_y", units = 'μm')
-        rectangle.add_entry("lower_z", units = 'μm')
-        rectangle.add_entry("upper_x", units = 'μm')
-        rectangle.add_entry("upper_y", units = 'μm')
-        rectangle.add_entry("upper_z", units = 'μm')
-
-        sphere = self.settings.add_custom_settings_panel("Sphere")
-        sphere.add_section("Sphere")
-        sphere.add_entry("center_x", units = 'μm')
-        sphere.add_entry("center_y", units = 'μm')
-        sphere.add_entry("center_z", units = 'μm')
-        sphere.add_entry("radius",   units = 'μm')
-
-        cylinder = self.settings.add_custom_settings_panel("Cylinder")
-        cylinder.add_section("Cylinder")
-        cylinder.add_entry("end_point_x", units = 'μm')
-        cylinder.add_entry("end_point_y", units = 'μm')
-        cylinder.add_entry("end_point_z", units = 'μm')
-        cylinder.add_entry("other_end_point_x", units = 'μm')
-        cylinder.add_entry("other_end_point_y", units = 'μm')
-        cylinder.add_entry("other_end_point_z", units = 'μm')
-        cylinder.add_entry("radius", units = 'μm')
-
-        union = self.settings.add_custom_settings_panel("Union")
-        union.add_section("Union")
-
-        intersection = self.settings.add_custom_settings_panel("Intersection")
-        intersection.add_section("Intersection")
-
-        inverse = self.settings.add_custom_settings_panel("Not")
-        inverse.add_section("Not")
 
 
 if __name__ == '__main__':
