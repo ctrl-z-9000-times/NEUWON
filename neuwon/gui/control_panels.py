@@ -12,13 +12,13 @@ pady = 1
 pad_top = 10
 
 def Toplevel(title):
-    window = tk.Toplevel()
-    window.title(title)
-    window.rowconfigure(   0, weight=1)
-    window.columnconfigure(0, weight=1)
-    frame = ttk.Frame(window)
-    frame.grid(sticky='nesw')
-    return window, frame
+        window = tk.Toplevel()
+        window.title(title)
+        window.rowconfigure(   0, weight=1)
+        window.columnconfigure(0, weight=1)
+        frame = ttk.Frame(window)
+        frame.grid(sticky='nesw')
+        return window, frame
 
 class Panel:
     def get_widget(self):
@@ -27,9 +27,6 @@ class Panel:
         raise NotImplementedError(type(self))
     def set_parameters(self, parameters):
         raise NotImplementedError(type(self))
-
-# IDEA: If horizontal space becomes a problem then make an option for the
-# SettingsPanel to compress/interleave the two columns into vertically stacked widgets.
 
 # IDEA: Make the SelectorPanel have multiple rows of buttons to save horizontal space.
 
@@ -113,14 +110,14 @@ class SettingsPanel(Panel):
         label.grid(row=self._row_idx, column=0, columnspan=3, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
 
-    def add_radio_buttons(self, variable_name, options, variable=None, *, title=None, default=None):
+    def add_radio_buttons(self, parameter_name, options, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
-        assert variable_name not in self._variables
+        assert parameter_name not in self._variables
         if variable is None: variable = tk.StringVar()
-        self._variables[variable_name] = variable
-        if title is None: title = variable_name.replace('_', ' ').title()
-        self._defaults[variable_name] = default if default is not None else variable.get()
-        variable.set(self._defaults[variable_name])
+        self._variables[parameter_name] = variable
+        if title is None: title = parameter_name.replace('_', ' ').title()
+        self._defaults[parameter_name] = default if default is not None else variable.get()
+        variable.set(self._defaults[parameter_name])
         # Create the widgets.
         label   = ttk.Label(self.frame, text=title)
         btn_row = ttk.Frame(self.frame)
@@ -132,27 +129,6 @@ class SettingsPanel(Panel):
                 value = idx
             button = ttk.Radiobutton(btn_row, text=x, variable=variable, value=value)
             buttons.append(button)
-        # Highlight changed values.
-        if self._override_mode:
-            def set_changed_state(changed):
-                if changed:
-                    self._changed.add(variable_name)
-                    for button in buttons:
-                        button.configure(style="Changed.TRadiobutton")
-                else:
-                    variable.set(self._defaults[variable_name])
-                    self._changed.discard(variable_name)
-                    for button in buttons:
-                        button.configure(style="TRadiobutton")
-            self._set_changed_state[variable_name] = set_changed_state
-            def on_select():
-                if (variable_name not in self._changed) and (variable.get() == self._defaults[variable_name]):
-                    return
-                set_changed_state(True)
-            for button in buttons:
-                button.configure(command=on_select)
-                button.bind("<BackSpace>", lambda event: set_changed_state(False))
-                button.bind("<Delete>",    lambda event: set_changed_state(False))
         # Arrange the widgets.
         label  .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         btn_row.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady,
@@ -160,19 +136,40 @@ class SettingsPanel(Panel):
         self._row_idx += 1
         for column, button in enumerate(buttons):
             button.grid(row=0, column=column, pady=pady)
+        # Highlight changed values.
+        if self._override_mode:
+            def set_changed_state(changed):
+                if changed:
+                    self._changed.add(parameter_name)
+                    for button in buttons:
+                        button.configure(style="Changed.TRadiobutton")
+                else:
+                    variable.set(self._defaults[parameter_name])
+                    self._changed.discard(parameter_name)
+                    for button in buttons:
+                        button.configure(style="TRadiobutton")
+            self._set_changed_state[parameter_name] = set_changed_state
+            def on_select():
+                if (parameter_name not in self._changed) and (variable.get() == self._defaults[parameter_name]):
+                    return
+                set_changed_state(True)
+            for button in buttons:
+                button.configure(command=on_select)
+                button.bind("<BackSpace>", lambda event: set_changed_state(False))
+                button.bind("<Delete>",    lambda event: set_changed_state(False))
         return buttons
 
-    def add_dropdown(self, variable_name, options_callback, variable=None, *, title=None, default=None):
+    def add_dropdown(self, parameter_name, options_callback, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
-        assert variable_name not in self._variables
+        assert parameter_name not in self._variables
         if variable is None: variable = tk.StringVar()
-        self._variables[variable_name] = variable
-        if title is None: title = variable_name.replace('_', ' ').title()
+        self._variables[parameter_name] = variable
+        if title is None: title = parameter_name.replace('_', ' ').title()
         if default is None: default = variable.get()
         if not default:
             default = '-nothing selected-'
-        self._defaults[variable_name] = default
-        variable.set(self._defaults[variable_name])
+        self._defaults[parameter_name] = default
+        variable.set(self._defaults[parameter_name])
         # Create the widgets.
         def postcommand():
             options = options_callback()
@@ -191,16 +188,16 @@ class SettingsPanel(Panel):
         if self._override_mode:
             def set_changed_state(changed):
                 if changed:
-                    self._changed.add(variable_name)
+                    self._changed.add(parameter_name)
                     menu.configure(style="Changed.TCombobox")
                 else:
-                    variable.set(self._defaults[variable_name])
-                    self._changed.discard(variable_name)
+                    variable.set(self._defaults[parameter_name])
+                    self._changed.discard(parameter_name)
                     menu.configure(style="TCombobox")
-            self._set_changed_state[variable_name] = set_changed_state
+            self._set_changed_state[parameter_name] = set_changed_state
             def on_select():
                 menu.selection_clear()
-                if (variable_name not in self._changed) and (variable.get() == self._defaults[variable_name]):
+                if (parameter_name not in self._changed) and (variable.get() == self._defaults[parameter_name]):
                     return
                 set_changed_state(True)
             menu.bind("<<ComboboxSelected>>", lambda event: on_select())
@@ -208,47 +205,47 @@ class SettingsPanel(Panel):
             menu.bind("<Delete>",    lambda event: set_changed_state(False))
         return menu
 
-    def add_checkbox(self, variable_name, variable=None, *, title=None, default=None):
+    def add_checkbox(self, parameter_name, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
-        assert variable_name not in self._variables
+        assert parameter_name not in self._variables
         if variable is None: variable = tk.BooleanVar()
-        self._variables[variable_name] = variable
-        if title is None: title = variable_name.replace('_', ' ').title()
-        self._defaults[variable_name] = default if default is not None else variable.get()
-        variable.set(self._defaults[variable_name])
+        self._variables[parameter_name] = variable
+        if title is None: title = parameter_name.replace('_', ' ').title()
+        self._defaults[parameter_name] = default if default is not None else variable.get()
+        variable.set(self._defaults[parameter_name])
         # Create the widgets.
         label  = ttk.Label(self.frame, text=title)
         button = ttk.Checkbutton(self.frame, variable=variable,)
-        # Highlight changed values.
-        if self._override_mode:
-            def set_changed_state(changed):
-                if changed:
-                    self._changed.add(variable_name)
-                    button.configure(style="Changed.TCheckbutton")
-                else:
-                    variable.set(self._defaults[variable_name])
-                    self._changed.discard(variable_name)
-                    button.configure(style="TCheckbutton")
-            self._set_changed_state[variable_name] = set_changed_state
-            button.configure(command = lambda:       set_changed_state(True))
-            button.bind("<BackSpace>", lambda event: set_changed_state(False))
-            button.bind("<Delete>",    lambda event: set_changed_state(False))
         # Arrange the widgets.
         label .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         button.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
+        # Highlight changed values.
+        if self._override_mode:
+            def set_changed_state(changed):
+                if changed:
+                    self._changed.add(parameter_name)
+                    button.configure(style="Changed.TCheckbutton")
+                else:
+                    variable.set(self._defaults[parameter_name])
+                    self._changed.discard(parameter_name)
+                    button.configure(style="TCheckbutton")
+            self._set_changed_state[parameter_name] = set_changed_state
+            button.configure(command = lambda:       set_changed_state(True))
+            button.bind("<BackSpace>", lambda event: set_changed_state(False))
+            button.bind("<Delete>",    lambda event: set_changed_state(False))
         return button
 
-    def add_slider(self, variable_name, valid_range, variable=None, *, title=None, default=None, units=""):
+    def add_slider(self, parameter_name, valid_range, variable=None, *, title=None, default=None, units=""):
         # Clean and save the arguments.
-        assert variable_name not in self._variables
+        assert parameter_name not in self._variables
         if variable is None: variable = tk.DoubleVar()
-        self._variables[variable_name] = variable
-        if title is None: title = variable_name.replace('_', ' ').title()
-        self._defaults[variable_name] = default if default is not None else variable.get()
+        self._variables[parameter_name] = variable
+        if title is None: title = parameter_name.replace('_', ' ').title()
+        self._defaults[parameter_name] = default if default is not None else variable.get()
         from_, to = valid_range
         # ttk does not support changing the resolution (up/down increments).
-        # Reimplement it by: creating a new variable, keeping it in sync with
+        # Reimplement it by creating a new variable, keeping it in sync with
         # the users variable, and applying a scale conversion between them.
         divisions  = 30
         resolution = (to - from_) / divisions
@@ -285,52 +282,57 @@ class SettingsPanel(Panel):
                 v = int(v)
             value.configure(text=(str(v) + " " + units))
         variable.trace_add("write", update_value_label)
+        # Arrange the widgets.
+        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
+        scale.grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
+        value.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
+        self._row_idx += 1
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
                 if changed:
-                    self._changed.add(variable_name)
+                    self._changed.add(parameter_name)
                     scale.configure(style="Changed.Horizontal.TScale")
                 else:
-                    variable.set(self._defaults[variable_name])
-                    self._changed.discard(variable_name)
+                    variable.set(self._defaults[parameter_name])
+                    self._changed.discard(parameter_name)
                     scale.configure(style="Horizontal.TScale")
-            self._set_changed_state[variable_name] = set_changed_state
+            self._set_changed_state[parameter_name] = set_changed_state
             scale.configure(command = lambda v:     set_changed_state(True))
             scale.bind("<BackSpace>", lambda event: set_changed_state(False))
             scale.bind("<Delete>",    lambda event: set_changed_state(False))
             # By default mouse-1 doesn't focus on the slider, which is needed for the backspace binding.
             scale.bind("<Button-1>", lambda event: scale.focus_set())
-        # Arrange the widgets.
-        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        scale.grid(row=self._row_idx, column=1, sticky='ew',pady=pady)
-        value.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
-        self._row_idx += 1
         # Set the initial value and force tkinter to call all of the bound events.
-        variable.set(self._defaults[variable_name])
+        variable.set(self._defaults[parameter_name])
         return scale
 
-    def add_entry(self, variable_name, variable=None, *, title=None, valid_range=(None, None), default=None, units=""):
+    def add_entry(self, parameter_name, variable=None, *, title=None, valid_range=(None, None), default=None, units=""):
         # Clean and save the arguments.
-        assert variable_name not in self._variables
+        assert parameter_name not in self._variables
         if variable is None: variable = tk.DoubleVar()
-        self._variables[variable_name] = variable
-        if title is None: title = variable_name.replace('_', ' ').title()
+        self._variables[parameter_name] = variable
+        if title is None: title = parameter_name.replace('_', ' ').title()
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
         entry = ttk.Entry(self.frame, textvar=variable, justify='right')
         units = ttk.Label(self.frame, text=units)
+        # Arrange the widgets.
+        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
+        entry.grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
+        units.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
+        self._row_idx += 1
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
                 if changed:
-                    self._changed.add(variable_name)
+                    self._changed.add(parameter_name)
                     entry.configure(style="Changed.TEntry")
                 else:
-                    variable.set(self._defaults[variable_name])
-                    self._changed.discard(variable_name)
+                    variable.set(self._defaults[parameter_name])
+                    self._changed.discard(parameter_name)
                     entry.configure(style="TEntry")
-            self._set_changed_state[variable_name] = set_changed_state
+            self._set_changed_state[parameter_name] = set_changed_state
         # Custom input validation.
         if isinstance(variable, tk.BooleanVar):
             validate_type = bool
@@ -361,19 +363,20 @@ class SettingsPanel(Panel):
             return vv
         # Perform the input validation when the user moves keyboard focus
         # into/out of the entry box.
-        value = None # Save the initial value from before the user edits it.
+        initial_value = None # Save the value from before the user edits it.
         def focus_in(event=None):
-            nonlocal value
-            value = variable.get()
+            nonlocal initial_value
+            initial_value = variable.get()
         def focus_out(event=None):
             entry.selection_clear()
             text = entry.get().strip()
             if self._override_mode and not text:
+                # If the user deleted the entry's text then reset to unchanged state.
                 set_changed_state(False)
             else:
-                vv = clean_input(value, text)
+                vv = clean_input(initial_value, text)
                 variable.set(vv)
-                if self._override_mode and value != vv:
+                if self._override_mode and initial_value != vv:
                     set_changed_state(True)
         entry.bind('<FocusIn>',  focus_in)
         entry.bind('<FocusOut>', focus_out)
@@ -393,9 +396,11 @@ class SettingsPanel(Panel):
                     delta = .1 * direction
                 else:
                     delta = 10 * direction
-            quantum = Decimal(10) ** -14
-            vv      = Decimal(vv)   .quantize(quantum, ROUND_HALF_EVEN)
-            delta   = Decimal(delta).quantize(quantum, ROUND_HALF_EVEN)
+            # Use controlled accuracy arithmetic to avoid introducing floating
+            # point messiness like: "1.1 + .1 = 1.2000000000000002"
+            quanta  = Decimal(10) ** -14
+            vv      = Decimal(vv)   .quantize(quanta, ROUND_HALF_EVEN)
+            delta   = Decimal(delta).quantize(quanta, ROUND_HALF_EVEN)
             vv = float(vv + delta)
             vv = clean_input(value, vv)
             variable.set(vv)
@@ -405,14 +410,9 @@ class SettingsPanel(Panel):
         entry.bind("<Down>",         lambda event: arrow_key_control(-1, False))
         entry.bind("<Control-Up>",   lambda event: arrow_key_control(+1, True))
         entry.bind("<Control-Down>", lambda event: arrow_key_control(-1, True))
-        # Arrange the widgets.
-        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        entry.grid(row=self._row_idx, column=1, sticky='ew', pady=pady)
-        units.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
-        self._row_idx += 1
         # Set the default/initial value and also convert it to the correct datatype.
         default_value = validate_type(default if default is not None else variable.get())
-        self._defaults[variable_name] = default_value
+        self._defaults[parameter_name] = default_value
         variable.set(default_value)
         return entry
 
@@ -727,51 +727,51 @@ class ManagementPanel(Panel):
         self.selector.add_button("Move Down", down, require_selection=True)
 
 def _askstring(title, prompt, options_grid=None, *, parent):
-    # 
-    response = tk.StringVar()
-    def ok_callback(event=None):
-        if not response.get().strip():
-            entry.bell()
-            entry.focus_set()
-        else:
+        # 
+        response = tk.StringVar()
+        def ok_callback(event=None):
+            if not response.get().strip():
+                entry.bell()
+                entry.focus_set()
+            else:
+                window.destroy()
+        def cancel_callback(event=None):
+            response.set("")
             window.destroy()
-    def cancel_callback(event=None):
-        response.set("")
-        window.destroy()
-    # Make the widgets.
-    window, frame = Toplevel(title)
-    label  = ttk.Label(frame, text=prompt)
-    entry  = ttk.Entry(frame, textvar=response)
-    radio  = ttk.Frame(frame)
-    ok     = ttk.Button(frame, text="Ok",     command=ok_callback,)
-    cancel = ttk.Button(frame, text="Cancel", command=cancel_callback,)
-    # Arrange the widgets.
-    label.grid(row=0, columnspan=2, padx=padx, pady=pady)
-    entry.grid(row=1, columnspan=2, padx=padx, pady=pady, sticky='ew')
-    radio.grid(row=2, columnspan=2, padx=padx, pady=pady)
-    ok    .grid(row=3, column=0, padx=2*padx, pady=pady)
-    cancel.grid(row=3, column=1, padx=2*padx, pady=pady)
-    # 
-    if options_grid is not None:
-        choice = tk.StringVar(value=options_grid[0][0])
-        for row_idx, row_data in enumerate(options_grid):
-            for col_idx, value in enumerate(row_data):
-                button = ttk.Radiobutton(radio, text=value, variable=choice, value=value)
-                button.grid(row=row_idx, column=col_idx, sticky='w', padx=padx, pady=pady)
-    # 
-    entry .bind("<Return>", ok_callback)
-    window.bind("<Escape>", cancel_callback)
-    entry.focus_set()
-    # Make the dialog window modal. This prevents user interaction with
-    # any other application window until this dialog is resolved.
-    window.grab_set()
-    window.transient(parent)
-    window.wait_window(window)
-    # 
-    if options_grid is not None:
-        return (response.get().strip(), choice.get())
-    else:
-        return response.get().strip()
+        # Make the widgets.
+        window, frame = Toplevel(title)
+        label  = ttk.Label(frame, text=prompt)
+        entry  = ttk.Entry(frame, textvar=response)
+        radio  = ttk.Frame(frame)
+        ok     = ttk.Button(frame, text="Ok",     command=ok_callback,)
+        cancel = ttk.Button(frame, text="Cancel", command=cancel_callback,)
+        # Arrange the widgets.
+        label.grid(row=0, columnspan=2, padx=padx, pady=pady)
+        entry.grid(row=1, columnspan=2, padx=padx, pady=pady, sticky='ew')
+        radio.grid(row=2, columnspan=2, padx=padx, pady=pady)
+        ok    .grid(row=3, column=0, padx=2*padx, pady=pady)
+        cancel.grid(row=3, column=1, padx=2*padx, pady=pady)
+        # 
+        if options_grid is not None:
+            choice = tk.StringVar(value=options_grid[0][0])
+            for row_idx, row_data in enumerate(options_grid):
+                for col_idx, value in enumerate(row_data):
+                    button = ttk.Radiobutton(radio, text=value, variable=choice, value=value)
+                    button.grid(row=row_idx, column=col_idx, sticky='w', padx=padx, pady=pady)
+        # 
+        entry .bind("<Return>", ok_callback)
+        window.bind("<Escape>", cancel_callback)
+        entry.focus_set()
+        # Make the dialog window modal. This prevents user interaction with
+        # any other application window until this dialog is resolved.
+        window.grab_set()
+        window.transient(parent)
+        window.wait_window(window)
+        # 
+        if options_grid is not None:
+            return (response.get().strip(), choice.get())
+        else:
+            return response.get().strip()
 
 class OrganizerPanel(Panel):
     def __init__(self, parent):
