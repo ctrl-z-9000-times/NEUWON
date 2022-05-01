@@ -56,6 +56,7 @@ class SettingsPanel(Panel):
         s.map(      'Changed.TRadiobutton', background=[('active', color)],)
         s.configure('Changed.TCheckbutton', background=color)
         s.map(      'Changed.TCheckbutton', background=[('active', color)],)
+        s.map(      'Changed.TCombobox',    fieldbackground=[('readonly', color)],)
         s.configure('Changed.Horizontal.TScale', troughcolor=color)
         s.configure('Changed.TEntry', fieldbackground=color)
 
@@ -103,10 +104,11 @@ class SettingsPanel(Panel):
 
     def add_section(self, title):
         """ Cosmetic, add a label and dividing line over a group of settings. """
-        bar = ttk.Separator(self.frame, orient='horizontal')
-        bar.grid(row=self._row_idx, column=0, columnspan=3, sticky='ew', padx=padx, pady=pady)
-        self.frame.rowconfigure(self._row_idx, minsize=pad_top)
-        self._row_idx += 1
+        if self._row_idx > 0:
+            bar = ttk.Separator(self.frame, orient='horizontal')
+            bar.grid(row=self._row_idx, column=0, columnspan=3, sticky='ew', padx=padx, pady=pady)
+            self.frame.rowconfigure(self._row_idx, minsize=pad_top)
+            self._row_idx += 1
         label = ttk.Label(self.frame, text=title)
         label.grid(row=self._row_idx, column=0, columnspan=3, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
@@ -143,12 +145,12 @@ class SettingsPanel(Panel):
                     for button in buttons:
                         button.configure(style="TRadiobutton")
             self._set_changed_state[variable_name] = set_changed_state
-            def change():
+            def on_select():
                 if (variable_name not in self._changed) and (variable.get() == self._defaults[variable_name]):
                     return
                 set_changed_state(True)
             for button in buttons:
-                button.configure(command=change)
+                button.configure(command=on_select)
                 button.bind("<BackSpace>", lambda event: set_changed_state(False))
                 button.bind("<Delete>",    lambda event: set_changed_state(False))
         # Arrange the widgets.
@@ -157,8 +159,54 @@ class SettingsPanel(Panel):
                 columnspan=2) # No units so allow expansion into the units column.
         self._row_idx += 1
         for column, button in enumerate(buttons):
-            button.grid(row=0, column=column)
+            button.grid(row=0, column=column, pady=pady)
         return buttons
+
+    def add_dropdown(self, variable_name, options_callback, variable=None, *, title=None, default=None):
+        # Clean and save the arguments.
+        assert variable_name not in self._variables
+        if variable is None: variable = tk.StringVar()
+        self._variables[variable_name] = variable
+        if title is None: title = variable_name.replace('_', ' ').title()
+        if default is None: default = variable.get()
+        if not default:
+            default = '-nothing selected-'
+        self._defaults[variable_name] = default
+        variable.set(self._defaults[variable_name])
+        # Create the widgets.
+        def postcommand():
+            options = options_callback()
+            options = [str(x) for x in options]
+            menu.configure(values=options)
+        label = ttk.Label(self.frame, text=title)
+        menu  = ttk.Combobox(self.frame, textvar=variable, postcommand=postcommand)
+        menu.configure(state='readonly')
+        menu.bind("<<ComboboxSelected>>", lambda event: menu.selection_clear())
+        # Arrange the widgets.
+        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
+        menu .grid(row=self._row_idx, column=1, sticky='ew',
+                columnspan=2) # No units so expand into the units column.
+        self._row_idx += 1
+        # Highlight changed values.
+        if self._override_mode:
+            def set_changed_state(changed):
+                if changed:
+                    self._changed.add(variable_name)
+                    menu.configure(style="Changed.TCombobox")
+                else:
+                    variable.set(self._defaults[variable_name])
+                    self._changed.discard(variable_name)
+                    menu.configure(style="TCombobox")
+            self._set_changed_state[variable_name] = set_changed_state
+            def on_select():
+                menu.selection_clear()
+                if (variable_name not in self._changed) and (variable.get() == self._defaults[variable_name]):
+                    return
+                set_changed_state(True)
+            menu.bind("<<ComboboxSelected>>", lambda event: on_select())
+            menu.bind("<BackSpace>", lambda event: set_changed_state(False))
+            menu.bind("<Delete>",    lambda event: set_changed_state(False))
+        return menu
 
     def add_checkbox(self, variable_name, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
@@ -359,7 +407,7 @@ class SettingsPanel(Panel):
         entry.bind("<Control-Down>", lambda event: arrow_key_control(-1, True))
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        entry.grid(row=self._row_idx, column=1, sticky='w', pady=pady)
+        entry.grid(row=self._row_idx, column=1, sticky='ew', pady=pady)
         units.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
         # Set the default/initial value and also convert it to the correct datatype.
@@ -471,7 +519,7 @@ class SelectorPanel:
         return self._current_selection
 
     def get_list(self):
-        return self.listbox.get(0, tk.END)
+        return list(self.listbox.get(0, tk.END))
 
     def _select_idx(self, idx):
         self.listbox.selection_clear(0, tk.END)
@@ -686,17 +734,12 @@ def _askstring(title, prompt, options_grid=None, *, parent):
             entry.bell()
             entry.focus_set()
         else:
-            dialog.destroy()
+            window.destroy()
     def cancel_callback(event=None):
         response.set("")
-        dialog.destroy()
+        window.destroy()
     # Make the widgets.
-    dialog = tk.Toplevel()
-    dialog.title(title)
-    dialog.rowconfigure(   0, weight=1)
-    dialog.columnconfigure(0, weight=1)
-    frame = ttk.Frame(dialog)
-    frame.grid(sticky='nesw')
+    window, frame = Toplevel(title)
     label  = ttk.Label(frame, text=prompt)
     entry  = ttk.Entry(frame, textvar=response)
     radio  = ttk.Frame(frame)
@@ -717,13 +760,13 @@ def _askstring(title, prompt, options_grid=None, *, parent):
                 button.grid(row=row_idx, column=col_idx, sticky='w', padx=padx, pady=pady)
     # 
     entry .bind("<Return>", ok_callback)
-    dialog.bind("<Escape>", cancel_callback)
+    window.bind("<Escape>", cancel_callback)
     entry.focus_set()
     # Make the dialog window modal. This prevents user interaction with
     # any other application window until this dialog is resolved.
-    dialog.grab_set()
-    dialog.transient(parent)
-    dialog.wait_window(dialog)
+    window.grab_set()
+    window.transient(parent)
+    window.wait_window(window)
     # 
     if options_grid is not None:
         return (response.get().strip(), choice.get())

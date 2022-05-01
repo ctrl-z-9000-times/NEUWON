@@ -47,14 +47,24 @@ class RegionEditor(ManagementPanel):
         cylinder.add_entry("other_end_point_z", **geometry_kwargs)
         cylinder.add_entry("radius", **geometry_kwargs)
 
+        def get_region_options():
+            options = self.selector.get_list()
+            options.remove(self.selector.get())
+            return options
+
         union = self.settings.add_custom_settings_panel("Union")
         union.add_section("Union")
+        union.add_dropdown("region_1", get_region_options)
+        union.add_dropdown("region_2", get_region_options)
 
         intersection = self.settings.add_custom_settings_panel("Intersection")
         intersection.add_section("Intersection")
+        intersection.add_dropdown("region_1", get_region_options)
+        intersection.add_dropdown("region_2", get_region_options)
 
         inverse = self.settings.add_custom_settings_panel("Not")
         inverse.add_section("Not")
+        inverse.add_dropdown("region", get_region_options)
 
     def export(self):
         sim = {}
@@ -74,11 +84,11 @@ class RegionEditor(ManagementPanel):
                             [gui["other_end_point_x"], gui["other_end_point_y"], gui["other_end_point_z"]],
                             gui["radius"])
             elif key == 'Union':
-                sim[name] = (key, )
+                sim[name] = (key, gui["region_1"], gui["region_2"])
             elif key == 'Intersection':
-                sim[name] = (key, )
+                sim[name] = (key, gui["region_1"], gui["region_2"])
             elif key == 'Not':
-                sim[name] = (key, )
+                sim[name] = (key, gui["region"])
         return sim
 
 if __name__ == "__main__":
