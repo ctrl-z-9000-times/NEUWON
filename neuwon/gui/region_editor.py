@@ -11,8 +11,8 @@ class RegionEditor(ManagementPanel):
         options_grid  = np.array([shape_options, csg_options]).T
         self.add_button_create(radio_options={self.key_parameter: options_grid})
         self.add_button_delete()
-        self.add_button_rename()
-        self.add_button_duplicate()
+        self.add_button_rename(row=1)
+        self.add_button_duplicate(row=1)
 
         self.set_settings_panel(CustomSettingsPanel(self.get_widget(), self.key_parameter))
 

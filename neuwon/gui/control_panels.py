@@ -28,8 +28,6 @@ class Panel:
     def set_parameters(self, parameters):
         raise NotImplementedError(type(self))
 
-# IDEA: Make the SelectorPanel have multiple rows of buttons to save horizontal space.
-
 # TODO: Add a vertical scroll bar to the SelectorPanel.
 
 class SettingsPanel(Panel):
@@ -465,9 +463,9 @@ class SelectorPanel:
         self._keep_sorted        = bool(keep_sorted)
         # The add buttons in a row along the top of the panel.
         self._button_panel = ttk.Frame(self.frame)
-        self._button_panel.grid(row=0, column=0)
+        self._button_panel.grid(row=0, column=0, sticky='new')
         self._buttons_requiring_selection = []
-        self._column_idx = 0 # Index for appending buttons.
+        self._column_idx = [0, 0, 0] # Index for appending buttons.
         # 
         self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=True)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
@@ -498,10 +496,10 @@ class SelectorPanel:
         """ Issue an event as though the user just selected the current item. """
         self._on_select_callback(self._current_selection, self._current_selection)
 
-    def add_button(self, text, command, require_selection=False):
+    def add_button(self, text, command, require_selection=False, row=0):
         button = ttk.Button(self._button_panel, text=text, command=lambda: command(self._current_selection))
-        button.grid(row=1, column=self._column_idx, sticky='w', pady=pady)
-        self._column_idx += 1
+        button.grid(row=row, column=self._column_idx[row], sticky='ew', pady=pady)
+        self._column_idx[row] += 1
         if require_selection:
             self._buttons_requiring_selection.append(button)
             if self.get() is None:
@@ -646,7 +644,7 @@ class ManagementPanel(Panel):
             raise ValueError()
         return name
 
-    def add_button_create(self, radio_options=None):
+    def add_button_create(self, radio_options=None, row=0):
         title  = f"Create {self.title}"
         prompt = f"Enter new {self.title.lower()} name:"
         if radio_options is not None:
@@ -676,9 +674,9 @@ class ManagementPanel(Panel):
                 else:
                     self.parameters[name] = {}
                 self.selector.insert(name)
-        button = self.selector.add_button("New", _callback)
+        button = self.selector.add_button("New", _callback, row=row)
 
-    def add_button_delete(self, text="Delete", require_confirmation=True):
+    def add_button_delete(self, text="Delete", require_confirmation=True, row=0):
         text = text.title()
         def _callback(name):
             if require_confirmation:
@@ -689,11 +687,11 @@ class ManagementPanel(Panel):
                     return
             self.selector.delete(name)
             self.parameters.pop(name)
-        button = self.selector.add_button(text, _callback, require_selection=True)
+        button = self.selector.add_button(text, _callback, require_selection=True, row=row)
         self.selector.listbox.bind("<Delete>",    lambda event: button.invoke())
         self.selector.listbox.bind("<BackSpace>", lambda event: button.invoke())
 
-    def add_button_rename(self):
+    def add_button_rename(self, row=0):
         def _callback(name):
             new_name = _askstring(f"Rename {self.title}",
                     f'Rename {self.title.lower()} "{name}" to:',
@@ -705,9 +703,9 @@ class ManagementPanel(Panel):
             self.parameters[new_name] = self.parameters[name]
             self.selector.rename(name, new_name)
             self.parameters.pop(name)
-        self.selector.add_button("Rename", _callback, require_selection=True)
+        self.selector.add_button("Rename", _callback, require_selection=True, row=row)
 
-    def add_button_duplicate(self):
+    def add_button_duplicate(self, row=0):
         def _callback(name):
             new_name = _askstring(f"Duplicate {self.title}",
                                               f"Enter new {self.title.lower()} name:",
@@ -718,13 +716,13 @@ class ManagementPanel(Panel):
                 return
             self.parameters[new_name] = dict(self.parameters[name]) # Should this be a deep-copy?
             self.selector.insert(new_name)
-        self.selector.add_button("Duplicate", _callback, require_selection=True)
+        self.selector.add_button("Duplicate", _callback, require_selection=True, row=row)
 
-    def add_buttons_up_down(self):
+    def add_buttons_up_down(self, row=0):
         up   = lambda name: self.selector.move(name, -1)
         down = lambda name: self.selector.move(name, +1)
-        self.selector.add_button("Move Up",   up,   require_selection=True)
-        self.selector.add_button("Move Down", down, require_selection=True)
+        self.selector.add_button("Move Up",   up,   require_selection=True, row=row)
+        self.selector.add_button("Move Down", down, require_selection=True, row=row)
 
 def _askstring(title, prompt, options_grid=None, *, parent):
         # 

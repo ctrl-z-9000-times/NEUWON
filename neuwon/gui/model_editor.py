@@ -142,6 +142,7 @@ def pick_theme(root):
         frame.rowconfigure(row, weight=1)
     for col in range(cols):
         frame.columnconfigure(col, weight=1)
+    window.bind("<Escape>", lambda event: window.destroy())
 
 
 class Simulation(SettingsPanel):
@@ -178,8 +179,8 @@ class MechanismManager(ManagementPanel):
         super().__init__(root, "Mechanism", init_settings_panel=False)
         self.selector.add_button("Import", self.import_mechanisms)
         self.add_button_delete("Remove")
-        self.add_button_rename()
-        self.selector.add_button("Info", self.info_on_mechanism,require_selection=True)
+        self.add_button_rename(row=1)
+        self.selector.add_button("Info", self.info_on_mechanism, require_selection=True, row=1)
         self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "filename"))
         self.documentation = {}
 
@@ -243,8 +244,8 @@ class SegmentEditor(ManagementPanel):
 
         self.add_button_create()
         self.add_button_delete()
-        self.add_button_rename()
-        self.add_button_duplicate()
+        self.add_button_rename(row=1)
+        self.add_button_duplicate(row=1)
 
         tab_ctrl = OrganizerPanel(self.frame)
         self.set_settings_panel(tab_ctrl)
@@ -262,14 +263,14 @@ class Neurons(ManagementPanel):
         super().__init__(root, "Neuron", init_settings_panel=False)
         self.add_button_create()
         self.add_button_delete()
-        self.add_button_rename()
-        self.add_button_duplicate()
+        self.add_button_rename(row=1)
+        self.add_button_duplicate(row=1)
 
         self.segments = ManagementPanel(self.frame, "Segment", keep_sorted=False, init_settings_panel=False)
         self.set_settings_panel(self.segments)
         self.segments.selector.add_button("Add", self._add_segment_to_neuron)
         self.segments.add_button_delete("Remove")
-        self.segments.add_buttons_up_down()
+        self.segments.add_buttons_up_down(row=1)
 
         tab_ctrl = OrganizerPanel(self.segments.frame)
         self.segments.set_settings_panel(tab_ctrl)
@@ -339,7 +340,7 @@ class MechanismSelector(ManagementPanel):
         super().__init__(root, "Mechanism")
         self.selector.add_button("Insert", self.insert_mechanism)
         self.add_button_delete("Remove", require_confirmation=False)
-        self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True)
+        self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True, row=1)
         self.settings.add_empty_space()
         self.settings.add_entry('magnitude', default=1.0)
 

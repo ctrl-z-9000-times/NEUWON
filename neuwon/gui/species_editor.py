@@ -10,7 +10,7 @@ class SpeciesEditor(ManagementPanel):
 
         self.add_button_create()
         self.add_button_delete()
-        self.add_button_rename()
+        self.add_button_rename(row=1)
 
         self.settings.add_empty_space()
 
