@@ -16,8 +16,7 @@ __all__ = (
         'CustomSettingsPanel',
         'SelectorPanel',
         'ManagementPanel',
-        'OrganizerPanel',
-)
+        'OrganizerPanel',)
 
 padx = 5
 pady = 1
@@ -641,6 +640,10 @@ class ManagementPanel(Panel):
         self.parameters = parameters
         self.selector.set_list(self.parameters.keys())
 
+    def _default_new_name(self):
+        number = len(self.selector.get_list()) + 1
+        return f"{self.title}_{number}"
+
     def _clean_new_name(self, name, old_name=None):
         """ Either returns the cleaned name or raises a ValueError. """
         if not name:
@@ -667,7 +670,8 @@ class ManagementPanel(Panel):
             if options.ndim < 2:
                 options = options.reshape(-1, 1)
             def _callback(name):
-                name, choice = _askstring(title, prompt, options, parent=self.frame)
+                name, choice = _askstring(title, prompt, self._default_new_name(),
+                                          options_grid=options, parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
                 except ValueError:
@@ -676,7 +680,8 @@ class ManagementPanel(Panel):
                 self.selector.insert(name)
         else:
             def _callback(name):
-                name = _askstring(title, prompt, parent=self.frame)
+                name = _askstring(title, prompt, self._default_new_name(),
+                                  parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
                 except ValueError:
@@ -707,7 +712,7 @@ class ManagementPanel(Panel):
         def _callback(name):
             new_name = _askstring(f"Rename {self.title}",
                     f'Rename {self.title.lower()} "{name}" to:',
-                    parent=self.frame)
+                    name, parent=self.frame)
             try:
                 new_name = self._clean_new_name(new_name, name)
             except ValueError:
@@ -736,9 +741,9 @@ class ManagementPanel(Panel):
         self.selector.add_button("Move Up",   up,   require_selection=True, row=row)
         self.selector.add_button("Move Down", down, require_selection=True, row=row)
 
-def _askstring(title, prompt, options_grid=None, *, parent):
+def _askstring(title, prompt, default="", options_grid=None, *, parent):
         # 
-        response = tk.StringVar()
+        response = tk.StringVar(value=default)
         def ok_callback(event=None):
             if not response.get().strip():
                 entry.bell()
@@ -772,6 +777,7 @@ def _askstring(title, prompt, options_grid=None, *, parent):
         entry .bind("<Return>", ok_callback)
         window.bind("<Escape>", cancel_callback)
         entry.focus_set()
+        entry.select_range(0, tk.END)
         # Make the dialog window modal. This prevents user interaction with
         # any other application window until this dialog is resolved.
         window.grab_set()
