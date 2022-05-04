@@ -50,6 +50,7 @@ class SettingsPanel(Panel):
         self._parameters = {} # Preserves extra parameters that aren't used by this panel.
         self._variables  = {} # Store the anonymous tkinter variable objects.
         self._defaults   = {}
+        self._callbacks  = []
         if self._override_mode:
             self._changed = set()
             self._set_changed_state = {} # Function for each variable.
@@ -95,6 +96,7 @@ class SettingsPanel(Panel):
                 if self._override_mode:
                     self._set_changed_state[name](True)
             variable.set(value)
+        self._call_callbacks()
 
     def set_defaults(self, parameters):
         self._defaults = parameters
@@ -103,6 +105,14 @@ class SettingsPanel(Panel):
             for name, variable in self._variables.items():
                 if name not in self._changed:
                     variable.set(self._defaults[name])
+        self._call_callbacks()
+
+    def add_callback(self, callback):
+        self._callbacks.append(callback)
+
+    def _call_callbacks(self, *args):
+        for f in self._callbacks:
+            f()
 
     def add_empty_space(self, size=pad_top):
         self.frame.rowconfigure(self._row_idx, minsize=size)
@@ -138,6 +148,7 @@ class SettingsPanel(Panel):
                 value = idx
             button = ttk.Radiobutton(btn_row, text=x, variable=variable, value=value)
             buttons.append(button)
+        variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
         label  .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         btn_row.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady,
@@ -188,6 +199,7 @@ class SettingsPanel(Panel):
         menu  = ttk.Combobox(self.frame, textvar=variable, postcommand=postcommand)
         menu.configure(state='readonly')
         menu.bind("<<ComboboxSelected>>", lambda event: menu.selection_clear())
+        variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         menu .grid(row=self._row_idx, column=1, sticky='ew',
@@ -225,6 +237,7 @@ class SettingsPanel(Panel):
         # Create the widgets.
         label  = ttk.Label(self.frame, text=title)
         button = ttk.Checkbutton(self.frame, variable=variable,)
+        variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
         label .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         button.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady)
@@ -291,6 +304,7 @@ class SettingsPanel(Panel):
                 v = int(v)
             value.configure(text=(str(v) + " " + units))
         variable.trace_add("write", update_value_label)
+        variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
         scale.grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
@@ -387,6 +401,7 @@ class SettingsPanel(Panel):
                 variable.set(vv)
                 if self._override_mode and initial_value != vv:
                     set_changed_state(True)
+            self._call_callbacks()
         entry.bind('<FocusIn>',  focus_in)
         entry.bind('<FocusOut>', focus_out)
         # Up/Down Arrow key controls.
@@ -415,6 +430,7 @@ class SettingsPanel(Panel):
             variable.set(vv)
             if self._override_mode and value != vv:
                 set_changed_state(True)
+            self._call_callbacks()
         entry.bind("<Up>",           lambda event: arrow_key_control(+1, False))
         entry.bind("<Down>",         lambda event: arrow_key_control(-1, False))
         entry.bind("<Control-Up>",   lambda event: arrow_key_control(+1, True))
@@ -464,6 +480,10 @@ class CustomSettingsPanel(Panel):
         self._current = self._options[option]
         self._current.get_widget().grid()
         self._current.set_parameters(parameters)
+
+    def add_callback(self, callback):
+        for panel in self._options.values():
+            panel.add_callback(callback)
 
 class SelectorPanel:
     """ GUI element for managing lists. """
