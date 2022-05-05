@@ -19,7 +19,7 @@ __all__ = (
         'OrganizerPanel',)
 
 padx = 5
-pady = 1
+pady = 2
 pad_top = 10
 
 def Toplevel(title):
@@ -202,8 +202,7 @@ class SettingsPanel(Panel):
         variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        menu .grid(row=self._row_idx, column=1, sticky='ew',
-                columnspan=2) # No units so expand into the units column.
+        menu .grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
         self._row_idx += 1
         # Highlight changed values.
         if self._override_mode:

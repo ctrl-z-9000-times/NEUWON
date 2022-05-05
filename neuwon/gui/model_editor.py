@@ -11,8 +11,6 @@ import sys
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
 
-# TODO: the segments need an associated region.
-
 
 # TODO: Consider moving these into the shared module "control_panel.py"?
 maximum_float     = sys.float_info.max
@@ -58,8 +56,8 @@ class ModelEditor(OrganizerPanel):
         self.add_tab('mechanisms', MechanismManager(frame))
         self.add_tab('species',    SpeciesEditor(frame))
         self.add_tab('regions',    RegionEditor(frame))
-        self.add_tab('segments',   SegmentEditor(frame, self.tabs['mechanisms']))
-        self.add_tab('neurons',    Neurons( frame, self.tabs['segments'], self.tabs['mechanisms']))
+        self.add_tab('segments',   SegmentEditor(frame, self))
+        self.add_tab('neurons',    Neurons(frame, self))
         frame.grid(sticky='nesw')
 
     def _set_title(self):
@@ -184,7 +182,7 @@ class Simulation(SettingsPanel):
 
 
 class SegmentEditor(ManagementPanel):
-    def __init__(self, root, mechanism_manager):
+    def __init__(self, root, model_editor):
         super().__init__(root, "Segment", controlled_panel="OrganizerPanel")
 
         self.add_button_create()
@@ -192,16 +190,16 @@ class SegmentEditor(ManagementPanel):
         self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
-        self.morphology = Morphology(self.controlled.get_widget())
+        self.morphology = Morphology(self.controlled.get_widget(), model_editor)
         self.controlled.add_tab('morphology', self.morphology)
 
-        self.mechanisms = MechanismSelector(self.controlled.get_widget(), mechanism_manager)
+        self.mechanisms = MechanismSelector(self.controlled.get_widget(), model_editor.tabs["mechanisms"])
         self.controlled.add_tab('mechanisms', self.mechanisms)
 
 
 class Neurons(ManagementPanel):
-    def __init__(self, root, segment_editor, mechanism_manager):
-        self.segment_editor = segment_editor
+    def __init__(self, root, model_editor):
+        self.segment_editor = model_editor.tabs["segments"]
         super().__init__(root, "Neuron", controlled_panel=("ManagementPanel", [],
                     {"title": "Segment", "keep_sorted": False, "controlled_panel": "OrganizerPanel"}))
         self.add_button_create()
@@ -218,10 +216,10 @@ class Neurons(ManagementPanel):
 
         tab_ctrl.add_tab('soma', self._init_soma_settings(tab_ctrl.get_widget()))
 
-        self.morphology = Morphology(tab_ctrl.get_widget(), override_mode=True)
+        self.morphology = Morphology(tab_ctrl.get_widget(), model_editor, override_mode=True)
         tab_ctrl.add_tab('morphology', self.morphology)
 
-        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
+        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), model_editor.tabs["mechanisms"])
         tab_ctrl.add_tab('mechanisms', self.mechanisms)
 
     def _init_soma_settings(self, parent):
@@ -276,7 +274,7 @@ class _AddSegmentToNeuron(simpledialog.Dialog):
 
 
 class Morphology(SettingsPanel):
-    def __init__(self, root, override_mode=False):
+    def __init__(self, root, model_editor, override_mode=False):
         super().__init__(root, override_mode=override_mode)
 
         self.add_radio_buttons("extend_before_bifurcate", ["Dendrite", "Axon"],
@@ -297,6 +295,17 @@ class Morphology(SettingsPanel):
         self.add_entry("maximum_segment_length",
                 valid_range = (greater_than_zero, np.inf),
                 default     = 10,
+                units       = 'μm')
+
+        self.add_dropdown("global_region", lambda: model_editor.tabs["regions"].get_parameters().keys())
+
+        self.add_dropdown("neuron_region",
+                lambda: ["None"] + list(model_editor.tabs["regions"].get_parameters().keys()),
+                default = "None")
+
+        self.add_entry("diameter",
+                valid_range = (greater_than_zero, maximum_float),
+                default     = 3,
                 units       = 'μm')
 
         self.add_slider("extension_angle",
@@ -323,13 +332,6 @@ class Morphology(SettingsPanel):
                 default     = 100,
                 units       = 'μm')
 
-        self.add_entry("diameter",
-                valid_range = (zero_plus, max_float),
-                default     = 3,
-                units       = 'μm')
-
-        # neuron region (drop down menu?)
-        # global region
         # grow_from (combo-list of segment types)
         # exclude_from (combo-list of segment types)
 
