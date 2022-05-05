@@ -1,8 +1,7 @@
 from .control_panels import *
-import numpy as np
 
-highest_negative = np.nextafter(0, -1)
-inf = np.inf
+zero_plus = np.nextafter(0, 1)
+inf_minus = 99999999 # TODO: This should really be the max float?
 
 class SpeciesEditor(ManagementPanel):
     def __init__(self, root):
@@ -12,28 +11,28 @@ class SpeciesEditor(ManagementPanel):
         self.add_button_delete()
         self.add_button_rename(row=1)
 
-        self.settings.add_empty_space()
+        self.controlled.add_empty_space()
 
-        self.settings.add_entry("charge", tk.IntVar(),
-                valid_range = (-inf, inf),
+        self.controlled.add_entry("charge", tk.IntVar(),
+                valid_range = (-1000, 1000),
                 units       = 'e')
 
-        self.settings.add_entry('diffusivity',
-                valid_range = (highest_negative, inf),
+        self.controlled.add_entry('diffusivity',
+                valid_range = (0, inf_minus),
                 units       = '')
 
-        self.settings.add_entry('decay_period',
-                valid_range = (0, None),
-                default     = inf,
+        self.controlled.add_entry('decay_period',
+                valid_range = (zero_plus, None),
+                default     = np.inf,
                 units       = 'ms')
 
         reversal_type_var = tk.StringVar()
-        self.settings.add_radio_buttons("reversal_potential", ["Const", "Nerst", "GHK"],
+        self.controlled.add_radio_buttons("reversal_potential", ["Const", "Nerst", "GHK"],
                 reversal_type_var,
                 default = "Const")
-        reversal_entrybox = self.settings.add_entry("const_reversal_potential",
+        reversal_entrybox = self.controlled.add_entry("const_reversal_potential",
                 title       = "",
-                valid_range = (-inf, inf),
+                valid_range = (-inf_minus, inf_minus),
                 units       = 'mV')
         def const_entrybox_control(*args):
             if reversal_type_var.get() == "Const":
@@ -42,22 +41,22 @@ class SpeciesEditor(ManagementPanel):
                 reversal_entrybox.configure(state='readonly')
         reversal_type_var.trace_add("write", const_entrybox_control)
 
-        self.settings.add_section("Intracellular")
-        self.settings.add_checkbox('inside_constant',
+        self.controlled.add_section("Intracellular")
+        self.controlled.add_checkbox('inside_constant',
                 title       = "Global Constant",
                 default     = True)
-        self.settings.add_entry('inside_initial_concentration',
+        self.controlled.add_entry('inside_initial_concentration',
                 title       = "Initial Concentration",
-                valid_range = (highest_negative, inf),
+                valid_range = (0, inf_minus),
                 units       = 'mmol')
 
-        self.settings.add_section("Extracellular")
-        self.settings.add_checkbox('outside_constant',
+        self.controlled.add_section("Extracellular")
+        self.controlled.add_checkbox('outside_constant',
                 title       = "Global Constant",
                 default     = True)
-        self.settings.add_entry('outside_initial_concentration',
+        self.controlled.add_entry('outside_initial_concentration',
                 title       = "Initial Concentration",
-                valid_range = (highest_negative, inf),
+                valid_range = (0, inf_minus),
                 units       = 'mmol')
 
     def export(self):

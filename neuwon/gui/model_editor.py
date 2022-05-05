@@ -178,42 +178,38 @@ class Simulation(SettingsPanel):
 
 class SegmentEditor(ManagementPanel):
     def __init__(self, root, mechanism_manager):
-        super().__init__(root, "Segment", init_settings_panel=False)
+        super().__init__(root, "Segment", controlled_panel="OrganizerPanel")
 
         self.add_button_create()
         self.add_button_delete()
         self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
-        tab_ctrl = OrganizerPanel(self.frame)
-        self.set_settings_panel(tab_ctrl)
+        self.morphology = Morphology(self.controlled.get_widget())
+        self.controlled.add_tab('morphology', self.morphology)
 
-        self.morphology = Morphology(tab_ctrl.get_widget())
-        tab_ctrl.add_tab('morphology', self.morphology)
-
-        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
-        tab_ctrl.add_tab('mechanisms', self.mechanisms)
+        self.mechanisms = MechanismSelector(self.controlled.get_widget(), mechanism_manager)
+        self.controlled.add_tab('mechanisms', self.mechanisms)
 
 
 class Neurons(ManagementPanel):
     def __init__(self, root, segment_editor, mechanism_manager):
         self.segment_editor = segment_editor
-        super().__init__(root, "Neuron", init_settings_panel=False)
+        super().__init__(root, "Neuron", controlled_panel=("ManagementPanel", [],
+                    {"title": "Segment", "keep_sorted": False, "controlled_panel": "OrganizerPanel"}))
         self.add_button_create()
         self.add_button_delete()
         self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
-        self.segments = ManagementPanel(self.frame, "Segment", keep_sorted=False, init_settings_panel=False)
-        self.set_settings_panel(self.segments)
+        self.segments = self.controlled
         self.segments.selector.add_button("Add", self._add_segment_to_neuron)
         self.segments.add_button_delete("Remove")
         self.segments.add_buttons_up_down(row=1)
 
-        tab_ctrl = OrganizerPanel(self.segments.frame)
-        self.segments.set_settings_panel(tab_ctrl)
+        tab_ctrl = self.segments.controlled
 
-        tab_ctrl.add_tab('soma', self._init_settings_panel(tab_ctrl.get_widget()))
+        tab_ctrl.add_tab('soma', self._init_soma_settings(tab_ctrl.get_widget()))
 
         self.morphology = Morphology(tab_ctrl.get_widget(), override_mode=True)
         tab_ctrl.add_tab('morphology', self.morphology)
@@ -221,7 +217,7 @@ class Neurons(ManagementPanel):
         self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), mechanism_manager)
         tab_ctrl.add_tab('mechanisms', self.mechanisms)
 
-    def _init_settings_panel(self, parent):
+    def _init_soma_settings(self, parent):
         settings = SettingsPanel(parent)
         settings.add_entry("Number", tk.IntVar(),
                 valid_range = (-1, inf),

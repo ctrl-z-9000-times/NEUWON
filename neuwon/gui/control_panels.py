@@ -602,13 +602,12 @@ class SelectorPanel:
 
 class ManagementPanel(Panel):
     """ GUI element to use a SelectorPanel to control another panel. """
-    def __init__(self, parent, title, init_settings_panel=True, keep_sorted=True):
+    def __init__(self, parent, title, keep_sorted=True, controlled_panel="SettingsPanel"):
         self.title      = str(title).title()
         self.parameters = {}
         self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
-        if init_settings_panel:
-            self.set_settings_panel(SettingsPanel(self.frame))
+        self._init_controlled_panel(controlled_panel)
         # Cosmetic spacing between the two halves of the panel.
         self.frame.columnconfigure(1, minsize=padx)
         # Display the title and the currently selected item.
@@ -618,10 +617,39 @@ class ManagementPanel(Panel):
         ).grid(row=0, column=2, sticky='new', padx=padx, pady=pady)
         self._set_title(None)
 
-    def set_settings_panel(self, panel):
-        assert not hasattr(self, "settings")
-        self.settings = panel
-        self.settings.get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
+    def _init_controlled_panel(self, arguments):
+        if isinstance(arguments, str):
+            panel_type = arguments
+            args       = ()
+            kwargs     = {}
+        else:
+            arguments = tuple(arguments)
+            if len(arguments) == 1:
+                panel_type = str(arguments[0])
+                args       = ()
+                kwargs     = {}
+            elif len(arguments) == 2:
+                panel_type, args = arguments
+                if isinstance(args, dict):
+                    kwargs = args
+                    args   = ()
+                else:
+                    kwargs = {}
+            elif len(arguments) == 3:
+                panel_type, args, kwargs = arguments
+            else:
+                raise TypeError(arguments)
+        if   panel_type == "SettingsPanel":
+            self.controlled = SettingsPanel(self.frame, *args, **kwargs)
+        elif panel_type == "CustomSettingsPanel":
+            self.controlled = CustomSettingsPanel(self.frame, *args, **kwargs)
+        elif panel_type == "OrganizerPanel":
+            self.controlled = OrganizerPanel(self.frame, *args, **kwargs)
+        elif panel_type == "ManagementPanel":
+            self.controlled = ManagementPanel(self.frame, *args, **kwargs)
+        else:
+            raise NotImplementedError(panel_type)
+        self.controlled.get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
 
     def _set_title(self, item):
         if item is None:
@@ -632,18 +660,19 @@ class ManagementPanel(Panel):
         self._set_title(new_item)
         # Save the current parameters out of the SettingsPanel.
         if old_item is not None:
-            self.parameters[old_item] = self.settings.get_parameters()
+            self.parameters[old_item] = self.controlled.get_parameters()
         # Load the newly selected parameters into the SettingsPanel.
         if new_item is not None:
-            self.settings.set_parameters(self.parameters[new_item])
+            self.controlled.set_parameters(self.parameters[new_item])
         else:
-            self.settings.set_parameters({})
+            self.controlled.set_parameters({})
+        self._set_title(new_item)
 
     def get_parameters(self):
         # Save the currently selected item out of the SettingsPanel.
         item = self.selector.get()
         if item is not None:
-            self.parameters[item] = self.settings.get_parameters()
+            self.parameters[item] = self.controlled.get_parameters()
         # Remake the parameters as an ordered-dict using the current ordering of
         # the items in the selector panel.
         ordered_dict = {}
@@ -659,10 +688,6 @@ class ManagementPanel(Panel):
         self.selector.clear_selection()
         self.parameters = parameters
         self.selector.set_list(self.parameters.keys())
-
-    def _default_new_name(self):
-        number = len(self.selector.get_list()) + 1
-        return f"{self.title}_{number}"
 
     def _clean_new_name(self, name, old_name=None):
         """ Either returns the cleaned name or raises a ValueError. """
@@ -682,6 +707,9 @@ class ManagementPanel(Panel):
     def add_button_create(self, radio_options=None, row=0):
         title  = f"Create {self.title}"
         prompt = f"Enter new {self.title.lower()} name:"
+        def _default_new_name():
+            number = len(self.selector.get_list()) + 1
+            return f"{self.title}_{number}"
         if radio_options is not None:
             key, options = radio_options.popitem()
             assert not radio_options
@@ -690,7 +718,7 @@ class ManagementPanel(Panel):
             if options.ndim < 2:
                 options = options.reshape(-1, 1)
             def _callback(name):
-                name, choice = _askstring(title, prompt, self._default_new_name(),
+                name, choice = _askstring(title, prompt, _default_new_name(),
                                           options_grid=options, parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
@@ -700,14 +728,14 @@ class ManagementPanel(Panel):
                 self.selector.insert(name)
         else:
             def _callback(name):
-                name = _askstring(title, prompt, self._default_new_name(),
+                name = _askstring(title, prompt, _default_new_name(),
                                   parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
                 except ValueError:
                     return
                 if self.selector.get() is None:
-                    self.parameters[name] = self.settings.get_parameters()
+                    self.parameters[name] = self.controlled.get_parameters()
                 else:
                     self.parameters[name] = {}
                 self.selector.insert(name)

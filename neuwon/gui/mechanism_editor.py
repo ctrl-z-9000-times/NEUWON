@@ -5,8 +5,7 @@ import os.path
 
 class MechanismManager(ManagementPanel):
     def __init__(self, root):
-        super().__init__(root, "Mechanism", init_settings_panel=False)
-        self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "filename"))
+        super().__init__(root, "Mechanism", controlled_panel=("CustomSettingsPanel", ("filename",)))
         # 
         self.selector.add_button("Import", self.import_mechanisms)
         self.add_button_delete("Remove")
@@ -29,13 +28,13 @@ class MechanismManager(ManagementPanel):
     def set_parameters(self, parameters):
         for mech_name, mech_parameters in parameters.items():
             try:
-                self.settings.get_panel(mech_parameters["filename"])
+                self.controlled.get_panel(mech_parameters["filename"])
             except KeyError:
                 self._make_nmodl_settings_panel()
         super().set_parameters(parameters)
 
     def _make_nmodl_settings_panel(self, filename):
-        settings_panel = self.settings.add_custom_settings_panel(filename, override_mode=True)
+        settings_panel = self.controlled.add_custom_settings_panel(filename, override_mode=True)
         parser = NmodlParser(filename)
         for name, (value, units) in parser.gather_parameters().items():
             settings_panel.add_entry(name, title=name, default=value, units=units)
@@ -74,8 +73,8 @@ class MechanismSelector(ManagementPanel):
         self.add_button_delete("Remove", require_confirmation=False)
         self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True, row=1)
         # 
-        self.settings.add_empty_space()
-        self.settings.add_entry('magnitude', default=1.0)
+        self.controlled.add_empty_space()
+        self.controlled.add_entry('magnitude', default=1.0)
 
     def insert_mechanism(self, selected):
         window, frame = Toplevel("Select Mechanisms to Insert")
