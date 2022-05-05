@@ -6,9 +6,12 @@ from ttkthemes import ThemedTk
 from tkinter import filedialog, simpledialog
 import os.path
 import json
+import sys
 
-highest_negative = np.nextafter(0, -1)
-inf = np.inf
+max_float = sys.float_info.max
+max_int   = 999999999
+zero_plus = np.nextafter(0, 1)
+one_minus = np.nextafter(1, 0)
 
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
@@ -152,7 +155,7 @@ class Simulation(SettingsPanel):
         super().__init__(root)
 
         self.add_entry("time_step",
-                valid_range = (0, inf),
+                valid_range = (zero_plus, max_float),
                 default     = 0.1,
                 units       = 'ms')
 
@@ -166,12 +169,12 @@ class Simulation(SettingsPanel):
                 units       = 'mV')
 
         self.add_entry("cytoplasmic_resistance",
-                valid_range = (0, inf),
+                valid_range = (zero_plus, max_float),
                 default     = 100.0,
                 units       = '')
 
         self.add_entry("membrane_capacitance",
-                valid_range = (0, inf),
+                valid_range = (zero_plus, max_float),
                 default     = 1.0,
                 units       = 'μf/cm^2')
 
@@ -220,7 +223,7 @@ class Neurons(ManagementPanel):
     def _init_soma_settings(self, parent):
         settings = SettingsPanel(parent)
         settings.add_entry("Number", tk.IntVar(),
-                valid_range = (-1, inf),
+                valid_range = (-1, max_int),
                 units       = 'cells')
         return settings
 
@@ -281,14 +284,14 @@ class Morphology(SettingsPanel):
                 default = True)
 
         self.add_slider("balancing_factor",
-                valid_range = (0, 1))
+                valid_range = (zero_plus, one_minus))
 
         self.add_entry("carrier_point_density",
-                valid_range = (highest_negative, None),
+                valid_range = (zero_plus, max_float),
                 units       = "")
 
         self.add_entry("maximum_segment_length",
-                valid_range = (0, None),
+                valid_range = (zero_plus, None),
                 default     = 10,
                 units       = 'μm')
 
@@ -300,24 +303,24 @@ class Morphology(SettingsPanel):
 
         self.add_entry("extension_distance",
                 title       = "Maximum Extension Distance",
-                valid_range = (highest_negative, None),
+                valid_range = (0, max_float),
                 default     = 100,
                 units       = 'μm')
 
         self.add_slider("bifurcation_angle",
                 title       = "Maximum Branch Angle",
-                valid_range = (0, 180),
+                valid_range = (zero_plus, 180),
                 default     = 60,
                 units       = '°')
 
         self.add_entry("bifurcation_distance",
                 title       = "Maximum Branch Distance",
-                valid_range = (highest_negative, None),
+                valid_range = (0, max_float),
                 default     = 100,
                 units       = 'μm')
 
         self.add_entry("diameter",
-                valid_range = (0, None),
+                valid_range = (zero_plus, max_float),
                 default     = 3,
                 units       = 'μm')
 

@@ -1,5 +1,8 @@
 from .control_panels import *
 import numpy as np
+import sys
+
+max_float = sys.float_info.max
 
 class RegionEditor(ManagementPanel):
     def __init__(self, root):
@@ -15,7 +18,7 @@ class RegionEditor(ManagementPanel):
         self.add_button_duplicate(row=1)
 
         geometry_kwargs = {
-                "valid_range": (-np.inf, np.inf),
+                "valid_range": (-max_float, max_float),
                 "units": 'μm',
         }
 

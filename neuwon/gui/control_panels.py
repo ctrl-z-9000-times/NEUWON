@@ -368,10 +368,10 @@ class SettingsPanel(Panel):
         minimum, maximum = valid_range
         def validate_range(x):
             if minimum is not None:
-                if x <= minimum:
+                if x < minimum:
                     raise ValueError()
             if maximum is not None:
-                if x >= maximum:
+                if x > maximum:
                     raise ValueError()
         def clean_input(old_value, new_value):
             try:
