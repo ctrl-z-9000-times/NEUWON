@@ -187,7 +187,7 @@ class SettingsPanel(Panel):
         if title is None: title = parameter_name.replace('_', ' ').title()
         if default is None: default = variable.get()
         if not default:
-            default = '-nothing selected-'
+            default = 'nothing selected'
         self._defaults[parameter_name] = default
         variable.set(self._defaults[parameter_name])
         # Create the widgets.
@@ -602,20 +602,17 @@ class SelectorPanel:
 
 class ManagementPanel(Panel):
     """ GUI element to use a SelectorPanel to control another panel. """
-    def __init__(self, parent, title, keep_sorted=True, controlled_panel="SettingsPanel"):
+    def __init__(self, parent, title, keep_sorted=True, custom_title=None, controlled_panel="SettingsPanel"):
         self.title      = str(title).title()
         self.parameters = {}
         self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
-        self._init_controlled_panel(controlled_panel)
-        # Cosmetic spacing between the two halves of the panel.
-        self.frame.columnconfigure(1, minsize=padx)
-        # Display the title and the currently selected item.
-        self._title_var = tk.StringVar()
-        ttk.Label(self.frame, textvariable=self._title_var,
-                  relief='raised', padding=padx, anchor='center',
-        ).grid(row=0, column=2, sticky='new', padx=padx, pady=pady)
+        self.frame.columnconfigure(1, minsize=padx) # Cosmetic spacing between the two halves of the panel.
+        self.custom_title = custom_title
+        self._inner_frame = ttk.LabelFrame(self.frame, padding=padx,)
+        self._inner_frame.grid(row=0, rowspan=2, column=2, sticky='nesw', padx=padx, pady=pady)
         self._set_title(None)
+        self._init_controlled_panel(controlled_panel)
 
     def _init_controlled_panel(self, arguments):
         if isinstance(arguments, str):
@@ -640,24 +637,28 @@ class ManagementPanel(Panel):
             else:
                 raise TypeError(arguments)
         if   panel_type == "SettingsPanel":
-            self.controlled = SettingsPanel(self.frame, *args, **kwargs)
+            self.controlled = SettingsPanel(self._inner_frame, *args, **kwargs)
         elif panel_type == "CustomSettingsPanel":
-            self.controlled = CustomSettingsPanel(self.frame, *args, **kwargs)
+            self.controlled = CustomSettingsPanel(self._inner_frame, *args, **kwargs)
         elif panel_type == "OrganizerPanel":
-            self.controlled = OrganizerPanel(self.frame, *args, **kwargs)
+            self.controlled = OrganizerPanel(self._inner_frame, *args, **kwargs)
         elif panel_type == "ManagementPanel":
-            self.controlled = ManagementPanel(self.frame, *args, **kwargs)
+            self.controlled = ManagementPanel(self._inner_frame, *args, **kwargs)
         else:
             raise NotImplementedError(panel_type)
         self.controlled.get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
 
     def _set_title(self, item):
+        # By default, display the primary title and the currently selected item.
         if item is None:
-            item = "-nothing selected-"
-        self._title_var.set(f"{self.title}: {item}")
+            text = f"{self.title}: nothing selected"
+        elif self.custom_title is not None:
+            text = self.custom_title(item)
+        else:
+            text = f"{self.title}: {item}"
+        self._inner_frame.configure(text=text)
 
     def _on_select(self, old_item, new_item):
-        self._set_title(new_item)
         # Save the current parameters out of the SettingsPanel.
         if old_item is not None:
             self.parameters[old_item] = self.controlled.get_parameters()

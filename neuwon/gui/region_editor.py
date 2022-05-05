@@ -7,7 +7,8 @@ max_float = sys.float_info.max
 class RegionEditor(ManagementPanel):
     def __init__(self, root):
         self.key_parameter = "region_type"
-        super().__init__(root, "Region", controlled_panel=("CustomSettingsPanel", (self.key_parameter,)))
+        super().__init__(root, "Region", custom_title=self.custom_title,
+                controlled_panel=("CustomSettingsPanel", (self.key_parameter,)))
 
         shape_options = ['Rectangle', 'Sphere', 'Cylinder']
         csg_options   = ['Union', 'Intersection', 'Not']
@@ -23,7 +24,6 @@ class RegionEditor(ManagementPanel):
         }
 
         rectangle = self.controlled.add_custom_settings_panel("Rectangle")
-        rectangle.add_section("Rectangle")
         rectangle.add_entry("lower_x", **geometry_kwargs)
         rectangle.add_entry("lower_y", **geometry_kwargs)
         rectangle.add_entry("lower_z", **geometry_kwargs)
@@ -32,14 +32,12 @@ class RegionEditor(ManagementPanel):
         rectangle.add_entry("upper_z", **geometry_kwargs)
 
         sphere = self.controlled.add_custom_settings_panel("Sphere")
-        sphere.add_section("Sphere")
         sphere.add_entry("center_x", **geometry_kwargs)
         sphere.add_entry("center_y", **geometry_kwargs)
         sphere.add_entry("center_z", **geometry_kwargs)
         sphere.add_entry("radius",   **geometry_kwargs)
 
         cylinder = self.controlled.add_custom_settings_panel("Cylinder")
-        cylinder.add_section("Cylinder")
         cylinder.add_entry("end_point_x", **geometry_kwargs)
         cylinder.add_entry("end_point_y", **geometry_kwargs)
         cylinder.add_entry("end_point_z", **geometry_kwargs)
@@ -54,18 +52,18 @@ class RegionEditor(ManagementPanel):
             return options
 
         union = self.controlled.add_custom_settings_panel("Union")
-        union.add_section("Union")
         union.add_dropdown("region_1", get_region_options)
         union.add_dropdown("region_2", get_region_options)
 
         intersection = self.controlled.add_custom_settings_panel("Intersection")
-        intersection.add_section("Intersection")
         intersection.add_dropdown("region_1", get_region_options)
         intersection.add_dropdown("region_2", get_region_options)
 
         inverse = self.controlled.add_custom_settings_panel("Not")
-        inverse.add_section("Not")
         inverse.add_dropdown("region", get_region_options)
+
+    def custom_title(self, item):
+        return f"{self.parameters[item]['region_type']}: {item}"
 
     def export(self):
         sim = {}
