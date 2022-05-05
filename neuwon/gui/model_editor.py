@@ -8,15 +8,17 @@ import os.path
 import json
 import sys
 
-max_float = sys.float_info.max
-max_int   = 999999999
-zero_plus = np.nextafter(0, 1)
-one_minus = np.nextafter(1, 0)
-
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
 
 # TODO: the segments need an associated region.
+
+
+# TODO: Consider moving these into the shared module "control_panel.py"?
+maximum_float     = sys.float_info.max
+maximum_int       = 1000*1000*1000
+greater_than_zero = np.nextafter(0, 1)
+less_than_one     = np.nextafter(1, 0)
 
 class ModelEditor(OrganizerPanel):
     def __init__(self):
@@ -33,6 +35,7 @@ class ModelEditor(OrganizerPanel):
         self.filemenu = self._init_file_menu(self.menubar)
 
         self.menubar.add_command(label="Themes", command=lambda: pick_theme(self.root))
+        self.menubar.add_command(label="Run", command=lambda: print("Run!"))
 
     def _init_file_menu(self, parent_menu):
         filemenu = tk.Menu(parent_menu, tearoff=False)
@@ -118,8 +121,8 @@ class ModelEditor(OrganizerPanel):
             'mechanisms':   self.tabs["mechanisms"].export(),
             'species':      self.tabs["species"].export(),
             'regions':      self.tabs["regions"].export(),
-            # segments
-            # neurons
+            'segments':     self.tabs["segments"].get_parameters(),
+            'neurons':      self.tabs["neurons"].get_parameters(),
         }
 
     def close(self, event=None):
@@ -155,7 +158,7 @@ class Simulation(SettingsPanel):
         super().__init__(root)
 
         self.add_entry("time_step",
-                valid_range = (zero_plus, max_float),
+                valid_range = (greater_than_zero, maximum_float),
                 default     = 0.1,
                 units       = 'ms')
 
@@ -165,16 +168,17 @@ class Simulation(SettingsPanel):
                 units       = '°C')
 
         self.add_entry("initial_voltage",
+                valid_range = (-maximum_float, maximum_float),
                 default     = -70.0,
                 units       = 'mV')
 
         self.add_entry("cytoplasmic_resistance",
-                valid_range = (zero_plus, max_float),
+                valid_range = (greater_than_zero, maximum_float),
                 default     = 100.0,
                 units       = '')
 
         self.add_entry("membrane_capacitance",
-                valid_range = (zero_plus, max_float),
+                valid_range = (greater_than_zero, maximum_float),
                 default     = 1.0,
                 units       = 'μf/cm^2')
 
@@ -223,7 +227,7 @@ class Neurons(ManagementPanel):
     def _init_soma_settings(self, parent):
         settings = SettingsPanel(parent)
         settings.add_entry("Number", tk.IntVar(),
-                valid_range = (-1, max_int),
+                valid_range = (0, maximum_int),
                 units       = 'cells')
         return settings
 
@@ -284,14 +288,14 @@ class Morphology(SettingsPanel):
                 default = True)
 
         self.add_slider("balancing_factor",
-                valid_range = (zero_plus, one_minus))
+                valid_range = (0, 1))
 
         self.add_entry("carrier_point_density",
-                valid_range = (zero_plus, max_float),
+                valid_range = (0, maximum_float),
                 units       = "")
 
         self.add_entry("maximum_segment_length",
-                valid_range = (zero_plus, None),
+                valid_range = (greater_than_zero, np.inf),
                 default     = 10,
                 units       = 'μm')
 
@@ -303,19 +307,19 @@ class Morphology(SettingsPanel):
 
         self.add_entry("extension_distance",
                 title       = "Maximum Extension Distance",
-                valid_range = (0, max_float),
+                valid_range = (0, np.inf),
                 default     = 100,
                 units       = 'μm')
 
         self.add_slider("bifurcation_angle",
                 title       = "Maximum Branch Angle",
-                valid_range = (zero_plus, 180),
+                valid_range = (0, 180),
                 default     = 60,
                 units       = '°')
 
         self.add_entry("bifurcation_distance",
                 title       = "Maximum Branch Distance",
-                valid_range = (0, max_float),
+                valid_range = (0, np.inf),
                 default     = 100,
                 units       = 'μm')
 
@@ -328,7 +332,6 @@ class Morphology(SettingsPanel):
         # global region
         # grow_from (combo-list of segment types)
         # exclude_from (combo-list of segment types)
-
 
         # SOMA OPTIONS:
         # region

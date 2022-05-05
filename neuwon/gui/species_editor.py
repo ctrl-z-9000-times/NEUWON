@@ -1,7 +1,8 @@
 from .control_panels import *
+import sys
 
-zero_plus = np.nextafter(0, 1)
-inf_minus = 99999999 # TODO: This should really be the max float?
+maximum_float     = sys.float_info.max
+greater_than_zero = np.nextafter(0, 1)
 
 class SpeciesEditor(ManagementPanel):
     def __init__(self, root):
@@ -18,11 +19,11 @@ class SpeciesEditor(ManagementPanel):
                 units       = 'e')
 
         self.controlled.add_entry('diffusivity',
-                valid_range = (0, inf_minus),
+                valid_range = (0, maximum_float),
                 units       = '')
 
         self.controlled.add_entry('decay_period',
-                valid_range = (zero_plus, None),
+                valid_range = (greater_than_zero, np.inf),
                 default     = np.inf,
                 units       = 'ms')
 
@@ -32,7 +33,7 @@ class SpeciesEditor(ManagementPanel):
                 default = "Const")
         reversal_entrybox = self.controlled.add_entry("const_reversal_potential",
                 title       = "",
-                valid_range = (-inf_minus, inf_minus),
+                valid_range = (-maximum_float, maximum_float),
                 units       = 'mV')
         def const_entrybox_control(*args):
             if reversal_type_var.get() == "Const":
@@ -47,7 +48,7 @@ class SpeciesEditor(ManagementPanel):
                 default     = True)
         self.controlled.add_entry('inside_initial_concentration',
                 title       = "Initial Concentration",
-                valid_range = (0, inf_minus),
+                valid_range = (0, maximum_float),
                 units       = 'mmol')
 
         self.controlled.add_section("Extracellular")
@@ -56,7 +57,7 @@ class SpeciesEditor(ManagementPanel):
                 default     = True)
         self.controlled.add_entry('outside_initial_concentration',
                 title       = "Initial Concentration",
-                valid_range = (0, inf_minus),
+                valid_range = (0, maximum_float),
                 units       = 'mmol')
 
     def export(self):
