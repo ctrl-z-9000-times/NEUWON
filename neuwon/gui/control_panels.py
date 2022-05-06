@@ -607,8 +607,8 @@ class ManagementPanel(Panel):
         self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
         self.frame.columnconfigure(1, minsize=padx) # Cosmetic spacing between the two halves of the panel.
-        self.custom_title = custom_title
-        self._inner_frame = ttk.LabelFrame(self.frame, padding=padx,)
+        self._custom_title = custom_title
+        self._inner_frame  = ttk.LabelFrame(self.frame, padding=padx,)
         self._inner_frame.grid(row=0, rowspan=2, column=2, sticky='nesw', padx=padx, pady=pady)
         self._set_title(None)
         self._init_controlled_panel(controlled_panel)
@@ -651,8 +651,8 @@ class ManagementPanel(Panel):
         # By default, display the primary title and the currently selected item.
         if item is None:
             text = f"{self.title}: nothing selected"
-        elif self.custom_title is not None:
-            text = self.custom_title(item)
+        elif self._custom_title is not None:
+            text = self._custom_title(item)
         else:
             text = f"{self.title}: {item}"
         self._inner_frame.configure(text=text)
@@ -741,7 +741,7 @@ class ManagementPanel(Panel):
                 self.selector.insert(name)
         button = self.selector.add_button("New", _callback, row=row)
 
-    def add_button_delete(self, text="Delete", require_confirmation=True, row=0):
+    def add_button_delete(self, text="Delete", callback=None, require_confirmation=True, row=0):
         text = text.title()
         def _callback(name):
             if require_confirmation:
@@ -752,11 +752,12 @@ class ManagementPanel(Panel):
                     return
             self.selector.delete(name)
             self.parameters.pop(name)
+            if callback is not None: callback(name)
         button = self.selector.add_button(text, _callback, require_selection=True, row=row)
         self.selector.listbox.bind("<Delete>",    lambda event: button.invoke())
         self.selector.listbox.bind("<BackSpace>", lambda event: button.invoke())
 
-    def add_button_rename(self, row=0):
+    def add_button_rename(self, callback=None, row=0):
         def _callback(name):
             new_name = _askstring(f"Rename {self.title}",
                     f'Rename {self.title.lower()} "{name}" to:',
@@ -768,6 +769,7 @@ class ManagementPanel(Panel):
             self.parameters[new_name] = self.parameters[name]
             self.selector.rename(name, new_name)
             self.parameters.pop(name)
+            if callback is not None: callback(name, new_name)
         self.selector.add_button("Rename", _callback, require_selection=True, row=row)
 
     def add_button_duplicate(self, row=0):

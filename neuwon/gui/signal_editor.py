@@ -2,11 +2,11 @@ from .control_panels import *
 from .embedded_plot import MatplotlibEmbed
 from neuwon import TimeSeries
 
+# TODO: Add a virtual DB-component to the options for injecting electric current.
+#       The program will automatically convert from amps into delta-voltage.
+
 class SignalEditor(ManagementPanel):
     def __init__(self, frame):
-        super().__init__(frame, "Signal", init_settings_panel=False)
-        self.set_settings_panel(CustomSettingsPanel(self.get_widget(), "signal_type"))
-
         options_grid = [
             "Square Wave",
             "Sine Wave",
@@ -16,70 +16,72 @@ class SignalEditor(ManagementPanel):
             # "Load From File",
             # "Random Noise",
         ]
+        super().__init__(frame, "Signal",
+                controlled_panel=("CustomSettingsPanel", ("signal_type",)))
+        # 
         self.add_button_create(radio_options={"signal_type": options_grid})
         self.add_button_delete()
         self.add_button_rename()
-
-        self._setup_waveform_settings()
-
+        # 
+        self._init_settings_panel()
+        # 
         self.embed = MatplotlibEmbed(self.get_widget())
         self.embed.frame.grid(row=0, rowspan=2, column=3)
+        self.controlled.add_callback(self._update)
 
-        self.settings.add_callback(self._update)
-
-    def _setup_waveform_settings(self):
-        waveform_name = "Square Wave"
-        settings_panel = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel(waveform_name, settings_panel)
-        settings_panel.add_section(waveform_name)
-        self._setup_common(settings_panel)
-        settings_panel.add_entry("minimum", default=0)
-        settings_panel.add_entry("maximum", default=1)
-        settings_panel.add_entry("period",  default=10, units='ms')
-        settings_panel.add_slider("duty_cycle", (0, 100), default=50, units='%')
-
-        waveform_name = "Sine Wave"
-        settings_panel = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel(waveform_name, settings_panel)
-        settings_panel.add_section(waveform_name)
-        self._setup_common(settings_panel)
-        settings_panel.add_entry("minimum", default=0)
-        settings_panel.add_entry("maximum", default=1)
-        settings_panel.add_entry("period",  default=10, units='ms')
-
-        waveform_name = "Triangle Wave"
-        settings_panel = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel(waveform_name, settings_panel)
-        settings_panel.add_section(waveform_name)
-        self._setup_common(settings_panel)
-        settings_panel.add_entry("minimum", default=0)
-        settings_panel.add_entry("maximum", default=1)
-        settings_panel.add_entry("period",  default=10, units='ms')
-
-        waveform_name = "Sawtooth Wave"
-        settings_panel = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel(waveform_name, settings_panel)
-        settings_panel.add_section(waveform_name)
-        self._setup_common(settings_panel)
-        settings_panel.add_entry("minimum", default=0)
-        settings_panel.add_entry("maximum", default=1)
-        settings_panel.add_entry("period",  default=10, units='ms')
-
-        waveform_name  = "Constant Wave"
-        settings_panel = SettingsPanel(self.settings.get_widget())
-        self.settings.add_panel(waveform_name, settings_panel)
-        settings_panel.add_section(waveform_name)
-        self._setup_common(settings_panel)
-        settings_panel.add_entry("value")
-        settings_panel.add_entry("duration", default=10, units='ms')
-
-    def _setup_common(self, settings_panel):
+    def _init_play_settings(self, settings_panel):
         settings_panel.add_dropdown("component", lambda: ['TODO'])
         settings_panel.add_radio_buttons("assign_method", ["add", "overwrite"], default="add", title="")
         settings_panel.add_checkbox("loop_forever", default=True)
 
+    def _init_min_max_period(self, settings_panel):
+        settings_panel.add_empty_space()
+        settings_panel.add_entry("minimum",
+                valid_range = (-np.inf, np.inf),
+                default     = 0,)
+        settings_panel.add_entry("maximum",
+                valid_range = (-np.inf, np.inf),
+                default     = 1,)
+        settings_panel.add_entry("period",
+                valid_range = (0, np.inf),
+                default     = 10,
+                units       = 'ms')
+
+    def _init_settings_panel(self):
+        waveform_name = "Square Wave"
+        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        self._init_play_settings(settings_panel)
+        settings_panel.add_section(waveform_name + " Settings")
+        self._init_min_max_period(settings_panel)
+        settings_panel.add_slider("duty_cycle", (0, 100), default=50, units='%')
+
+        waveform_name = "Sine Wave"
+        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        self._init_play_settings(settings_panel)
+        settings_panel.add_section(waveform_name + " Settings")
+        self._init_min_max_period(settings_panel)
+
+        waveform_name = "Triangle Wave"
+        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        self._init_play_settings(settings_panel)
+        settings_panel.add_section(waveform_name + " Settings")
+        self._init_min_max_period(settings_panel)
+
+        waveform_name = "Sawtooth Wave"
+        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        self._init_play_settings(settings_panel)
+        settings_panel.add_section(waveform_name + " Settings")
+        self._init_min_max_period(settings_panel)
+
+        waveform_name  = "Constant Wave"
+        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        self._init_play_settings(settings_panel)
+        settings_panel.add_section(waveform_name + " Settings")
+        settings_panel.add_entry("value")
+        settings_panel.add_entry("duration", default=10, units='ms')
+
     def _update(self):
-        parameters  = self.settings.get_parameters()
+        parameters  = self.controlled.get_parameters()
         timeseries  = self.export_timeseries(parameters)
         self.embed.update(timeseries)
 
