@@ -37,13 +37,13 @@ class SignalEditor(ManagementPanel):
     def _init_min_max_period(self, settings_panel):
         settings_panel.add_empty_space()
         settings_panel.add_entry("minimum",
-                valid_range = (-np.inf, np.inf),
+                valid_range = (-max_float, max_float),
                 default     = 0,)
         settings_panel.add_entry("maximum",
-                valid_range = (-np.inf, np.inf),
+                valid_range = (-max_float, max_float),
                 default     = 1,)
         settings_panel.add_entry("period",
-                valid_range = (0, np.inf),
+                valid_range = (greater_than_zero, max_float),
                 default     = 10,
                 units       = 'ms')
 
@@ -77,8 +77,12 @@ class SignalEditor(ManagementPanel):
         settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + " Settings")
-        settings_panel.add_entry("value")
-        settings_panel.add_entry("duration", default=10, units='ms')
+        settings_panel.add_entry("value",
+                valid_range = (-max_float, max_float))
+        settings_panel.add_entry("duration",
+                default     = 10,
+                valid_range = (greater_than_zero, max_float),
+                units       = 'ms')
 
     def _update(self):
         parameters  = self.controlled.get_parameters()

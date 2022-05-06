@@ -11,13 +11,6 @@ import sys
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
 
-
-# TODO: Consider moving these into the shared module "control_panel.py"?
-maximum_float     = sys.float_info.max
-maximum_int       = 1000*1000*1000
-greater_than_zero = np.nextafter(0, 1)
-less_than_one     = np.nextafter(1, 0)
-
 class ModelEditor(OrganizerPanel):
     def __init__(self):
         self.root = ThemedTk(theme='blue')
@@ -156,7 +149,7 @@ class Simulation(SettingsPanel):
         super().__init__(root)
 
         self.add_entry("time_step",
-                valid_range = (greater_than_zero, maximum_float),
+                valid_range = (greater_than_zero, max_float),
                 default     = 0.1,
                 units       = 'ms')
 
@@ -166,17 +159,17 @@ class Simulation(SettingsPanel):
                 units       = '°C')
 
         self.add_entry("initial_voltage",
-                valid_range = (-maximum_float, maximum_float),
+                valid_range = (-max_float, max_float),
                 default     = -70.0,
                 units       = 'mV')
 
         self.add_entry("cytoplasmic_resistance",
-                valid_range = (greater_than_zero, maximum_float),
+                valid_range = (greater_than_zero, max_float),
                 default     = 100.0,
                 units       = '')
 
         self.add_entry("membrane_capacitance",
-                valid_range = (greater_than_zero, maximum_float),
+                valid_range = (greater_than_zero, max_float),
                 default     = 1.0,
                 units       = 'μf/cm^2')
 
@@ -225,7 +218,7 @@ class Neurons(ManagementPanel):
     def _init_soma_settings(self, parent):
         settings = SettingsPanel(parent)
         settings.add_entry("Number", tk.IntVar(),
-                valid_range = (0, maximum_int),
+                valid_range = (0, max_int),
                 units       = 'cells')
         return settings
 
@@ -289,11 +282,11 @@ class Morphology(SettingsPanel):
                 valid_range = (0, 1))
 
         self.add_entry("carrier_point_density",
-                valid_range = (0, maximum_float),
+                valid_range = (0, max_float),
                 units       = "")
 
         self.add_entry("maximum_segment_length",
-                valid_range = (greater_than_zero, np.inf),
+                valid_range = (greater_than_zero, inf),
                 default     = 10,
                 units       = 'μm')
 
@@ -304,7 +297,7 @@ class Morphology(SettingsPanel):
                 default = "None")
 
         self.add_entry("diameter",
-                valid_range = (greater_than_zero, maximum_float),
+                valid_range = (greater_than_zero, max_float),
                 default     = 3,
                 units       = 'μm')
 
@@ -316,7 +309,7 @@ class Morphology(SettingsPanel):
 
         self.add_entry("extension_distance",
                 title       = "Maximum Extension Distance",
-                valid_range = (0, np.inf),
+                valid_range = (0, inf),
                 default     = 100,
                 units       = 'μm')
 
@@ -328,7 +321,7 @@ class Morphology(SettingsPanel):
 
         self.add_entry("bifurcation_distance",
                 title       = "Maximum Branch Distance",
-                valid_range = (0, np.inf),
+                valid_range = (0, inf),
                 default     = 100,
                 units       = 'μm')
 

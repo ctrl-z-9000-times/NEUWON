@@ -3,13 +3,16 @@
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, messagebox
+import sys
 import bisect
-from decimal import Decimal, ROUND_HALF_EVEN
+import decimal
 
 __all__ = (
         'np',
         'tk', 'ttk',
         'padx', 'pady', 'pad_top',
+        'max_float', 'max_int', 'inf',
+        'greater_than_zero', 'less_than_one',
         'Toplevel',
         'Panel',
         'SettingsPanel',
@@ -21,6 +24,13 @@ __all__ = (
 padx = 5
 pady = 2
 pad_top = 10
+
+# Common values for valid_ranges.
+inf               = np.inf
+max_float         = sys.float_info.max
+max_int           = sys.maxsize
+greater_than_zero = np.nextafter(0, 1)
+less_than_one     = np.nextafter(1, 0)
 
 def Toplevel(title):
         window = tk.Toplevel()
@@ -421,9 +431,9 @@ class SettingsPanel(Panel):
                     delta = 10 * direction
             # Use controlled accuracy arithmetic to avoid introducing floating
             # point messiness like: "1.1 + .1 = 1.2000000000000002"
-            quanta  = Decimal(10) ** -14
-            vv      = Decimal(vv)   .quantize(quanta, ROUND_HALF_EVEN)
-            delta   = Decimal(delta).quantize(quanta, ROUND_HALF_EVEN)
+            quanta  = decimal.Decimal(10) ** -14
+            vv      = decimal.Decimal(vv)   .quantize(quanta, decimal.ROUND_HALF_EVEN)
+            delta   = decimal.Decimal(delta).quantize(quanta, decimal.ROUND_HALF_EVEN)
             vv = float(vv + delta)
             vv = clean_input(value, vv)
             variable.set(vv)
