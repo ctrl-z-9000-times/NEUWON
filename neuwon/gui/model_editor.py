@@ -2,6 +2,7 @@ from .control_panels import *
 from .region_editor import RegionEditor
 from .species_editor import SpeciesEditor
 from .mechanism_editor import MechanismManager, MechanismSelector
+from .themes import set_theme, pick_theme
 from ttkthemes import ThemedTk
 from tkinter import filedialog, simpledialog
 import os.path
@@ -12,7 +13,8 @@ import json
 
 class ModelEditor(OrganizerPanel):
     def __init__(self, filename=None):
-        self.root = ThemedTk(theme='blue')
+        self.root = ThemedTk()
+        set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
         self._init_menu(self.root)
@@ -128,26 +130,6 @@ class ModelEditor(OrganizerPanel):
     def run(self):
         """ Blocks calling thread until the ModelEditor is closed. """
         self.root.mainloop()
-
-
-def pick_theme(root):
-    # TODO: This should save the selected theme to a hidden file in the users
-    # home folder, and automatically load the saved theme at start up.
-    window, frame = Toplevel("Select a Theme")
-    themes = sorted(root.get_themes())
-    rows   = int(len(themes) ** .5)
-    cols   = int(np.ceil(len(themes) / rows))
-    for idx, name in enumerate(themes):
-        def make_closure():
-            current_name = name
-            return lambda: root.set_theme(current_name)
-        button = ttk.Button(frame, text=name, command=make_closure())
-        button.grid(row=idx//cols, column=idx%cols, padx=padx, pady=pady)
-    for row in range(rows):
-        frame.rowconfigure(row, weight=1)
-    for col in range(cols):
-        frame.columnconfigure(col, weight=1)
-    window.bind("<Escape>", lambda event: window.destroy())
 
 
 class Simulation(SettingsPanel):
