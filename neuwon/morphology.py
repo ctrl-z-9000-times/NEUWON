@@ -306,17 +306,39 @@ class NeuronGrowthProgram:
         for segment in segments:
             segment.insert(mechanisms)
 
-class NeuronTypeFactory(dict):
-    def __init__(self, rxd_model, parameters: dict):
+class NeuronFactory(dict):
+    def __init__(self, rxd_model, neuron_parameters:dict, segment_parameters:dict={}):
         super().__init__()
         self.rxd_model = rxd_model
-        self.add_parameters(parameters)
-
-    def add_parameters(self, parameters: dict):
-        for neuron_type, program in parameters.items():
+        for neuron_type, program in neuron_parameters.items():
+            program = self._merge_segment_type_defaults(program, segment_parameters)
             self.add_neuron_type(neuron_type, program)
+
+    def _merge_segment_type_defaults(self, program, segment_parameters):
+        merged = []
+        for instruction in program:
+            segment_type = instruction.get("segment_type", None)
+            if segment_type is None:
+                merged.append(instruction)
+                continue
+            defaults = segment_parameters.get(segment_type, None)
+            if defaults is None:
+                merged.append(instruction)
+                continue
+            instruction = _recursive_merge(defaults, instruction)
+            merged.append(instruction)
+        return merged
 
     def add_neuron_type(self, neuron_type: str, program: list):
         neuron_type = str(neuron_type)
         assert neuron_type not in self
         self[neuron_type] = NeuronGrowthProgram(self.rxd_model, neuron_type, program).neurons
+
+def _recursive_merge(defaults, updates):
+    output = dict(defaults)
+    for k,v in updates.items():
+        if isinstance(v, Mapping):
+            output[k] = _recursive_merge(output.get(k, {}), v)
+        else:
+            output[k] = v
+    return output

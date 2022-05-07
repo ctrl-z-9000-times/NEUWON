@@ -6,7 +6,6 @@ from ttkthemes import ThemedTk
 from tkinter import filedialog, simpledialog
 import os.path
 import json
-import sys
 
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
