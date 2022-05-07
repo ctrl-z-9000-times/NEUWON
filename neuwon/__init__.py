@@ -9,6 +9,3 @@ from neuwon.database import TimeSeries, Trace
 from neuwon.model import Model
 
 __all__ = ('Model', 'TimeSeries', 'Trace',)
-
-if __name__ == '__main__':
-    import __main__

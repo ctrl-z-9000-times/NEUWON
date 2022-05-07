@@ -27,10 +27,11 @@ class MechanismManager(ManagementPanel):
 
     def set_parameters(self, parameters):
         for mech_name, mech_parameters in parameters.items():
+            filename = mech_parameters["filename"]
             try:
-                self.controlled.get_panel(mech_parameters["filename"])
+                self.controlled.get_panel(filename)
             except KeyError:
-                self._make_nmodl_settings_panel()
+                self._make_nmodl_settings_panel(filename)
         super().set_parameters(parameters)
 
     def _make_nmodl_settings_panel(self, filename):

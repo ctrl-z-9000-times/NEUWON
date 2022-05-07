@@ -1,3 +1,7 @@
-from neuwon.gui.model_editor import ModelEditor
+import argparse
+parser = argparse.ArgumentParser(prog="python -m neuwon")
+parser.add_argument('model_file', type=str, nargs='?')
+args = parser.parse_args()
 
-ModelEditor().run()
+from neuwon.gui.model_editor import ModelEditor
+ModelEditor(args.model_file).run()

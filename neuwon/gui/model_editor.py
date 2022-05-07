@@ -12,13 +12,16 @@ import sys
 # the whole program.
 
 class ModelEditor(OrganizerPanel):
-    def __init__(self):
+    def __init__(self, filename=None):
         self.root = ThemedTk(theme='blue')
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
-        self.new_model()
+        if filename is not None:
+            self.open(filename)
+        else:
+            self.new_model()
 
     def _init_menu(self, parent):
         self.menubar = tk.Menu(parent)
@@ -32,12 +35,12 @@ class ModelEditor(OrganizerPanel):
         filemenu = tk.Menu(parent_menu, tearoff=False)
         parent_menu.add_cascade(label="File", menu=filemenu)
         filemenu.add_command(label="New Model", underline=0, command=self.new_model)
-        filemenu.add_command(label="Open",      underline=0, command=self.open,    accelerator="Ctrl+O")
+        filemenu.add_command(label="Open",      underline=0, command=self.open_gui,accelerator="Ctrl+O")
         filemenu.add_command(label="Save",      underline=0, command=self.save,    accelerator="Ctrl+S")
         filemenu.add_command(label="Save As",   underline=5, command=self.save_as, accelerator="Ctrl+Shift+S")
         filemenu.add_command(label="Export",    underline=1, command=self.export)
         filemenu.add_command(label="Quit",      underline=0, command=self.close)
-        self.root.bind_all("<Control-o>", self.open)
+        self.root.bind_all("<Control-o>", self.open_gui)
         self.root.bind_all("<Control-s>", self.save)
         self.root.bind_all("<Control-S>", self.save_as)
         return filemenu
@@ -69,15 +72,19 @@ class ModelEditor(OrganizerPanel):
         self._set_title()
         self.set_parameters({})
 
-    def open(self, event=None):
+    def open_gui(self, event=None):
         open_filename = filedialog.askopenfilename(title="Open Model",
                         filetypes=[('Model File', '.json')])
         if not open_filename:
             return
-        with open(open_filename, 'rt') as f:
+        self.open(open_filename)
+
+    def open(self, filename):
+        filename = os.path.abspath(filename)
+        with open(filename, 'rt') as f:
             parameters = json.load(f)
         self.set_parameters(parameters)
-        self.filename = open_filename
+        self.filename = filename
         self._set_title()
 
     def save(self, event=None):
