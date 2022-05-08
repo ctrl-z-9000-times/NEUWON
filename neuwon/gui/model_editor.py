@@ -4,8 +4,7 @@ from .species_editor import SpeciesEditor
 from .mechanism_editor import MechanismManager, MechanismSelector
 from .model_container import ModelContainer
 from .run_control import RunControl
-from .themes import set_theme, pick_theme
-from ttkthemes import ThemedTk
+from .themes import ThemedTk, set_theme, pick_theme
 from tkinter import filedialog, simpledialog
 import json
 
