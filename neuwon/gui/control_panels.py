@@ -53,10 +53,21 @@ class Panel:
 
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
+
+    # Layout Notes:
+    # Widgets are arranged in 3 columns:
+    #       Column 1) Description
+    #       Column 2) Data entry
+    #       Column 3) Units / Misc.
+    # 
+    # And multiple settings are stacked vertically. If the vertical stack gets
+    # too large then it is automatically split into multiple stacks.
+
     def __init__(self, parent, override_mode=False):
         self.frame = ttk.Frame(parent)
         self._override_mode = bool(override_mode)
         self._row_idx    = 0  # Index for appending widgets.
+        self._col_idx    = 0  # Index for appending widgets.
         self._parameters = {} # Preserves extra parameters that aren't used by this panel.
         self._variables  = {} # Store the anonymous tkinter variable objects.
         self._defaults   = {}
@@ -124,19 +135,37 @@ class SettingsPanel(Panel):
         for f in self._callbacks:
             f()
 
+    def _incr_row_idx(self):
+        self._row_idx += 1
+        # If there are too many rows of settings in the settings panel then they
+        # go off of the bottom of the screen and they become inaccessible.
+        # In that case start a new column of settings.
+        if self._row_idx >= 20:
+            self.add_column()
+
+    def add_column(self):
+        """ Start a new column for settings, adjacent to the current one. """
+        self._row_idx = 0
+        self._col_idx += 3
+        # TODO: Cosmetic, I'd like to put a vertical separator bar between the
+        # columns so that they look visually distinct. Currently the units are
+        # too close to the label of the next column over.
+
     def add_empty_space(self, size=pad_top):
         self.frame.rowconfigure(self._row_idx, minsize=size)
-        self._row_idx += 1
+        self._incr_row_idx()
 
     def add_section(self, title):
         """ Cosmetic, add a label and dividing line over a group of settings. """
         if self._row_idx > 0:
             bar = ttk.Separator(self.frame, orient='horizontal')
-            bar.grid(row=self._row_idx, column=0, columnspan=3, sticky='ew', padx=padx, pady=pady)
+            bar.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
+                     sticky='ew', padx=padx, pady=pady)
             self.frame.rowconfigure(self._row_idx, minsize=pad_top)
             self._row_idx += 1
         label = ttk.Label(self.frame, text=title)
-        label.grid(row=self._row_idx, column=0, columnspan=3, sticky='w', padx=padx, pady=pady)
+        label.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
+                   sticky='w', padx=padx, pady=pady)
         self._row_idx += 1
 
     def add_radio_buttons(self, parameter_name, options, variable=None, *, title=None, default=None):
@@ -160,12 +189,12 @@ class SettingsPanel(Panel):
             buttons.append(button)
         variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
-        label  .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        btn_row.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady,
-                columnspan=2) # No units so allow expansion into the units column.
-        self._row_idx += 1
         for column, button in enumerate(buttons):
             button.grid(row=0, column=column, pady=pady)
+        label  .grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
+        btn_row.grid(row=self._row_idx, column=self._col_idx+1, sticky='w', padx=padx, pady=pady,
+                columnspan=2) # No units so allow expansion into the units column.
+        self._incr_row_idx()
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
@@ -211,9 +240,9 @@ class SettingsPanel(Panel):
         menu.bind("<<ComboboxSelected>>", lambda event: menu.selection_clear())
         variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
-        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        menu .grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
-        self._row_idx += 1
+        label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
+        menu .grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
+        self._incr_row_idx()
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
@@ -248,9 +277,9 @@ class SettingsPanel(Panel):
         button = ttk.Checkbutton(self.frame, variable=variable,)
         variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
-        label .grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        button.grid(row=self._row_idx, column=1, sticky='w', padx=padx, pady=pady)
-        self._row_idx += 1
+        label .grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
+        button.grid(row=self._row_idx, column=self._col_idx+1, sticky='w', padx=padx, pady=pady)
+        self._incr_row_idx()
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
@@ -315,10 +344,10 @@ class SettingsPanel(Panel):
         variable.trace_add("write", update_value_label)
         variable.trace_add("write", self._call_callbacks)
         # Arrange the widgets.
-        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        scale.grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
-        value.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
-        self._row_idx += 1
+        label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
+        scale.grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
+        value.grid(row=self._row_idx, column=self._col_idx+2, sticky='w', padx=padx, pady=pady)
+        self._incr_row_idx()
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
@@ -350,10 +379,10 @@ class SettingsPanel(Panel):
         entry = ttk.Entry(self.frame, textvar=variable, justify='right')
         units = ttk.Label(self.frame, text=units)
         # Arrange the widgets.
-        label.grid(row=self._row_idx, column=0, sticky='w', padx=padx, pady=pady)
-        entry.grid(row=self._row_idx, column=1, sticky='ew',           pady=pady)
-        units.grid(row=self._row_idx, column=2, sticky='w', padx=padx, pady=pady)
-        self._row_idx += 1
+        label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
+        entry.grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
+        units.grid(row=self._row_idx, column=self._col_idx+2, sticky='w', padx=padx, pady=pady)
+        self._incr_row_idx()
         # Highlight changed values.
         if self._override_mode:
             def set_changed_state(changed):
