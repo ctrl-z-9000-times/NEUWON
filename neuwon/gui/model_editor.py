@@ -98,7 +98,8 @@ class ModelEditor(OrganizerPanel):
         self._set_title()
 
     def export(self):
-        parameters = self.model.export(self.get_parameters())
+        self.model.save(self.get_parameters())
+        parameters = self.model.export()
         export_filename = filedialog.asksaveasfilename(defaultextension='.py')
         with open(export_filename, 'wt') as f:
             json.dump(parameters, f, indent=4)

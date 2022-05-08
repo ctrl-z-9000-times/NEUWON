@@ -16,6 +16,10 @@ class SegmentEditor(ManagementPanel):
         self.mechanisms = MechanismSelector(self.controlled.get_widget(), model_editor.tabs["mechanisms"])
         self.controlled.add_tab('mechanisms', self.mechanisms)
 
+    @classmethod
+    def export(cls, parameters):
+        return parameters
+
 class NeuronEditor(ManagementPanel):
     def __init__(self, root, model_editor):
         self.segment_editor = model_editor.tabs["segments"]
@@ -68,9 +72,16 @@ class NeuronEditor(ManagementPanel):
         self.mechanisms.set_defaults(defaults["mechanisms"])
 
     @classmethod
-    def export(cls, parameters):
-        for nt, params in parameters.items():
-            1/0
+    def export(cls, gui_parameters:dict) -> dict:
+        sim_parameters = {}
+        for neuron_type, neuron_parameters in gui_parameters.items():
+            instructions = []
+            for segment_type, segment_parameters in neuron_parameters.items():
+                segment_parameters = dict(segment_parameters)
+                segment_parameters["segment_type"] = segment_type
+                instructions.append(segment_parameters)
+            sim_parameters[neuron_type] = instructions
+        return sim_parameters
 
 class _AddSegmentToNeuron(simpledialog.Dialog):
     def __init__(self, parent, segment_types):
