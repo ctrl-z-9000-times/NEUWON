@@ -1,7 +1,7 @@
 from .control_panels import *
 from .region_editor import RegionEditor
 from .species_editor import SpeciesEditor
-from .mechanism_editor import MechanismManager, MechanismSelector
+from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
 from .model_container import ModelContainer
 from .run_control import RunControl

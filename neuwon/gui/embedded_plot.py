@@ -1,4 +1,4 @@
-from .control_panels import *
+from tkinter import ttk
 import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk

@@ -1,4 +1,5 @@
 from .control_panels import *
+from .mechanism_editor import MechanismSelector
 from tkinter import simpledialog
 
 class SegmentEditor(ManagementPanel):
@@ -13,7 +14,7 @@ class SegmentEditor(ManagementPanel):
         self.morphology = Morphology(self.controlled.get_widget(), model_editor)
         self.controlled.add_tab('morphology', self.morphology)
 
-        self.mechanisms = MechanismSelector(self.controlled.get_widget(), model_editor.tabs["mechanisms"])
+        self.mechanisms = MechanismSelector(self.controlled.get_widget(), model_editor.mechanisms)
         self.controlled.add_tab('mechanisms', self.mechanisms)
 
     @classmethod
@@ -22,7 +23,7 @@ class SegmentEditor(ManagementPanel):
 
 class NeuronEditor(ManagementPanel):
     def __init__(self, root, model_editor):
-        self.segment_editor = model_editor.tabs["segments"]
+        self.segment_editor = model_editor.segments
         super().__init__(root, "Neuron", controlled_panel=("ManagementPanel", [],
                     {"title": "Segment", "keep_sorted": False, "controlled_panel": "OrganizerPanel"}))
         self.add_button_create()
@@ -42,7 +43,7 @@ class NeuronEditor(ManagementPanel):
         self.morphology = Morphology(tab_ctrl.get_widget(), model_editor, override_mode=True)
         tab_ctrl.add_tab('morphology', self.morphology)
 
-        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), model_editor.tabs["mechanisms"])
+        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), model_editor.mechanisms)
         tab_ctrl.add_tab('mechanisms', self.mechanisms)
 
     def _init_soma_settings(self, parent):
@@ -132,10 +133,10 @@ class Morphology(SettingsPanel):
                 default     = 10,
                 units       = 'μm')
 
-        self.add_dropdown("global_region", lambda: model_editor.tabs["regions"].get_parameters().keys())
+        self.add_dropdown("global_region", lambda: model_editor.regions.get_parameters().keys())
 
         self.add_dropdown("neuron_region",
-                lambda: ["None"] + list(model_editor.tabs["regions"].get_parameters().keys()),
+                lambda: ["None"] + list(model_editor.regions.get_parameters().keys()),
                 default = "None")
 
         self.add_entry("diameter",

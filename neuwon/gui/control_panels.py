@@ -858,6 +858,9 @@ class OrganizerPanel(Panel):
         return self.notebook
 
     def add_tab(self, title, panel):
+        """ This also saves the panel as an attribute on this object. """
+        assert title not in dir(self), "Duplicate panel or name conflict!"
+        setattr(self, title, panel)
         self.tabs[title] = panel
         self.notebook.add(panel.frame, text=title.title(),
                 sticky='nesw', padding=(padx, pad_top))
