@@ -147,9 +147,12 @@ class SettingsPanel(Panel):
         """ Start a new column for settings, adjacent to the current one. """
         self._row_idx = 0
         self._col_idx += 3
-        # TODO: Cosmetic, I'd like to put a vertical separator bar between the
-        # columns so that they look visually distinct. Currently the units are
-        # too close to the label of the next column over.
+        # Cosmetic: Separate the columns with a vertical bar so that
+        # they look visually distinct.
+        bar = ttk.Separator(self.frame, orient='vertical')
+        bar.grid(row=0, rowspan=999, column=self._col_idx,
+                 sticky='ns', padx=padx, pady=pady)
+        self._col_idx += 1
 
     def add_empty_space(self, size=pad_top):
         self.frame.rowconfigure(self._row_idx, minsize=size)

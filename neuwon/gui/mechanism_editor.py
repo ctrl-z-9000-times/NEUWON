@@ -36,7 +36,7 @@ class MechanismManager(ManagementPanel):
 
     def _make_nmodl_settings_panel(self, filename):
         settings_panel = self.controlled.add_custom_settings_panel(filename, override_mode=True)
-        parser = NmodlParser(filename)
+        parser = NmodlParser(filename, preprocess=False)
         for name, (value, units) in parser.gather_parameters().items():
             settings_panel.add_entry(name, title=name, default=value, units=units)
         name, point_process, title, description = parser.gather_documentation()

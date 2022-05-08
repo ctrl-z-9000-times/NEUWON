@@ -15,15 +15,16 @@ class NmodlParser:
     for clean & easy deletion. The nmodl library is implemented in C++ and as
     such does not support some critical python features: objects returned from
     the nmodl library do not support copying or pickling. """
-    def __init__(self, nmodl_filename):
+    def __init__(self, nmodl_filename, preprocess=True):
         """ Parse the NMDOL file into an abstract syntax tree (AST). """
         self.filename = str(nmodl_filename)
         with open(self.filename, 'rt') as f: nmodl_text = f.read()
         AST = nmodl.dsl.NmodlDriver().parse_string(nmodl_text)
-        nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
-        nmodl.symtab.SymtabVisitor().visit_program(AST)
-        nmodl.dsl.visitor.InlineVisitor().visit_program(AST)
-        nmodl.dsl.visitor.KineticBlockVisitor().visit_program(AST)
+        if preprocess:
+            nmodl.dsl.visitor.ConstantFolderVisitor().visit_program(AST)
+            nmodl.symtab.SymtabVisitor().visit_program(AST)
+            nmodl.dsl.visitor.InlineVisitor().visit_program(AST)
+            nmodl.dsl.visitor.KineticBlockVisitor().visit_program(AST)
         self.visitor = nmodl.dsl.visitor.AstLookupVisitor()
         self.lookup = lambda n: self.visitor.lookup(AST, n)
         nmodl.symtab.SymtabVisitor().visit_program(AST)

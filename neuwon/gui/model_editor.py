@@ -149,6 +149,3 @@ class Simulation(SettingsPanel):
                 default     = 1.0,
                 units       = 'μf/cm^2')
 
-
-if __name__ == '__main__':
-    ModelEditor().run()
