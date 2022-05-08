@@ -48,6 +48,9 @@ class Panel:
         raise NotImplementedError(type(self))
     def set_parameters(self, parameters):
         raise NotImplementedError(type(self))
+    @classmethod
+    def export(cls, parameters):
+        return parameters
 
 # TODO: Add a vertical scroll bar to the SelectorPanel.
 
@@ -520,6 +523,8 @@ class CustomSettingsPanel(Panel):
         if not parameters:
             return # Leave the panel blank.
         option = parameters[self._key]
+        if not option:
+            return # Nothing selected, leave the panel blank.
         self._current = self._options[option]
         self._current.get_widget().grid()
         self._current.set_parameters(parameters)

@@ -15,6 +15,7 @@ class RunControl:
         self.root.title("NEUWON: " + self.model.short_name)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
+        self.parameters = self.model.load()
         print(self.model.export()) # DEBUGGING!
         self.model.model = Model(**self.model.export())
         self.viewport = Viewport()
@@ -58,7 +59,7 @@ class RunControl:
         ModelEditor(self.model.filename)
 
     def save(self, event=None):
-        1/0
+        self.model.save(self.parameters)
 
     def save_as(self, event=None):
         1/0

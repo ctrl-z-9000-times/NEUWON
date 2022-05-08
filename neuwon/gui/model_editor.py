@@ -53,7 +53,7 @@ class ModelEditor(OrganizerPanel):
     def _init_main_panel(self, parent):
         super().__init__(parent)
         frame = self.get_widget()
-        self.add_tab('simulation', Simulation(frame))
+        self.add_tab('simulation', SimulationSettings(frame))
         self.add_tab('mechanisms', MechanismManager(frame))
         self.add_tab('species',    SpeciesEditor(frame))
         self.add_tab('regions',    RegionEditor(frame))
@@ -112,6 +112,10 @@ class ModelEditor(OrganizerPanel):
         self.save()
         if self.model.filename is None:
             return
+        # TODO: Consider hiding this window instead of closing it? Because then
+        # the user can quickly switch back to the model editor without
+        # re-loading everything. The mechanisms in particular can take a long
+        # time to load.
         self.close()
         RunControl(self.model.filename)
 
@@ -120,32 +124,33 @@ class ModelEditor(OrganizerPanel):
         self.root.mainloop()
 
 
-class Simulation(SettingsPanel):
-    def __init__(self, root):
-        super().__init__(root)
+def SimulationSettings(root):
+    self = SettingsPanel(root)
 
-        self.add_entry("time_step",
-                valid_range = (greater_than_zero, max_float),
-                default     = 0.1,
-                units       = 'ms')
+    self.add_entry("time_step",
+            valid_range = (greater_than_zero, max_float),
+            default     = 0.1,
+            units       = 'ms')
 
-        self.add_entry("temperature",
-                valid_range = (0, 100),
-                default     = 37.0,
-                units       = '°C')
+    self.add_entry("temperature",
+            valid_range = (0, 100),
+            default     = 37.0,
+            units       = '°C')
 
-        self.add_entry("initial_voltage",
-                valid_range = (-max_float, max_float),
-                default     = -70.0,
-                units       = 'mV')
+    self.add_entry("initial_voltage",
+            valid_range = (-max_float, max_float),
+            default     = -70.0,
+            units       = 'mV')
 
-        self.add_entry("cytoplasmic_resistance",
-                valid_range = (greater_than_zero, max_float),
-                default     = 100.0,
-                units       = '')
+    self.add_entry("cytoplasmic_resistance",
+            valid_range = (greater_than_zero, max_float),
+            default     = 100.0,
+            units       = '')
 
-        self.add_entry("membrane_capacitance",
-                valid_range = (greater_than_zero, max_float),
-                default     = 1.0,
-                units       = 'μf/cm^2')
+    self.add_entry("membrane_capacitance",
+            valid_range = (greater_than_zero, max_float),
+            default     = 1.0,
+            units       = 'μf/cm^2')
+
+    return self
 
