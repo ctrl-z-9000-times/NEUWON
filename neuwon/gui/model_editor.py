@@ -11,6 +11,44 @@ import json
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
 
+class ModelContainer:
+    def __init__(self, filename=None):
+        self.set_file(filename)
+
+    def set_file(self, filename):
+        if filename is None:
+            self.filename   = None
+            self.short_name = None
+        else:
+            self.filename = os.path.abspath(filename)
+            home = os.path.expanduser('~')
+            if self.filename.startswith(home):
+                self.short_name = os.path.relpath(self.filename, home)
+                self.short_name = os.path.join('~', self.short_name)
+            else:
+                self.short_name = self.filename
+
+    def save(self, parameters: dict):
+        with open(self.filename, 'wt') as f:
+            json.dump(parameters, f, indent=4)
+            f.flush()
+
+    def load(self) -> dict:
+        with open(self.filename, 'rt') as f:
+            return json.load(f)
+
+    def export(self, parameters) -> dict:
+        """ Fixup the programs internal parameters into NEUWON's parameter structure. """
+        return {
+            'simulation':   parameters["simulation"],
+            'mechanisms':   MechanismManager.export(    parameters["mechanisms"]),
+            'species':      SpeciesEditor.export(       parameters["species"]),
+            'regions':      RegionEditor.export(        parameters["regions"]),
+            'segments':     parameters["segments"],
+            'neurons':      parameters["neurons"],
+        }
+
+
 class ModelEditor(OrganizerPanel):
     def __init__(self, filename=None):
         self.root = ThemedTk()
@@ -19,8 +57,10 @@ class ModelEditor(OrganizerPanel):
         self.root.columnconfigure(0, weight=1)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
-        if filename is not None:
-            self.open(filename)
+        self.model = ModelContainer(filename)
+        if self.model.filename is not None:
+            self.set_parameters(self.model.load())
+            self._set_title()
         else:
             self.new_model()
 
@@ -36,12 +76,12 @@ class ModelEditor(OrganizerPanel):
         filemenu = tk.Menu(parent_menu, tearoff=False)
         parent_menu.add_cascade(label="File", menu=filemenu)
         filemenu.add_command(label="New Model", underline=0, command=self.new_model)
-        filemenu.add_command(label="Open",      underline=0, command=self.open_gui,accelerator="Ctrl+O")
+        filemenu.add_command(label="Open",      underline=0, command=self.open,    accelerator="Ctrl+O")
         filemenu.add_command(label="Save",      underline=0, command=self.save,    accelerator="Ctrl+S")
         filemenu.add_command(label="Save As",   underline=5, command=self.save_as, accelerator="Ctrl+Shift+S")
         filemenu.add_command(label="Export",    underline=1, command=self.export)
         filemenu.add_command(label="Quit",      underline=0, command=self.close)
-        self.root.bind_all("<Control-o>", self.open_gui)
+        self.root.bind_all("<Control-o>", self.open)
         self.root.bind_all("<Control-s>", self.save)
         self.root.bind_all("<Control-S>", self.save_as)
         return filemenu
@@ -59,70 +99,46 @@ class ModelEditor(OrganizerPanel):
 
     def _set_title(self):
         title = "NEUWON Model Editor"
-        if self.filename:
-            filename = os.path.abspath(self.filename)
-            home     = os.path.expanduser('~')
-            if filename.startswith(home):
-                filename = os.path.relpath(filename, home)
-                filename = os.path.join('~', filename)
-            title += ": " + filename
+        if self.model.short_name is not None:
+            title += ": " + self.model.short_name
         self.root.title(title)
 
     def new_model(self, event=None):
-        self.filename = None
+        self.model.set_file(None)
         self._set_title()
         self.set_parameters({})
 
-    def open_gui(self, event=None):
+    def open(self, event=None):
         open_filename = filedialog.askopenfilename(title="Open Model",
                         filetypes=[('Model File', '.json')])
         if not open_filename:
             return
-        self.open(open_filename)
-
-    def open(self, filename):
-        filename = os.path.abspath(filename)
-        with open(filename, 'rt') as f:
-            parameters = json.load(f)
-        self.set_parameters(parameters)
-        self.filename = filename
+        self.model.set_file(open_filename)
+        self.set_parameters(self.model.load())
         self._set_title()
 
     def save(self, event=None):
-        if not self.filename:
+        if not self.model.filename:
             self.save_as()
         else:
             self.root.focus_set() # Unfocusing triggers input validation.
             parameters = self.get_parameters() # Successfully get the parameters before truncating the output file.
-            with open(self.filename, 'wt') as f:
-                json.dump(parameters, f, indent=4)
-                f.flush()
+            self.model.save(parameters)
 
     def save_as(self, event=None):
         save_as_filename = filedialog.asksaveasfilename(defaultextension='.json')
         if not save_as_filename:
             return
-        self.filename = save_as_filename
+        self.model.set_file(save_as_filename)
         self.save()
         self._set_title()
 
     def export(self):
-        parameters = self.get_NEUWON_parameters()
+        parameters = self.model.export(self.get_parameters())
         export_filename = filedialog.asksaveasfilename(defaultextension='.py')
         with open(export_filename, 'wt') as f:
             json.dump(parameters, f, indent=4)
             f.flush()
-
-    def get_NEUWON_parameters(self):
-        """ Fixup the programs internal parameters into NEUWON's parameter structure. """
-        return {
-            'simulation':   self.tabs["simulation"].get_parameters(),
-            'mechanisms':   self.tabs["mechanisms"].export(),
-            'species':      self.tabs["species"].export(),
-            'regions':      self.tabs["regions"].export(),
-            'segments':     self.tabs["segments"].get_parameters(),
-            'neurons':      self.tabs["neurons"].get_parameters(),
-        }
 
     def close(self, event=None):
         self.root.destroy()

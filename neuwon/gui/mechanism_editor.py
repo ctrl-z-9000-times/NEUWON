@@ -58,9 +58,10 @@ class MechanismManager(ManagementPanel):
         docs = ttk.Label(frame, text=self.documentation[filename], justify='left', padding=padx)
         docs.grid(row=1, column=0, columnspan=2, padx=padx, pady=pady)
 
-    def export(self):
+    @classmethod
+    def export(cls, parameters):
         sim = {}
-        for name, gui in self.get_parameters().items():
+        for name, gui in parameters.items():
             gui = dict(gui)
             sim[name] = (gui.pop("filename"), gui)
         return sim

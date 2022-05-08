@@ -5,8 +5,8 @@ import sys
 maximum_float = sys.float_info.max
 
 class RegionEditor(ManagementPanel):
+    key_parameter = "region_type"
     def __init__(self, root):
-        self.key_parameter = "region_type"
         super().__init__(root, "Region", custom_title=self.custom_title,
                 controlled_panel=("CustomSettingsPanel", (self.key_parameter,)))
 
@@ -65,10 +65,11 @@ class RegionEditor(ManagementPanel):
     def custom_title(self, item):
         return f"{self.parameters[item]['region_type']}: {item}"
 
-    def export(self):
+    @classmethod
+    def export(cls, parameters):
         sim = {}
-        for name, gui in self.get_parameters():
-            key = gui[self.key_parameter]
+        for name, gui in parameters.items():
+            key = gui[cls.key_parameter]
             if key == 'Rectangle':
                 sim[name] = (key,
                             [gui["lower_x"], gui["lower_y"], gui["lower_z"]],

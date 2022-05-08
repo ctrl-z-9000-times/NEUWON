@@ -60,9 +60,10 @@ class SpeciesEditor(ManagementPanel):
                 valid_range = (0, maximum_float),
                 units       = 'mmol')
 
-    def export(self):
+    @classmethod
+    def export(cls, parameters):
         sim = {}
-        for name, gui in self.get_parameters().items():
+        for name, gui in parameters.items():
             sim[name] = {}
         return sim
 
