@@ -2,51 +2,15 @@ from .control_panels import *
 from .region_editor import RegionEditor
 from .species_editor import SpeciesEditor
 from .mechanism_editor import MechanismManager, MechanismSelector
+from .model_container import ModelContainer
+from .run_control import RunControl
 from .themes import set_theme, pick_theme
 from ttkthemes import ThemedTk
 from tkinter import filedialog, simpledialog
-import os.path
 import json
 
 # TODO: The rename & delete buttons need callbacks to apply the changes through
 # the whole program.
-
-class ModelContainer:
-    def __init__(self, filename=None):
-        self.set_file(filename)
-
-    def set_file(self, filename):
-        if filename is None:
-            self.filename   = None
-            self.short_name = None
-        else:
-            self.filename = os.path.abspath(filename)
-            home = os.path.expanduser('~')
-            if self.filename.startswith(home):
-                self.short_name = os.path.relpath(self.filename, home)
-                self.short_name = os.path.join('~', self.short_name)
-            else:
-                self.short_name = self.filename
-
-    def save(self, parameters: dict):
-        with open(self.filename, 'wt') as f:
-            json.dump(parameters, f, indent=4)
-            f.flush()
-
-    def load(self) -> dict:
-        with open(self.filename, 'rt') as f:
-            return json.load(f)
-
-    def export(self, parameters) -> dict:
-        """ Fixup the programs internal parameters into NEUWON's parameter structure. """
-        return {
-            'simulation':   parameters["simulation"],
-            'mechanisms':   MechanismManager.export(    parameters["mechanisms"]),
-            'species':      SpeciesEditor.export(       parameters["species"]),
-            'regions':      RegionEditor.export(        parameters["regions"]),
-            'segments':     parameters["segments"],
-            'neurons':      parameters["neurons"],
-        }
 
 
 class ModelEditor(OrganizerPanel):
@@ -70,7 +34,7 @@ class ModelEditor(OrganizerPanel):
         self.filemenu = self._init_file_menu(self.menubar)
 
         self.menubar.add_command(label="Themes", command=lambda: pick_theme(self.root))
-        self.menubar.add_command(label="Run", command=lambda: print("Run!"))
+        self.menubar.add_command(label="Run", command=self.switch_to_run_control)
 
     def _init_file_menu(self, parent_menu):
         filemenu = tk.Menu(parent_menu, tearoff=False)
@@ -142,6 +106,13 @@ class ModelEditor(OrganizerPanel):
 
     def close(self, event=None):
         self.root.destroy()
+
+    def switch_to_run_control(self, event=None):
+        self.save()
+        if self.model.filename is None:
+            return
+        self.close()
+        RunControl(self.model.filename)
 
     def run(self):
         """ Blocks calling thread until the ModelEditor is closed. """
