@@ -49,32 +49,32 @@ class SignalEditor(ManagementPanel):
 
     def _init_settings_panel(self):
         waveform_name = "Square Wave"
-        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + " Settings")
         self._init_min_max_period(settings_panel)
         settings_panel.add_slider("duty_cycle", (0, 100), default=50, units='%')
 
         waveform_name = "Sine Wave"
-        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + " Settings")
         self._init_min_max_period(settings_panel)
 
         waveform_name = "Triangle Wave"
-        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + " Settings")
         self._init_min_max_period(settings_panel)
 
         waveform_name = "Sawtooth Wave"
-        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + " Settings")
         self._init_min_max_period(settings_panel)
 
         waveform_name  = "Constant Wave"
-        settings_panel = self.controlled.add_custom_settings_panel(waveform_name)
+        settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + " Settings")
         settings_panel.add_entry("value",

@@ -491,12 +491,14 @@ class CustomSettingsPanel(Panel):
         self._current = None
 
     def add_panel(self, name, panel):
-        self._options[str(name)] = panel
+        name = str(name)
+        assert name not in self._options
+        self._options[name] = panel
 
     def get_panel(self, name):
         return self._options[str(name)]
 
-    def add_custom_settings_panel(self, name, override_mode=False) -> SettingsPanel:
+    def add_settings_panel(self, name, override_mode=False) -> SettingsPanel:
         """
         Convenience method to create a new SettingsPanel and add it to this
         custom SettingsPanel switcher.
