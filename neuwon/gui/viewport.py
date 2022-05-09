@@ -14,7 +14,7 @@ epsilon = np.finfo(float).eps
 
 class Scene:
     def __init__(self, database, lod=2.5):
-        lod     = float(lod)
+        lod = float(lod)
         if hasattr(database, "get_database"): database = database.get_database()
         Segment = database.get("Segment")
         self.num_seg = num_seg = len(Segment)
@@ -73,28 +73,25 @@ class Scene:
 class Viewport:
     def __init__(self, window_size=(2*640,2*480),
                 move_speed = .02,
-                mouse_sensitivity = .001,
-                camera_position=[0.0, 0.0, 0.0],
-                fps=60):
+                mouse_sensitivity = .001,):
+        self.move_speed = float(move_speed)
+        self.turn_speed = float(mouse_sensitivity)
+        self.sprint_modifier = 5 # Shift key move_speed multiplier.
+        # Camera settings.
+        self.background_color = [0,0,0,0]
+        self.fov = 45.
+        self.max_view_dist  = 10e3
+        self.camera_pos     = np.zeros(3)
+        self.camera_pitch   = 0.0
+        self.camera_yaw     = 0.0
+        self.camera_up      = np.array([ 0.0, 1.0, 0.0]) # +Y is up.
+        self.camera_forward = np.array([ 0.0, 0.0, -1.0])
+        self.update_camera_rotation_matrix()
+        # Setup pygame and OpenGL.
         pygame.init()
         pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
         self.clock = pygame.time.Clock()
-        self.first_tick = True
-
-        self.window_size = window_size = pygame.display.get_window_size()
-        self.window_center = [0.5 * x for x in window_size]
-        self.background_color = [0,0,0,0]
-        self.fps = float(fps)
-        self.fov = 45.
-        self.move_speed = float(move_speed)
-        self.turn_speed = float(mouse_sensitivity)
-        self.camera_pos   = np.array(camera_position, dtype=float)
-        self.camera_pitch = 0.0
-        self.camera_yaw   = 0.0
-        self.update_camera_rotation_matrix()
-        self.camera_forward = np.array([ 0.0, 0.0, -1.0])
-        self.camera_up      = np.array([ 0.0, 1.0, 0.0])
-
+        self.window_size = pygame.display.get_window_size()
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
         glDisable(GL_CULL_FACE)
@@ -106,20 +103,26 @@ class Viewport:
             self.scene = Scene(scene_or_database, *args)
 
     def tick(self, colors=None):
-        if self.first_tick:
-            # Don't grab the mouse until we're actually ready to draw something.
-            pygame.event.set_grab(True)
-            self.first_tick = False
-
-        dt = self.clock.tick(self.fps)
+        dt = self.clock.tick()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                quit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    self.mouse_pos = event.pos
 
-        self.read_keyboard(dt)
-        self.read_mouse(dt)
+        if pygame.mouse.get_focused():
+            m1, m2, m3 = pygame.mouse.get_pressed()
+            if m1:
+                pygame.mouse.set_visible(False)
+                self.read_keyboard(dt)
+                self.read_mouse(dt)
+            else:
+                pygame.mouse.set_visible(True)
+        else:
+            pygame.mouse.set_visible(True)
+
         self.setup_camera()
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         glClearColor(*self.background_color)
@@ -132,28 +135,32 @@ class Viewport:
 
     def read_keyboard(self, dt):
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_w]:
+        if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
+            dt *= self.sprint_modifier
+        if keys[pygame.K_w] or keys[pygame.K_UP]:
             self.move_camera([0.0, 0.0, -self.move_speed * dt])
-        if keys[pygame.K_s]:
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
             self.move_camera([0.0, 0.0, +self.move_speed * dt])
-        if keys[pygame.K_a]:
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
             self.move_camera([-self.move_speed * dt, 0, 0])
-        if keys[pygame.K_d]:
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             self.move_camera([+self.move_speed * dt, 0, 0])
-        if keys[pygame.K_SPACE]:
+        if keys[pygame.K_SPACE] or keys[pygame.K_RETURN]:
             self.camera_pos[1] += self.move_speed * dt
-        if keys[pygame.K_LCTRL]:
+        if keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]:
             self.camera_pos[1] -= self.move_speed * dt
 
     def read_mouse(self, dt):
-        if not pygame.event.get_grab():
-            pygame.mouse.set_visible(True)
-            return
-        else:
-            pygame.mouse.set_visible(False)
-        x, y = pygame.mouse.get_rel()
-        self.camera_yaw   += x * self.turn_speed
-        self.camera_pitch += y * self.turn_speed
+        # Get the relative movement of the mouse cursor.
+        x,  y  = pygame.mouse.get_pos()
+        x0, y0 = self.mouse_pos
+        dx = x - x0
+        dy = y - y0
+        pygame.mouse.set_pos(self.mouse_pos)
+        # Apply mouse movement.
+        self.camera_yaw   += dx * self.turn_speed
+        self.camera_pitch += dy * self.turn_speed
+        # Keep camera angle in sane mathematical bounds.
         halfpi = 0.5 * np.pi - 5000*epsilon
         self.camera_yaw = self.camera_yaw % (2.0 * np.pi)
         self.camera_pitch = np.clip(self.camera_pitch, -halfpi, +halfpi)
@@ -175,8 +182,7 @@ class Viewport:
     def setup_camera(self):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity();
-        max_view_dist = 10e3
-        gluPerspective(self.fov, (self.window_size[0]/self.window_size[1]), 0.1, max_view_dist)
+        gluPerspective(self.fov, (self.window_size[0]/self.window_size[1]), 0.1, self.max_view_dist)
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()

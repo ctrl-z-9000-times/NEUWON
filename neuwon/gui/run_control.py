@@ -4,6 +4,9 @@ from .model_container import ModelContainer
 from .signal_editor import SignalEditor
 from neuwon import Model
 from .viewport import Viewport
+import pygame
+
+import pprint # DEBUGGING!
 
 class RunControl:
     def __init__(self, filename):
@@ -16,11 +19,11 @@ class RunControl:
         self._init_menu(self.root)
         self._init_main_panel(self.root)
         self.parameters = self.model.load()
-        print(self.model.export()) # DEBUGGING!
+        pprint.pprint(self.model.export()) # DEBUGGING!
         self.model.model = Model(**self.model.export())
         self.viewport = Viewport()
         self.viewport.set_scene(self.model.model.get_database())
-
+        self.root.after(0, self._tick)
 
     def _init_menu(self, parent):
         self.menubar = tk.Menu(parent)
@@ -67,6 +70,13 @@ class RunControl:
     def close(self, event=None):
         self.root.destroy()
 
+    def _tick(self):
+        try:
+            self.viewport.tick()
+        except pygame.error:
+            print("Viewport closed.")
+        else:
+            self.root.after(1, self._tick)
 
 if __name__ == '__main__':
     import sys
