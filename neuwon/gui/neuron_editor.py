@@ -71,16 +71,15 @@ class NeuronEditor(ManagementPanel):
         self.mechanisms.set_defaults(defaults["mechanisms"])
 
     @classmethod
-    def export(cls, gui_parameters:dict) -> dict:
-        sim_parameters = {}
-        for neuron_type, neuron_parameters in gui_parameters.items():
+    def export(cls, parameters:dict) -> dict:
+        for neuron_type, neuron_parameters in parameters.items():
             instructions = []
             for segment_type, segment_parameters in neuron_parameters.items():
-                segment_parameters = dict(segment_parameters)
                 segment_parameters["segment_type"] = segment_type
+                segment_parameters = SegmentSettings.export(segment_parameters)
                 instructions.append(segment_parameters)
-            sim_parameters[neuron_type] = instructions
-        return sim_parameters
+            parameters[neuron_type] = instructions
+        return parameters
 
 
 class SegmentEditor(ManagementPanel):
@@ -96,6 +95,12 @@ class SegmentEditor(ManagementPanel):
         self.add_button_delete()
         self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
+
+    @classmethod
+    def export(cls, parameters):
+        for k, v in parameters.items():
+            parameters[k] = SegmentSettings.export(v)
+        return parameters
 
 
 class SegmentSettings(OrganizerPanel):
@@ -113,6 +118,17 @@ class SegmentSettings(OrganizerPanel):
             morphology["morphology_type"] = parameters.pop("morphology_type")
         super().set_parameters(parameters)
 
+    @classmethod
+    def export(cls, parameters):
+        morphology      = parameters["morphology"]
+        morphology_type = morphology.pop("morphology_type")
+        if morphology_type == "Soma":
+            parameters.update(parameters.pop("morphology"))
+        mechanisms = parameters["mechanisms"]
+        for k, v in mechanisms.items():
+            mechanisms[k] = v["magnitude"]
+        return parameters
+
 
 class MorphologyEditor(CustomSettingsPanel):
     def __init__(self, parent, model_editor, override_mode=False):
@@ -126,7 +142,7 @@ class MorphologyEditor(CustomSettingsPanel):
         self._init_dendrite_settings(axon_settings)
 
     def _init_soma_settings(self, settings_panel):
-        settings_panel.add_entry("Number", tk.IntVar(),
+        settings_panel.add_entry("number", tk.IntVar(),
                 valid_range = (0, max_int),
                 units       = 'cells')
 

@@ -18,6 +18,7 @@ class Scene:
         if hasattr(database, "get_database"): database = database.get_database()
         Segment = database.get("Segment")
         self.num_seg = num_seg = len(Segment)
+        assert num_seg > 0
         objects = np.zeros(num_seg, dtype=object)
         for seg in Segment.get_all_instances():
             idx = seg.get_unstable_index()
@@ -53,13 +54,13 @@ class Scene:
     def draw_colors(self, colors):
         if colors is None: colors = [1, 1, 1]
         colors = np.array(colors, dtype=np.float32)
+        assert np.all(colors >= 0.0)
+        assert np.all(colors <= 1.0)
         if colors.shape == (3,) or colors.shape == (4,):
             colors = np.tile(colors, [len(self.vertices), 1])
         else:
             assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
             colors = np.take(colors, self.segments, axis=0)
-
-        # TODO: assert all colors in range [0, 1]
 
         glEnableClientState(GL_COLOR_ARRAY)
         color_depth = colors.shape[1]
