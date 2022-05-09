@@ -98,8 +98,8 @@ class SegmentEditor(ManagementPanel):
 
     @classmethod
     def export(cls, parameters):
-        for k, v in parameters.items():
-            parameters[k] = SegmentSettings.export(v)
+        for segment_type, segment_parameters in parameters.items():
+            parameters[segment_type] = SegmentSettings.export(segment_parameters)
         return parameters
 
 
@@ -120,13 +120,24 @@ class SegmentSettings(OrganizerPanel):
 
     @classmethod
     def export(cls, parameters):
-        morphology      = parameters["morphology"]
-        morphology_type = morphology.pop("morphology_type")
-        if morphology_type == "Soma":
-            parameters.update(parameters.pop("morphology"))
-        mechanisms = parameters["mechanisms"]
+        morphology      = parameters['morphology']
+        morphology_type = morphology.pop('morphology_type')
+        if morphology_type == 'Soma':
+            parameters.update(parameters.pop('morphology'))
+        elif morphology_type == 'Dendrite' or morphology_type == 'Axon':
+            if 'diameter' in morphology:
+                parameters['diameter'] = morphology.pop('diameter')
+            if 'global_region' in morphology:
+                parameters['region'] = morphology.pop('global_region')
+            if morphology.get('neuron_region', 123) == 'None':
+                morphology.pop('neuron_region')
+            if 'extension_angle' in morphology:
+                morphology['extension_angle'] *= np.pi / 180
+            if 'bifurcation_angle' in morphology:
+                morphology['bifurcation_angle'] *= np.pi / 180
+        mechanisms = parameters['mechanisms']
         for k, v in mechanisms.items():
-            mechanisms[k] = v["magnitude"]
+            mechanisms[k] = v['magnitude']
         return parameters
 
 
