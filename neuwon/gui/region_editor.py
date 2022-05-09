@@ -1,14 +1,10 @@
 from .control_panels import *
-import numpy as np
-import sys
-
-maximum_float = sys.float_info.max
 
 class RegionEditor(ManagementPanel):
     key_parameter = "region_type"
     def __init__(self, root):
         super().__init__(root, "Region", custom_title=self.custom_title,
-                controlled_panel=("CustomSettingsPanel", (self.key_parameter,)))
+                         panel=("CustomSettingsPanel", (self.key_parameter,)))
 
         shape_options = ['Rectangle', 'Sphere', 'Cylinder']
         csg_options   = ['Union', 'Intersection', 'Not']
@@ -19,7 +15,7 @@ class RegionEditor(ManagementPanel):
         self.add_button_duplicate(row=1)
 
         geometry_kwargs = {
-                "valid_range": (-maximum_float, maximum_float),
+                "valid_range": (-max_float, max_float),
                 "units": 'μm',
         }
 

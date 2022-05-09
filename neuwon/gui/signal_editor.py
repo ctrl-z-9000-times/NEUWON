@@ -6,7 +6,7 @@ from neuwon import TimeSeries
 #       The program will automatically convert from amps into delta-voltage.
 
 class SignalEditor(ManagementPanel):
-    def __init__(self, frame):
+    def __init__(self, parent):
         options_grid = [
             "Square Wave",
             "Sine Wave",
@@ -16,8 +16,8 @@ class SignalEditor(ManagementPanel):
             # "Load From File",
             # "Random Noise",
         ]
-        super().__init__(frame, "Signal",
-                controlled_panel=("CustomSettingsPanel", ("signal_type",)))
+        super().__init__(parent, "Signal",
+                         panel=("CustomSettingsPanel", ("signal_type",)))
         # 
         self.add_button_create(radio_options={"signal_type": options_grid})
         self.add_button_delete()

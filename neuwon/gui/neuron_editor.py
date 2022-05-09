@@ -3,29 +3,26 @@ from .mechanism_editor import MechanismSelector
 from tkinter import simpledialog
 
 class SegmentEditor(ManagementPanel):
-    def __init__(self, root, model_editor):
-        super().__init__(root, "Segment", controlled_panel="OrganizerPanel")
+    def __init__(self, parent, model_editor):
+        options_grid = {"morphology_type": [
+                "Soma",
+                "Dendrite",
+                "Axon",
+        ]}
+        super().__init__(parent, "Segment", panel=(SegmentSettings, (model_editor,)))
 
-        self.add_button_create()
+        self.add_button_create(options_grid)
         self.add_button_delete()
         self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
-        self.morphology = Morphology(self.controlled.get_widget(), model_editor)
-        self.controlled.add_tab('morphology', self.morphology)
-
-        self.mechanisms = MechanismSelector(self.controlled.get_widget(), model_editor.mechanisms)
-        self.controlled.add_tab('mechanisms', self.mechanisms)
-
-    @classmethod
-    def export(cls, parameters):
-        return parameters
 
 class NeuronEditor(ManagementPanel):
-    def __init__(self, root, model_editor):
+    def __init__(self, parent, model_editor):
         self.segment_editor = model_editor.segments
-        super().__init__(root, "Neuron", controlled_panel=("ManagementPanel", [],
-                    {"title": "Segment", "keep_sorted": False, "controlled_panel": "OrganizerPanel"}))
+        super().__init__(parent, "Neuron", panel=("ManagementPanel",
+                    {"title": "Segment", "keep_sorted": False,
+                    "panel": (SegmentSettings, (model_editor,), {"override_mode": True})}))
         self.add_button_create()
         self.add_button_delete()
         self.add_button_rename(row=1)
@@ -36,23 +33,6 @@ class NeuronEditor(ManagementPanel):
         self.segments.add_button_delete("Remove")
         self.segments.add_buttons_up_down(row=1)
 
-        tab_ctrl = self.segments.controlled
-
-        tab_ctrl.add_tab('soma', self._init_soma_settings(tab_ctrl.get_widget()))
-
-        self.morphology = Morphology(tab_ctrl.get_widget(), model_editor, override_mode=True)
-        tab_ctrl.add_tab('morphology', self.morphology)
-
-        self.mechanisms = MechanismSelector(tab_ctrl.get_widget(), model_editor.mechanisms)
-        tab_ctrl.add_tab('mechanisms', self.mechanisms)
-
-    def _init_soma_settings(self, parent):
-        settings = SettingsPanel(parent)
-        settings.add_entry("Number", tk.IntVar(),
-                valid_range = (0, max_int),
-                units       = 'cells')
-        return settings
-
     def _add_segment_to_neuron(self, selected):
         seg_types = sorted(self.segment_editor.get_parameters().keys())
         dialog    = _AddSegmentToNeuron(self.segments.get_widget(), seg_types)
@@ -61,10 +41,13 @@ class NeuronEditor(ManagementPanel):
             return
         if selected in self.segments.parameters:
             return
-        self.segments.parameters[selected] = {}
+        parameters = self.segment_editor.get_parameters()[selected]
+        morphology = parameters["morphology"]["morphology_type"]
+        self.segments.parameters[selected] = {"morphology_type": morphology}
         self.segments.selector.insert(selected)
 
     def _set_defaults(self):
+        # TODO: Where should this be called from?
         selected = self.segments.selector.get()
         if selected is None:
             return
@@ -109,69 +92,97 @@ class _AddSegmentToNeuron(simpledialog.Dialog):
         return True
 
 
-class Morphology(SettingsPanel):
-    def __init__(self, root, model_editor, override_mode=False):
-        super().__init__(root, override_mode=override_mode)
+class SegmentSettings(OrganizerPanel):
+    def __init__(self, parent, model_editor, override_mode=False):
+        super().__init__(parent)
+        frame = self.get_widget()
+        self.add_tab('morphology', Morphology(frame, model_editor, override_mode=override_mode))
+        self.add_tab('mechanisms', MechanismSelector(frame, model_editor.mechanisms,
+                override_mode=override_mode))
 
-        self.add_radio_buttons("extend_before_bifurcate", ["Dendrite", "Axon"],
-                tk.BooleanVar(),
-                title="")
+    def set_parameters(self, parameters):
+        if "morphology_type" in parameters:
+            morphology = parameters.setdefault("morphology", {})
+            morphology["morphology_type"] = parameters.pop("morphology_type")
+        super().set_parameters(parameters)
 
-        self.add_checkbox("competitive",
+
+class Morphology(CustomSettingsPanel):
+    def __init__(self, parent, model_editor, override_mode=False):
+        super().__init__(parent, "morphology_type")
+        self.model_editor = model_editor
+        soma_settings     = self.add_settings_panel("Soma",     override_mode=override_mode)
+        dendrite_settings = self.add_settings_panel("Dendrite", override_mode=override_mode)
+        self.add_panel("Axon", self.get_panel("Dendrite"))
+        self._init_soma_settings(soma_settings)
+        self._init_dendrite_settings(dendrite_settings)
+
+    def _init_soma_settings(self, settings_panel):
+        settings_panel.add_entry("Number", tk.IntVar(),
+                valid_range = (0, max_int),
+                units       = 'cells')
+
+        settings_panel.add_entry("diameter",
+                valid_range = (greater_than_zero, max_float),
+                default     = 30,
+                units       = 'μm')
+
+        settings_panel.add_dropdown("region",
+                lambda: self.model_editor.regions.get_parameters().keys())
+
+    def _init_dendrite_settings(self, settings_panel):
+        settings_panel.add_checkbox("competitive",
                 title   = "Competitive Growth",
                 default = True)
 
-        self.add_slider("balancing_factor",
+        settings_panel.add_slider("balancing_factor",
                 valid_range = (0, 1))
 
-        self.add_entry("carrier_point_density",
+        settings_panel.add_entry("carrier_point_density",
                 valid_range = (0, max_float),
                 units       = "")
 
-        self.add_entry("maximum_segment_length",
+        settings_panel.add_entry("maximum_segment_length",
                 valid_range = (greater_than_zero, inf),
                 default     = 10,
                 units       = 'μm')
 
-        self.add_dropdown("global_region", lambda: model_editor.regions.get_parameters().keys())
+        settings_panel.add_dropdown("global_region",
+                lambda: self.model_editor.regions.get_parameters().keys())
 
-        self.add_dropdown("neuron_region",
-                lambda: ["None"] + list(model_editor.regions.get_parameters().keys()),
+        settings_panel.add_dropdown("neuron_region",
+                lambda: ["None"] + list(self.model_editor.regions.get_parameters().keys()),
                 default = "None")
 
-        self.add_entry("diameter",
+        settings_panel.add_entry("diameter",
                 valid_range = (greater_than_zero, max_float),
                 default     = 3,
                 units       = 'μm')
 
-        self.add_slider("extension_angle",
+        settings_panel.add_slider("extension_angle",
                 title       = "Maximum Extension Angle",
                 valid_range = (0, 180),
                 default     = 60,
                 units       = '°')
 
-        self.add_entry("extension_distance",
+        settings_panel.add_entry("extension_distance",
                 title       = "Maximum Extension Distance",
                 valid_range = (0, inf),
                 default     = 100,
                 units       = 'μm')
 
-        self.add_slider("bifurcation_angle",
+        settings_panel.add_slider("bifurcation_angle",
                 title       = "Maximum Branch Angle",
                 valid_range = (0, 180),
                 default     = 60,
                 units       = '°')
 
-        self.add_entry("bifurcation_distance",
+        settings_panel.add_entry("bifurcation_distance",
                 title       = "Maximum Branch Distance",
                 valid_range = (0, inf),
                 default     = 100,
                 units       = 'μm')
 
-        # grow_from (combo-list of segment types)
-        # exclude_from (combo-list of segment types)
+        # TODO: grow_from (combo-list of segment types)
+        # TODO: exclude_from (combo-list of segment types)
 
-        # SOMA OPTIONS:
-        # region
-        # diameter
-        # number to grow

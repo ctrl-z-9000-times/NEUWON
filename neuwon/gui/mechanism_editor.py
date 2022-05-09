@@ -5,7 +5,7 @@ import os.path
 
 class MechanismManager(ManagementPanel):
     def __init__(self, root):
-        super().__init__(root, "Mechanism", controlled_panel=("CustomSettingsPanel", ("filename",)))
+        super().__init__(root, "Mechanism", panel=("CustomSettingsPanel", ("filename",)))
         # 
         self.selector.add_button("Import", self.import_mechanisms)
         self.add_button_delete("Remove")
@@ -67,13 +67,14 @@ class MechanismManager(ManagementPanel):
         return sim
 
 class MechanismSelector(ManagementPanel):
-    def __init__(self, root, mechanism_manager):
-        super().__init__(root, "Mechanism")
+    def __init__(self, root, mechanism_manager, override_mode=False):
+        super().__init__(root, "Mechanism",
+                         panel=("SettingsPanel", {"override_mode": override_mode}))
         self.mechanisms = mechanism_manager
         # 
         self.selector.add_button("Insert", self.insert_mechanism)
-        self.add_button_delete("Remove", require_confirmation=False)
-        self.selector.add_button("Info", self.mechanisms.info_on_mechanism, require_selection=True, row=1)
+        if not override_mode:
+            self.add_button_delete("Remove", require_confirmation=False)
         # 
         self.controlled.add_empty_space()
         self.controlled.add_entry('magnitude', default=1.0)
@@ -108,8 +109,3 @@ class MechanismSelector(ManagementPanel):
                 continue
             self.parameters[x] = {}
             self.selector.insert(x)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    MechanismManager(root).get_widget().grid()
-    root.mainloop()

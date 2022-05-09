@@ -7,6 +7,8 @@ import sys
 import bisect
 import decimal
 
+# TODO: Add a vertical scroll bar to the SelectorPanel.
+
 __all__ = (
         'np',
         'tk', 'ttk',
@@ -51,8 +53,6 @@ class Panel:
     @classmethod
     def export(cls, parameters):
         return parameters
-
-# TODO: Add a vertical scroll bar to the SelectorPanel.
 
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
@@ -650,7 +650,10 @@ class SelectorPanel:
 
 class ManagementPanel(Panel):
     """ GUI element to use a SelectorPanel to control another panel. """
-    def __init__(self, parent, title, keep_sorted=True, custom_title=None, controlled_panel="SettingsPanel"):
+    def __init__(self, parent, title, *,
+                keep_sorted=True,
+                custom_title=None,
+                panel="SettingsPanel",):
         self.title      = str(title).title()
         self.parameters = {}
         self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
@@ -660,10 +663,11 @@ class ManagementPanel(Panel):
         self._inner_frame  = ttk.LabelFrame(self.frame, padding=padx,)
         self._inner_frame.grid(row=0, rowspan=2, column=2, sticky='nesw', padx=padx, pady=pady)
         self._set_title(None)
-        self._init_controlled_panel(controlled_panel)
+        self._init_controlled_panel(panel)
 
     def _init_controlled_panel(self, arguments):
-        if isinstance(arguments, str):
+        # Gather the panel_type and arguments.
+        if isinstance(arguments, str) or isinstance(arguments, type):
             panel_type = arguments
             args       = ()
             kwargs     = {}
@@ -684,16 +688,16 @@ class ManagementPanel(Panel):
                 panel_type, args, kwargs = arguments
             else:
                 raise TypeError(arguments)
-        if   panel_type == "SettingsPanel":
-            self.controlled = SettingsPanel(self._inner_frame, *args, **kwargs)
-        elif panel_type == "CustomSettingsPanel":
-            self.controlled = CustomSettingsPanel(self._inner_frame, *args, **kwargs)
-        elif panel_type == "OrganizerPanel":
-            self.controlled = OrganizerPanel(self._inner_frame, *args, **kwargs)
-        elif panel_type == "ManagementPanel":
-            self.controlled = ManagementPanel(self._inner_frame, *args, **kwargs)
-        else:
-            raise NotImplementedError(panel_type)
+        # 
+        builtin_panel_types = {
+            "SettingsPanel":        SettingsPanel,
+            "CustomSettingsPanel":  CustomSettingsPanel,
+            "OrganizerPanel":       OrganizerPanel,
+            "ManagementPanel":      ManagementPanel,
+        }
+        panel_type = builtin_panel_types.get(panel_type, panel_type)
+        # 
+        self.controlled = panel_type(self._inner_frame, *args, **kwargs)
         self.controlled.get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
 
     def _set_title(self, item):
