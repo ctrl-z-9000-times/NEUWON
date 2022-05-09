@@ -50,9 +50,6 @@ class Panel:
         raise NotImplementedError(type(self))
     def set_parameters(self, parameters):
         raise NotImplementedError(type(self))
-    @classmethod
-    def export(cls, parameters):
-        return parameters
 
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """

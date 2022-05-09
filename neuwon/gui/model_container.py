@@ -1,4 +1,4 @@
-from .species_editor    import SpeciesEditor
+from . import species_editor
 from .mechanism_editor  import MechanismManager
 from .neuron_editor     import SegmentEditor, NeuronEditor
 from .region_editor     import RegionEditor
@@ -37,7 +37,7 @@ class ModelContainer:
         return {
             'simulation':   parameters["simulation"],
             'mechanisms':   MechanismManager.export(    parameters["mechanisms"]),
-            'species':      SpeciesEditor.export(       parameters["species"]),
+            'species':      species_editor.export(      parameters["species"]),
             'regions':      RegionEditor.export(        parameters["regions"]),
             'segments':     SegmentEditor.export(       parameters["segments"]),
             'neurons':      NeuronEditor.export(        parameters["neurons"]),

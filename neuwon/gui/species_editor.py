@@ -1,8 +1,4 @@
 from .control_panels import *
-import sys
-
-maximum_float     = sys.float_info.max
-greater_than_zero = np.nextafter(0, 1)
 
 class SpeciesEditor(ManagementPanel):
     def __init__(self, root):
@@ -19,7 +15,7 @@ class SpeciesEditor(ManagementPanel):
                 units       = 'e')
 
         self.controlled.add_entry('diffusivity',
-                valid_range = (0, maximum_float),
+                valid_range = (0, max_float),
                 units       = '')
 
         self.controlled.add_entry('decay_period',
@@ -33,7 +29,7 @@ class SpeciesEditor(ManagementPanel):
                 default = "Const")
         reversal_entrybox = self.controlled.add_entry("const_reversal_potential",
                 title       = "",
-                valid_range = (-maximum_float, maximum_float),
+                valid_range = (-max_float, max_float),
                 units       = 'mV')
         def const_entrybox_control(*args):
             if reversal_type_var.get() == "Const":
@@ -48,7 +44,7 @@ class SpeciesEditor(ManagementPanel):
                 default     = True)
         self.controlled.add_entry('inside_initial_concentration',
                 title       = "Initial Concentration",
-                valid_range = (0, maximum_float),
+                valid_range = (0, max_float),
                 units       = 'mmol')
 
         self.controlled.add_section("Extracellular")
@@ -57,18 +53,11 @@ class SpeciesEditor(ManagementPanel):
                 default     = True)
         self.controlled.add_entry('outside_initial_concentration',
                 title       = "Initial Concentration",
-                valid_range = (0, maximum_float),
+                valid_range = (0, max_float),
                 units       = 'mmol')
 
-    @classmethod
-    def export(cls, parameters):
-        sim = {}
-        for name, gui in parameters.items():
-            sim[name] = {}
-        return sim
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.title("SpeciesEditor Test")
-    SpeciesEditor(root).get_widget().grid()
-    root.mainloop()
+def export(parameters):
+    sim = {}
+    for name, gui in parameters.items():
+        sim[name] = {}
+    return sim

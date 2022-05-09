@@ -2,21 +2,6 @@ from .control_panels import *
 from .mechanism_editor import MechanismSelector
 
 
-class SegmentEditor(ManagementPanel):
-    def __init__(self, parent, model_editor):
-        options_grid = {"morphology_type": [
-                "Soma",
-                "Dendrite",
-                "Axon",
-        ]}
-        super().__init__(parent, "Segment", panel=(SegmentSettings, (model_editor,)))
-
-        self.add_button_create(options_grid)
-        self.add_button_delete()
-        self.add_button_rename(row=1)
-        self.add_button_duplicate(row=1)
-
-
 class NeuronEditor(ManagementPanel):
     def __init__(self, parent, model_editor):
         self.segment_editor = model_editor.segments
@@ -96,6 +81,21 @@ class NeuronEditor(ManagementPanel):
                 instructions.append(segment_parameters)
             sim_parameters[neuron_type] = instructions
         return sim_parameters
+
+
+class SegmentEditor(ManagementPanel):
+    def __init__(self, parent, model_editor):
+        options_grid = {"morphology_type": [
+                "Soma",
+                "Dendrite",
+                "Axon",
+        ]}
+        super().__init__(parent, "Segment", panel=(SegmentSettings, (model_editor,)))
+
+        self.add_button_create(options_grid)
+        self.add_button_delete()
+        self.add_button_rename(row=1)
+        self.add_button_duplicate(row=1)
 
 
 class SegmentSettings(OrganizerPanel):
