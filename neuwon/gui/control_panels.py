@@ -448,6 +448,8 @@ class SettingsPanel(Panel):
         # Up/Down Arrow key controls.
         def arrow_key_control(direction, control_key):
             focus_out()
+            if entry.instate(('readonly',)):
+                return
             value = vv = variable.get()
             if isinstance(variable, tk.BooleanVar):
                 vv = not vv

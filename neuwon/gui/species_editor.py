@@ -34,8 +34,10 @@ class SpeciesEditor(ManagementPanel):
         def const_entrybox_control(*args):
             if reversal_type_var.get() == "Const":
                 reversal_entrybox.configure(state='enabled')
+                reversal_entrybox.configure(show='')
             else:
                 reversal_entrybox.configure(state='readonly')
+                reversal_entrybox.configure(show='*')
         reversal_type_var.trace_add("write", const_entrybox_control)
 
         self.controlled.add_section("Intracellular")
