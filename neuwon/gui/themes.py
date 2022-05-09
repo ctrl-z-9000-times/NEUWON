@@ -17,7 +17,7 @@ def set_theme(root, theme=None):
     root.set_theme(theme)
 
 def pick_theme(root):
-    window, frame = Toplevel("Select a Theme")
+    window, frame = Toplevel('Select a Theme')
     themes = sorted(root.get_themes())
     rows   = int(len(themes) ** .5)
     cols   = int(np.ceil(len(themes) / rows))
@@ -31,4 +31,4 @@ def pick_theme(root):
         frame.rowconfigure(row, weight=1)
     for col in range(cols):
         frame.columnconfigure(col, weight=1)
-    window.bind("<Escape>", lambda event: window.destroy())
+    window.bind('<Escape>', lambda event: window.destroy())

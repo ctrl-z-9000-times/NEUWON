@@ -5,17 +5,17 @@ import os.path
 
 class MechanismManager(ManagementPanel):
     def __init__(self, root):
-        super().__init__(root, "Mechanism", panel=("CustomSettingsPanel", ("filename",)))
+        super().__init__(root, 'Mechanism', panel=('CustomSettingsPanel', ('filename',)))
         # 
-        self.selector.add_button("Import", self.import_mechanisms)
-        self.add_button_delete("Remove")
+        self.selector.add_button('Import', self.import_mechanisms)
+        self.add_button_delete('Remove')
         self.add_button_rename(row=1)
-        self.selector.add_button("Info", self.info_on_mechanism, require_selection=True, row=1)
+        self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
         self.documentation = {}
 
     def import_mechanisms(self, selected):
         files = filedialog.askopenfilenames(
-                title="Import Mechanisms",
+                title='Import Mechanisms',
                 filetypes=[('NMODL', '.mod')])
         for abspath in files:
             name = os.path.splitext(os.path.basename(abspath))[0]
@@ -27,7 +27,7 @@ class MechanismManager(ManagementPanel):
 
     def set_parameters(self, parameters):
         for mech_name, mech_parameters in parameters.items():
-            filename = mech_parameters["filename"]
+            filename = mech_parameters['filename']
             try:
                 self.controlled.get_panel(filename)
             except KeyError:
@@ -40,19 +40,19 @@ class MechanismManager(ManagementPanel):
         for name, (value, units) in parser.gather_parameters().items():
             settings_panel.add_entry(name, title=name, default=value, units=units)
         name, point_process, title, description = parser.gather_documentation()
-        self.documentation[filename] = title + "\n\n" + description
+        self.documentation[filename] = title + '\n\n' + description
 
     def info_on_mechanism(self, selected):
-        window, frame = Toplevel(selected + " Documentation")
+        window, frame = Toplevel(selected + ' Documentation')
         # Display filename in a raised box.
-        filename = self.parameters[selected]["filename"]
+        filename = self.parameters[selected]['filename']
         fn = ttk.Label(frame, text=filename, padding=padx, relief='raised')
         fn.grid(row=0, column=0, padx=padx, pady=pad_top, sticky='e')
         # Button to copy the filename to the clipboard.
         def copy_filename():
             window.clipboard_clear()
             window.clipboard_append(filename)
-        copy = ttk.Button(frame, text="Copy", command=copy_filename)
+        copy = ttk.Button(frame, text='Copy', command=copy_filename)
         copy.grid(row=0, column=1, padx=padx, pady=pad_top, sticky='w')
         # Show documentation scraped from the NMODL file.
         docs = ttk.Label(frame, text=self.documentation[filename], justify='left', padding=padx)
@@ -63,24 +63,24 @@ class MechanismManager(ManagementPanel):
         sim = {}
         for name, gui in parameters.items():
             gui = dict(gui)
-            sim[name] = (gui.pop("filename"), gui)
+            sim[name] = (gui.pop('filename'), gui)
         return sim
 
 class MechanismSelector(ManagementPanel):
     def __init__(self, root, mechanism_manager, override_mode=False):
-        super().__init__(root, "Mechanism",
-                         panel=("SettingsPanel", {"override_mode": override_mode}))
+        super().__init__(root, 'Mechanism',
+                         panel=('SettingsPanel', {'override_mode': override_mode}))
         self.mechanisms = mechanism_manager
         # 
-        self.selector.add_button("Insert", self.insert_mechanism)
+        self.selector.add_button('Insert', self.insert_mechanism)
         if not override_mode:
-            self.add_button_delete("Remove", require_confirmation=False)
+            self.add_button_delete('Remove', require_confirmation=False)
         # 
         self.controlled.add_empty_space()
         self.controlled.add_entry('magnitude', default=1.0)
 
     def insert_mechanism(self, selected):
-        window, frame = Toplevel("Insert Mechanisms")
+        window, frame = Toplevel('Insert Mechanisms')
         mechanisms = sorted(self.mechanisms.parameters)
         listbox = tk.Listbox(frame, selectmode='extended', exportselection=True)
         listbox.grid(row=0, column=0, columnspan=2, padx=padx, pady=pad_top)
@@ -90,14 +90,14 @@ class MechanismSelector(ManagementPanel):
             for idx in listbox.curselection():
                 selection.append(mechanisms[idx])
             window.destroy()
-        ok = ttk.Button(frame, text="Ok",     command=ok_callback,)
-        no = ttk.Button(frame, text="Cancel", command=window.destroy,)
+        ok = ttk.Button(frame, text='Ok',     command=ok_callback,)
+        no = ttk.Button(frame, text='Cancel', command=window.destroy,)
         ok.grid(row=1, column=0, padx=2*padx, pady=pad_top, sticky='ew')
         no.grid(row=1, column=1, padx=2*padx, pady=pad_top, sticky='ew')
         # 
         listbox.focus_set()
-        listbox.bind("<Double-Button-1>", lambda event: ok_callback())
-        window .bind("<Escape>", lambda event: window.destroy())
+        listbox.bind('<Double-Button-1>', lambda event: ok_callback())
+        window .bind('<Escape>', lambda event: window.destroy())
         # Make the dialog window modal. This prevents user interaction with
         # any other application window until this dialog is resolved.
         window.grab_set()
