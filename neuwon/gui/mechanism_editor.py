@@ -80,7 +80,7 @@ class MechanismSelector(ManagementPanel):
         self.controlled.add_entry('magnitude', default=1.0)
 
     def insert_mechanism(self, selected):
-        window, frame = Toplevel("Select Mechanisms to Insert")
+        window, frame = Toplevel("Insert Mechanisms")
         mechanisms = sorted(self.mechanisms.parameters)
         listbox = tk.Listbox(frame, selectmode='extended', exportselection=True)
         listbox.grid(row=0, column=0, columnspan=2, padx=padx, pady=pad_top)
@@ -92,8 +92,8 @@ class MechanismSelector(ManagementPanel):
             window.destroy()
         ok = ttk.Button(frame, text="Ok",     command=ok_callback,)
         no = ttk.Button(frame, text="Cancel", command=window.destroy,)
-        ok.grid(row=1, column=0, padx=2*padx, pady=pad_top)
-        no.grid(row=1, column=1, padx=2*padx, pady=pad_top)
+        ok.grid(row=1, column=0, padx=2*padx, pady=pad_top, sticky='ew')
+        no.grid(row=1, column=1, padx=2*padx, pady=pad_top, sticky='ew')
         # 
         listbox.focus_set()
         listbox.bind("<Double-Button-1>", lambda event: ok_callback())

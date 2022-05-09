@@ -1,6 +1,6 @@
 from .control_panels import *
 from .mechanism_editor import MechanismSelector
-from tkinter import simpledialog
+
 
 class SegmentEditor(ManagementPanel):
     def __init__(self, parent, model_editor):
@@ -34,9 +34,39 @@ class NeuronEditor(ManagementPanel):
         self.segments.add_buttons_up_down(row=1)
 
     def _add_segment_to_neuron(self, selected):
-        seg_types = sorted(self.segment_editor.get_parameters().keys())
-        dialog    = _AddSegmentToNeuron(self.segments.get_widget(), seg_types)
-        selected  = dialog.selected
+        segment_types = sorted(self.segment_editor.get_parameters().keys())
+        selected = None
+        def ok_callback(event=None):
+            nonlocal selected
+            idx = listbox.curselection()
+            if idx:
+                selected = segment_types[idx[0]]
+                window.destroy()
+            else:
+                listbox.focus_set()
+                window.bell()
+        # Create the widgets.
+        window, frame = Toplevel("Select Segment")
+        label = ttk.Label(frame, text="Select a segment type to\nadd to the neuron type:")
+        listbox = tk.Listbox(frame, selectmode='browse', exportselection=True)
+        listbox.insert(0, *segment_types)
+        ok = ttk.Button(frame, text="Ok",     command=ok_callback,)
+        no = ttk.Button(frame, text="Cancel", command=window.destroy,)
+        # Arrange the widgets.
+        label.grid(row=0, columnspan=2)
+        listbox.grid(row=1, columnspan=2, padx=padx, pady=pad_top)
+        ok.grid(row=2, column=0, padx=2*padx, pady=pad_top, sticky='ew')
+        no.grid(row=2, column=1, padx=2*padx, pady=pad_top, sticky='ew')
+        # 
+        listbox.bind("<Double-Button-1>", ok_callback)
+        listbox.bind("<Escape>", lambda event: window.destroy())
+        listbox.focus_set()
+        # Make the dialog window modal. This prevents user interaction with
+        # any other application window until this dialog is resolved.
+        window.grab_set()
+        window.transient(self.get_widget())
+        window.wait_window(window)
+        # 
         if selected is None:
             return
         if selected in self.segments.parameters:
@@ -67,36 +97,13 @@ class NeuronEditor(ManagementPanel):
             sim_parameters[neuron_type] = instructions
         return sim_parameters
 
-class _AddSegmentToNeuron(simpledialog.Dialog):
-    def __init__(self, parent, segment_types):
-        self.selected = None
-        self.segment_types = segment_types
-        super().__init__(parent, "Select Segment")
-
-    def body(self, parent):
-        parent = ttk.Frame(parent)
-        parent.grid(sticky='nesw')
-        label = ttk.Label(parent, text="Select a segment type to\nadd to the neuron type:")
-        label.grid(row=0)
-        self.listbox = tk.Listbox(parent, selectmode='browse', exportselection=True)
-        self.listbox.insert(0, *self.segment_types)
-        self.listbox.grid(row=1, padx=padx, pady=pad_top)
-        self.listbox.bind("<Double-Button-1>", self.ok)
-        return self.listbox
-
-    def validate(self):
-        idx = self.listbox.curselection()
-        if not idx:
-            return False
-        self.selected = self.segment_types[idx[0]]
-        return True
-
 
 class SegmentSettings(OrganizerPanel):
     def __init__(self, parent, model_editor, override_mode=False):
         super().__init__(parent)
         frame = self.get_widget()
-        self.add_tab('morphology', Morphology(frame, model_editor, override_mode=override_mode))
+        self.add_tab('morphology', MorphologyEditor(frame, model_editor,
+                override_mode=override_mode))
         self.add_tab('mechanisms', MechanismSelector(frame, model_editor.mechanisms,
                 override_mode=override_mode))
 
@@ -107,15 +114,16 @@ class SegmentSettings(OrganizerPanel):
         super().set_parameters(parameters)
 
 
-class Morphology(CustomSettingsPanel):
+class MorphologyEditor(CustomSettingsPanel):
     def __init__(self, parent, model_editor, override_mode=False):
         super().__init__(parent, "morphology_type")
         self.model_editor = model_editor
-        soma_settings     = self.add_settings_panel("Soma",     override_mode=override_mode)
-        dendrite_settings = self.add_settings_panel("Dendrite", override_mode=override_mode)
-        self.add_panel("Axon", self.get_panel("Dendrite"))
+        soma_settings = self.add_settings_panel("Soma",     override_mode=override_mode)
+        dend_settings = self.add_settings_panel("Dendrite", override_mode=override_mode)
+        axon_settings = self.add_settings_panel("Axon",     override_mode=override_mode)
         self._init_soma_settings(soma_settings)
-        self._init_dendrite_settings(dendrite_settings)
+        self._init_dendrite_settings(dend_settings)
+        self._init_dendrite_settings(axon_settings)
 
     def _init_soma_settings(self, settings_panel):
         settings_panel.add_entry("Number", tk.IntVar(),
