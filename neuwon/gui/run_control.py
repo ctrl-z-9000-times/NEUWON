@@ -4,9 +4,6 @@ from .model_container import ModelContainer
 from .signal_editor import SignalEditor
 from neuwon import Model
 from .viewport import Viewport
-import pygame
-
-import pprint # DEBUGGING!
 
 class RunControl:
     def __init__(self, filename):
@@ -19,10 +16,10 @@ class RunControl:
         self._init_menu(self.root)
         self._init_main_panel(self.root)
         self.parameters = self.model.load()
-        pprint.pprint(self.model.export()) # DEBUGGING!
         self.model.model = Model(**self.model.export())
+        self.model.model.get_database().sort()
         self.viewport = Viewport()
-        self.viewport.set_scene(self.model.model.get_database())
+        self.viewport.set_scene(self.model.model)
         self.root.after(0, self._tick)
 
     def _init_menu(self, parent):
