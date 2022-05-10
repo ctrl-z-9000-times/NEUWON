@@ -228,7 +228,7 @@ class Viewport:
         else:
             pygame.mouse.set_visible(True)
 
-        print(self.scene.get_segment(self.camera, pygame.mouse.get_pos()))
+        # print(self.scene.get_segment(self.camera, pygame.mouse.get_pos()))
 
         self.scene.draw(self.camera, colors, self.background_color)
         pygame.display.flip()

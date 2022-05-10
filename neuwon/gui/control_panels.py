@@ -3,6 +3,7 @@
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, messagebox
+from collections.abc import Callable, Iterable, Mapping
 import sys
 import bisect
 import decimal
@@ -223,6 +224,9 @@ class SettingsPanel(Panel):
 
     def add_dropdown(self, parameter_name, options_callback, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
+        if not isinstance(options_callback, Callable) and isinstance(options_callback, Iterable):
+            options_list     = list(options_callback)
+            options_callback = lambda: options_list
         assert parameter_name not in self._variables
         if variable is None: variable = tk.StringVar()
         self._variables[parameter_name] = variable
@@ -547,7 +551,7 @@ class SelectorPanel:
         # 
         self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=True)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
-        self.listbox.grid(row=1, column=0, sticky='nsw')
+        self.listbox.grid(row=1, column=0, sticky='nesw')
         self.frame.grid_rowconfigure(1, weight=1)
         self.frame.grid_columnconfigure(0, weight=0)
 

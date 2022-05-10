@@ -25,7 +25,7 @@ def pick_theme(root):
         def make_closure():
             current_name = name
             return lambda: set_theme(root, current_name)
-        button = ttk.Button(frame, text=name, command=make_closure())
+        button = ttk.Button(frame, text=name.title(), command=make_closure())
         button.grid(row=idx//cols, column=idx%cols, padx=padx, pady=pady)
     for row in range(rows):
         frame.rowconfigure(row, weight=1)
