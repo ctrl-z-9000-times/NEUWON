@@ -62,6 +62,15 @@ chapter 4 of the NEURON book.
 Carnevale N, & Hines M (2006)  
 https://doi.org/10.1017/CBO9780511541612
 
+### Database
+
+NEUWON implements an in-memory database for managing the state of the
+simulation. Internally it uses the structure-of-arrays format, and it provides
+users with a more familiar object-oriented-programming interface for accessing
+the data. The database also provides ancillary features for managing data such
+as: error checking, sorting, recording, moving data to/from a graphic card, and
+executing python functions on the database using JIT compilation.
+
 ## Installation
 
 #### Prerequisites
@@ -99,54 +108,3 @@ The root of the parameter structure is a `dict` with the following entries:
 |regions | This section specifies the large-scale 3D areas in which the model and its various parts are physically located. |
 |neurons | |
 |synapses | |
-
-[TODO: Consider splitting the model specification off into a separate document
-and linking to it.]
-
-[TODO: finish describing how to specify the model, and give/link to an example.]
-
-### simulation
-
-|Parameter Name | Default | Units | Description |
-|:---|---:|:---|---|
-|time_step | 0.1 | Milliseconds |
-|temperature | 37 | °C |
-|initial_voltage | -70 | mV | |
-|cytoplasmic_resistance | 100 | | |
-|membrane_capacitance |  1.0 | uf/cm^2 | |
-|extracellular_tortuosity |  1.55 | | |
-|extracellular_max_distance |  20e-6 | um | |
-
-### Species Parameters
-
-|Parameter Name | Description |
-|:---|:---|
-|charge | |
-|reversal_potential | |
-|initial_concentration | |
-
-### Mechanism Parameters
-
-### Region Parameters
-
-### Neuron Parameters
-
-|Neuron Soma Parameters | Description |
-|:---|:---|
-| | |
-
-|Neuron Segment Parameters | Description |
-|:---|:---|
-| | |
-
-### Synapse Parameters
-
-|Parameter | Description |
-|:---|:---|
-|number | |
-|region | |
-|cleft_volume | |
-|cleft_spillover_area | |
-|attachment_points | |
-| | |
-
