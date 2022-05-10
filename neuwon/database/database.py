@@ -595,7 +595,7 @@ class DB_Class(Documentation):
         for ref in self.instances:
             inst = ref()
             if inst:
-                inst._idx = old_to_new[inst._idx]
+                inst._idx = int(old_to_new[inst._idx])
         # Bookkeeping.
         self.size = len(new_to_old)
         self._destroyed_list = []
