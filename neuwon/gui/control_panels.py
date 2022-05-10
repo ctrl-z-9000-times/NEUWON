@@ -190,7 +190,7 @@ class SettingsPanel(Panel):
                 value = idx
             button = ttk.Radiobutton(btn_row, text=x, variable=variable, value=value)
             buttons.append(button)
-        variable.trace_add("write", self._call_callbacks)
+        variable.trace_add('write', self._call_callbacks)
         # Arrange the widgets.
         for column, button in enumerate(buttons):
             button.grid(row=0, column=column, pady=pady)
@@ -204,12 +204,12 @@ class SettingsPanel(Panel):
                 if changed:
                     self._changed.add(parameter_name)
                     for button in buttons:
-                        button.configure(style="Changed.TRadiobutton")
+                        button.configure(style='Changed.TRadiobutton')
                 else:
                     variable.set(self._defaults[parameter_name])
                     self._changed.discard(parameter_name)
                     for button in buttons:
-                        button.configure(style="TRadiobutton")
+                        button.configure(style='TRadiobutton')
             self._set_changed_state[parameter_name] = set_changed_state
             def on_select():
                 if (parameter_name not in self._changed) and (variable.get() == self._defaults[parameter_name]):
@@ -217,8 +217,8 @@ class SettingsPanel(Panel):
                 set_changed_state(True)
             for button in buttons:
                 button.configure(command=on_select)
-                button.bind("<BackSpace>", lambda event: set_changed_state(False))
-                button.bind("<Delete>",    lambda event: set_changed_state(False))
+                button.bind('<BackSpace>', lambda event: set_changed_state(False))
+                button.bind('<Delete>',    lambda event: set_changed_state(False))
         return buttons
 
     def add_dropdown(self, parameter_name, options_callback, variable=None, *, title=None, default=None):
@@ -240,8 +240,8 @@ class SettingsPanel(Panel):
         label = ttk.Label(self.frame, text=title)
         menu  = ttk.Combobox(self.frame, textvar=variable, postcommand=postcommand)
         menu.configure(state='readonly')
-        menu.bind("<<ComboboxSelected>>", lambda event: menu.selection_clear())
-        variable.trace_add("write", self._call_callbacks)
+        menu.bind('<<ComboboxSelected>>', lambda event: menu.selection_clear())
+        variable.trace_add('write', self._call_callbacks)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
         menu .grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
@@ -251,20 +251,20 @@ class SettingsPanel(Panel):
             def set_changed_state(changed):
                 if changed:
                     self._changed.add(parameter_name)
-                    menu.configure(style="Changed.TCombobox")
+                    menu.configure(style='Changed.TCombobox')
                 else:
                     variable.set(self._defaults[parameter_name])
                     self._changed.discard(parameter_name)
-                    menu.configure(style="TCombobox")
+                    menu.configure(style='TCombobox')
             self._set_changed_state[parameter_name] = set_changed_state
             def on_select():
                 menu.selection_clear()
                 if (parameter_name not in self._changed) and (variable.get() == self._defaults[parameter_name]):
                     return
                 set_changed_state(True)
-            menu.bind("<<ComboboxSelected>>", lambda event: on_select())
-            menu.bind("<BackSpace>", lambda event: set_changed_state(False))
-            menu.bind("<Delete>",    lambda event: set_changed_state(False))
+            menu.bind('<<ComboboxSelected>>', lambda event: on_select())
+            menu.bind('<BackSpace>', lambda event: set_changed_state(False))
+            menu.bind('<Delete>',    lambda event: set_changed_state(False))
         return menu
 
     def add_checkbox(self, parameter_name, variable=None, *, title=None, default=None):
@@ -278,7 +278,7 @@ class SettingsPanel(Panel):
         # Create the widgets.
         label  = ttk.Label(self.frame, text=title)
         button = ttk.Checkbutton(self.frame, variable=variable,)
-        variable.trace_add("write", self._call_callbacks)
+        variable.trace_add('write', self._call_callbacks)
         # Arrange the widgets.
         label .grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
         button.grid(row=self._row_idx, column=self._col_idx+1, sticky='w', padx=padx, pady=pady)
@@ -288,18 +288,18 @@ class SettingsPanel(Panel):
             def set_changed_state(changed):
                 if changed:
                     self._changed.add(parameter_name)
-                    button.configure(style="Changed.TCheckbutton")
+                    button.configure(style='Changed.TCheckbutton')
                 else:
                     variable.set(self._defaults[parameter_name])
                     self._changed.discard(parameter_name)
-                    button.configure(style="TCheckbutton")
+                    button.configure(style='TCheckbutton')
             self._set_changed_state[parameter_name] = set_changed_state
             button.configure(command = lambda:       set_changed_state(True))
-            button.bind("<BackSpace>", lambda event: set_changed_state(False))
-            button.bind("<Delete>",    lambda event: set_changed_state(False))
+            button.bind('<BackSpace>', lambda event: set_changed_state(False))
+            button.bind('<Delete>',    lambda event: set_changed_state(False))
         return button
 
-    def add_slider(self, parameter_name, valid_range, variable=None, *, title=None, default=None, units=""):
+    def add_slider(self, parameter_name, valid_range, variable=None, *, title=None, default=None, units=''):
         # Clean and save the arguments.
         assert parameter_name not in self._variables
         if variable is None: variable = tk.DoubleVar()
@@ -328,8 +328,8 @@ class SettingsPanel(Panel):
             bridge_active = True
             variable.set(ttk_value * resolution)
             bridge_active = False
-        variable.trace_add("write", bridge_to_tkinter)
-        rescaled.trace_add("write", bridge_to_application)
+        variable.trace_add('write', bridge_to_tkinter)
+        rescaled.trace_add('write', bridge_to_application)
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
         scale = ttk.Scale(self.frame, variable=rescaled,
@@ -343,9 +343,9 @@ class SettingsPanel(Panel):
             v = round(variable.get(), round_to)
             if round_to == 0:
                 v = int(v)
-            value.configure(text=(str(v) + " " + units))
-        variable.trace_add("write", update_value_label)
-        variable.trace_add("write", self._call_callbacks)
+            value.configure(text=(str(v) + ' ' + units))
+        variable.trace_add('write', update_value_label)
+        variable.trace_add('write', self._call_callbacks)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
         scale.grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
@@ -356,22 +356,22 @@ class SettingsPanel(Panel):
             def set_changed_state(changed):
                 if changed:
                     self._changed.add(parameter_name)
-                    scale.configure(style="Changed.Horizontal.TScale")
+                    scale.configure(style='Changed.Horizontal.TScale')
                 else:
                     variable.set(self._defaults[parameter_name])
                     self._changed.discard(parameter_name)
-                    scale.configure(style="Horizontal.TScale")
+                    scale.configure(style='Horizontal.TScale')
             self._set_changed_state[parameter_name] = set_changed_state
             scale.configure(command = lambda v:     set_changed_state(True))
-            scale.bind("<BackSpace>", lambda event: set_changed_state(False))
-            scale.bind("<Delete>",    lambda event: set_changed_state(False))
+            scale.bind('<BackSpace>', lambda event: set_changed_state(False))
+            scale.bind('<Delete>',    lambda event: set_changed_state(False))
             # By default mouse-1 doesn't focus on the slider, which is needed for the backspace binding.
-            scale.bind("<Button-1>", lambda event: scale.focus_set())
+            scale.bind('<Button-1>', lambda event: scale.focus_set())
         # Set the initial value and force tkinter to call all of the bound events.
         variable.set(self._defaults[parameter_name])
         return scale
 
-    def add_entry(self, parameter_name, variable=None, *, title=None, valid_range=(None, None), default=None, units=""):
+    def add_entry(self, parameter_name, variable=None, *, title=None, valid_range=(None, None), default=None, units=''):
         # Clean and save the arguments.
         assert parameter_name not in self._variables
         if variable is None: variable = tk.DoubleVar()
@@ -391,11 +391,11 @@ class SettingsPanel(Panel):
             def set_changed_state(changed):
                 if changed:
                     self._changed.add(parameter_name)
-                    entry.configure(style="Changed.TEntry")
+                    entry.configure(style='Changed.TEntry')
                 else:
                     variable.set(self._defaults[parameter_name])
                     self._changed.discard(parameter_name)
-                    entry.configure(style="TEntry")
+                    entry.configure(style='TEntry')
             self._set_changed_state[parameter_name] = set_changed_state
         # Custom input validation.
         if isinstance(variable, tk.BooleanVar):
@@ -474,10 +474,10 @@ class SettingsPanel(Panel):
             if self._override_mode and value != vv:
                 set_changed_state(True)
             self._call_callbacks()
-        entry.bind("<Up>",           lambda event: arrow_key_control(+1, False))
-        entry.bind("<Down>",         lambda event: arrow_key_control(-1, False))
-        entry.bind("<Control-Up>",   lambda event: arrow_key_control(+1, True))
-        entry.bind("<Control-Down>", lambda event: arrow_key_control(-1, True))
+        entry.bind('<Up>',           lambda event: arrow_key_control(+1, False))
+        entry.bind('<Down>',         lambda event: arrow_key_control(-1, False))
+        entry.bind('<Control-Up>',   lambda event: arrow_key_control(+1, True))
+        entry.bind('<Control-Down>', lambda event: arrow_key_control(-1, True))
         # Set the default/initial value and also convert it to the correct datatype.
         default_value = validate_type(default if default is not None else variable.get())
         self._defaults[parameter_name] = default_value
@@ -652,7 +652,7 @@ class ManagementPanel(Panel):
     def __init__(self, parent, title:str, *,
                 keep_sorted:bool=True,
                 custom_title=None,
-                panel="SettingsPanel",):
+                panel='SettingsPanel',):
         self.title      = str(title).title()
         self.parameters = {}
         self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
@@ -689,10 +689,10 @@ class ManagementPanel(Panel):
                 raise TypeError(arguments)
         # 
         builtin_panel_types = {
-            "SettingsPanel":        SettingsPanel,
-            "CustomSettingsPanel":  CustomSettingsPanel,
-            "OrganizerPanel":       OrganizerPanel,
-            "ManagementPanel":      ManagementPanel,
+            'SettingsPanel':        SettingsPanel,
+            'CustomSettingsPanel':  CustomSettingsPanel,
+            'OrganizerPanel':       OrganizerPanel,
+            'ManagementPanel':      ManagementPanel,
         }
         panel_type = builtin_panel_types.get(panel_type, panel_type)
         # 
@@ -702,11 +702,11 @@ class ManagementPanel(Panel):
     def _set_title(self, item):
         # By default, display the primary title and the currently selected item.
         if item is None:
-            text = f"{self.title}: nothing selected"
+            text = f'{self.title}: nothing selected'
         elif self._custom_title is not None:
             text = self._custom_title(item)
         else:
-            text = f"{self.title}: {item}"
+            text = f'{self.title}: {item}'
         self._inner_frame.configure(text=text)
 
     def _on_select(self, old_item, new_item):
@@ -751,7 +751,7 @@ class ManagementPanel(Panel):
             raise ValueError()
         if name in self.parameters:
             self.frame.bell()
-            messagebox.showerror(f"{self.title} Name Error",
+            messagebox.showerror(f'{self.title} Name Error',
                     f'{self.title} "{name}" is already defined!')
             raise ValueError()
         return name
@@ -762,11 +762,11 @@ class ManagementPanel(Panel):
                 The value is a grid of options for the user to select from.
                 The key is the parameter_name that their selection is assigned to.
         """
-        title  = f"Create {self.title}"
-        prompt = f"Enter new {self.title.lower()} name:"
+        title  = f'Create {self.title}'
+        prompt = f'Enter new {self.title.lower()} name:'
         def _default_new_name():
             number = len(self.selector.get_list()) + 1
-            return f"{self.title}_{number}"
+            return f'{self.title}_{number}'
         if radio_options is not None:
             key, options = radio_options.popitem()
             assert not radio_options
@@ -796,14 +796,14 @@ class ManagementPanel(Panel):
                 else:
                     self.parameters[name] = {}
                 self.selector.insert(name)
-        button = self.selector.add_button("New", _callback, row=row)
+        button = self.selector.add_button('New', _callback, row=row)
 
-    def add_button_delete(self, text:str="Delete", callback=None, require_confirmation=True, row=0):
+    def add_button_delete(self, text:str='Delete', callback=None, require_confirmation=True, row=0):
         text = text.title()
         def _callback(name):
             if require_confirmation:
-                confirmation = messagebox.askyesno(f"Confirm {text} {self.title}",
-                        f"Are you sure you want to {text.lower()} {self.title.lower()} '{name}'?",
+                confirmation = messagebox.askyesno(f'Confirm {text} {self.title}',
+                        f'Are you sure you want to {text.lower()} {self.title.lower()} "{name}"?',
                         parent=self.frame)
                 if not confirmation:
                     return
@@ -811,12 +811,12 @@ class ManagementPanel(Panel):
             self.parameters.pop(name)
             if callback is not None: callback(name)
         button = self.selector.add_button(text, _callback, require_selection=True, row=row)
-        self.selector.listbox.bind("<Delete>",    lambda event: button.invoke())
-        self.selector.listbox.bind("<BackSpace>", lambda event: button.invoke())
+        self.selector.listbox.bind('<Delete>',    lambda event: button.invoke())
+        self.selector.listbox.bind('<BackSpace>', lambda event: button.invoke())
 
     def add_button_rename(self, callback=None, row=0):
         def _callback(name):
-            new_name = _askstring(f"Rename {self.title}",
+            new_name = _askstring(f'Rename {self.title}',
                     f'Rename {self.title.lower()} "{name}" to:',
                     name, parent=self.frame)
             try:
@@ -827,12 +827,12 @@ class ManagementPanel(Panel):
             self.selector.rename(name, new_name)
             self.parameters.pop(name)
             if callback is not None: callback(name, new_name)
-        self.selector.add_button("Rename", _callback, require_selection=True, row=row)
+        self.selector.add_button('Rename', _callback, require_selection=True, row=row)
 
     def add_button_duplicate(self, row=0):
         def _callback(name):
-            new_name = _askstring(f"Duplicate {self.title}",
-                                              f"Enter new {self.title.lower()} name:",
+            new_name = _askstring(f'Duplicate {self.title}',
+                                              f'Enter new {self.title.lower()} name:',
                                               parent=self.frame)
             try:
                 new_name = self._clean_new_name(new_name)
@@ -840,15 +840,15 @@ class ManagementPanel(Panel):
                 return
             self.parameters[new_name] = dict(self.parameters[name]) # Should this be a deep-copy?
             self.selector.insert(new_name)
-        self.selector.add_button("Duplicate", _callback, require_selection=True, row=row)
+        self.selector.add_button('Duplicate', _callback, require_selection=True, row=row)
 
     def add_buttons_up_down(self, row=0):
         up   = lambda name: self.selector.move(name, -1)
         down = lambda name: self.selector.move(name, +1)
-        self.selector.add_button("Move Up",   up,   require_selection=True, row=row)
-        self.selector.add_button("Move Down", down, require_selection=True, row=row)
+        self.selector.add_button('Move Up',   up,   require_selection=True, row=row)
+        self.selector.add_button('Move Down', down, require_selection=True, row=row)
 
-def _askstring(title, prompt, default="", options_grid=None, *, parent):
+def _askstring(title, prompt, default='', options_grid=None, *, parent):
         # 
         response = tk.StringVar(value=default)
         def ok_callback(event=None):
@@ -858,15 +858,15 @@ def _askstring(title, prompt, default="", options_grid=None, *, parent):
             else:
                 window.destroy()
         def cancel_callback(event=None):
-            response.set("")
+            response.set('')
             window.destroy()
         # Make the widgets.
         window, frame = Toplevel(title)
         label  = ttk.Label(frame, text=prompt)
         entry  = ttk.Entry(frame, textvar=response)
         radio  = ttk.Frame(frame)
-        ok     = ttk.Button(frame, text="Ok",     command=ok_callback,)
-        cancel = ttk.Button(frame, text="Cancel", command=cancel_callback,)
+        ok     = ttk.Button(frame, text='Ok',     command=ok_callback,)
+        cancel = ttk.Button(frame, text='Cancel', command=cancel_callback,)
         # Arrange the widgets.
         label.grid(row=0, columnspan=2, padx=padx, pady=pady)
         entry.grid(row=1, columnspan=2, padx=padx, pady=pady, sticky='ew')
@@ -881,8 +881,8 @@ def _askstring(title, prompt, default="", options_grid=None, *, parent):
                     button = ttk.Radiobutton(radio, text=value, variable=choice, value=value)
                     button.grid(row=row_idx, column=col_idx, sticky='w', padx=padx, pady=pady)
         # 
-        entry .bind("<Return>", ok_callback)
-        window.bind("<Escape>", cancel_callback)
+        entry .bind('<Return>', ok_callback)
+        window.bind('<Escape>', cancel_callback)
         entry.focus_set()
         entry.select_range(0, tk.END)
         # Make the dialog window modal. This prevents user interaction with
@@ -906,10 +906,10 @@ class OrganizerPanel(Panel):
 
     def add_tab(self, title:str, panel):
         """ This also saves the panel as an attribute on this object. """
-        assert title not in dir(self), "Duplicate panel or name conflict!"
+        assert title not in dir(self), 'Duplicate panel or name conflict!'
         setattr(self, title, panel)
         self.tabs[title] = panel
-        self.notebook.add(panel.frame, text=title.title(),
+        self.notebook.add(panel.frame, text=title.title().replace('_', ' '),
                 sticky='nesw', padding=(padx, pad_top))
 
     def get_parameters(self):

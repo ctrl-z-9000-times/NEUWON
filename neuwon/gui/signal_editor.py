@@ -124,9 +124,3 @@ class SignalEditor(ManagementPanel):
                     period      = signal_parameters['period'])
         else:
             raise NotImplementedError(signal_type)
-
-if __name__ == '__main__':
-    root = tk.Tk()
-    root.title('SignalEditor Test')
-    SignalEditor(root).get_widget().grid()
-    root.mainloop()

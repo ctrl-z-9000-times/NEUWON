@@ -175,6 +175,10 @@ class Scene:
             return segment
 
 class Viewport:
+    """
+    This class opens the viewport window, embeds the rendered scene,
+    and handles the user input.
+    """
     def __init__(self, window_size=(2*640,2*480),
                 move_speed = .02,
                 mouse_sensitivity = .001,):
@@ -183,12 +187,11 @@ class Viewport:
         self.sprint_modifier = 5 # Shift key move_speed multiplier.
         self.background_color = [0,0,0,0]
         self.alive = True
-        # Setup pygame and OpenGL.
+        # Setup pygame.
         pygame.init()
         pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
         self.clock = pygame.time.Clock()
-        self.window_size = pygame.display.get_window_size()
-        self.camera = Camera(self.window_size, 45, 10e3)
+        self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
 
     def set_scene(self, database, *args):
         self.scene = Scene(database)
