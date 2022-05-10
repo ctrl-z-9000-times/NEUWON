@@ -70,6 +70,42 @@ class Scene:
             glColorPointer(4, GL_FLOAT, 0, colors)
         else: raise ValueError(color_depth)
 
+    def get_segment(self, window_size, screen_coordinates):
+        x, y = screen_coordinates
+        y = window_size[1] - y
+
+        colors = np.empty((len(self.vertices), 3), dtype=np.uint8)
+        mask = 2**8 - 1
+        np.bitwise_and(self.segments, mask,       out=colors[:,0])
+        np.bitwise_and(self.segments, mask << 8,  out=colors[:,1])
+        np.bitwise_and(self.segments, mask << 16, out=colors[:,2])
+
+        # Only render a single pixel.
+        glScissor(x, y, 1, 1)
+        glEnable(GL_SCISSOR_TEST)
+
+        glClearColor(1.0, 1.0, 1.0, 1.0)
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glVertexPointer(3, GL_FLOAT, 0, self.vertices)
+        glEnableClientState(GL_COLOR_ARRAY)
+        glColorPointer(3, GL_UNSIGNED_BYTE, 0, colors)
+        glDrawElements(GL_TRIANGLES, 3 * len(self.indices), GL_UNSIGNED_INT, self.indices)
+
+        glFlush()
+        glFinish()
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+        color = glReadPixels(x, y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE)
+        segment = color[0] + (color[1] << 8) + (color[2] << 16)
+        print(segment)
+
+        # Restore OpenGL settings.
+        glDisable(GL_SCISSOR_TEST)
+
+
+        # return segment
+
 class Viewport:
     def __init__(self, window_size=(2*640,2*480),
                 move_speed = .02,
@@ -130,8 +166,11 @@ class Viewport:
             pygame.mouse.set_visible(True)
 
         self.setup_camera()
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+        self.scene.get_segment(self.window_size, pygame.mouse.get_pos()) # DEBUGGING!
+
+        self.setup_camera()
         glClearColor(*self.background_color)
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         self.scene.draw(colors=colors)
         pygame.display.flip()
         if False:
