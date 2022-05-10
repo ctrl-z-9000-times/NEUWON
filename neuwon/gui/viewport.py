@@ -88,6 +88,7 @@ class Viewport:
         self.camera_forward = np.array([ 0.0, 0.0, -1.0])
         self.update_camera_rotation_matrix()
         # Setup pygame and OpenGL.
+        self.alive = True
         pygame.init()
         pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
         self.clock = pygame.time.Clock()
@@ -102,12 +103,17 @@ class Viewport:
         else:
             self.scene = Scene(scene_or_database, *args)
 
+    def close(self):
+        pygame.quit()
+        self.alive = False
+
     def tick(self, colors=None):
         dt = self.clock.tick()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
+                self.close()
+                return
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     self.mouse_pos = event.pos

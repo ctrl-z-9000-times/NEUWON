@@ -58,6 +58,7 @@ class RunControl:
         if self.model.filename is None:
             return
         self.close()
+        self.viewport.close()
         from .model_editor import ModelEditor
         ModelEditor(self.model.filename)
 
@@ -69,13 +70,11 @@ class RunControl:
 
     def close(self, event=None):
         self.root.destroy()
+        self.viewport.close()
 
     def _tick(self):
-        try:
-            self.viewport.tick()
-        except pygame.error:
-            print("Viewport closed.")
-        else:
+        self.viewport.tick()
+        if self.viewport.alive:
             self.root.after(1, self._tick)
 
 if __name__ == '__main__':
