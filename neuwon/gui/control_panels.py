@@ -34,7 +34,7 @@ max_int           = sys.maxsize
 greater_than_zero = np.nextafter(0, 1)
 less_than_one     = np.nextafter(1, 0)
 
-def Toplevel(title):
+def Toplevel(title:str):
         window = tk.Toplevel()
         window.title(title)
         window.rowconfigure(   0, weight=1)
@@ -46,9 +46,9 @@ def Toplevel(title):
 class Panel:
     def get_widget(self):
         return self.frame
-    def get_parameters(self):
+    def get_parameters(self) -> dict:
         raise NotImplementedError(type(self))
-    def set_parameters(self, parameters):
+    def set_parameters(self, parameters:dict):
         raise NotImplementedError(type(self))
 
 class SettingsPanel(Panel):
@@ -158,7 +158,7 @@ class SettingsPanel(Panel):
         self.frame.rowconfigure(self._row_idx, minsize=size)
         self._incr_row_idx()
 
-    def add_section(self, title):
+    def add_section(self, title:str):
         """ Cosmetic, add a label and dividing line over a group of settings. """
         if self._row_idx > 0:
             bar = ttk.Separator(self.frame, orient='horizontal')
@@ -486,21 +486,21 @@ class SettingsPanel(Panel):
 
 class CustomSettingsPanel(Panel):
     """ GUI element to show different SettingsPanels depending on the current parameters. """
-    def __init__(self, parent, key_parameter):
+    def __init__(self, parent, key_parameter:str):
         self.frame    = ttk.Frame(parent)
         self._key     = str(key_parameter)
         self._options = {}
         self._current = None
 
-    def add_panel(self, name, panel):
+    def add_panel(self, name:str, panel):
         name = str(name)
         assert name not in self._options
         self._options[name] = panel
 
-    def get_panel(self, name):
+    def get_panel(self, name:str):
         return self._options[str(name)]
 
-    def add_settings_panel(self, name, override_mode=False) -> SettingsPanel:
+    def add_settings_panel(self, name:str, override_mode=False) -> SettingsPanel:
         """
         Convenience method to create a new SettingsPanel and add it to this
         custom SettingsPanel switcher.
@@ -509,13 +509,13 @@ class CustomSettingsPanel(Panel):
         self.add_panel(name, settings_panel)
         return settings_panel
 
-    def get_parameters(self):
+    def get_parameters(self) -> dict:
         if self._current is not None:
             return self._current.get_parameters()
         else:
             return {}
 
-    def set_parameters(self, parameters):
+    def set_parameters(self, parameters:dict):
         if self._current is not None:
             self._current.get_widget().grid_remove()
             self._current = None
@@ -649,8 +649,8 @@ class SelectorPanel:
 
 class ManagementPanel(Panel):
     """ GUI element to use a SelectorPanel to control another panel. """
-    def __init__(self, parent, title, *,
-                keep_sorted=True,
+    def __init__(self, parent, title:str, *,
+                keep_sorted:bool=True,
                 custom_title=None,
                 panel="SettingsPanel",):
         self.title      = str(title).title()
@@ -720,7 +720,7 @@ class ManagementPanel(Panel):
             self.controlled.set_parameters({})
         self._set_title(new_item)
 
-    def get_parameters(self):
+    def get_parameters(self) -> dict:
         # Save the currently selected item out of the SettingsPanel.
         item = self.selector.get()
         if item is not None:
@@ -734,7 +734,7 @@ class ManagementPanel(Panel):
         self.parameters = ordered_dict
         return self.parameters
 
-    def set_parameters(self, parameters):
+    def set_parameters(self, parameters:dict):
         # Force the currently selected item out of the settings panel and into
         # the old parameters dict before assigning a new parameters dict.
         self.selector.clear_selection()
@@ -756,7 +756,12 @@ class ManagementPanel(Panel):
             raise ValueError()
         return name
 
-    def add_button_create(self, radio_options=None, row=0):
+    def add_button_create(self, radio_options:dict=None, row=0):
+        """
+        Argument radio_options is a dict containing a single key-value pair.
+                The value is a grid of options for the user to select from.
+                The key is the parameter_name that their selection is assigned to.
+        """
         title  = f"Create {self.title}"
         prompt = f"Enter new {self.title.lower()} name:"
         def _default_new_name():
@@ -793,7 +798,7 @@ class ManagementPanel(Panel):
                 self.selector.insert(name)
         button = self.selector.add_button("New", _callback, row=row)
 
-    def add_button_delete(self, text="Delete", callback=None, require_confirmation=True, row=0):
+    def add_button_delete(self, text:str="Delete", callback=None, require_confirmation=True, row=0):
         text = text.title()
         def _callback(name):
             if require_confirmation:
@@ -899,7 +904,7 @@ class OrganizerPanel(Panel):
     def get_widget(self):
         return self.notebook
 
-    def add_tab(self, title, panel):
+    def add_tab(self, title:str, panel):
         """ This also saves the panel as an attribute on this object. """
         assert title not in dir(self), "Duplicate panel or name conflict!"
         setattr(self, title, panel)
