@@ -153,6 +153,12 @@ class Viewport:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     self.mouse_pos = event.pos
+            if event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 3:
+                    import tkinter as tk
+                    m = tk.Menu(tearoff=False)
+                    m.add_command(label='Hello', command=lambda: print('Hello pygame!'))
+                    m.tk_popup(event.pos[0], event.pos[1])
 
         if pygame.mouse.get_focused():
             m1, m2, m3 = pygame.mouse.get_pressed()
