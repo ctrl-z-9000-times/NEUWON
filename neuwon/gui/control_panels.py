@@ -8,10 +8,6 @@ import sys
 import bisect
 import decimal
 
-# TODO: SettingsPanel with scrollbar should bind to mouse wheel, page up/down
-# and arrow keys. Also, when tabbing through the settings widgets it should
-# scroll so that the focused item is always visible.
-
 __all__ = (
         'np',
         'tk', 'ttk',
@@ -22,7 +18,7 @@ __all__ = (
         'Panel',
         'SettingsPanel',
         'CustomSettingsPanel',
-        'SelectorPanel',
+        'ItemSelector',
         'ManagementPanel',
         'OrganizerPanel',)
 
@@ -57,22 +53,6 @@ class Panel:
         raise NotImplementedError(type(self))
     def set_parameters(self, parameters:dict):
         raise NotImplementedError(type(self))
-
-class AutoScrollbar(ttk.Scrollbar):
-    """
-    A scrollbar that hides itself if it's not needed.
-    Only works with the grid geometry manager!
-    """
-    def set(self, lo, hi):
-        if float(lo) <= 0.0 and float(hi) >= 1.0:
-            self.grid_remove()
-        else:
-            self.grid()
-            super().set(lo, hi)
-    def pack(self, **kw):
-        raise NotImplementedError("cannot use pack with this widget")
-    def place(self, **kw):
-        raise NotImplementedError("cannot use place with this widget")
 
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
@@ -558,8 +538,27 @@ class CustomSettingsPanel(Panel):
         for panel in self._options.values():
             panel.add_callback(callback)
 
-class SelectorPanel:
-    """ GUI element for managing lists. """
+class AutoScrollbar(ttk.Scrollbar):
+    """
+    A scrollbar that hides itself if it's not needed.
+    Only works with the grid geometry manager!
+    """
+    def set(self, lo, hi):
+        if float(lo) <= 0.0 and float(hi) >= 1.0:
+            self.grid_remove()
+        else:
+            self.grid()
+            super().set(lo, hi)
+    def pack(self, **kw):
+        raise NotImplementedError("cannot use pack with this widget")
+    def place(self, **kw):
+        raise NotImplementedError("cannot use place with this widget")
+
+class ItemSelector:
+    """
+    GUI element for managing lists of user created items. Allows for selecting a
+    single item at a time, and tracks the transitions between selected items.
+    """
     def __init__(self, parent, on_select_callback, keep_sorted=True):
         self.frame = ttk.Frame(parent)
         self._on_select_callback = on_select_callback
@@ -571,7 +570,7 @@ class SelectorPanel:
         self._buttons_requiring_selection = []
         self._column_idx = [0, 0, 0] # Index for appending buttons.
         # 
-        self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=True)
+        self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=False)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
         self.listbox.grid(row=1, column=0, sticky='nesw')
         self.frame.grid_rowconfigure(1, weight=1)
@@ -581,15 +580,13 @@ class SelectorPanel:
         self.listbox.configure(yscrollcommand=scrollbar.set)
         scrollbar   .configure(command=self.listbox.yview)
 
-    def _on_select(self, event, deselect=False):
+    def _on_select(self, event=None):
         indices = self.listbox.curselection()
         if indices:
             item = self.listbox.get(indices[0])
         else:
             item = None
         if item == self._current_selection:
-            return
-        elif item is None and not deselect:
             return
         if item is None:
             for button in self._buttons_requiring_selection:
@@ -620,7 +617,7 @@ class SelectorPanel:
         if self._keep_sorted: items = sorted(items)
         self.listbox.delete(0, tk.END)
         self.listbox.insert(0, *items)
-        self._on_select(None, deselect=True)
+        self._on_select()
 
     def get(self):
         return self._current_selection
@@ -636,11 +633,11 @@ class SelectorPanel:
     def select(self, item):
         idx = self.get_list().index(item)
         self._select_idx(idx)
-        self._on_select(None)
+        self._on_select()
 
     def clear_selection(self):
         self.listbox.selection_clear(0, tk.END)
-        self._on_select(None, deselect=True)
+        self._on_select()
 
     def insert(self, item, idx=None):
         if idx is None:
@@ -653,7 +650,7 @@ class SelectorPanel:
             assert not self._keep_sorted
         self.listbox.insert(idx, item)
         self._select_idx(idx)
-        self._on_select(None)
+        self._on_select()
 
     def rename(self, old_item, new_item):
         idx = self.get_list().index(old_item)
@@ -666,7 +663,7 @@ class SelectorPanel:
     def delete(self, item):
         idx = self.get_list().index(item)
         self.listbox.delete(idx)
-        self._on_select(None, deselect=True)
+        self._on_select()
 
     def move(self, item, direction):
         assert not self._keep_sorted
@@ -676,17 +673,17 @@ class SelectorPanel:
         self.listbox.delete(old_idx)
         self.listbox.insert(new_idx, item)
         self._select_idx(new_idx)
-        self._on_select(None)
+        self._on_select()
 
 class ManagementPanel(Panel):
-    """ GUI element to use a SelectorPanel to control another panel. """
+    """ GUI element to use a ItemSelector to control another panel. """
     def __init__(self, parent, title:str, *,
                 keep_sorted:bool=True,
                 custom_title=None,
                 panel='SettingsPanel',):
         self.title      = str(title).title()
         self.parameters = {}
-        self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
+        self.selector   = ItemSelector(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
         self.frame.columnconfigure(2, minsize=padx) # Cosmetic spacing between the two halves of the panel.
         self._custom_title = custom_title
