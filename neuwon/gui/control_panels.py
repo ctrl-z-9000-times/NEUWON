@@ -86,42 +86,19 @@ class SettingsPanel(Panel):
     # And multiple settings are stacked vertically. If the vertical stack gets
     # too large then it is automatically split into multiple stacks.
 
-    def __init__(self, parent, override_mode=False, scrollbar=False):
-        self._parent        = parent
-        self.outer_frame    = ttk.Frame(parent)
-        self._override_mode = bool(override_mode)
-        self._scrollbar     = bool(scrollbar)
+    def __init__(self, parent, override_mode=False):
+        self.frame       = ttk.Frame(parent)
         self._row_idx    = 0  # Index for appending widgets.
         self._col_idx    = 0  # Index for appending widgets.
         self._parameters = {} # Preserves extra parameters that aren't used by this panel.
         self._variables  = {} # Store the anonymous tkinter variable objects.
         self._defaults   = {}
         self._callbacks  = []
+        self._override_mode = bool(override_mode)
         if self._override_mode:
             self._changed = set()
             self._set_changed_state = {} # Function for each variable.
             self._init_changed_style()
-        if self._scrollbar:
-            self.outer_frame.rowconfigure(0, weight=1)
-            self.outer_frame.columnconfigure(0, weight=1)
-            self._canvas = tk.Canvas(self.outer_frame, bd=0, highlightthickness=0)
-            scrollbar    = AutoScrollbar(self.outer_frame)
-            self._canvas.grid(row=0, column=0, sticky='nesw')
-            scrollbar   .grid(row=0, column=1, sticky='ns')
-            self._canvas.configure(yscrollcommand=scrollbar.set)
-            scrollbar   .configure(command=self._canvas.yview)
-            self._canvas_frame = ttk.Frame(self._canvas)
-            self.inner_frame   = ttk.Frame(self._canvas_frame)
-            filler_frame       = ttk.Frame(self._canvas_frame)
-            self.inner_frame.grid(row=0)
-            filler_frame    .grid(row=1)
-            self._canvas.create_window(0, 0, anchor='nw', window=self._canvas_frame)
-            self.outer_frame.bind("<Map>", lambda e: self._parent.bind("<Configure>", self._resize_scrollbar))
-        else:
-            self.inner_frame = self.outer_frame
-
-    def get_widget(self):
-        return self.outer_frame
 
     def _init_changed_style(self):
         color = 'yellow'
@@ -133,16 +110,6 @@ class SettingsPanel(Panel):
         s.map(      'Changed.TCombobox',    fieldbackground=[('readonly', color)],)
         s.configure('Changed.Horizontal.TScale', troughcolor=color)
         s.configure('Changed.TEntry', fieldbackground=color)
-
-    def _resize_scrollbar(self, event=None):
-        if self._scrollbar:
-            self._parent.update_idletasks()
-            self.inner_frame.update_idletasks()
-            panel_height = self.inner_frame.winfo_height()
-            avail_height = self._parent.winfo_height()
-            self._canvas.configure(height=avail_height)
-            # Expand the filler_frame to fill in any extra space.
-            self._canvas_frame.rowconfigure(1, minsize=max(0, avail_height - panel_height))
 
     def get_parameters(self):
         if self._override_mode:
@@ -193,13 +160,7 @@ class SettingsPanel(Panel):
 
     def _incr_row_idx(self):
         self._row_idx += 1
-        if self._scrollbar:
-            self.inner_frame.update_idletasks()
-            w, h = (self.inner_frame.winfo_width(), self.inner_frame.winfo_height())
-            self._canvas.configure(scrollregion=(0, 0, w, h))
-            self._canvas.configure(width=w)
-            self._resize_scrollbar()
-        elif self._row_idx >= 20:
+        if self._row_idx >= 20:
             # If there are too many rows of settings in the settings panel then they
             # go off of the bottom of the screen and they become inaccessible.
             # In that case start a new column of settings.
@@ -211,24 +172,24 @@ class SettingsPanel(Panel):
         self._col_idx += 3
         # Cosmetic: Separate the columns with a vertical bar so that
         # they look visually distinct.
-        bar = ttk.Separator(self.inner_frame, orient='vertical')
+        bar = ttk.Separator(self.frame, orient='vertical')
         bar.grid(row=0, rowspan=999, column=self._col_idx,
                  sticky='ns', padx=padx, pady=pady)
         self._col_idx += 1
 
     def add_empty_space(self, size=pad_top):
-        self.inner_frame.rowconfigure(self._row_idx, minsize=size)
+        self.frame.rowconfigure(self._row_idx, minsize=size)
         self._incr_row_idx()
 
     def add_section(self, title:str):
         """ Cosmetic, add a label and dividing line over a group of settings. """
         if self._row_idx > 0:
-            bar = ttk.Separator(self.inner_frame, orient='horizontal')
+            bar = ttk.Separator(self.frame, orient='horizontal')
             bar.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
                      sticky='ew', padx=padx, pady=pady)
-            self.inner_frame.rowconfigure(self._row_idx, minsize=pad_top)
+            self.frame.rowconfigure(self._row_idx, minsize=pad_top)
             self._row_idx += 1
-        label = ttk.Label(self.inner_frame, text=title)
+        label = ttk.Label(self.frame, text=title)
         label.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
                    sticky='w', padx=padx, pady=pady)
         self._incr_row_idx()
@@ -242,8 +203,8 @@ class SettingsPanel(Panel):
         self._defaults[parameter_name] = default if default is not None else variable.get()
         variable.set(self._defaults[parameter_name])
         # Create the widgets.
-        label   = ttk.Label(self.inner_frame, text=title)
-        btn_row = ttk.Frame(self.inner_frame)
+        label   = ttk.Label(self.frame, text=title)
+        btn_row = ttk.Frame(self.frame)
         buttons = []
         for idx, x in enumerate(options):
             if isinstance(variable, tk.StringVar):
@@ -302,8 +263,8 @@ class SettingsPanel(Panel):
             options = options_callback()
             options = [str(x) for x in options]
             menu.configure(values=options)
-        label = ttk.Label(self.inner_frame, text=title)
-        menu  = ttk.Combobox(self.inner_frame, textvar=variable, postcommand=postcommand)
+        label = ttk.Label(self.frame, text=title)
+        menu  = ttk.Combobox(self.frame, textvar=variable, postcommand=postcommand)
         menu.configure(state='readonly')
         menu.bind('<<ComboboxSelected>>', lambda event: menu.selection_clear())
         variable.trace_add('write', self._call_callbacks)
@@ -341,8 +302,8 @@ class SettingsPanel(Panel):
         self._defaults[parameter_name] = default if default is not None else variable.get()
         variable.set(self._defaults[parameter_name])
         # Create the widgets.
-        label  = ttk.Label(self.inner_frame, text=title)
-        button = ttk.Checkbutton(self.inner_frame, variable=variable,)
+        label  = ttk.Label(self.frame, text=title)
+        button = ttk.Checkbutton(self.frame, variable=variable,)
         variable.trace_add('write', self._call_callbacks)
         # Arrange the widgets.
         label .grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
@@ -396,12 +357,12 @@ class SettingsPanel(Panel):
         variable.trace_add('write', bridge_to_tkinter)
         rescaled.trace_add('write', bridge_to_application)
         # Create the widgets.
-        label = ttk.Label(self.inner_frame, text=title)
-        scale = ttk.Scale(self.inner_frame, variable=rescaled,
+        label = ttk.Label(self.frame, text=title)
+        scale = ttk.Scale(self.frame, variable=rescaled,
                 from_   = from_ / resolution,
                 to      = to    / resolution,
                 orient  = 'horizontal')
-        value = ttk.Label(self.inner_frame)
+        value = ttk.Label(self.frame)
         n_digits = 3 # Try to show this number of digits in the label.
         round_to = max(0, n_digits - len(str(round(to))))
         def update_value_label(*args):
@@ -443,9 +404,9 @@ class SettingsPanel(Panel):
         self._variables[parameter_name] = variable
         if title is None: title = parameter_name.replace('_', ' ').title()
         # Create the widgets.
-        label = ttk.Label(self.inner_frame, text=title)
-        entry = ttk.Entry(self.inner_frame, textvar=variable, justify='right')
-        units = ttk.Label(self.inner_frame, text=units)
+        label = ttk.Label(self.frame, text=title)
+        entry = ttk.Entry(self.frame, textvar=variable, justify='right')
+        units = ttk.Label(self.frame, text=units)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
         entry.grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
