@@ -4,7 +4,7 @@ from .species_editor import SpeciesEditor
 from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
 from .model_container import ModelContainer
-from .run_control import RunControl
+from .run_control import ExperimentControl
 from .themes import ThemedTk, set_theme, pick_theme
 from tkinter import filedialog
 import json
@@ -117,7 +117,7 @@ class ModelEditor(OrganizerPanel):
         # re-loading everything. The mechanisms in particular can take a long
         # time to load.
         self.close()
-        RunControl(self.model.filename)
+        ExperimentControl(self.model.filename)
 
     def run(self):
         ''' Blocks calling thread until the ModelEditor is closed. '''

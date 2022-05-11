@@ -3,11 +3,15 @@ from .themes import ThemedTk, set_theme, pick_theme
 from .model_container import ModelContainer
 from .signal_editor import SignalEditor
 from neuwon import Model
+from neuwon.database import data_components
 from .viewport import Viewport
 
-class RunControl:
+class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
         self.model = ModelContainer(filename)
+        self.parameters = self.model.load()
+        self.viewport = None
+        self._initialize_model()
         self.root = ThemedTk()
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
@@ -15,11 +19,19 @@ class RunControl:
         self.root.title("NEUWON: " + self.model.short_name)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
-        self.parameters = self.model.load()
-        self.model.model = Model(**self.model.export())
-        self.model.model.get_database().sort()
+        self._open_viewport()
+
+    def _initialize_model(self):
+        self.instance = Model(**self.model.export())
+        self.instance.get_database().sort()
+        if self.viewport is not None:
+            self._open_viewport()
+
+    def _open_viewport(self):
+        if self.viewport is not None:
+            self.viewport.close()
         self.viewport = Viewport()
-        self.viewport.set_scene(self.model.model)
+        self.viewport.set_scene(self.instance)
         self.root.after(0, self._tick)
 
     def _init_menu(self, parent):
@@ -43,12 +55,14 @@ class RunControl:
         return filemenu
 
     def _init_main_panel(self, parent):
-        self.panel = OrganizerPanel(parent)
-        frame = self.panel.get_widget()
+        super().__init__(parent)
+        frame = self.get_widget()
+        self.add_tab("run_control", RunControl(frame, self))
+        self.add_tab("signal_editor", SignalEditor(frame))
+        # self.add_tab("probes", )
+        self.add_tab("view_control", ViewControl(frame, self)) # DEBUGGING!
+        self.add_tab("color_control", ColorControl(frame, self)) # DEBUGGING!
         frame.grid(sticky='nesw')
-        # self.panel.add_tab("Run Control", )
-        self.panel.add_tab("Signal Editor", SignalEditor(frame))
-        # self.panel.add_tab("Probes", )
 
     def switch_to_model_editor(self):
         self.save()
@@ -60,9 +74,11 @@ class RunControl:
         ModelEditor(self.model.filename)
 
     def save(self, event=None):
+        self.parameters.update(self.get_parameters())
         self.model.save(self.parameters)
 
     def save_as(self, event=None):
+        # Does it even make sense to save-as for a running model?
         1/0
 
     def close(self, event=None):
@@ -74,7 +90,60 @@ class RunControl:
         if self.viewport.alive:
             self.root.after(1, self._tick)
 
+class RunControl(SettingsPanel):
+    def __init__(self, parent, experiment):
+        super().__init__(parent)
+        self.add_entry('run_for',
+                valid_range = (0, inf),
+                default     = inf,)
+        self.add_entry('clock',
+                valid_range = (-max_float, max_float),
+                default     = 0,)
+
+# THOUGHT: instead of implementing a special widget for lists of checkboxes,
+#           Make a scrollbar option for the SettingsPanel?
+#           Then its much more general purpose.
+#           I can add the custom buttons too, but at the application level?
+
+class ViewControl(Panel):
+    def __init__(self, parent, experiment):
+        self.frame = ttk.Frame(parent)
+
+        self._neuron_panel = SettingsPanel(self.frame)
+        self._neuron_panel.get_widget().grid(row=1, column=0, sticky='nesw')
+        self._segment_panel = SettingsPanel(self.frame)
+        self._segment_panel.get_widget().grid(row=1, column=1, sticky='nesw')
+
+        database = experiment.instance.get_database()
+        Neuron   = database.get_instance_type('Neuron')
+        Segment  = database.get_instance_type('Segment')
+        for neuron_type in sorted(Neuron.neuron_types_list):
+            self._neuron_panel.add_checkbox(neuron_type, default=True)
+        for segment_type in sorted(Segment.segment_types_list):
+            self._segment_panel.add_checkbox(segment_type, default=True)
+
+    def _select_all(self):
+        1/0
+
+    def _deselect_all(self):
+        1/0
+
+
+
+class ColorControl(SettingsPanel):
+    def __init__(self, parent, experiment):
+        super().__init__(parent)
+        available_components = [
+                'voltage'
+                # TODO: All of the species concentrations.
+        ]
+        self.add_dropdown('component', available_components)
+        self.add_dropdown('colormap', ['red/blue'])
+        self.add_checkbox('show_scale')
+        self.add_checkbox('show_time')
+        self.add_radio_buttons('background', ['Black', 'White'], default='Black')
+
 if __name__ == '__main__':
     import sys
     filename = sys.argv[1]
-    RunControl(filename).root.mainloop()
+    ExperimentControl(filename).root.mainloop()

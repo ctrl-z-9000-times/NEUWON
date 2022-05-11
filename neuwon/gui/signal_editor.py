@@ -30,7 +30,13 @@ class SignalEditor(ManagementPanel):
         self.controlled.add_callback(self._update)
 
     def _init_play_settings(self, settings_panel):
-        settings_panel.add_dropdown('component', lambda: ['TODO'])
+        components = [
+                'voltage',
+                'current',
+                # TODO: all of the species concentrations, and their delta's.
+        ]
+        # TODO: How feasible would it be for the GUI to determine the correct assign_method?
+        settings_panel.add_dropdown('component', lambda: components)
         settings_panel.add_radio_buttons('assign_method', ['add', 'overwrite'], default='add', title='')
         settings_panel.add_checkbox('loop_forever', default=True)
 
