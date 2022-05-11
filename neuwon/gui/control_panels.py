@@ -52,6 +52,22 @@ class Panel:
     def set_parameters(self, parameters:dict):
         raise NotImplementedError(type(self))
 
+class AutoScrollbar(ttk.Scrollbar):
+    """
+    A scrollbar that hides itself if it's not needed.
+    Only works with the grid geometry manager!
+    """
+    def set(self, lo, hi):
+        if float(lo) <= 0.0 and float(hi) >= 1.0:
+            self.grid_remove()
+        else:
+            self.grid()
+            super().set(lo, hi)
+    def pack(self, **kw):
+        raise NotImplementedError("cannot use pack with this widget")
+    def place(self, **kw):
+        raise NotImplementedError("cannot use place with this widget")
+
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
 
@@ -64,9 +80,10 @@ class SettingsPanel(Panel):
     # And multiple settings are stacked vertically. If the vertical stack gets
     # too large then it is automatically split into multiple stacks.
 
-    def __init__(self, parent, override_mode=False):
-        self.frame = ttk.Frame(parent)
+    def __init__(self, parent, override_mode=False, scrollbar=False):
+        self.outer_frame    = ttk.Frame(parent)
         self._override_mode = bool(override_mode)
+        self._scrollbar     = bool(scrollbar)
         self._row_idx    = 0  # Index for appending widgets.
         self._col_idx    = 0  # Index for appending widgets.
         self._parameters = {} # Preserves extra parameters that aren't used by this panel.
@@ -77,6 +94,23 @@ class SettingsPanel(Panel):
             self._changed = set()
             self._set_changed_state = {} # Function for each variable.
             self._init_changed_style()
+        if self._scrollbar:
+            self.canvas = tk.Canvas(self.outer_frame, bd=0, highlightthickness=0)
+            scrollbar   = AutoScrollbar(self.outer_frame)
+            self.canvas.grid(row=0, column=0, sticky='nesw')
+            scrollbar  .grid(row=0, column=1, sticky='ns')
+            self.canvas.configure(yscrollcommand=scrollbar.set)
+            scrollbar  .configure(command=self.canvas.yview)
+            # Expand the canvas to fill available space.
+            self.outer_frame.rowconfigure(0, weight=1)
+            self.outer_frame.columnconfigure(0, weight=1)
+            self.frame = ttk.Frame(self.canvas)
+            self.canvas.create_window(0, 0, anchor='nw', window=self.frame)
+        else:
+            self.frame = self.outer_frame
+
+    def get_widget(self):
+        return self.outer_frame
 
     def _init_changed_style(self):
         color = 'yellow'
@@ -138,10 +172,16 @@ class SettingsPanel(Panel):
 
     def _incr_row_idx(self):
         self._row_idx += 1
-        # If there are too many rows of settings in the settings panel then they
-        # go off of the bottom of the screen and they become inaccessible.
-        # In that case start a new column of settings.
-        if self._row_idx >= 20:
+        if self._scrollbar:
+            self.frame.update_idletasks()
+            w, h = (self.frame.winfo_width(), self.frame.winfo_height())
+            self.canvas.configure(scrollregion=(0, 0, w, h))
+            self.canvas.config(width=w)
+            # self.canvas.config(height=h)
+        elif self._row_idx >= 20:
+            # If there are too many rows of settings in the settings panel then they
+            # go off of the bottom of the screen and they become inaccessible.
+            # In that case start a new column of settings.
             self.add_column()
 
     def add_column(self):
@@ -170,7 +210,7 @@ class SettingsPanel(Panel):
         label = ttk.Label(self.frame, text=title)
         label.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
                    sticky='w', padx=padx, pady=pady)
-        self._row_idx += 1
+        self._incr_row_idx()
 
     def add_radio_buttons(self, parameter_name, options, variable=None, *, title=None, default=None):
         # Clean and save the arguments.
@@ -504,12 +544,12 @@ class CustomSettingsPanel(Panel):
     def get_panel(self, name:str):
         return self._options[str(name)]
 
-    def add_settings_panel(self, name:str, override_mode=False) -> SettingsPanel:
+    def add_settings_panel(self, name:str, **kwargs) -> SettingsPanel:
         """
         Convenience method to create a new SettingsPanel and add it to this
         custom SettingsPanel switcher.
         """
-        settings_panel = SettingsPanel(self.frame, override_mode=override_mode)
+        settings_panel = SettingsPanel(self.frame, **kwargs)
         self.add_panel(name, settings_panel)
         return settings_panel
 
@@ -554,6 +594,10 @@ class SelectorPanel:
         self.listbox.grid(row=1, column=0, sticky='nesw')
         self.frame.grid_rowconfigure(1, weight=1)
         self.frame.grid_columnconfigure(0, weight=0)
+        scrollbar = AutoScrollbar(self.frame)
+        scrollbar.grid(row=1, column=1, sticky='ns')
+        self.listbox.configure(yscrollcommand=scrollbar.set)
+        scrollbar   .configure(command=self.listbox.yview)
 
     def _on_select(self, event, deselect=False):
         indices = self.listbox.curselection()
@@ -581,6 +625,7 @@ class SelectorPanel:
     def add_button(self, text, command, require_selection=False, row=0):
         button = ttk.Button(self._button_panel, text=text, command=lambda: command(self._current_selection))
         button.grid(row=row, column=self._column_idx[row], sticky='ew', pady=pady)
+        self._button_panel.columnconfigure(self._column_idx[row], weight=1) # Stretch buttons horizontally.
         self._column_idx[row] += 1
         if require_selection:
             self._buttons_requiring_selection.append(button)
@@ -661,10 +706,10 @@ class ManagementPanel(Panel):
         self.parameters = {}
         self.selector   = SelectorPanel(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
-        self.frame.columnconfigure(1, minsize=padx) # Cosmetic spacing between the two halves of the panel.
+        self.frame.columnconfigure(2, minsize=padx) # Cosmetic spacing between the two halves of the panel.
         self._custom_title = custom_title
         self._inner_frame  = ttk.LabelFrame(self.frame, padding=padx,)
-        self._inner_frame.grid(row=0, rowspan=2, column=2, sticky='nesw', padx=padx, pady=pady)
+        self._inner_frame.grid(row=0, rowspan=2, column=3, sticky='nesw', padx=padx, pady=pady)
         self._set_title(None)
         self._init_controlled_panel(panel)
 
