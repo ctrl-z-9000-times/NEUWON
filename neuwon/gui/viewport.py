@@ -12,7 +12,7 @@ from neuwon.gui.primatives import Sphere, Cylinder
 
 epsilon = np.finfo(float).eps
 
-class Camera:
+class _Camera:
     def __init__(self, size, fov, dist):
         self.size    = size # Window size
         self.fov     = fov  # Field of view
@@ -52,7 +52,8 @@ class Camera:
         print("Camera Pitch",    self.pitch)
         print("Camera Yaw  ",    self.yaw)
 
-class Scene:
+class _Scene:
+    """ This class generates the 3D mesh and renders it using OpenGL. """
     def __init__(self, database, lod=2.5):
         self._init_opengl_settings()
         if hasattr(database, "get_database"):
@@ -98,6 +99,9 @@ class Scene:
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
         glDisable(GL_CULL_FACE)
+        # Setup for overlaying text with a transparent background.
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
     def draw(self, camera, colors=None, background_color=None):
         camera.setup_opengl()
@@ -189,12 +193,14 @@ class Viewport:
         self.alive = True
         # Setup pygame.
         pygame.init()
-        pygame.display.set_mode(window_size, DOUBLEBUF|OPENGL)
-        self.clock = pygame.time.Clock()
-        self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
+        pygame.font.init()
+        self.screen = pygame.display.set_mode(window_size, OPENGL)
+        self.font   = pygame.font.SysFont(None, 24)
+        self.clock  = pygame.time.Clock()
+        self.camera = _Camera(pygame.display.get_window_size(), 45, 10e3)
 
     def set_scene(self, database):
-        self.scene = Scene(database)
+        self.scene = _Scene(database)
 
     def close(self):
         pygame.display.quit()
@@ -222,19 +228,20 @@ class Viewport:
             m1, m2, m3 = pygame.mouse.get_pressed()
             if m1:
                 pygame.mouse.set_visible(False)
-                self.read_mouse(dt)
-                self.read_keyboard(dt)
+                self._read_mouse(dt)
+                self._read_keyboard(dt)
             else:
                 pygame.mouse.set_visible(True)
         else:
             pygame.mouse.set_visible(True)
 
-        # print(self.scene.get_segment(self.camera, pygame.mouse.get_pos()))
+        seg_id = self.scene.get_segment(self.camera, pygame.mouse.get_pos())
 
         self.scene.draw(self.camera, colors, self.background_color)
+        self._draw_overlay(f'segment {seg_id}\ncurrent time', (50,50))
         pygame.display.flip()
 
-    def read_mouse(self, dt):
+    def _read_mouse(self, dt):
         # Get the relative movement of the mouse cursor.
         x,  y  = pygame.mouse.get_pos()
         x0, y0 = self.mouse_pos
@@ -250,7 +257,7 @@ class Viewport:
         self.camera.pitch = np.clip(self.camera.pitch, -halfpi, +halfpi)
         self.camera.update_rotation_matrix()
 
-    def read_keyboard(self, dt):
+    def _read_keyboard(self, dt):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
             dt *= self.sprint_modifier
@@ -266,3 +273,16 @@ class Viewport:
             self.camera.pos[1] += self.move_speed * dt
         if keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]:
             self.camera.pos[1] -= self.move_speed * dt
+
+    def _draw_overlay(self, text, position):
+        r,g,b,a = self.background_color
+        color   = (255 - r, 255 - g, 255 - b, 255)
+        x, y    = position
+        for line in text.split('\n'):
+            overlay = self.font.render(line, True, color).convert_alpha()
+            width   = overlay.get_width()
+            height  = overlay.get_height()
+            data    = pygame.image.tostring(overlay, "RGBA", True)
+            glWindowPos2d(x, y)
+            glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, data)
+            y -= round(height * 1.10)

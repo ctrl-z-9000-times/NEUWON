@@ -36,7 +36,7 @@ class ExperimentControl(OrganizerPanel):
     def _open_viewport(self):
         if self.viewport is None:
             self.viewport = Viewport()
-            self.root.after(0, self._tick)
+            self.root.after(0, self._viewport_tick)
         self.viewport.set_scene(self.instance)
 
     def _init_menu(self, parent):
@@ -116,12 +116,13 @@ class ExperimentControl(OrganizerPanel):
 
     def close(self, event=None):
         self.root.destroy()
-        self.viewport.close()
+        if self.viewport is not None:
+            self.viewport.close()
 
-    def _tick(self):
+    def _viewport_tick(self):
         self.viewport.tick()
         if self.viewport.alive:
-            self.root.after(1, self._tick)
+            self.root.after(1, self._viewport_tick)
         else:
             self.viewport = None
 
