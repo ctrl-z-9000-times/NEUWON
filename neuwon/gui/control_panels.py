@@ -37,8 +37,8 @@ less_than_one     = np.nextafter(1, 0)
 def Toplevel(title:str):
         window = tk.Toplevel()
         window.title(title)
-        window.rowconfigure(   0, weight=1)
-        window.columnconfigure(0, weight=1)
+        window.grid_rowconfigure(   0, weight=1)
+        window.grid_columnconfigure(0, weight=1)
         frame = ttk.Frame(window)
         frame.grid(sticky='nesw')
         return window, frame
@@ -159,7 +159,7 @@ class SettingsPanel(Panel):
         self._col_idx += 1
 
     def add_empty_space(self, size=pad_top):
-        self.frame.rowconfigure(self._row_idx, minsize=size)
+        self.frame.grid_rowconfigure(self._row_idx, minsize=size)
         self._incr_row_idx()
 
     def add_section(self, title:str):
@@ -168,7 +168,7 @@ class SettingsPanel(Panel):
             bar = ttk.Separator(self.frame, orient='horizontal')
             bar.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
                      sticky='ew', padx=padx, pady=pady)
-            self.frame.rowconfigure(self._row_idx, minsize=pad_top)
+            self.frame.grid_rowconfigure(self._row_idx, minsize=pad_top)
             self._row_idx += 1
         label = ttk.Label(self.frame, text=title)
         label.grid(row=self._row_idx, column=self._col_idx, columnspan=3,
@@ -610,19 +610,25 @@ class ItemSelector:
         self._keep_sorted        = bool(keep_sorted)
         # The add buttons in a row along the top of the panel.
         self._button_panel = ttk.Frame(self.frame)
-        self._button_panel.grid(row=0, column=0, sticky='new')
+        self._button_panel.grid(row=0, column=0, sticky='ew')
         self._buttons_requiring_selection = []
         self._column_idx = [0, 0, 0] # Index for appending buttons.
         # 
-        self.listbox = tk.Listbox(self.frame, selectmode='browse', exportselection=False)
+        listbox_frame = ttk.Frame(self.frame)
+        listbox_frame.grid(row=1, column=0, sticky='nesw')
+        self.listbox = tk.Listbox(listbox_frame, selectmode='browse', exportselection=False)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
-        self.listbox.grid(row=1, column=0, sticky='nesw')
-        self.frame.grid_rowconfigure(1, weight=1)
-        self.frame.grid_columnconfigure(0, weight=0)
-        scrollbar = AutoScrollbar(self.frame)
-        scrollbar.grid(row=1, column=1, sticky='ns')
+        self.listbox.grid(row=0, column=0, sticky='nesw')
+        scrollbar = AutoScrollbar(listbox_frame)
+        scrollbar.grid(row=0, column=1, sticky='ns')
         self.listbox.configure(yscrollcommand=scrollbar.set)
         scrollbar   .configure(command=self.listbox.yview)
+        # Resize vertically.
+        self.frame   .grid_rowconfigure(1, weight=1)
+        listbox_frame.grid_rowconfigure(0, weight=1)
+        # Resize whichever widget is smaller horizonally to fill space
+        # (buttons or listbox), but do not resize the outer frame.
+        listbox_frame.grid_columnconfigure(0, weight=1)
 
     def _on_select(self, event=None):
         indices = self.listbox.curselection()
@@ -648,7 +654,7 @@ class ItemSelector:
     def add_button(self, text, command, require_selection=False, row=0):
         button = ttk.Button(self._button_panel, text=text, command=lambda: command(self._current_selection))
         button.grid(row=row, column=self._column_idx[row], sticky='ew', pady=pady)
-        self._button_panel.columnconfigure(self._column_idx[row], weight=1) # Stretch buttons horizontally.
+        self._button_panel.grid_columnconfigure(self._column_idx[row], weight=1) # Stretch buttons horizontally.
         self._column_idx[row] += 1
         if require_selection:
             self._buttons_requiring_selection.append(button)
@@ -729,7 +735,7 @@ class ManagementPanel(Panel):
         self.parameters = {}
         self.selector   = ItemSelector(parent, self._on_select, keep_sorted)
         self.frame      = self.selector.frame
-        self.frame.columnconfigure(2, minsize=padx) # Cosmetic spacing between the two halves of the panel.
+        self.frame.grid_columnconfigure(2, minsize=padx) # Cosmetic spacing between the two halves of the panel.
         self._custom_title = custom_title
         self._inner_frame  = ttk.LabelFrame(self.frame, padding=padx,)
         self._inner_frame.grid(row=0, rowspan=2, column=3, sticky='nesw', padx=padx, pady=pady)
@@ -770,8 +776,8 @@ class ManagementPanel(Panel):
         # 
         self.controlled = panel_type(self._inner_frame, *args, **kwargs)
         self.controlled.get_widget().grid(row=0, column=0, sticky='nesw', padx=padx, pady=pady)
-        self._inner_frame.rowconfigure(0, weight=1)
-        self._inner_frame.columnconfigure(0, weight=1)
+        self._inner_frame.grid_rowconfigure(0, weight=1)
+        self._inner_frame.grid_columnconfigure(0, weight=1)
         self.panel = self.controlled
 
     def _set_title(self, item):
