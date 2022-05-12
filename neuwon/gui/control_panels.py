@@ -18,6 +18,7 @@ __all__ = (
         'Panel',
         'SettingsPanel',
         'CustomSettingsPanel',
+        'ListSelector',
         'ItemSelector',
         'ManagementPanel',
         'OrganizerPanel',)
@@ -553,6 +554,49 @@ class AutoScrollbar(ttk.Scrollbar):
         raise NotImplementedError("cannot use pack with this widget")
     def place(self, **kw):
         raise NotImplementedError("cannot use place with this widget")
+
+class ListSelector(Panel):
+    """ GUI element for selecting multiple items from a list of options. """
+    def __init__(self, parent, options, default=False):
+        self.frame    = ttk.Frame(parent)
+        button_frame  = ttk.Frame(self.frame)
+        select_all    = ttk.Button(button_frame, text='Select All', command=self.select_all)
+        deselect_all  = ttk.Button(button_frame, text='Deselect All', command=self.deselect_all)
+        listbox_frame = ttk.Frame(self.frame)
+        self.listbox  = tk.Listbox(listbox_frame, selectmode='multiple', exportselection=False)
+        scrollbar     = AutoScrollbar(listbox_frame)
+        button_frame .grid(row=0, column=0, sticky='nesw')
+        listbox_frame.grid(row=1, column=0, sticky='nesw')
+        select_all   .grid(row=0, column=0, sticky='nesw')
+        deselect_all .grid(row=0, column=1, sticky='nesw')
+        self.listbox .grid(row=0, column=0, sticky='nesw')
+        scrollbar    .grid(row=0, column=1, sticky='ns')
+        self.frame   .grid_rowconfigure(1, weight=1)
+        listbox_frame.grid_rowconfigure(0, weight=1)
+        self.frame   .grid_columnconfigure(0, weight=1)
+        listbox_frame.grid_columnconfigure(0, weight=1)
+        button_frame .grid_columnconfigure(0, weight=1)
+        button_frame .grid_columnconfigure(1, weight=1)
+        self.listbox.configure(yscrollcommand=scrollbar.set)
+        scrollbar   .configure(command=self.listbox.yview)
+        self.set_parameters({x: default for x in options})
+
+    def get_parameters(self) -> dict:
+        return {option: self.listbox.tkinter.Listbox.selection_includes(idx)
+                for idx, option in enumerate(self.listbox.get(0, tk.END))}
+
+    def set_parameters(self, parameters:dict):
+        self.listbox.delete(0, tk.END)
+        self.listbox.insert(0, *parameters.keys())
+        for idx, selected in enumerate(parameters.values()):
+            if selected:
+                self.listbox.selection_set(idx)
+
+    def select_all(self):
+        self.listbox.selection_set(0, tk.END)
+
+    def deselect_all(self):
+        self.listbox.selection_clear(0, tk.END)
 
 class ItemSelector:
     """
