@@ -26,7 +26,7 @@ class SignalEditor(ManagementPanel):
         self._init_settings_panel()
         # 
         self.embed = MatplotlibEmbed(self.get_widget())
-        self.embed.frame.grid(row=0, rowspan=2, column=3)
+        self.embed.frame.grid(row=0, rowspan=2, column=4)
         self.controlled.add_callback(self._update)
 
     def _init_play_settings(self, settings_panel):
