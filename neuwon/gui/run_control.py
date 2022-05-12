@@ -1,7 +1,7 @@
 from .control_panels import *
 from tkinter import messagebox
 from .themes import ThemedTk, set_theme, pick_theme
-from .model_container import ModelContainer
+from .project_container import ProjectContainer
 from .signal_editor import SignalEditor
 from neuwon import Model
 from neuwon.database import data_components
@@ -10,7 +10,7 @@ from .model_runner import ModelRunner, Message
 
 class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
-        self.model = ModelContainer(filename)
+        self.model = ProjectContainer(filename)
         self.parameters = self.model.load()
         self.viewport = None
         self._initialize_model()

@@ -5,9 +5,7 @@ from .region_editor     import RegionEditor
 import os.path
 import json
 
-# TODO: Consider renaming this class & file to "ProjectContainer"?
-
-class ModelContainer:
+class ProjectContainer:
     def __init__(self, filename=None):
         self.set_file(filename)
 

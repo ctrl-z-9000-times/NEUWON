@@ -3,7 +3,7 @@ from .region_editor import RegionEditor
 from .species_editor import SpeciesEditor
 from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
-from .model_container import ModelContainer
+from .project_container import ProjectContainer
 from .run_control import ExperimentControl
 from .themes import ThemedTk, set_theme, pick_theme
 from tkinter import filedialog
@@ -21,7 +21,7 @@ class ModelEditor(OrganizerPanel):
         self.root.columnconfigure(0, weight=1)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
-        self.model = ModelContainer(filename)
+        self.model = ProjectContainer(filename)
         if self.model.filename is not None:
             self.set_parameters(self.model.load())
             self._set_title()
