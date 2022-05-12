@@ -14,7 +14,7 @@ class Message(enum.Enum):
 
 class ModelRunner(threading.Thread):
     def __init__(self):
-        super().__init__()
+        super().__init__(name='ModelRunner')
         # The control_queue contains pairs of (Message, payload) where the
         # payload type depends on the type of message.
         self.control_queue = queue.Queue()
@@ -23,19 +23,23 @@ class ModelRunner(threading.Thread):
         self._active    = False # Is the model currently running or is it stopped?
         self._component = None # If None then results_queue is not used.
         self._duration  = None # Integer number of time_steps.
-        self.run()
+        self._quit      = False
+        self.start()
 
     def run(self):
-        while True:
+        while not self._quit:
             self._update_control()
             self._update_model()
+
+    def quit(self):
+        self._quit = True
 
     def _update_control(self):
         while True:
             block = (not self._active)
             try:
-                # Do not block forever, due to issues in the underlying lock on some platforms.
-                message, payload = self.control_queue.get(block=block, timeout=9999)
+                # Block only for a short period of time, so that the quit method works.
+                message, payload = self.control_queue.get(block=block, timeout=3)
             except queue.Empty:
                 break
 

@@ -12,9 +12,12 @@ class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
         self.model = ProjectContainer(filename)
         self.parameters = self.model.load()
-        self.viewport = None
-        self._initialize_model()
         self.root = ThemedTk()
+        self.instance = None
+        self.viewport = None
+        self.runner   = ModelRunner()
+        self.root.bind("<Destroy>", lambda event: self.runner.quit())
+        self._initialize_model()
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
@@ -26,6 +29,7 @@ class ExperimentControl(OrganizerPanel):
     def _initialize_model(self):
         self.instance = Model(**self.model.export())
         self.instance.get_database().sort()
+        self.runner.control_queue.put((Message.INSTANCE, self.instance))
         if self.viewport is not None:
             self._open_viewport()
 

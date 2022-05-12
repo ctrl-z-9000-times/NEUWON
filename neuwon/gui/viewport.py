@@ -193,10 +193,11 @@ class Viewport:
         self.clock = pygame.time.Clock()
         self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
 
-    def set_scene(self, database, *args):
+    def set_scene(self, database):
         self.scene = Scene(database)
 
     def close(self):
+        pygame.display.quit()
         pygame.quit()
         self.alive = False
 
