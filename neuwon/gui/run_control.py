@@ -6,6 +6,7 @@ from .signal_editor import SignalEditor
 from neuwon import Model
 from neuwon.database import data_components
 from .viewport import Viewport
+from .model_runner import ModelRunner, Message
 
 class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
@@ -119,18 +120,6 @@ class ExperimentControl(OrganizerPanel):
             self.root.after(1, self._tick)
         else:
             self.viewport = None
-
-
-class WorkerThread:
-    def __init__(self, instance, messages):
-        self.instance = instance
-        self.messages = messages
-        self.state = 'stopped'
-        1/0
-
-    def __call__(self):
-        1/0
-
 
 class RunControl(Panel):
     def __init__(self, parent, experiment):
