@@ -1,6 +1,9 @@
 from .control_panels import *
 from .mechanism_editor import MechanismSelector
 
+# TODO: Prevent user from putting the soma segments in the wrong place, or
+# adding more than one soma to a neuron.
+
 
 class NeuronEditor(ManagementPanel):
     def __init__(self, parent, model_editor):

@@ -239,7 +239,7 @@ class NeuronGrowthProgram:
             d = diameter()
             while d <= epsilon:
                 d = diameter()
-            n = self.model.Neuron(c, d, segment_type=segment_type)
+            n = self.model.Neuron(c, d, neuron_type=self.neuron_type, segment_type=segment_type)
             self.neurons.append(n)
             new_segments.append(n.root)
         self.segments.extend(new_segments)

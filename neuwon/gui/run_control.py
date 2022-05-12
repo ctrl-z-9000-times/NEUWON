@@ -57,11 +57,9 @@ class ExperimentControl(OrganizerPanel):
     def _init_main_panel(self, parent):
         super().__init__(parent)
         frame = self.get_widget()
-        self.add_tab("run_control", RunControl(frame, self))
         self.add_tab("signal_editor", SignalEditor(frame))
         # self.add_tab("probes", )
-        self.add_tab("view_control", ViewControl(frame, self)) # DEBUGGING!
-        self.add_tab("color_control", ColorControl(frame, self)) # DEBUGGING!
+        self.add_tab("run_control", RunControl(frame, self))
         frame.grid(sticky='nesw')
 
     def switch_to_model_editor(self):
@@ -90,58 +88,62 @@ class ExperimentControl(OrganizerPanel):
         if self.viewport.alive:
             self.root.after(1, self._tick)
 
-class RunControl(SettingsPanel):
+
+class WorkerThread:
+    def __init__(self, instance, messages):
+        self.instance = instance
+        self.messages = messages
+        self.state = 'stopped'
+        1/0
+
+    def __call__(self):
+        1/0
+
+
+class RunControl(Panel):
     def __init__(self, parent, experiment):
-        super().__init__(parent)
-        self.add_entry('run_for',
-                valid_range = (0, inf),
-                default     = inf,)
-        self.add_entry('clock',
-                valid_range = (-max_float, max_float),
-                default     = 0,)
-
-# THOUGHT: instead of implementing a special widget for lists of checkboxes,
-#           Make a scrollbar option for the SettingsPanel?
-#           Then its much more general purpose.
-#           I can add the custom buttons too, but at the application level?
-
-class ViewControl(Panel):
-    def __init__(self, parent, experiment):
-        self.frame = ttk.Frame(parent)
-
-        self._neuron_panel = SettingsPanel(self.frame)
-        self._neuron_panel.get_widget().grid(row=1, column=0, sticky='nesw')
-        self._segment_panel = SettingsPanel(self.frame)
-        self._segment_panel.get_widget().grid(row=1, column=1, sticky='nesw')
 
         database = experiment.instance.get_database()
         Neuron   = database.get_instance_type('Neuron')
         Segment  = database.get_instance_type('Segment')
-        for neuron_type in sorted(Neuron.neuron_types_list):
-            self._neuron_panel.add_checkbox(neuron_type, default=True)
-        for segment_type in sorted(Segment.segment_types_list):
-            self._segment_panel.add_checkbox(segment_type, default=True)
 
-    def _select_all(self):
-        1/0
+        self.frame    = ttk.Frame(parent)
+        self.settings = SettingsPanel(self.frame)
+        self.neurons  = ListSelector(self.frame, Neuron.neuron_types_list, default=True)
+        self.segments = ListSelector(self.frame, Segment.segment_types_list, default=True)
 
-    def _deselect_all(self):
-        1/0
+        neuron_label  = ttk.Label(self.frame, text='Visible Neurons')
+        segment_label = ttk.Label(self.frame, text='Visible Segments')
+
+        self.settings.get_widget().grid(row=1, column=0, sticky='nesw')
+        self.neurons .get_widget().grid(row=1, column=1, sticky='nesw')
+        neuron_label              .grid(row=0, column=1)
+        self.segments.get_widget().grid(row=1, column=2, sticky='nesw')
+        segment_label             .grid(row=0, column=2)
+        self.frame.grid_rowconfigure(1, weight=1)
 
 
+        self.settings.add_entry('run_for',
+                valid_range = (0, inf),
+                default     = inf,)
+        self.settings.add_entry('clock',
+                valid_range = (-max_float, max_float),
+                default     = 0,)
 
-class ColorControl(SettingsPanel):
-    def __init__(self, parent, experiment):
-        super().__init__(parent)
+        self.settings.add_section('Video Settings')
+        # TODO: Resolution
+        # TODO: Target Framerate, sim-to-irl (in case it runs too fast, lol like that will happen)
         available_components = [
                 'voltage'
                 # TODO: All of the species concentrations.
         ]
-        self.add_dropdown('component', available_components)
-        self.add_dropdown('colormap', ['red/blue'])
-        self.add_checkbox('show_scale')
-        self.add_checkbox('show_time')
-        self.add_radio_buttons('background', ['Black', 'White'], default='Black')
+        self.settings.add_dropdown('component', available_components)
+        self.settings.add_dropdown('colormap', ['red/blue'])
+        self.settings.add_checkbox('show_scale')
+        self.settings.add_checkbox('show_time')
+        self.settings.add_checkbox('show_type')
+        self.settings.add_radio_buttons('background', ['Black', 'White'], default='Black')
+
 
 if __name__ == '__main__':
     import sys
