@@ -1,7 +1,7 @@
 from . import species_editor
+from . import region_editor
 from .mechanism_editor  import MechanismManager
 from .neuron_editor     import SegmentEditor, NeuronEditor
-from .region_editor     import RegionEditor
 import os.path
 import json
 
@@ -38,7 +38,7 @@ class ProjectContainer:
             'simulation':   parameters["simulation"],
             'mechanisms':   MechanismManager.export(    parameters["mechanisms"]),
             'species':      species_editor.export(      parameters["species"]),
-            'regions':      RegionEditor.export(        parameters["regions"]),
+            'regions':      region_editor.export(       parameters["regions"]),
             'segments':     SegmentEditor.export(       parameters["segments"]),
             'neurons':      NeuronEditor.export(        parameters["neurons"]),
         }

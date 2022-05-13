@@ -1,15 +1,14 @@
 from .control_panels import *
 
 class RegionEditor(ManagementPanel):
-    key_parameter = 'region_type'
     def __init__(self, root):
         super().__init__(root, 'Region', custom_title=self.custom_title,
-                         panel=('CustomSettingsPanel', (self.key_parameter,)))
+                         panel=('CustomSettingsPanel', ('region_type',)))
 
         shape_options = ['Rectangle', 'Sphere', 'Cylinder']
         csg_options   = ['Union', 'Intersection', 'Not']
         options_grid  = np.array([shape_options, csg_options]).T
-        self.add_button_create(radio_options={self.key_parameter: options_grid})
+        self.add_button_create(radio_options={'region_type': options_grid})
         self.add_button_delete()
         self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
@@ -61,28 +60,35 @@ class RegionEditor(ManagementPanel):
     def custom_title(self, item):
         return f"{self.parameters[item]['region_type']}: {item}"
 
-    @classmethod
-    def export(cls, parameters):
-        sim = {}
-        for name, gui in parameters.items():
-            key = gui[cls.key_parameter]
-            if key == 'Rectangle':
-                sim[name] = (key,
-                            [gui['lower_x'], gui['lower_y'], gui['lower_z']],
-                            [gui['upper_x'], gui['upper_y'], gui['upper_z']])
-            elif key == 'Sphere':
-                sim[name] = (key,
-                            [gui['center_x'], gui['center_y'], gui['center_z']],
-                            gui['radius'])
-            elif key == 'Cylinder':
-                sim[name] = (key,
-                            [gui['end_point_x'], gui['end_point_y'], gui['end_point_z']],
-                            [gui['other_end_point_x'], gui['other_end_point_y'], gui['other_end_point_z']],
-                            gui['radius'])
-            elif key == 'Union':
-                sim[name] = (key, gui['region_1'], gui['region_2'])
-            elif key == 'Intersection':
-                sim[name] = (key, gui['region_1'], gui['region_2'])
-            elif key == 'Not':
-                sim[name] = (key, gui['region'])
-        return sim
+def export(parameters: dict) -> dict:
+    for name, rgn in parameters.items():
+        region_type = rgn['region_type']
+
+        if region_type == 'Rectangle':
+            parameters[name] = (region_type,
+                        [rgn['lower_x'], rgn['lower_y'], rgn['lower_z']],
+                        [rgn['upper_x'], rgn['upper_y'], rgn['upper_z']])
+
+        elif region_type == 'Sphere':
+            parameters[name] = (region_type,
+                        [rgn['center_x'], rgn['center_y'], rgn['center_z']],
+                        rgn['radius'])
+
+        elif region_type == 'Cylinder':
+            parameters[name] = (region_type,
+                        [rgn['end_point_x'], rgn['end_point_y'], rgn['end_point_z']],
+                        [rgn['other_end_point_x'], rgn['other_end_point_y'], rgn['other_end_point_z']],
+                        rgn['radius'])
+
+        elif region_type == 'Union':
+            parameters[name] = (region_type, rgn['region_1'], rgn['region_2'])
+
+        elif region_type == 'Intersection':
+            parameters[name] = (region_type, rgn['region_1'], rgn['region_2'])
+
+        elif region_type == 'Not':
+            parameters[name] = (region_type, rgn['region'])
+
+        else:
+            raise NotImplementedError(region_type)
+    return parameters
