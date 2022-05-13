@@ -7,6 +7,7 @@ from neuwon import Model
 from neuwon.database import data_components
 from .viewport.viewport import Viewport
 from .model_runner import ModelRunner, Message
+import queue
 
 class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
@@ -169,8 +170,9 @@ class RunControl(Panel):
         self.settings.add_section('Video Settings')
         self.settings.add_empty_space()
         # TODO: Resolution
-        # TODO: Target Framerate, sim-to-irl (in case it runs too fast, lol like that will happen)
-        #       Measure the framerate as a ratio of: real-time to sim-time.
+        self.settings.add_entry('Slowdown',
+                default = 1000,
+                units   = 'Real-Time : Model-Time')
         available_components = [
                 'voltage'
                 # TODO: All of the species concentrations.
@@ -178,8 +180,8 @@ class RunControl(Panel):
         self.settings.add_dropdown('component', available_components)
         self.settings.add_dropdown('colormap', ['red/blue'])
         self.settings.add_checkbox('show_scale')
-        self.settings.add_checkbox('show_time')
         self.settings.add_checkbox('show_type')
+        self.settings.add_checkbox('show_time')
         self.settings.add_radio_buttons('background', ['Black', 'White'], default='Black')
 
 

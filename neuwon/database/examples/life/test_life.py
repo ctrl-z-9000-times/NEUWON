@@ -27,10 +27,14 @@ def test_by_num_alive():
 @pytest.mark.skip()
 def test_pickle():
     import pickle
-    model = GameOfLife((10, 10))
-    model.randomize(.33)
-    model.advance()
-    q = pickle.dumps(model)
+    model1 = GameOfLife((10, 10))
+    model1.randomize(.33)
+    model1.advance()
+    q = pickle.dumps(model1)
     model2 = pickle.loads(q)
-    model.advance()
-    1/0
+    for _ in range(3):
+        model1.advance()
+        model2.advance()
+    data1 = model1.db.get_data('Cell.alive')
+    data2 = model2.db.get_data('Cell.alive')
+    assert np.all(data1 == data2)

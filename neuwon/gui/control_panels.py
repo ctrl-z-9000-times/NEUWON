@@ -612,7 +612,7 @@ class ItemSelector:
         self._button_panel = ttk.Frame(self.frame)
         self._button_panel.grid(row=0, column=0, sticky='ew')
         self._buttons_requiring_selection = []
-        self._column_idx = [0, 0, 0] # Index for appending buttons.
+        self._column_idx = [0, 0, 0, 0, 0, 0] # Indexes for appending buttons.
         # 
         listbox_frame = ttk.Frame(self.frame)
         listbox_frame.grid(row=1, column=0, sticky='nesw')
