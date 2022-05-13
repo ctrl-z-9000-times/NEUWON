@@ -5,7 +5,7 @@ from .project_container import ProjectContainer
 from .signal_editor import SignalEditor
 from neuwon import Model
 from neuwon.database import data_components
-from .viewport import Viewport
+from .viewport.viewport import Viewport
 from .model_runner import ModelRunner, Message
 
 class ExperimentControl(OrganizerPanel):
@@ -120,6 +120,11 @@ class ExperimentControl(OrganizerPanel):
             self.viewport.close()
 
     def _viewport_tick(self):
+        try:
+            render_data = self.runner.results_queue.get_nowait()
+        except queue.Empty:
+            pass
+
         self.viewport.tick()
         if self.viewport.alive:
             self.root.after(1, self._viewport_tick)
@@ -150,6 +155,8 @@ class RunControl(Panel):
 
 
         # TODO: start/pause button.
+        start_callback = lambda: experiment.runner.control_queue.put((Message.RUN, None))
+        pause_callback = lambda: experiment.runner.control_queue.put((Message.PAUSE, None))
 
         run_for = self.settings.add_entry('run_for',
                 valid_range = (0, inf),
