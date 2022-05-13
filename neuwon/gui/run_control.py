@@ -17,7 +17,7 @@ class ExperimentControl(OrganizerPanel):
         self.instance = None
         self.viewport = None
         self.runner   = ModelRunner()
-        self.root.bind("<Destroy>", lambda event: self.runner.quit())
+        self.root.bind("<Destroy>", lambda e: self.runner.control_queue.put(Message.QUIT))
         self._initialize_model()
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
