@@ -8,6 +8,7 @@ from neuwon.database import data_components
 from .viewport.viewport import Viewport
 from .model_runner import ModelRunner, Message
 import queue
+import time
 
 class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
@@ -121,16 +122,23 @@ class ExperimentControl(OrganizerPanel):
             self.viewport.close()
 
     def _viewport_tick(self):
+        start_time = time.time()
+        self.viewport.tick()
+        render_time = 1000 * (time.time() - start_time)
+        if self.viewport.alive:
+            max_fps = 30
+            self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
+        else:
+            self.viewport = None
+            self.runner.control_queue.put(Message.HEADLESS)
+
+    def _collect_results(self):
         try:
             render_data = self.runner.results_queue.get_nowait()
         except queue.Empty:
-            pass
-
-        self.viewport.tick()
-        if self.viewport.alive:
-            self.root.after(1, self._viewport_tick)
-        else:
-            self.viewport = None
+            self.root.after(1, self._collect_results)
+            return
+        self.root.after(1, self._collect_results)
 
 class RunControl(Panel):
     def __init__(self, parent, experiment):
@@ -147,8 +155,8 @@ class RunControl(Panel):
         neuron_label  = ttk.Label(self.frame, text='Visible Neurons')
         segment_label = ttk.Label(self.frame, text='Visible Segments')
 
-        self.settings.get_widget().grid(row=1, column=0, sticky='nesw')
-        self.neurons .get_widget().grid(row=1, column=1, sticky='nesw')
+        self.settings.get_widget().grid(row=1, column=0, sticky='nesw', padx=padx, pady=pady)
+        self.neurons .get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
         neuron_label              .grid(row=0, column=1)
         self.segments.get_widget().grid(row=1, column=2, sticky='nesw')
         segment_label             .grid(row=0, column=2)

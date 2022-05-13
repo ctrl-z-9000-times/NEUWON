@@ -17,6 +17,7 @@ class Viewport:
         self.move_speed = float(move_speed)
         self.turn_speed = float(mouse_sensitivity)
         self.sprint_modifier = 5 # Shift key move_speed multiplier.
+        self.colors = None
         self.background_color = [0,0,0,0]
         self.alive = True
         # Setup pygame.
@@ -35,9 +36,13 @@ class Viewport:
         pygame.quit()
         self.alive = False
 
-    def tick(self, colors=None):
+    def update_colors(self, colors):
+        self.colors = colors
+
+    def tick(self):
         dt = self.clock.tick()
 
+        rclick = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()
@@ -45,12 +50,8 @@ class Viewport:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     self.mouse_pos = event.pos
-            if event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 3:
-                    import tkinter as tk
-                    m = tk.Menu(tearoff=False)
-                    m.add_command(label='Hello', command=lambda: print('Hello pygame!'))
-                    m.tk_popup(event.pos[0], event.pos[1])
+                elif event.button == 3:
+                    rclick = True
 
         if pygame.mouse.get_focused():
             m1, m2, m3 = pygame.mouse.get_pressed()
@@ -65,9 +66,11 @@ class Viewport:
 
         seg_id = self.scene.get_segment(self.camera, pygame.mouse.get_pos())
 
-        self.scene.draw(self.camera, colors, self.background_color)
-        self._draw_overlay(f'segment {seg_id}\ncurrent time', (50,50))
+        self.scene.draw(self.camera, self.colors, self.background_color)
+        self._draw_overlay(f'segment {seg_id}\nfps {round(1000 / dt)}', (50,50))
         pygame.display.flip()
+        if rclick:
+            return seg_id
 
     def _read_mouse(self, dt):
         # Get the relative movement of the mouse cursor.
