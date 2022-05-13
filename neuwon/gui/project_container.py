@@ -1,7 +1,7 @@
-from . import species_editor
-from . import region_editor
-from .mechanism_editor  import MechanismManager
-from .neuron_editor     import SegmentEditor, NeuronEditor
+from .model_editor import species_editor
+from .model_editor import region_editor
+from .model_editor.mechanism_editor  import MechanismManager
+from .model_editor.neuron_editor     import SegmentEditor, NeuronEditor
 import os.path
 import json
 

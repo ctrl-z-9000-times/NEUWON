@@ -1,11 +1,11 @@
-from .control_panels import *
-from .region_editor import RegionEditor
-from .species_editor import SpeciesEditor
+from ..control_panels import *
+from ..project_container import ProjectContainer
+from ..run_control import ExperimentControl
+from ..themes import ThemedTk, set_theme, pick_theme
 from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
-from .project_container import ProjectContainer
-from .run_control import ExperimentControl
-from .themes import ThemedTk, set_theme, pick_theme
+from .region_editor import RegionEditor
+from .species_editor import SpeciesEditor
 from tkinter import filedialog
 import json
 

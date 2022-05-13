@@ -1,4 +1,4 @@
-from .control_panels import *
+from ..control_panels import *
 
 def SpeciesEditor(root):
     self = ManagementPanel(root, 'Species')

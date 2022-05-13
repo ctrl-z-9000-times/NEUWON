@@ -1,4 +1,4 @@
-from .control_panels import *
+from ..control_panels import *
 from .mechanism_editor import MechanismSelector
 
 # TODO: Prevent user from putting the soma segments in the wrong place, or

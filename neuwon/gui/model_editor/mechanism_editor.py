@@ -1,4 +1,4 @@
-from .control_panels import *
+from ..control_panels import *
 from neuwon.rxd.nmodl.parser import NmodlParser
 from tkinter import filedialog
 import os.path

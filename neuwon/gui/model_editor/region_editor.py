@@ -1,4 +1,4 @@
-from .control_panels import *
+from ..control_panels import *
 
 class RegionEditor(ManagementPanel):
     def __init__(self, root):
