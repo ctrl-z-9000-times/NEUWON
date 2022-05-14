@@ -6,6 +6,37 @@ from .scene import Camera, Scene
 
 epsilon = np.finfo(float).eps
 
+class TextOverlay:
+    """ Holds the state of the standard text overlay. """
+    def __init__(self):
+        self.set_text('')
+        self.set_neuron_type(True)
+        self.set_segment_type(True)
+
+    def set_text(self, text):
+        self.text = str(text)
+
+    def set_neuron_type(self, value):
+        self.neuron_type = bool(value)
+
+    def set_segment_type(self, value):
+        self.segment_type = bool(value)
+
+    def _need_segment(self):
+        return self.neuron_type or self.segment_type
+
+    def _get(self, segment=None):
+        overlay = self.text
+        if segment is None:
+            neuron_type  = None
+            segment_type = None
+        else:
+            neuron_type  = segment.neuron.neuron_type
+            segment_type = segment.segment_type
+        if self.neuron_type:  overlay += f'\nNeuron Type: {neuron_type}'
+        if self.segment_type: overlay += f'\nSegment Type: {segment_type}'
+        return overlay.strip()
+
 class Viewport:
     """
     This class opens the viewport window, embeds the rendered scene,
@@ -16,10 +47,12 @@ class Viewport:
                 mouse_sensitivity = .001,):
         self.move_speed = float(move_speed)
         self.turn_speed = float(mouse_sensitivity)
-        self.sprint_modifier = 5 # Shift key move_speed multiplier.
-        self.colors = None
+        self.sprint_mod = 5 # Shift key move_speed multiplier.
+        self.colors     = None
+        self.text_over  = TextOverlay()
         self.set_background('black')
-        self.alive = True
+        self.left_click = False
+        self.alive      = True
         # Setup pygame.
         pygame.init()
         pygame.font.init()
@@ -28,8 +61,8 @@ class Viewport:
         self.clock  = pygame.time.Clock()
         self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
 
-    def set_scene(self, database):
-        self.scene = Scene(database)
+    def set_scene(self, model):
+        self.scene = Scene(model)
 
     def set_background(self, color):
         if isinstance(color, str):
@@ -44,53 +77,63 @@ class Viewport:
             self.background_color = list(float(x) for x in color)
 
     def close(self):
+        pygame.mouse.set_visible(True)
         pygame.display.quit()
         pygame.quit()
         self.alive = False
 
-    def update_colors(self, colors):
+    def set_colors(self, colors):
         self.colors = colors
 
     def tick(self):
         dt = self.clock.tick()
-
-        rclick = False
+        # Process queued events.
+        right_click = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()
                 return
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    self.mouse_pos = event.pos
+                    self.left_click     = True
+                    self.left_click_pos = event.pos
+                    pygame.mouse.set_visible(False)
                 elif event.button == 3:
-                    rclick = True
-
-        if pygame.mouse.get_focused():
-            m1, m2, m3 = pygame.mouse.get_pressed()
-            if m1:
-                pygame.mouse.set_visible(False)
-                self._read_mouse(dt)
-                self._read_keyboard(dt)
-            else:
+                    right_click = True
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    self.left_click = False
+                    pygame.mouse.set_visible(True)
+            # Restore the mouse cursor if it leaves the window.
+            elif event.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWLEAVE,
+                                pygame.WINDOWCLOSE,     pygame.WINDOWMINIMIZED):
+                self.left_click = False
                 pygame.mouse.set_visible(True)
+        # Holding left mouse button triggers camera movement.
+        if self.left_click:
+            self._mouse_movement(dt)
+            self._keyboard_movement(dt)
+        # Press right mouse button to select a segment.
+        if right_click or self.text_over._need_segment():
+            segment = self.scene.get_segment(self.camera, pygame.mouse.get_pos())
         else:
-            pygame.mouse.set_visible(True)
-
-        seg_id = self.scene.get_segment(self.camera, pygame.mouse.get_pos())
-
+            segment = None
+        # 
         self.scene.draw(self.camera, self.colors, self.background_color)
-        self._draw_overlay(f'segment {seg_id}\nfps {round(1000 / dt)}', (50,50))
+        overlay = self.text_over._get(segment)
+        self._draw_text_overlay(overlay, (40, 50))
         pygame.display.flip()
-        if rclick:
-            return seg_id
+        # 
+        if right_click:
+            return segment
 
-    def _read_mouse(self, dt):
+    def _mouse_movement(self, dt):
         # Get the relative movement of the mouse cursor.
         x,  y  = pygame.mouse.get_pos()
-        x0, y0 = self.mouse_pos
+        x0, y0 = self.left_click_pos
         dx = x - x0
         dy = y - y0
-        pygame.mouse.set_pos(self.mouse_pos)
+        pygame.mouse.set_pos(self.left_click_pos)
         # Apply mouse movement.
         self.camera.yaw   += dx * self.turn_speed
         self.camera.pitch += dy * self.turn_speed
@@ -100,10 +143,10 @@ class Viewport:
         self.camera.pitch = np.clip(self.camera.pitch, -halfpi, +halfpi)
         self.camera.update_rotation_matrix()
 
-    def _read_keyboard(self, dt):
+    def _keyboard_movement(self, dt):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
-            dt *= self.sprint_modifier
+            dt *= self.sprint_mod
         if keys[pygame.K_w] or keys[pygame.K_UP]:
             self.camera.move([0.0, 0.0, -self.move_speed * dt])
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
@@ -117,7 +160,9 @@ class Viewport:
         if keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]:
             self.camera.pos[1] -= self.move_speed * dt
 
-    def _draw_overlay(self, text, position):
+    def _draw_text_overlay(self, text, position):
+        if not text:
+            return
         r,g,b,a = self.background_color
         color   = (255 - r, 255 - g, 255 - b, 255)
         x, y    = position

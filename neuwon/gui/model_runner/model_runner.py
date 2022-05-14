@@ -15,10 +15,10 @@ class ModelRunner(OrganizerPanel):
         self.project    = ProjectContainer(filename)
         self.parameters = self.project.load()
         self.exported   = self.project.export()
-        self.root = ThemedTk()
-        self.instance = None
-        self.viewport = None
-        self.runner   = ModelThread()
+        self.root       = ThemedTk()
+        self.model      = None
+        self.viewport   = None
+        self.runner     = ModelThread()
         self.root.bind("<Destroy>", lambda e: self.runner.control_queue.put(Message.QUIT))
         self._initialize_model()
         set_theme(self.root)
@@ -30,9 +30,9 @@ class ModelRunner(OrganizerPanel):
         self._open_viewport()
 
     def _initialize_model(self):
-        self.instance = Model(**self.exported)
-        self.instance.get_database().sort()
-        self.runner.control_queue.put((Message.INSTANCE, self.instance))
+        self.model = Model(**self.exported)
+        self.model.get_database().sort()
+        self.runner.control_queue.put((Message.INSTANCE, self.model))
         if self.viewport is not None:
             self._open_viewport()
 
@@ -40,7 +40,7 @@ class ModelRunner(OrganizerPanel):
         if self.viewport is None:
             self.viewport = Viewport()
             self.root.after(0, self._viewport_tick)
-        self.viewport.set_scene(self.instance)
+        self.viewport.set_scene(self.model)
 
     def _init_menu(self, parent):
         menubar = tk.Menu(parent)
@@ -135,11 +135,21 @@ class ModelRunner(OrganizerPanel):
 
     def _collect_results(self):
         try:
-            render_data = self.runner.results_queue.get_nowait()
+            results = self.runner.results_queue.get_nowait()
         except queue.Empty:
             self.root.after(1, self._collect_results)
             return
         self.root.after(1, self._collect_results)
+        if results == Message.PAUSE:
+            self.run_control.run_ctrl.pause()
+        else:
+            timestamp, remaining, render_data = results
+
+            # TODO: Give the (timestamp & remaining) to the run control panel here.
+            self.run_control.run_ctrl
+
+            colors = render_data # TODO: Apply the colormap here.
+            self.viewport.set_colors(colors)
 
 
 class MainControl(Panel):
@@ -155,8 +165,7 @@ class MainControl(Panel):
         self.frame.grid_rowconfigure(2, weight=1)
 
     def get_parameters(self) -> dict:
-        return {
-                'run_ctrl': self.run_ctrl.get_parameters(),
+        return {'run_ctrl': self.run_ctrl.get_parameters(),
                 'video':    self.video   .get_parameters(),
                 'visible':  self.visible .get_parameters(),}
 
@@ -189,16 +198,24 @@ class RunControl(Panel):
 
     def toggle(self):
         if self.running:
-            self.runner.control_queue.put(Message.PAUSE)
-            for entry in self.disable_while_running:
-                entry.configure(state='readonly')
+            self.pause()
         else:
-            parameters = self.get_parameters()
-            self.runner.control_queue.put((Message.SET_TIME, parameters['clock']))
-            self.runner.control_queue.put((Message.DURATION, parameters['run_for']))
-            self.runner.control_queue.put(Message.RUN)
-            for entry in self.disable_while_running:
-                entry.configure(state='enabled')
+            self.start()
+
+    def pause(self):
+        self.runner.control_queue.put(Message.PAUSE)
+        for entry in self.disable_while_running:
+            entry.configure(state='readonly')
+        self.running = False
+
+    def start(self):
+        parameters = self.get_parameters()
+        self.runner.control_queue.put((Message.SET_TIME, parameters['clock']))
+        self.runner.control_queue.put((Message.DURATION, parameters['run_for']))
+        self.runner.control_queue.put(Message.RUN)
+        for entry in self.disable_while_running:
+            entry.configure(state='enabled')
+        self.running = True
 
     def get_parameters(self):
         return self.settings.get_parameters()
@@ -226,8 +243,8 @@ class VideoSettings(Panel):
         self.settings.add_dropdown('component', available_components)
         self.settings.add_dropdown('colormap', ['red/blue'])
         self.settings.add_checkbox('show_scale')
-        self.settings.add_checkbox('show_type')
-        self.settings.add_checkbox('show_time')
+        self.settings.add_checkbox('show_type', default=True)
+        self.settings.add_checkbox('show_time', default=True)
         self.settings.add_radio_buttons('background', ['Black', 'White'], default='Black')
         self.settings.add_callback(self.settings_changed)
 
@@ -239,6 +256,9 @@ class VideoSettings(Panel):
     def settings_changed(self):
         if self.experiment.viewport is None: return
         parameters = self.get_parameters()
+        show_type = parameters['show_type']
+        self.experiment.viewport.text_over.set_neuron_type(show_type)
+        self.experiment.viewport.text_over.set_segment_type(show_type)
         self.experiment.viewport.set_background(parameters['background'])
 
 

@@ -55,8 +55,8 @@ class Scene:
         if hasattr(database, "get_database"):
             database = database.get_database()
         assert database.is_sorted()
-        Segment = database.get("Segment")
-        self.num_seg = num_seg = len(Segment)
+        self.Segment = database.get("Segment")
+        self.num_seg = num_seg = len(self.Segment)
         if num_seg == 0:
             self.vertices = np.empty(0)
             self.indices  = np.empty(0)
@@ -65,7 +65,7 @@ class Scene:
         # Collect all of the 3D objects, one per segment.
         objects = np.zeros(num_seg, dtype=object)
         for idx in range(num_seg):
-            seg = Segment.index_to_object(idx)
+            seg = self.Segment.index_to_object(idx)
             nslices = max(3, int(lod * seg.diameter))
             if seg.is_sphere():
                 objects[idx] = Sphere(seg.coordinates, 0.5 * seg.diameter, nslices)
@@ -164,12 +164,12 @@ class Scene:
         glFinish()
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
         color = glReadPixels(x, y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE)
-        segment = color[0] + (color[1] << 8) + (color[2] << 16)
+        segment_index = color[0] + (color[1] << 8) + (color[2] << 16)
 
         # Restore OpenGL settings.
         glDisable(GL_SCISSOR_TEST)
 
-        if segment == background:
+        if segment_index == background:
             return None
         else:
-            return segment
+            return self.Segment.index_to_object(segment_index)
