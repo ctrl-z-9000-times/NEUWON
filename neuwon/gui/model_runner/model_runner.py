@@ -28,6 +28,7 @@ class ModelRunner(OrganizerPanel):
         self._init_menu(self.root)
         self._init_main_panel(self.root)
         self._open_viewport()
+        self.root.after(1, self._collect_results)
 
     def _initialize_model(self):
         self.model = Model(**self.exported)
@@ -134,22 +135,30 @@ class ModelRunner(OrganizerPanel):
             self.runner.control_queue.put(Message.HEADLESS)
 
     def _collect_results(self):
-        try:
-            results = self.runner.results_queue.get_nowait()
-        except queue.Empty:
-            self.root.after(1, self._collect_results)
-            return
-        self.root.after(1, self._collect_results)
-        if results == Message.PAUSE:
-            self.run_control.run_ctrl.pause()
-        else:
-            timestamp, remaining, render_data = results
+        while True:
+            try:
+                results = self.runner.results_queue.get_nowait()
+            except queue.Empty:
+                self.root.after(10, self._collect_results)
+                return
+            if results == Message.PAUSE:
+                self.run_control.run_ctrl.pause()
+            else:
+                timestamp, remaining, render_data = results
 
-            # TODO: Give the (timestamp & remaining) to the run control panel here.
-            self.run_control.run_ctrl
+                self.run_control.run_ctrl.set_parameters({
+                        'run_for': remaining,
+                        'clock':   timestamp,
+                })
 
-            colors = render_data # TODO: Apply the colormap here.
-            self.viewport.set_colors(colors)
+                if self.viewport is not None:
+                    colors = render_data # TODO: Apply the colormap here.
+                    self.viewport.set_colors(colors)
+                    # TODO: Read these values from the parameters & model.clock!
+                    slowdown = 1000
+                    dt = .1
+                    self.root.after(round(slowdown * dt), self._collect_results)
+                    return
 
 
 class MainControl(Panel):
@@ -205,7 +214,7 @@ class RunControl(Panel):
     def pause(self):
         self.runner.control_queue.put(Message.PAUSE)
         for entry in self.disable_while_running:
-            entry.configure(state='readonly')
+            entry.configure(state='enabled')
         self.running = False
 
     def start(self):
@@ -214,7 +223,7 @@ class RunControl(Panel):
         self.runner.control_queue.put((Message.DURATION, parameters['run_for']))
         self.runner.control_queue.put(Message.RUN)
         for entry in self.disable_while_running:
-            entry.configure(state='enabled')
+            entry.configure(state='readonly')
         self.running = True
 
     def get_parameters(self):

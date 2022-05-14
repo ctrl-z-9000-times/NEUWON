@@ -28,7 +28,7 @@ class ModelThread(Thread):
         # The control_queue contains pairs of (Message, payload) where the
         # payload type depends on the type of message.
         self.control_queue = queue.Queue()
-        self.results_queue = queue.Queue()
+        self.results_queue = queue.Queue(10) # Do not run too far ahead of the GUI.
         self._instance  = None # Instance of neuwon.Model().
         self._active    = False # Is the model currently running or is it stopped?
         self._component = None # If None then it's running in headless mode, no results are outputted.
@@ -119,7 +119,4 @@ class ModelThread(Thread):
         else:
             render_data = self._instance.get_database().get_data(self._component)
             render_data = np.array(render_data, copy=True)
-            # Do not run too far ahead of the viewport.
-            while self.results_queue.qsize() > 10:
-                sleep(.1)
         self.results_queue.put(Result(timestamp, remaining, render_data))
