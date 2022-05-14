@@ -40,7 +40,7 @@ def SpeciesEditor(root):
     reversal_type_var.trace_add('write', const_entrybox_control)
 
     self.controlled.add_section('Intracellular')
-    self.controlled.add_checkbox('inside_constant',
+    self.controlled.add_checkbox('inside_global_constant',
             title       = 'Global Constant',
             default     = True)
     self.controlled.add_entry('inside_initial_concentration',
@@ -49,7 +49,7 @@ def SpeciesEditor(root):
             units       = 'mmol')
 
     self.controlled.add_section('Extracellular')
-    self.controlled.add_checkbox('outside_constant',
+    self.controlled.add_checkbox('outside_global_constant',
             title       = 'Global Constant',
             default     = True)
     self.controlled.add_entry('outside_initial_concentration',
@@ -60,7 +60,8 @@ def SpeciesEditor(root):
     return self
 
 def export(parameters):
-    sim = {}
-    for name, gui in parameters.items():
-        sim[name] = {}
-    return sim
+    for name, species in parameters.items():
+        const_reversal_potential = species.pop('const_reversal_potential')
+        if species['reversal_potential'] == 'Const':
+            species['reversal_potential'] = const_reversal_potential
+    return parameters

@@ -14,62 +14,57 @@ zero_c = 273.15 # Temperature, in Kelvins.
 
 class SpeciesInstance:
     """ A species in a location. """
-    def __init__(self, time_step, db_class, name, initial_concentration, *,
-            diffusivity=None,
-            geometry_component=None,
-            decay_period=math.inf,
-            constant=False):
-        self.name = name
-        self.time_step = float(time_step)
-        self.initial_concentration = float(initial_concentration)
-        assert self.initial_concentration >= 0.0
-        if diffusivity is None:
-            self.diffusivity = None 
-        else:
-            self.diffusivity = float(diffusivity)
+    def __init__(self, time_step, db_class, name, *, initial_concentration,
+                 global_constant, decay_period, diffusivity, geometry_component):
+        self.time_step          = time_step
+        self.db_class           = db_class
+        self.name               = name
+        self.global_constant    = bool(global_constant)
+        self.decay_period       = float(decay_period)
+        self.diffusivity        = float(diffusivity)
+        assert self.decay_period > 0.0
+        assert self.diffusivity >= 0.0
+        if self.global_constant:
+            assert self.decay_period == math.inf
+            assert self.diffusivity == 0.0
+
+        if self.diffusivity != 0.0:
+            self.geometry = db_class.get(geometry_component)
             self.diffusion_matrix = db_class.add_sparse_matrix(
                     self.name + '_diffusion',
                     db_class,
                     doc='Propagator matrix.')
-        if geometry_component is None:
-            self.geometry = None
-            assert self.diffusivity is None
-        else:
-            self.geometry = db_class.get(geometry_component)
-            assert self.diffusivity >= 0
             self._matrix_valid = False
-        self.decay_period = float(decay_period)
-        assert self.decay_period > 0.0
-        self.constant = bool(constant)
-        if self.constant:
-            assert self.decay_period == math.inf
-            assert self.diffusivity is None
-
-        if self.constant:
-            self.concentrations = db_class.add_class_attribute(f"{self.name}",
-                    self.initial_concentration,
+        if self.global_constant:
+            self.concentration = db_class.add_class_attribute(f"{self.name}",
+                    initial_concentration,
+                    valid_range=(0.0, np.inf),
                     units="millimolar")
         else:
-            self.concentrations = db_class.add_attribute(f"{self.name}",
-                    self.initial_concentration,
+            self.concentration = db_class.add_attribute(f"{self.name}",
+                    initial_concentration,
+                    valid_range=(0.0, np.inf),
                     units="millimolar")
-            self.deltas = db_class.add_attribute(f"{self.name}_delta",
+            self.delta = db_class.add_attribute(f"{self.name}_delta",
                     initial_value=0.0,
                     units="millimolar / timestep")
 
+    def __repr__(self):
+        return f'<Species: {self.name} @ {self.db_class.get_name()}>'
+
     def _zero_input_accumulators(self):
-        if not self.constant:
-            self.deltas.get_data().fill(0.0)
+        if not self.global_constant:
+            self.delta.get_data().fill(0.0)
 
     def _advance(self):
         """ Update the chemical concentrations with local changes and diffusion. """
-        if self.constant:
+        if self.global_constant:
             return
-        c  = self.concentrations.get_data()
-        rr = self.deltas.get_data()
-        xp = self.concentrations.get_database().get_memory_space().get_array_module()
+        c  = self.concentration.get_data()
+        rr = self.delta.get_data()
+        xp = self.concentration.get_database().get_memory_space().get_array_module()
         xp.maximum(0, c + rr * 0.5, out=c)
-        if self.diffusivity is None:
+        if self.diffusivity == 0.0:
             if self.decay_period < math.inf:
                 c *= math.exp(-self.time_step / self.decay_period)
             return
@@ -77,7 +72,7 @@ class SpeciesInstance:
             self._compute_matrix()
         m = self.diffusion_matrix.get_data()
         c = m.dot(c)
-        self.concentrations.set_data(c)
+        self.concentration.set_data(c)
 
     # Who sets _matrix_valid=False?
 
@@ -94,26 +89,24 @@ class SpeciesInstance:
 
 class SpeciesType:
     def __init__(self, name, factory, *,
-                charge = 0,
-                reversal_potential: '(None|float|"nerst"|"goldman_hodgkin_katz")' = None,
-                diffusivity = None,
-                inside = None,
-                outside = None,
-                ):
+                charge              = 0,
+                reversal_potential  = np.nan,
+                diffusivity         = 0.0,
+                decay_period        = np.inf,
+                inside_initial_concentration    = 0.0,
+                inside_global_constant          = True,
+                outside_initial_concentration   = 0.0,
+                outside_global_constant         = True,):
         self.name       = str(name)
         self.factory    = factory
         self.charge     = int(charge)
-        if reversal_potential is None:
-            self.reversal_potential = None
-        else:
-            try:
-                self.reversal_potential = float(reversal_potential)
-            except ValueError:
-                self.reversal_potential = str(reversal_potential)
-                assert self.reversal_potential in ("nerst", "goldman_hodgkin_katz")
-        self.electric = (self.charge != 0) or (self.reversal_potential is not None)
+        try:
+            self.reversal_potential = float(reversal_potential)
+        except ValueError:
+            self.reversal_potential = str(reversal_potential).lower()
+            assert self.reversal_potential in ("nerst", "ghk")
+        self.electric = (self.charge != 0)
         if self.electric:
-            assert self.reversal_potential is not None
             segment_data = factory.database.get("Segment")
             self.conductance = segment_data.add_attribute(f"{self.name}_conductance",
                     initial_value=0.0,
@@ -131,20 +124,21 @@ class SpeciesType:
                         units="mV")
             factory.input_hook.register_callback(self._accumulate_conductance)
 
-        if inside is not None:
-            db_class = self.factory.database.get_class("Segment")
-            geometry_component = 1/0
-            self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
-                    geometry_component=None, **inside)
-        else:
-            self.inside = None
+        db_class = self.factory.database.get_class("Segment")
+        self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+                initial_concentration   = inside_initial_concentration,
+                global_constant         = inside_global_constant,
+                decay_period            = decay_period,
+                diffusivity             = diffusivity,
+                geometry_component      = None)
 
-        if outside is not None:
-            db_class = self.factory.database.get_class("Extracellular")
-            self.outside = SpeciesInstance(self.factory.time_step, db_class, self.name,
-                    geometry_component=None, **outside)
-        else:
-            self.outside = None
+        db_class = self.factory.database.get_class("Extracellular")
+        self.outside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+                initial_concentration   = outside_initial_concentration,
+                global_constant         = outside_global_constant,
+                decay_period            = decay_period,
+                diffusivity             = diffusivity,
+                geometry_component      = None)
 
     def get_name(self) -> str:
         return self.name
@@ -155,8 +149,8 @@ class SpeciesType:
     def _zero_input_accumulators(self):
         if self.electric:
             self.conductance.get_data().fill(0.0)
-        if self.inside  is not None: self.inside ._zero_input_accumulators()
-        if self.outside is not None: self.outside._zero_input_accumulators()
+        self.inside ._zero_input_accumulators()
+        self.outside._zero_input_accumulators()
 
     def _accumulate_conductance(self):
         database            = self.factory.database
@@ -180,10 +174,11 @@ class SpeciesType:
         T = access("T")
         if self.reversal_potential == "nerst":
             x[:] = self._nerst_potential(self.charge, T, inside, outside)
-        elif self.reversal_potential == "goldman_hodgkin_katz":
+        elif self.reversal_potential == "ghk":
             voltages = access("membrane/voltages")
             x[:] = self._goldman_hodgkin_katz(self.charge, T, inside, outside, voltages)
-        else: raise NotImplementedError(self.reversal_potential)
+        else:
+            raise NotImplementedError(self.reversal_potential)
         return x
 
     def _advance(self):
@@ -244,8 +239,8 @@ class SpeciesFactory(dict):
 
     def add_species(self, name, species_kwargs) -> SpeciesType:
         if name in self:
-            return self[name]
-        if isinstance(species_kwargs, SpeciesType):
+            species = self[name]
+        elif isinstance(species_kwargs, SpeciesType):
             self[name] = species = species_kwargs
         else:
             self[name] = species = SpeciesType(name, self, **species_kwargs)
