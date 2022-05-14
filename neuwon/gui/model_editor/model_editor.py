@@ -1,6 +1,6 @@
 from ..control_panels import *
 from ..project_container import ProjectContainer
-from ..model_runner.run_control import ExperimentControl
+from ..model_runner.model_runner import ModelRunner
 from ..themes import ThemedTk, set_theme, pick_theme
 from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
@@ -117,7 +117,7 @@ class ModelEditor(OrganizerPanel):
         # re-loading everything. The mechanisms in particular can take a long
         # time to load.
         self.close()
-        ExperimentControl(self.model.filename)
+        ModelRunner(self.model.filename)
 
     def run(self):
         ''' Blocks calling thread until the ModelEditor is closed. '''

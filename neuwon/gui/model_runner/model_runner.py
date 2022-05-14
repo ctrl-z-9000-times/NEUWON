@@ -10,7 +10,7 @@ from tkinter import messagebox
 import queue
 import time
 
-class ExperimentControl(OrganizerPanel):
+class ModelRunner(OrganizerPanel):
     def __init__(self, filename):
         self.project    = ProjectContainer(filename)
         self.parameters = self.project.load()
@@ -220,4 +220,4 @@ class FilterVisible(Panel):
 if __name__ == '__main__':
     import sys
     filename = sys.argv[1]
-    ExperimentControl(filename).root.mainloop()
+    ModelRunner(filename).root.mainloop()
