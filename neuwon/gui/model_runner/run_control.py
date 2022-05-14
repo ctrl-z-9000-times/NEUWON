@@ -12,8 +12,9 @@ import time
 
 class ExperimentControl(OrganizerPanel):
     def __init__(self, filename):
-        self.model = ProjectContainer(filename)
-        self.parameters = self.model.load()
+        self.project    = ProjectContainer(filename)
+        self.parameters = self.project.load()
+        self.exported   = self.project.export()
         self.root = ThemedTk()
         self.instance = None
         self.viewport = None
@@ -23,13 +24,13 @@ class ExperimentControl(OrganizerPanel):
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
-        self.root.title('NEUWON: ' + self.model.short_name)
+        self.root.title('NEUWON: ' + self.project.short_name)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
         self._open_viewport()
 
     def _initialize_model(self):
-        self.instance = Model(**self.model.export())
+        self.instance = Model(**self.exported)
         self.instance.get_database().sort()
         self.runner.control_queue.put((Message.INSTANCE, self.instance))
         if self.viewport is not None:
@@ -92,12 +93,12 @@ class ExperimentControl(OrganizerPanel):
 
     def switch_to_model_editor(self):
         self.save()
-        if self.model.filename is None:
+        if self.project.filename is None:
             return
         self.close()
         self.viewport.close()
         from .model_editor import ModelEditor
-        ModelEditor(self.model.filename)
+        ModelEditor(self.project.filename)
 
     def rebuild_model(self):
         confirmation = messagebox.askyesno(f'Confirm Rebuild Model',
@@ -110,7 +111,7 @@ class ExperimentControl(OrganizerPanel):
 
     def save(self, event=None):
         self.parameters.update(self.get_parameters())
-        self.model.save(self.parameters)
+        self.project.save(self.parameters)
 
     def save_as(self, event=None):
         # Does it even make sense to save-as for a running model?
@@ -149,17 +150,10 @@ class RunControl(Panel):
 
         self.frame    = ttk.Frame(parent)
         self.settings = SettingsPanel(self.frame)
-        self.neurons  = ListSelector(self.frame, Neuron.neuron_types_list, default=True)
-        self.segments = ListSelector(self.frame, Segment.segment_types_list, default=True)
+        self.visible  = FilterVisible(self.frame, experiment.exported)
 
-        neuron_label  = ttk.Label(self.frame, text='Visible Neurons')
-        segment_label = ttk.Label(self.frame, text='Visible Segments')
-
-        self.settings.get_widget().grid(row=1, column=0, sticky='nesw', padx=padx, pady=pady)
-        self.neurons .get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
-        neuron_label              .grid(row=0, column=1)
-        self.segments.get_widget().grid(row=1, column=2, sticky='nesw')
-        segment_label             .grid(row=0, column=2)
+        self.settings.get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
+        self.visible .get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
         self.frame.grid_rowconfigure(1, weight=1)
 
 
@@ -191,6 +185,36 @@ class RunControl(Panel):
         self.settings.add_checkbox('show_type')
         self.settings.add_checkbox('show_time')
         self.settings.add_radio_buttons('background', ['Black', 'White'], default='Black')
+
+class FilterVisible(Panel):
+    def __init__(self, parent, parameters):
+        neuron_types_list  = sorted(parameters['neurons'].keys())
+        segment_types_list = sorted(parameters['segments'].keys())
+        # Make the widgets.
+        self.frame    = ttk.Frame(parent)
+        neuron_label  = ttk.Label(self.frame, text='Visible Neurons')
+        segment_label = ttk.Label(self.frame, text='Visible Segments')
+        self.neurons  = ListSelector(self.frame, neuron_types_list, default=True)
+        self.segments = ListSelector(self.frame, segment_types_list, default=True)
+        # Arrange the widgets.
+        neuron_label              .grid(row=1, column=1, padx=padx, pady=pady)
+        segment_label             .grid(row=1, column=2, padx=padx, pady=pady)
+        self.neurons .get_widget().grid(row=2, column=1, padx=padx, pady=pady, sticky='nesw')
+        self.segments.get_widget().grid(row=2, column=2, padx=padx, pady=pady, sticky='nesw')
+        self.frame.grid_rowconfigure(2, weight=1) # Resize vertically.
+
+    def get_parameters(self) -> dict:
+        return {'visible_neurons':  self.neurons.get_parameters()
+                'visible_segments': self.segments.get_parameters()}
+
+    def set_parameters(self, parameters: dict):
+        self.neurons .set_parameters(parameters['visible_neurons'])
+        self.segments.set_parameters(parameters['visible_segments'])
+
+    def export(self):
+        neuron_types  = [nt for nt, v in self.neurons.get_parameters().items() if v]
+        segment_types = [st for st, v in self.segments.get_parameters().items() if v]
+        return {'neuron_types': neuron_types, 'segment_types': segment_types}
 
 
 if __name__ == '__main__':
