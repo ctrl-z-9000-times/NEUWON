@@ -1,9 +1,10 @@
 from neuwon import Model
+from threading import Thread
+from time import sleep
 import collections
 import enum
 import numpy as np
 import queue
-import threading
 
 class Message(enum.Enum):
     INSTANCE    = enum.auto()
@@ -15,20 +16,25 @@ class Message(enum.Enum):
     PAUSE       = enum.auto()
     QUIT        = enum.auto()
 
-Result = collections.namedtuple('Result', ['time', 'data'])
+Result = collections.namedtuple('Result', ['timestamp', 'remaining', 'data'])
 
-class ModelThread(threading.Thread):
+class ModelThread(Thread):
+    """
+    Run the model in its own thread so that it does not block the GUI while it's
+    running the simulation.
+    """
     def __init__(self):
         super().__init__(name='ModelThread')
         # The control_queue contains pairs of (Message, payload) where the
         # payload type depends on the type of message.
         self.control_queue = queue.Queue()
-        self.results_queue = queue.Queue(maxsize=10)
+        self.results_queue = queue.Queue()
         self._instance  = None # Instance of neuwon.Model().
         self._active    = False # Is the model currently running or is it stopped?
         self._component = None # If None then it's running in headless mode, no results are outputted.
         self._duration  = None # Integer number of time_steps.
         self._quit      = False
+        self.exception  = None
         self.start()
 
     def run(self):
@@ -62,7 +68,6 @@ class ModelThread(threading.Thread):
             elif message == Message.SET_TIME:
                 assert not self._active
                 clock = self._instance.get_clock()
-                time = float(payload)
                 if payload != clock.get_time():
                     clock.set_time(payload)
 
@@ -96,24 +101,25 @@ class ModelThread(threading.Thread):
             return
         elif self._duration <= 0:
             self._active = False
+            self.results_queue.put(Message.PAUSE)
             return
-        self._instance.advance()
+        # 
+        try:
+            self._instance.advance()
+        except Exception as x:
+            self.exception = x
+            raise x
         self._duration -= 1
-        if self._component is not None:
+        # Gather the results and output them.
+        clock     = self._instance.get_clock()
+        timestamp = clock.get_time()
+        remaining = self._duration * clock.get_tick_period()
+        if self._component is None:
+            render_data = None
+        else:
             render_data = self._instance.get_database().get_data(self._component)
-            self.results_queue.put(Result(
-                    self.get_time(),
-                    np.array(render_data, copy=True)))
-
-    def is_running(self):
-        return self._active
-
-    def get_time(self):
-        if self._instance is None:
-            return np.nan
-        return self._instance.get_clock().get_time()
-
-    def get_duration(self):
-        if self._instance is None or self._duration is None:
-            return np.nan
-        return self._duration * self._instance.get_clock().get_tick_period()
+            render_data = np.array(render_data, copy=True)
+            # Do not run too far ahead of the viewport.
+            while self.results_queue.qsize() > 10:
+                sleep(.1)
+        self.results_queue.put(Result(timestamp, remaining, render_data))
