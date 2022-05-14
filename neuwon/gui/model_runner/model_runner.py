@@ -72,7 +72,7 @@ class ModelRunner(OrganizerPanel):
     def _init_main_panel(self, parent):
         super().__init__(parent)
         frame = self.get_widget()
-        self.add_tab('run_control', RunControl(frame, self))
+        self.add_tab('run_control', MainControl(frame, self))
         self.add_tab('signal_editor', SignalEditor(frame))
         # self.add_tab('probes', )
         frame.grid(sticky='nesw')
@@ -124,7 +124,7 @@ class ModelRunner(OrganizerPanel):
 
     def _viewport_tick(self):
         start_time = time.time()
-        self.viewport.tick()
+        rclick_segment = self.viewport.tick()
         render_time = 1000 * (time.time() - start_time)
         if self.viewport.alive:
             max_fps = 30
@@ -141,21 +141,25 @@ class ModelRunner(OrganizerPanel):
             return
         self.root.after(1, self._collect_results)
 
-class RunControl(Panel):
+
+class MainControl(Panel):
     def __init__(self, parent, experiment):
-
-        database = experiment.instance.get_database()
-        Neuron   = database.get_instance_type('Neuron')
-        Segment  = database.get_instance_type('Segment')
-
         self.frame    = ttk.Frame(parent)
-        self.settings = SettingsPanel(self.frame)
+        self.run_ctrl = RunControl(self.frame)
+        self.video    = VideoSettings(self.frame)
         self.visible  = FilterVisible(self.frame, experiment.exported)
 
-        self.settings.get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
-        self.visible .get_widget().grid(row=1, column=2, sticky='nesw', padx=padx, pady=pady)
-        self.frame.grid_rowconfigure(1, weight=1)
+        self.run_ctrl.get_widget().grid(row=1, column=1, sticky='nw', padx=padx, pady=pady)
+        self.video   .get_widget().grid(row=2, column=1, sticky='nw', padx=padx, pady=pady)
+        self.visible .get_widget().grid(row=1, column=2, rowspan=2, sticky='nesw', padx=padx, pady=pady)
+        self.frame.grid_rowconfigure(2, weight=1)
 
+
+
+class RunControl(Panel):
+    def __init__(self, parent):
+        self.frame    = ttk.Frame(parent)
+        self.settings = SettingsPanel(self.frame)
 
         # TODO: start/pause button.
         start_callback = lambda: experiment.runner.control_queue.put((Message.RUN, None))
@@ -168,6 +172,14 @@ class RunControl(Panel):
                 valid_range = (-max_float, max_float),
                 default     = 0,)
         self.disable_while_running = [run_for, clock]
+
+
+
+class VideoSettings(Panel):
+    def __init__(self, parent):
+        self.frame    = ttk.Frame(parent)
+        self.settings = SettingsPanel(self.frame)
+        self.settings.get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
 
         self.settings.add_section('Video Settings')
         self.settings.add_empty_space()
@@ -204,7 +216,7 @@ class FilterVisible(Panel):
         self.frame.grid_rowconfigure(2, weight=1) # Resize vertically.
 
     def get_parameters(self) -> dict:
-        return {'visible_neurons':  self.neurons.get_parameters()
+        return {'visible_neurons':  self.neurons.get_parameters(),
                 'visible_segments': self.segments.get_parameters()}
 
     def set_parameters(self, parameters: dict):
