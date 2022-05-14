@@ -17,9 +17,9 @@ class Message(enum.Enum):
 
 Result = collections.namedtuple('Result', ['time', 'data'])
 
-class ModelRunner(threading.Thread):
+class ModelThread(threading.Thread):
     def __init__(self):
-        super().__init__(name='ModelRunner')
+        super().__init__(name='ModelThread')
         # The control_queue contains pairs of (Message, payload) where the
         # payload type depends on the type of message.
         self.control_queue = queue.Queue()

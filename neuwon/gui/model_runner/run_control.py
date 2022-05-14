@@ -1,7 +1,7 @@
 from ..control_panels import *
 from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
-from .model_runner import ModelRunner, Message
+from .model_thread import ModelThread, Message
 from .signal_editor import SignalEditor
 from .viewport.viewport import Viewport
 from neuwon import Model
@@ -18,7 +18,7 @@ class ExperimentControl(OrganizerPanel):
         self.root = ThemedTk()
         self.instance = None
         self.viewport = None
-        self.runner   = ModelRunner()
+        self.runner   = ModelThread()
         self.root.bind("<Destroy>", lambda e: self.runner.control_queue.put(Message.QUIT))
         self._initialize_model()
         set_theme(self.root)
