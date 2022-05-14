@@ -18,7 +18,7 @@ class Viewport:
         self.turn_speed = float(mouse_sensitivity)
         self.sprint_modifier = 5 # Shift key move_speed multiplier.
         self.colors = None
-        self.background_color = [0,0,0,0]
+        self.set_background('black')
         self.alive = True
         # Setup pygame.
         pygame.init()
@@ -30,6 +30,18 @@ class Viewport:
 
     def set_scene(self, database):
         self.scene = Scene(database)
+
+    def set_background(self, color):
+        if isinstance(color, str):
+            color = color.lower()
+            if color == 'black':
+                self.background_color = [0,0,0,0]
+            elif color == 'white':
+                self.background_color = [1,1,1,1]
+            else:
+                raise NotImplementedError(color)
+        else:
+            self.background_color = list(float(x) for x in color)
 
     def close(self):
         pygame.display.quit()

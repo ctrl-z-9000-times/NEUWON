@@ -145,8 +145,8 @@ class ModelRunner(OrganizerPanel):
 class MainControl(Panel):
     def __init__(self, parent, experiment):
         self.frame    = ttk.Frame(parent)
-        self.run_ctrl = RunControl(self.frame)
-        self.video    = VideoSettings(self.frame)
+        self.run_ctrl = RunControl(self.frame, experiment.runner)
+        self.video    = VideoSettings(self.frame, experiment)
         self.visible  = FilterVisible(self.frame, experiment.exported)
 
         self.run_ctrl.get_widget().grid(row=1, column=1, sticky='nw', padx=padx, pady=pady)
@@ -154,16 +154,30 @@ class MainControl(Panel):
         self.visible .get_widget().grid(row=1, column=2, rowspan=2, sticky='nesw', padx=padx, pady=pady)
         self.frame.grid_rowconfigure(2, weight=1)
 
+    def get_parameters(self) -> dict:
+        return {
+                'run_ctrl': self.run_ctrl.get_parameters(),
+                'video':    self.video   .get_parameters(),
+                'visible':  self.visible .get_parameters(),}
+
+    def set_parameters(self, parameters:dict):
+        self.run_ctrl.set_parameters(parameters['run_ctrl'])
+        self.video   .set_parameters(parameters['video'])
+        self.visible .set_parameters(parameters['visible'])
 
 
 class RunControl(Panel):
-    def __init__(self, parent):
+    def __init__(self, parent, runner):
+        self.runner   = runner
         self.frame    = ttk.Frame(parent)
         self.settings = SettingsPanel(self.frame)
 
-        # TODO: start/pause button.
-        start_callback = lambda: experiment.runner.control_queue.put((Message.RUN, None))
-        pause_callback = lambda: experiment.runner.control_queue.put((Message.PAUSE, None))
+        self.running = False
+
+        start_button = ttk.Button(self.frame, text='Start/Pause', command=self.toggle)
+
+        start_button.grid(row=1)
+        self.settings.get_widget().grid(row=2)
 
         run_for = self.settings.add_entry('run_for',
                 valid_range = (0, inf),
@@ -173,10 +187,28 @@ class RunControl(Panel):
                 default     = 0,)
         self.disable_while_running = [run_for, clock]
 
+    def toggle(self):
+        if self.running:
+            self.runner.control_queue.put(Message.PAUSE)
+            for entry in self.disable_while_running:
+                entry.configure(state='readonly')
+        else:
+            parameters = self.get_parameters()
+            self.runner.control_queue.put((Message.SET_TIME, parameters['clock']))
+            self.runner.control_queue.put((Message.DURATION, parameters['run_for']))
+            self.runner.control_queue.put(Message.RUN)
+            for entry in self.disable_while_running:
+                entry.configure(state='enabled')
+
+    def get_parameters(self):
+        return self.settings.get_parameters()
+    def set_parameters(self, parameters):
+        return self.settings.set_parameters(parameters)
 
 
 class VideoSettings(Panel):
-    def __init__(self, parent):
+    def __init__(self, parent, experiment):
+        self.experiment = experiment
         self.frame    = ttk.Frame(parent)
         self.settings = SettingsPanel(self.frame)
         self.settings.get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
@@ -197,6 +229,18 @@ class VideoSettings(Panel):
         self.settings.add_checkbox('show_type')
         self.settings.add_checkbox('show_time')
         self.settings.add_radio_buttons('background', ['Black', 'White'], default='Black')
+        self.settings.add_callback(self.settings_changed)
+
+    def get_parameters(self):
+        return self.settings.get_parameters()
+    def set_parameters(self, parameters):
+        return self.settings.set_parameters(parameters)
+
+    def settings_changed(self):
+        if self.experiment.viewport is None: return
+        parameters = self.get_parameters()
+        self.experiment.viewport.set_background(parameters['background'])
+
 
 class FilterVisible(Panel):
     def __init__(self, parent, parameters):
