@@ -1,12 +1,12 @@
-from .control_panels import *
-from tkinter import messagebox
-from .themes import ThemedTk, set_theme, pick_theme
-from .project_container import ProjectContainer
+from ..control_panels import *
+from ..project_container import ProjectContainer
+from ..themes import ThemedTk, set_theme, pick_theme
+from .model_runner import ModelRunner, Message
 from .signal_editor import SignalEditor
+from .viewport.viewport import Viewport
 from neuwon import Model
 from neuwon.database import data_components
-from .viewport.viewport import Viewport
-from .model_runner import ModelRunner, Message
+from tkinter import messagebox
 import queue
 import time
 

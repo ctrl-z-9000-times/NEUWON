@@ -1,4 +1,4 @@
-from .control_panels import *
+from ..control_panels import *
 from .embedded_plot import MatplotlibEmbed
 from neuwon import TimeSeries
 

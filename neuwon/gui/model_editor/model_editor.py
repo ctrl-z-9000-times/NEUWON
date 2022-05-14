@@ -1,6 +1,6 @@
 from ..control_panels import *
 from ..project_container import ProjectContainer
-from ..run_control import ExperimentControl
+from ..model_runner.run_control import ExperimentControl
 from ..themes import ThemedTk, set_theme, pick_theme
 from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
