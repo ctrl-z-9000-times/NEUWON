@@ -248,52 +248,44 @@ class RunControl(Panel):
         return self.settings.set_parameters(parameters)
 
 
-class VideoSettings(Panel):
-    def __init__(self, parent, runner, viewport):
-        self.runner   = runner
-        self.viewport = viewport
-        self.frame    = ttk.Frame(parent)
-        self.settings = SettingsPanel(self.frame)
-        self.settings.get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
+def VideoSettings(parent, runner, viewport):
+    self = SettingsPanel(parent)
+    self.add_section('Video Settings')
+    self.add_empty_space()
 
-        self.settings.add_section('Video Settings')
-        self.settings.add_empty_space()
-        # TODO: Resolution
-        self.settings.add_entry('Slowdown',
-                default = 1000,
-                units   = 'Real-Time : Model-Time')
+    # TODO: Resolution
+    self.add_entry('Slowdown',
+            default = 1000,
+            units   = 'Real-Time : Model-Time')
 
-        available_components = [
-                'voltage'
-                # TODO: All of the species concentrations.
-        ]
-        def set_component(component):
-            self.runner.control_queue.put((Message.COMPONENT, f'Segment.{component}'))
-        self.settings.add_dropdown('component', available_components,
-                default  = available_components[0],
-                callback = set_component)
+    available_components = [
+            'voltage'
+            # TODO: All of the species concentrations.
+    ]
+    def set_component(component):
+        runner.control_queue.put((Message.COMPONENT, f'Segment.{component}'))
+    self.add_dropdown('component', available_components,
+            default  = available_components[0],
+            callback = set_component)
 
-        self.settings.add_dropdown('colormap', Coloration.get_all_colormaps(),
-                default  = 'turbo',
-                callback = self.viewport.coloration.set_colormap)
+    self.add_dropdown('colormap', Coloration.get_all_colormaps(),
+            default  = 'turbo',
+            callback = viewport.coloration.set_colormap)
 
-        self.settings.add_checkbox('show_scale')
+    self.add_checkbox('show_scale')
 
-        def show_type(x: bool):
-            self.viewport.text_overlay.show_neuron_type(x)
-            self.viewport.text_overlay.show_segment_type(x)
-        self.settings.add_checkbox('show_type', default=True, callback=show_type)
+    def show_type(x: bool):
+        viewport.text_overlay.show_neuron_type(x)
+        viewport.text_overlay.show_segment_type(x)
+    self.add_checkbox('show_type', default=True, callback=show_type)
 
-        self.settings.add_checkbox('show_time', default=True)
+    self.add_checkbox('show_time', default=True)
 
-        self.settings.add_radio_buttons('background', ['Black', 'White'],
-                default  = 'Black',
-                callback = self.viewport.set_background_color)
+    self.add_radio_buttons('background', ['Black', 'White'],
+            default  = 'Black',
+            callback = viewport.set_background_color)
 
-    def get_parameters(self):
-        return self.settings.get_parameters()
-    def set_parameters(self, parameters):
-        return self.settings.set_parameters(parameters)
+    return self
 
 
 class FilterVisible(Panel):
