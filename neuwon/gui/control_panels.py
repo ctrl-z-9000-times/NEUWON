@@ -582,7 +582,7 @@ class ListSelector(Panel):
         self.set_parameters({x: default for x in options})
 
     def get_parameters(self) -> dict:
-        return {option: self.listbox.tkinter.Listbox.selection_includes(idx)
+        return {option: self.listbox.selection_includes(idx)
                 for idx, option in enumerate(self.listbox.get(0, tk.END))}
 
     def set_parameters(self, parameters:dict):

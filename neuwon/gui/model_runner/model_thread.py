@@ -60,7 +60,7 @@ class ModelThread(Thread):
 
             elif message == Message.COMPONENT:
                 self._component = payload
-                self._instance.get_component(self._component) # assert component exists.
+                self._instance.get_database().get_component(self._component) # assert component exists.
 
             elif message == Message.HEADLESS:
                 self._component = None

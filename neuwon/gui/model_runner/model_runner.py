@@ -3,9 +3,8 @@ from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
 from .model_thread import ModelThread, Message
 from .signal_editor import SignalEditor
-from .viewport.viewport import Viewport
+from .viewport.viewport import Viewport, Coloration
 from neuwon import Model
-from neuwon.database import data_components
 from tkinter import messagebox
 import queue
 import time
@@ -29,6 +28,7 @@ class ModelRunner(OrganizerPanel):
         self._init_main_panel(self.root)
         self._open_viewport()
         self.root.after(1, self._collect_results)
+        self.set_parameters(self.get_parameters())
 
     def _initialize_model(self):
         self.model = Model(**self.exported)
@@ -136,6 +136,12 @@ class ModelRunner(OrganizerPanel):
 
     def _collect_results(self):
         while True:
+            if self.runner.exception is not None:
+                # TODO: Display the text of the exception to the user in a modal
+                # pop-up dialog. Allow the user to keep running this program,
+                # but warn them that its effectively dead.
+                # -> User might want to save recorded data, or save recording of video.
+                1/0
             try:
                 results = self.runner.results_queue.get_nowait()
             except queue.Empty:
@@ -152,8 +158,12 @@ class ModelRunner(OrganizerPanel):
                 })
 
                 if self.viewport is not None:
-                    colors = render_data # TODO: Apply the colormap here.
-                    self.viewport.set_colors(colors)
+                    # Normalize the render_data into the range [0,1]
+                    vmin = -100
+                    vmax = +100
+                    render_data -= vmin
+                    render_data /= (vmax - vmin)
+                    self.viewport.get_coloration().set_segment_values(render_data)
                     # TODO: Read these values from the parameters & model.clock!
                     slowdown = 1000
                     dt = .1
@@ -249,8 +259,10 @@ class VideoSettings(Panel):
                 'voltage'
                 # TODO: All of the species concentrations.
         ]
-        self.settings.add_dropdown('component', available_components)
-        self.settings.add_dropdown('colormap', ['red/blue'])
+        self.settings.add_dropdown('component', available_components,
+                                    default=available_components[0])
+        self.settings.add_dropdown('colormap', Coloration.get_all_colormaps(),
+                                    default='turbo')
         self.settings.add_checkbox('show_scale')
         self.settings.add_checkbox('show_type', default=True)
         self.settings.add_checkbox('show_time', default=True)
@@ -266,6 +278,9 @@ class VideoSettings(Panel):
         if self.experiment.viewport is None: return
         parameters = self.get_parameters()
         show_type = parameters['show_type']
+        data_access = 'Segment.' + parameters['component']
+        self.experiment.runner.control_queue.put((Message.COMPONENT, data_access))
+        self.experiment.viewport.coloration.set_colormap(parameters['colormap'])
         self.experiment.viewport.text_over.set_neuron_type(show_type)
         self.experiment.viewport.text_over.set_segment_type(show_type)
         self.experiment.viewport.set_background(parameters['background'])

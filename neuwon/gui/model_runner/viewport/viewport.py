@@ -4,6 +4,8 @@ from pygame.locals import *
 from OpenGL import GL
 from .scene import Camera, Scene
 
+import matplotlib.pyplot as plt
+
 epsilon = np.finfo(float).eps
 
 class TextOverlay:
@@ -37,6 +39,33 @@ class TextOverlay:
         if self.segment_type: overlay += f'\nSegment Type: {segment_type}'
         return overlay.strip()
 
+class Coloration:
+    """ Holds the segments color & visibility data, manages colormaps. """
+    def __init__(self):
+        self.segment_values     = None
+        self.visible_segments   = None
+        self.color_data         = None
+        self.set_colormap(self.get_all_colormaps()[0])
+
+    @classmethod
+    def get_all_colormaps(cls):
+        return plt.colormaps()
+
+    def set_colormap(self, colormap):
+        self.colormap = plt.get_cmap(colormap)
+
+    def set_segment_values(self, segment_values):
+        self.segment_values = segment_values
+
+    def set_visible_segments(self, visible_segments):
+        self.visible_segments = visible_segments
+
+    def _get(self):
+        if self.segment_values is None:
+            return None
+        color_data = self.colormap(self.segment_values, self.visible_segments)
+        return color_data
+
 class Viewport:
     """
     This class opens the viewport window, embeds the rendered scene,
@@ -48,7 +77,7 @@ class Viewport:
         self.move_speed = float(move_speed)
         self.turn_speed = float(mouse_sensitivity)
         self.sprint_mod = 5 # Shift key move_speed multiplier.
-        self.colors     = None
+        self.coloration = Coloration()
         self.text_over  = TextOverlay()
         self.set_background('black')
         self.left_click = False
@@ -76,14 +105,17 @@ class Viewport:
         else:
             self.background_color = list(float(x) for x in color)
 
+    def get_coloration(self):
+        return self.coloration
+
+    def get_text_overlay(self):
+        return self.text_over
+
     def close(self):
         pygame.mouse.set_visible(True)
         pygame.display.quit()
         pygame.quit()
         self.alive = False
-
-    def set_colors(self, colors):
-        self.colors = colors
 
     def tick(self):
         dt = self.clock.tick()
@@ -119,7 +151,7 @@ class Viewport:
         else:
             segment = None
         # 
-        self.scene.draw(self.camera, self.colors, self.background_color)
+        self.scene.draw(self.camera, self.coloration._get(), self.background_color)
         overlay = self.text_over._get(segment)
         self._draw_text_overlay(overlay, (40, 50))
         pygame.display.flip()
