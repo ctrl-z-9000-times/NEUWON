@@ -208,7 +208,7 @@ class Viewport:
         if not text:
             return
         r,g,b,a = self.background_color
-        color   = (255 - r, 255 - g, 255 - b, 255)
+        color   = (255 * (1 - r), 255 * (1 - g), 255 * (1 - b), 255)
         x, y    = position
         for line in text.split('\n'):
             overlay = self.font.render(line, True, color).convert_alpha()
