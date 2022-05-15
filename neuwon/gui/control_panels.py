@@ -979,27 +979,27 @@ def _askstring(title, prompt, default='', options_grid=None, *, parent):
 
 class OrganizerPanel(Panel):
     def __init__(self, parent):
-        self.notebook   = ttk.Notebook(parent)
-        self.parameters = {}
-        self.tabs       = {}
+        self._notebook   = ttk.Notebook(parent)
+        self._parameters = {}
+        self._tabs       = {}
 
     def get_widget(self):
-        return self.notebook
+        return self._notebook
 
     def add_tab(self, title:str, panel):
         """ This also saves the panel as an attribute on this object. """
         assert title not in dir(self), 'Duplicate panel or name conflict!'
         setattr(self, title, panel)
-        self.tabs[title] = panel
-        self.notebook.add(panel.get_widget(), text=title.title().replace('_', ' '),
+        self._tabs[title] = panel
+        self._notebook.add(panel.get_widget(), text=title.title().replace('_', ' '),
                 sticky='nesw', padding=(padx, pad_top))
 
     def get_parameters(self):
-        for title, panel in self.tabs.items():
-            self.parameters[title] = panel.get_parameters()
-        return self.parameters
+        for title, panel in self._tabs.items():
+            self._parameters[title] = panel.get_parameters()
+        return self._parameters
 
     def set_parameters(self, parameters):
-        self.parameters = parameters
-        for title, panel in self.tabs.items():
+        self._parameters = parameters
+        for title, panel in self._tabs.items():
             panel.set_parameters(parameters.get(title, {}))
