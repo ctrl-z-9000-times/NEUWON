@@ -12,7 +12,7 @@ import time
 class ModelRunner(OrganizerPanel):
     def __init__(self, filename):
         self.project    = ProjectContainer(filename)
-        self.parameters = self.project.export()
+        self.exported   = self.project.export()
         self.runner     = ModelThread()
         self.viewport   = Viewport()
         self._initialize_model()
@@ -29,7 +29,7 @@ class ModelRunner(OrganizerPanel):
         self.root.after(0, self._viewport_tick)
 
     def _initialize_model(self):
-        self.model = Model(**self.parameters)
+        self.model = Model(**self.exported)
         self.model.get_database().sort()
         self.runner.control_queue.put((Message.INSTANCE, self.model))
         self.runner.control_queue.put((Message.HEADLESS, not self.viewport.is_open()))
@@ -182,7 +182,7 @@ class MainControl(Panel):
         self.frame    = ttk.Frame(parent)
         self.run_ctrl = RunControl(self.frame, experiment.runner)
         self.video    = VideoSettings(self.frame, experiment.runner, experiment.viewport)
-        self.visible  = FilterVisible(self.frame, experiment.parameters)
+        self.visible  = FilterVisible(self.frame, experiment.exported)
 
         self.run_ctrl.get_widget().grid(row=1, column=1, sticky='nw', padx=padx, pady=pady)
         self.video   .get_widget().grid(row=2, column=1, sticky='nw', padx=padx, pady=pady)

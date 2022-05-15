@@ -979,8 +979,9 @@ def _askstring(title, prompt, default='', options_grid=None, *, parent):
 
 class OrganizerPanel(Panel):
     def __init__(self, parent):
-        self.notebook = ttk.Notebook(parent)
-        self.tabs = {}
+        self.notebook   = ttk.Notebook(parent)
+        self.parameters = {}
+        self.tabs       = {}
 
     def get_widget(self):
         return self.notebook
@@ -994,9 +995,11 @@ class OrganizerPanel(Panel):
                 sticky='nesw', padding=(padx, pad_top))
 
     def get_parameters(self):
-        return {title: panel.get_parameters() for title, panel in self.tabs.items()}
+        for title, panel in self.tabs.items():
+            self.parameters[title] = panel.get_parameters()
+        return self.parameters
 
     def set_parameters(self, parameters):
-        assert set(parameters).issubset(self.tabs)
+        self.parameters = parameters
         for title, panel in self.tabs.items():
             panel.set_parameters(parameters.get(title, {}))
