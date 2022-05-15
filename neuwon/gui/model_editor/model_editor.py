@@ -21,9 +21,9 @@ class ModelEditor(OrganizerPanel):
         self.root.columnconfigure(0, weight=1)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
-        self.model = ProjectContainer(filename)
-        if self.model.filename is not None:
-            self.set_parameters(self.model.load())
+        self.project = ProjectContainer(filename)
+        if self.project.filename is not None:
+            self.set_parameters(self.project.load())
             self._set_title()
         else:
             self.new_model()
@@ -63,12 +63,12 @@ class ModelEditor(OrganizerPanel):
 
     def _set_title(self):
         title = 'NEUWON Model Editor'
-        if self.model.short_name is not None:
-            title += ': ' + self.model.short_name
+        if self.project.short_name is not None:
+            title += ': ' + self.project.short_name
         self.root.title(title)
 
     def new_model(self, event=None):
-        self.model.set_file(None)
+        self.project.set_file(None)
         self._set_title()
         self.set_parameters({})
 
@@ -77,29 +77,29 @@ class ModelEditor(OrganizerPanel):
                         filetypes=[('Model File', '.json')])
         if not open_filename:
             return
-        self.model.set_file(open_filename)
-        self.set_parameters(self.model.load())
+        self.project.set_file(open_filename)
+        self.set_parameters(self.project.load())
         self._set_title()
 
     def save(self, event=None):
-        if not self.model.filename:
+        if not self.project.filename:
             self.save_as()
         else:
             self.root.focus_set() # Unfocusing triggers input validation.
             parameters = self.get_parameters() # Successfully get the parameters before truncating the output file.
-            self.model.save(parameters)
+            self.project.save(parameters)
 
     def save_as(self, event=None):
         save_as_filename = filedialog.asksaveasfilename(defaultextension='.json')
         if not save_as_filename:
             return
-        self.model.set_file(save_as_filename)
+        self.project.set_file(save_as_filename)
         self.save()
         self._set_title()
 
     def export(self):
-        self.model.save(self.get_parameters())
-        parameters = self.model.export()
+        self.project.save(self.get_parameters())
+        parameters = self.project.export()
         export_filename = filedialog.asksaveasfilename(defaultextension='.py')
         with open(export_filename, 'wt') as f:
             json.dump(parameters, f, indent=4)
@@ -110,14 +110,14 @@ class ModelEditor(OrganizerPanel):
 
     def switch_to_run_control(self, event=None):
         self.save()
-        if self.model.filename is None:
+        if self.project.filename is None:
             return
         # TODO: Consider hiding this window instead of closing it? Because then
         # the user can quickly switch back to the model editor without
         # re-loading everything. The mechanisms in particular can take a long
         # time to load.
         self.close()
-        ModelRunner(self.model.filename)
+        ModelRunner(self.project.filename)
 
     def run(self):
         ''' Blocks calling thread until the ModelEditor is closed. '''
