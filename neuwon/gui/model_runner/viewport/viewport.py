@@ -1,10 +1,9 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pygame
 from pygame.locals import *
 from OpenGL import GL
 from .scene import Camera, Scene
-
-import matplotlib.pyplot as plt
 
 epsilon = np.finfo(float).eps
 
@@ -63,8 +62,7 @@ class Coloration:
     def _get(self):
         if self.segment_values is None:
             return None
-        color_data = self.colormap(self.segment_values, self.visible_segments)
-        return color_data
+        return self.colormap(self.segment_values, self.visible_segments)
 
 class Viewport:
     """
@@ -74,14 +72,20 @@ class Viewport:
     def __init__(self, window_size=(2*640,2*480),
                 move_speed = .02,
                 mouse_sensitivity = .001,):
-        self.move_speed = float(move_speed)
-        self.turn_speed = float(mouse_sensitivity)
-        self.sprint_mod = 5 # Shift key move_speed multiplier.
-        self.coloration = Coloration()
-        self.text_over  = TextOverlay()
-        self.set_background('black')
-        self.left_click = False
-        self.alive      = True
+        self.move_speed     = float(move_speed)
+        self.turn_speed     = float(mouse_sensitivity)
+        self.sprint_mod     = 5 # Shift key move_speed multiplier.
+        self.coloration     = Coloration()
+        self.text_overlay   = TextOverlay()
+        self.set_background_color('black')
+        self._open = False
+        self.open(window_size)
+
+    def open(self, window_size):
+        if self._open:
+            return
+        self._left_click = False
+        self._open       = True
         # Setup pygame.
         pygame.init()
         pygame.font.init()
@@ -90,10 +94,24 @@ class Viewport:
         self.clock  = pygame.time.Clock()
         self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
 
-    def set_scene(self, model):
-        self.scene = Scene(model)
+    def close(self):
+        if not self._open:
+            return
+        pygame.mouse.set_visible(True)
+        pygame.display.quit()
+        pygame.quit()
+        self._open = False
+        # Drop the big data buffers.
+        del self._scene
+        self.coloration.segment_values = None
 
-    def set_background(self, color):
+    def is_open(self):
+        return self._open
+
+    def set_scene(self, model):
+        self._scene = Scene(model)
+
+    def set_background_color(self, color):
         if isinstance(color, str):
             color = color.lower()
             if color == 'black':
@@ -109,13 +127,7 @@ class Viewport:
         return self.coloration
 
     def get_text_overlay(self):
-        return self.text_over
-
-    def close(self):
-        pygame.mouse.set_visible(True)
-        pygame.display.quit()
-        pygame.quit()
-        self.alive = False
+        return self.text_overlay
 
     def tick(self):
         dt = self.clock.tick()
@@ -127,32 +139,32 @@ class Viewport:
                 return
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    self.left_click     = True
-                    self.left_click_pos = event.pos
+                    self._left_click     = True
+                    self._left_click_pos = event.pos
                     pygame.mouse.set_visible(False)
                 elif event.button == 3:
                     right_click = True
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
-                    self.left_click = False
+                    self._left_click = False
                     pygame.mouse.set_visible(True)
             # Restore the mouse cursor if it leaves the window.
             elif event.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWLEAVE,
                                 pygame.WINDOWCLOSE,     pygame.WINDOWMINIMIZED):
-                self.left_click = False
+                self._left_click = False
                 pygame.mouse.set_visible(True)
         # Holding left mouse button triggers camera movement.
-        if self.left_click:
+        if self._left_click:
             self._mouse_movement(dt)
             self._keyboard_movement(dt)
         # Press right mouse button to select a segment.
-        if right_click or self.text_over._need_segment():
-            segment = self.scene.get_segment(self.camera, pygame.mouse.get_pos())
+        if right_click or self.text_overlay._need_segment():
+            segment = self._scene.get_segment(self.camera, pygame.mouse.get_pos())
         else:
             segment = None
         # 
-        self.scene.draw(self.camera, self.coloration._get(), self.background_color)
-        overlay = self.text_over._get(segment)
+        self._scene.draw(self.camera, self.coloration._get(), self.background_color)
+        overlay = self.text_overlay._get(segment)
         self._draw_text_overlay(overlay, (40, 50))
         pygame.display.flip()
         # 
@@ -162,10 +174,10 @@ class Viewport:
     def _mouse_movement(self, dt):
         # Get the relative movement of the mouse cursor.
         x,  y  = pygame.mouse.get_pos()
-        x0, y0 = self.left_click_pos
+        x0, y0 = self._left_click_pos
         dx = x - x0
         dy = y - y0
-        pygame.mouse.set_pos(self.left_click_pos)
+        pygame.mouse.set_pos(self._left_click_pos)
         # Apply mouse movement.
         self.camera.yaw   += dx * self.turn_speed
         self.camera.pitch += dy * self.turn_speed

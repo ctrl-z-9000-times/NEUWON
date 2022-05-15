@@ -12,36 +12,36 @@ import time
 class ModelRunner(OrganizerPanel):
     def __init__(self, filename):
         self.project    = ProjectContainer(filename)
-        self.parameters = self.project.load()
-        self.exported   = self.project.export()
-        self.root       = ThemedTk()
-        self.model      = None
-        self.viewport   = None
+        self.parameters = self.project.export()
         self.runner     = ModelThread()
-        self.root.bind("<Destroy>", lambda e: self.runner.control_queue.put(Message.QUIT))
+        self.viewport   = Viewport()
         self._initialize_model()
+        self.root       = ThemedTk()
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
         self.root.title('NEUWON: ' + self.project.short_name)
+        self.root.bind("<Destroy>", self.close)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
-        self._open_viewport()
-        self.root.after(1, self._collect_results)
         self.set_parameters(self.get_parameters())
+        self.root.after(0, self._collect_results)
+        self.root.after(0, self._viewport_tick)
 
     def _initialize_model(self):
-        self.model = Model(**self.exported)
+        self.model = Model(**self.parameters)
         self.model.get_database().sort()
         self.runner.control_queue.put((Message.INSTANCE, self.model))
-        if self.viewport is not None:
-            self._open_viewport()
+        self.runner.control_queue.put((Message.HEADLESS, not self.viewport.is_open()))
+        if self.viewport.is_open():
+            self.viewport.set_scene(self.model)
 
     def _open_viewport(self):
-        if self.viewport is None:
-            self.viewport = Viewport()
+        if not self.viewport.is_open():
+            self.viewport.open()
             self.root.after(0, self._viewport_tick)
         self.viewport.set_scene(self.model)
+        self.runner.control_queue.put((Message.HEADLESS, False))
 
     def _init_menu(self, parent):
         menubar = tk.Menu(parent)
@@ -97,8 +97,7 @@ class ModelRunner(OrganizerPanel):
         if self.project.filename is None:
             return
         self.close()
-        self.viewport.close()
-        from .model_editor import ModelEditor
+        from ..model_editor.model_editor import ModelEditor
         ModelEditor(self.project.filename)
 
     def rebuild_model(self):
@@ -111,28 +110,29 @@ class ModelRunner(OrganizerPanel):
         self._initialize_model()
 
     def save(self, event=None):
-        self.parameters.update(self.get_parameters())
-        self.project.save(self.parameters)
+        parameters = self.project.load()
+        parameters.update(self.get_parameters())
+        self.project.save(parameters)
 
     def save_as(self, event=None):
         # Does it even make sense to save-as for a running model?
         1/0
 
     def close(self, event=None):
-        self.root.destroy()
-        if self.viewport is not None:
-            self.viewport.close()
+        self.runner.control_queue.put(Message.QUIT)
+        self.viewport.close()
+        if event is None or event.type != tk.EventType.Destroy:
+            self.root.destroy()
 
     def _viewport_tick(self):
+        if not self.viewport.is_open():
+            self.runner.control_queue.put((Message.HEADLESS, True))
+            return
         start_time = time.time()
         rclick_segment = self.viewport.tick()
         render_time = 1000 * (time.time() - start_time)
-        if self.viewport.alive:
-            max_fps = 30
-            self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
-        else:
-            self.viewport = None
-            self.runner.control_queue.put(Message.HEADLESS)
+        max_fps = 30
+        self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
 
     def _collect_results(self):
         while True:
@@ -151,13 +151,19 @@ class ModelRunner(OrganizerPanel):
                 self.run_control.run_ctrl.pause()
             else:
                 timestamp, remaining, render_data = results
+                timestamp = round(timestamp, 6) # Round to nearest nanosecond
 
                 self.run_control.run_ctrl.set_parameters({
                         'run_for': remaining,
                         'clock':   timestamp,
                 })
 
-                if self.viewport is not None:
+                if self.viewport.is_open():
+                    if self.run_control.video.get_parameters()['show_time']:
+                        text = f'Clock: {timestamp} ms'
+                    else:
+                        text = ''
+                    self.viewport.get_text_overlay().set_text(text)
                     # Normalize the render_data into the range [0,1]
                     vmin = -100
                     vmax = +100
@@ -175,8 +181,8 @@ class MainControl(Panel):
     def __init__(self, parent, experiment):
         self.frame    = ttk.Frame(parent)
         self.run_ctrl = RunControl(self.frame, experiment.runner)
-        self.video    = VideoSettings(self.frame, experiment)
-        self.visible  = FilterVisible(self.frame, experiment.exported)
+        self.video    = VideoSettings(self.frame, experiment.runner, experiment.viewport)
+        self.visible  = FilterVisible(self.frame, experiment.parameters)
 
         self.run_ctrl.get_widget().grid(row=1, column=1, sticky='nw', padx=padx, pady=pady)
         self.video   .get_widget().grid(row=2, column=1, sticky='nw', padx=padx, pady=pady)
@@ -243,8 +249,9 @@ class RunControl(Panel):
 
 
 class VideoSettings(Panel):
-    def __init__(self, parent, experiment):
-        self.experiment = experiment
+    def __init__(self, parent, runner, viewport):
+        self.runner   = runner
+        self.viewport = viewport
         self.frame    = ttk.Frame(parent)
         self.settings = SettingsPanel(self.frame)
         self.settings.get_widget().grid(row=1, column=1, sticky='nesw', padx=padx, pady=pady)
@@ -275,15 +282,14 @@ class VideoSettings(Panel):
         return self.settings.set_parameters(parameters)
 
     def settings_changed(self):
-        if self.experiment.viewport is None: return
         parameters = self.get_parameters()
+        component  = 'Segment.' + parameters['component']
+        self.runner.control_queue.put((Message.COMPONENT, component))
+        self.viewport.coloration.set_colormap(parameters['colormap'])
         show_type = parameters['show_type']
-        data_access = 'Segment.' + parameters['component']
-        self.experiment.runner.control_queue.put((Message.COMPONENT, data_access))
-        self.experiment.viewport.coloration.set_colormap(parameters['colormap'])
-        self.experiment.viewport.text_over.set_neuron_type(show_type)
-        self.experiment.viewport.text_over.set_segment_type(show_type)
-        self.experiment.viewport.set_background(parameters['background'])
+        self.viewport.text_overlay.set_neuron_type(show_type)
+        self.viewport.text_overlay.set_segment_type(show_type)
+        self.viewport.set_background_color(parameters['background'])
 
 
 class FilterVisible(Panel):

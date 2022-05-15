@@ -29,10 +29,11 @@ class ModelThread(Thread):
         # payload type depends on the type of message.
         self.control_queue = queue.Queue()
         self.results_queue = queue.Queue(10) # Do not run too far ahead of the GUI.
-        self._instance  = None # Instance of neuwon.Model().
+        self._instance  = None  # Instance of neuwon.Model().
         self._active    = False # Is the model currently running or is it stopped?
-        self._component = None # If None then it's running in headless mode, no results are outputted.
-        self._duration  = None # Integer number of time_steps.
+        self._component = None  # Database component to send to GUI after each simulation tick.
+        self._headless  = False # Disconnected from graphical output?
+        self._duration  = None  # Integer number of time_steps.
         self._quit      = False
         self.exception  = None
         self.start()
@@ -63,7 +64,7 @@ class ModelThread(Thread):
                 self._instance.get_database().get_component(self._component) # assert component exists.
 
             elif message == Message.HEADLESS:
-                self._component = None
+                self._headless = bool(payload)
 
             elif message == Message.SET_TIME:
                 assert not self._active
@@ -114,7 +115,7 @@ class ModelThread(Thread):
         clock     = self._instance.get_clock()
         timestamp = clock.get_time()
         remaining = self._duration * clock.get_tick_period()
-        if self._component is None:
+        if self._headless:
             render_data = None
         else:
             render_data = self._instance.get_database().get_data(self._component)
