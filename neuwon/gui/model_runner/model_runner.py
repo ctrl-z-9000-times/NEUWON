@@ -262,34 +262,38 @@ class VideoSettings(Panel):
         self.settings.add_entry('Slowdown',
                 default = 1000,
                 units   = 'Real-Time : Model-Time')
+
         available_components = [
                 'voltage'
                 # TODO: All of the species concentrations.
         ]
+        def set_component(component):
+            self.runner.control_queue.put((Message.COMPONENT, f'Segment.{component}'))
         self.settings.add_dropdown('component', available_components,
-                                    default=available_components[0])
+                default  = available_components[0],
+                callback = set_component)
+
         self.settings.add_dropdown('colormap', Coloration.get_all_colormaps(),
-                                    default='turbo')
+                default  = 'turbo',
+                callback = self.viewport.coloration.set_colormap)
+
         self.settings.add_checkbox('show_scale')
-        self.settings.add_checkbox('show_type', default=True)
+
+        def show_type(x: bool):
+            self.viewport.text_overlay.show_neuron_type(x)
+            self.viewport.text_overlay.show_segment_type(x)
+        self.settings.add_checkbox('show_type', default=True, callback=show_type)
+
         self.settings.add_checkbox('show_time', default=True)
-        self.settings.add_radio_buttons('background', ['Black', 'White'], default='Black')
-        self.settings.add_callback(self.settings_changed)
+
+        self.settings.add_radio_buttons('background', ['Black', 'White'],
+                default  = 'Black',
+                callback = self.viewport.set_background_color)
 
     def get_parameters(self):
         return self.settings.get_parameters()
     def set_parameters(self, parameters):
         return self.settings.set_parameters(parameters)
-
-    def settings_changed(self):
-        parameters = self.get_parameters()
-        component  = 'Segment.' + parameters['component']
-        self.runner.control_queue.put((Message.COMPONENT, component))
-        self.viewport.coloration.set_colormap(parameters['colormap'])
-        show_type = parameters['show_type']
-        self.viewport.text_overlay.set_neuron_type(show_type)
-        self.viewport.text_overlay.set_segment_type(show_type)
-        self.viewport.set_background_color(parameters['background'])
 
 
 class FilterVisible(Panel):

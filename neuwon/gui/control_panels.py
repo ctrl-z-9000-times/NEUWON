@@ -175,7 +175,8 @@ class SettingsPanel(Panel):
                    sticky='w', padx=padx, pady=pady)
         self._incr_row_idx()
 
-    def add_radio_buttons(self, parameter_name, options, variable=None, *, title=None, default=None):
+    def add_radio_buttons(self, parameter_name, options, variable=None, *,
+                          title=None, default=None, callback=None):
         # Clean and save the arguments.
         assert parameter_name not in self._variables
         if variable is None: variable = tk.StringVar()
@@ -195,6 +196,16 @@ class SettingsPanel(Panel):
             button = ttk.Radiobutton(btn_row, text=x, variable=variable, value=value)
             buttons.append(button)
         variable.trace_add('write', self._call_callbacks)
+        if callback is not None:
+            old_value = self._defaults[parameter_name]
+            def callback_wrapper(*args):
+                nonlocal old_value
+                new_value = variable.get()
+                if new_value != old_value:
+                    callback(new_value)
+                    old_value = new_value
+            variable.trace_add('write', callback_wrapper)
+            callback(old_value)
         # Arrange the widgets.
         for column, button in enumerate(buttons):
             button.grid(row=0, column=column, pady=pady)
@@ -225,7 +236,8 @@ class SettingsPanel(Panel):
                 button.bind('<Delete>',    lambda event: set_changed_state(False))
         return buttons
 
-    def add_dropdown(self, parameter_name, options_callback, variable=None, *, title=None, default=None):
+    def add_dropdown(self, parameter_name, options_callback, variable=None, *,
+                     title=None, default=None, callback=None):
         # Clean and save the arguments.
         if not isinstance(options_callback, Callable) and isinstance(options_callback, Iterable):
             options_list     = list(options_callback)
@@ -235,7 +247,10 @@ class SettingsPanel(Panel):
         self._variables[parameter_name] = variable
         if title is None: title = parameter_name.replace('_', ' ').title()
         if default is None: default = variable.get()
-        if not default:
+        if default:
+            has_default = True
+        else:
+            has_default = False
             default = 'nothing selected'
         self._defaults[parameter_name] = default
         variable.set(self._defaults[parameter_name])
@@ -249,6 +264,19 @@ class SettingsPanel(Panel):
         menu.configure(state='readonly')
         menu.bind('<<ComboboxSelected>>', lambda event: menu.selection_clear())
         variable.trace_add('write', self._call_callbacks)
+        if callback is not None:
+            if has_default:
+                old_value = variable.get()
+            else:
+                old_value = None
+            def callback_wrapper(*args):
+                nonlocal old_value
+                new_value = variable.get()
+                if new_value != old_value:
+                    callback(new_value)
+                    old_value = new_value
+            variable.trace_add('write', callback_wrapper)
+            callback(old_value)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
         menu .grid(row=self._row_idx, column=self._col_idx+1, sticky='ew',           pady=pady)
@@ -274,7 +302,8 @@ class SettingsPanel(Panel):
             menu.bind('<Delete>',    lambda event: set_changed_state(False))
         return menu
 
-    def add_checkbox(self, parameter_name, variable=None, *, title=None, default=None):
+    def add_checkbox(self, parameter_name, variable=None, *,
+                     title=None, default=None, callback=None):
         # Clean and save the arguments.
         assert parameter_name not in self._variables
         if variable is None: variable = tk.BooleanVar()
@@ -286,6 +315,16 @@ class SettingsPanel(Panel):
         label  = ttk.Label(self.frame, text=title)
         button = ttk.Checkbutton(self.frame, variable=variable,)
         variable.trace_add('write', self._call_callbacks)
+        if callback is not None:
+            old_value = variable.get()
+            def callback_wrapper(*args):
+                nonlocal old_value
+                new_value = variable.get()
+                if new_value != old_value:
+                    callback(new_value)
+                    old_value = new_value
+            variable.trace_add('write', callback_wrapper)
+            callback(old_value)
         # Arrange the widgets.
         label .grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
         button.grid(row=self._row_idx, column=self._col_idx+1, sticky='w', padx=padx, pady=pady)

@@ -11,16 +11,16 @@ class TextOverlay:
     """ Holds the state of the standard text overlay. """
     def __init__(self):
         self.set_text('')
-        self.set_neuron_type(True)
-        self.set_segment_type(True)
+        self.show_neuron_type()
+        self.show_segment_type()
 
     def set_text(self, text):
         self.text = str(text)
 
-    def set_neuron_type(self, value):
+    def show_neuron_type(self, value=True):
         self.neuron_type = bool(value)
 
-    def set_segment_type(self, value):
+    def show_segment_type(self, value=True):
         self.segment_type = bool(value)
 
     def _need_segment(self):
