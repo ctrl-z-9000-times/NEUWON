@@ -393,43 +393,56 @@ class TimeSeries:
         """ Overwrite this buffer with the given function. """
         return self.set_data([value, value], [0, duration])
 
-    def square_wave(self, minimum, maximum, period, duty_cycle=0.5) -> 'self':
+    def square_wave(self, extremum_1, extremum_2, period, duty_cycle=0.5) -> 'self':
         """ Overwrite this buffer with one cycle of the given periodic function. """
-        min_        = float(minimum)
-        max_        = float(maximum)
+        A           = float(extremum_1)
+        B           = float(extremum_2)
         period      = float(period)
         duty_cycle  = float(duty_cycle)
         assert 0.0 <= duty_cycle <= 1.0
         start = 0
         mid   = period * duty_cycle
         end   = period
-        return self.set_data([max_, max_, min_, min_], [start, mid, mid, end])
+        return self.set_data([A, A, B, B], [start, mid, mid, end])
 
-    def sine_wave(self, minimum, maximum, period) -> 'self':
+    def sine_wave(self, extremum_1, extremum_2, period) -> 'self':
         """ Overwrite this buffer with one cycle of the given periodic function. """
-        min_        = float(minimum)
-        max_        = float(maximum)
+        A           = float(extremum_1)
+        B           = float(extremum_2)
         period      = float(period)
-        mult        = 0.5 * (max_ - min_)
-        add         = min_ + mult
-        n           = 1000
+        amplitude   = 0.5 * (A - B)
+        offset      = B + amplitude
+        num_points  = 1000
         return self.set_data(
-                add + mult * np.sin(np.linspace(0.0, 2.0 * np.pi, n)),
-                np.linspace(0, period, n))
+                offset + amplitude * np.sin(np.linspace(0.0, 2.0 * np.pi, num_points)),
+                np.linspace(0, period, num_points))
 
-    def triangle_wave(self, minimum, maximum, period) -> 'self':
+    def triangle_wave(self, extremum_1, extremum_2, period) -> 'self':
         """ Overwrite this buffer with one cycle of the given periodic function. """
-        min_        = float(minimum)
-        max_        = float(maximum)
+        A           = float(extremum_1)
+        B           = float(extremum_2)
         period      = float(period)
-        return self.set_data([min_, max_, min_], [0.0, 0.5 * period, period])
+        return self.set_data([A, B, A], [0.0, 0.5 * period, period])
 
-    def sawtooth_wave(self, minimum, maximum, period) -> 'self':
+    def sawtooth_wave(self, extremum_1, extremum_2, period) -> 'self':
         """ Overwrite this buffer with one cycle of the given periodic function. """
-        min_        = float(minimum)
-        max_        = float(maximum)
+        A           = float(extremum_1)
+        B           = float(extremum_2)
         period      = float(period)
-        return self.set_data([min_, max_, min_], [0.0, period, period])
+        return self.set_data([A, B, A], [0.0, period, period])
+
+    def concatenate(self, *timeseries) -> 'TimeSeries':
+        """
+        Returns a new buffer containing this buffer and all given buffers,
+        appended together into a single large TimeSeries in the same order as
+        they were given in.
+        """
+        concatenation = TimeSeries(self)
+        for buffer in timeseries:
+            end_time = concatenation.timestamps[-1]
+            concatenation.data.extend(buffer.get_data())
+            concatenation.timestamps.extend(t + end_time for t in buffer.get_timestamps())
+        return concatenation
 
 class Trace:
     """ Exponentially weighted mean and standard deviation of a variable.
