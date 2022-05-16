@@ -21,7 +21,7 @@ class ModelRunner(OrganizerPanel):
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
         self.root.title('NEUWON: ' + self.project.short_name)
-        self.root.bind("<Destroy>", self.close)
+        self.root.bind('<Destroy>', self.close)
         self._init_menu(self.root)
         self._init_main_panel(self.root)
         self.set_parameters(self.get_parameters())

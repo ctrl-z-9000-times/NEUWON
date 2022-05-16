@@ -40,14 +40,14 @@ class SignalEditor(ManagementPanel):
         settings_panel.add_radio_buttons('assign_method', ['add', 'overwrite'], default='add', title='')
         settings_panel.add_checkbox('loop_forever', default=True)
 
-    def _init_min_max_period(self, settings_panel):
+    def _init_min_max_period(self, settings_panel, default=(0, 1)):
         settings_panel.add_empty_space()
-        settings_panel.add_entry('minimum',
+        settings_panel.add_entry('extremum_1',
                 valid_range = (-max_float, max_float),
-                default     = 0,)
-        settings_panel.add_entry('maximum',
+                default     = default[0],)
+        settings_panel.add_entry('extremum_2',
                 valid_range = (-max_float, max_float),
-                default     = 1,)
+                default     = default[1],)
         settings_panel.add_entry('period',
                 valid_range = (greater_than_zero, max_float),
                 default     = 10,
@@ -65,7 +65,7 @@ class SignalEditor(ManagementPanel):
         settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + ' Settings')
-        self._init_min_max_period(settings_panel)
+        self._init_min_max_period(settings_panel, default=(-1,1))
 
         waveform_name = 'Triangle Wave'
         settings_panel = self.controlled.add_settings_panel(waveform_name)
@@ -109,24 +109,24 @@ class SignalEditor(ManagementPanel):
                     duration    = signal_parameters['duration'])
         elif signal_type == 'Square Wave':
             return TimeSeries().square_wave(
-                    minimum     = signal_parameters['minimum'],
-                    maximum     = signal_parameters['maximum'],
+                    extremum_1  = signal_parameters['extremum_1'],
+                    extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'],
                     duty_cycle  = signal_parameters['duty_cycle'] / 100)
         elif signal_type == 'Sine Wave':
             return TimeSeries().sine_wave(
-                    minimum     = signal_parameters['minimum'],
-                    maximum     = signal_parameters['maximum'],
+                    extremum_1  = signal_parameters['extremum_1'],
+                    extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
         elif signal_type == 'Triangle Wave':
             return TimeSeries().triangle_wave(
-                    minimum     = signal_parameters['minimum'],
-                    maximum     = signal_parameters['maximum'],
+                    extremum_1  = signal_parameters['extremum_1'],
+                    extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
         elif signal_type == 'Sawtooth Wave':
             return TimeSeries().sawtooth_wave(
-                    minimum     = signal_parameters['minimum'],
-                    maximum     = signal_parameters['maximum'],
+                    extremum_1  = signal_parameters['extremum_1'],
+                    extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
         else:
             raise NotImplementedError(signal_type)

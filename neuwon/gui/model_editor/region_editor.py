@@ -7,7 +7,7 @@ class RegionEditor(ManagementPanel):
 
         shape_options = ['Rectangle', 'Sphere', 'Cylinder']
         csg_options   = ['Union', 'Intersection', 'Not']
-        options_grid  = np.array([shape_options, csg_options]).T
+        options_grid  = [shape_options, csg_options]
         self.add_button_create(radio_options={'region_type': options_grid})
         self.add_button_delete()
         self.add_button_rename(row=1)

@@ -891,9 +891,10 @@ class ManagementPanel(Panel):
             key, options = radio_options.popitem()
             assert not radio_options
             # Arrange the options in a 2D array.
-            options = np.array(options)
+            options = np.array(options, dtype=str)
             if options.ndim < 2:
-                options = options.reshape(-1, 1)
+                options = options.reshape(1, -1)
+            options = options.T
             def _callback(name):
                 name, choice = _askstring(title, prompt, _default_new_name(),
                                           options_grid=options, parent=self.frame)
