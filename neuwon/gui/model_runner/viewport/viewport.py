@@ -110,14 +110,15 @@ class Viewport:
 
     def set_scene(self, model):
         self._scene = Scene(model)
+        self.coloration.set_segment_values(np.zeros(self._scene.num_seg))
 
     def set_background_color(self, color):
         if isinstance(color, str):
             color = color.lower()
             if color == 'black':
-                self.background_color = [0,0,0,0]
+                self.background_color = [0,0,0]
             elif color == 'white':
-                self.background_color = [1,1,1,1]
+                self.background_color = [1,1,1]
             else:
                 raise NotImplementedError(color)
         else:
@@ -207,7 +208,7 @@ class Viewport:
     def _draw_text_overlay(self, text, position):
         if not text:
             return
-        r,g,b,a = self.background_color
+        r,g,b   = self.background_color
         color   = (255 * (1 - r), 255 * (1 - g), 255 * (1 - b), 255)
         x, y    = position
         for line in text.split('\n'):

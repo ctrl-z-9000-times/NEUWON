@@ -630,6 +630,8 @@ class ListSelector(Panel):
         self.listbox.configure(yscrollcommand=scrollbar.set)
         scrollbar   .configure(command=self.listbox.yview)
         self.set_parameters({x: default for x in options})
+        self._callbacks = []
+        self.listbox.bind('<<ListboxSelect>>', self._call_callbacks)
 
     def get_parameters(self) -> dict:
         return {option: self.listbox.selection_includes(idx)
@@ -642,11 +644,20 @@ class ListSelector(Panel):
             if selected:
                 self.listbox.selection_set(idx)
 
+    def add_callback(self, function):
+        self._callbacks.append(function)
+
+    def _call_callbacks(self, *args):
+        for f in self._callbacks:
+            f()
+
     def select_all(self):
         self.listbox.selection_set(0, tk.END)
+        self._call_callbacks()
 
     def deselect_all(self):
         self.listbox.selection_clear(0, tk.END)
+        self._call_callbacks()
 
 class ItemSelector:
     """

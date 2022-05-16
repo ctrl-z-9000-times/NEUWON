@@ -1,6 +1,7 @@
 from ..control_panels import *
 from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
+from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message
 from .signal_editor import SignalEditor
 from .viewport.viewport import Viewport, Coloration
@@ -115,8 +116,7 @@ class ModelRunner(OrganizerPanel):
         self.project.save(parameters)
 
     def save_as(self, event=None):
-        # Does it even make sense to save-as for a running model?
-        1/0
+        1/0 # TODO
 
     def close(self, event=None):
         self.runner.control_queue.put(Message.QUIT)
@@ -182,7 +182,7 @@ class MainControl(Panel):
         self.frame    = ttk.Frame(parent)
         self.run_ctrl = RunControl(self.frame, experiment.runner)
         self.video    = VideoSettings(self.frame, experiment.runner, experiment.viewport)
-        self.visible  = FilterVisible(self.frame, experiment.exported)
+        self.visible  = FilterVisible(self.frame, experiment.exported, experiment.model, experiment.viewport)
 
         self.run_ctrl.get_widget().grid(row=1, column=1, sticky='nw', padx=padx, pady=pady)
         self.video   .get_widget().grid(row=2, column=1, sticky='nw', padx=padx, pady=pady)
@@ -272,7 +272,7 @@ def VideoSettings(parent, runner, viewport):
             default  = 'turbo',
             callback = viewport.coloration.set_colormap)
 
-    self.add_checkbox('show_scale')
+    self.add_checkbox('show_scale', default=True)
 
     def show_type(x: bool):
         viewport.text_overlay.show_neuron_type(x)
@@ -289,7 +289,9 @@ def VideoSettings(parent, runner, viewport):
 
 
 class FilterVisible(Panel):
-    def __init__(self, parent, parameters):
+    def __init__(self, parent, parameters, model, viewport):
+        self.model      = model
+        self.viewport   = viewport
         neuron_types_list  = sorted(parameters['neurons'].keys())
         segment_types_list = sorted(parameters['segments'].keys())
         # Make the widgets.
@@ -298,6 +300,8 @@ class FilterVisible(Panel):
         segment_label = ttk.Label(self.frame, text='Visible Segments')
         self.neurons  = ListSelector(self.frame, neuron_types_list, default=True)
         self.segments = ListSelector(self.frame, segment_types_list, default=True)
+        self.neurons .add_callback(self.apply_filter)
+        self.segments.add_callback(self.apply_filter)
         # Arrange the widgets.
         neuron_label              .grid(row=1, column=1, padx=padx, pady=pady)
         segment_label             .grid(row=1, column=2, padx=padx, pady=pady)
@@ -312,12 +316,40 @@ class FilterVisible(Panel):
     def set_parameters(self, parameters: dict):
         self.neurons .set_parameters(parameters['visible_neurons'])
         self.segments.set_parameters(parameters['visible_segments'])
+        self.apply_filter()
 
-    def export(self):
+    def apply_filter(self):
         neuron_types  = [nt for nt, v in self.neurons.get_parameters().items() if v]
         segment_types = [st for st, v in self.segments.get_parameters().items() if v]
-        return {'neuron_types': neuron_types, 'segment_types': segment_types}
+        segment_indices = self.model.filter_segments_by_type(neuron_types, segment_types, _return_objects=False)
+        num_segments = len(self.model.get_Segment().get_database_class())
+        segment_mask = np.zeros(num_segments)
+        segment_mask[segment_indices] = 1
+        self.viewport.get_coloration().set_visible_segments(segment_mask)
 
+
+class DataRecorders(ManagementPanel):
+    def __init__(self, parent):
+        super().__init__(parent, "Record")
+
+        self.add_button_rename()
+        self.add_button_duplicate()
+        self.add_button_delete()
+
+        # Note: This has no settings!
+        #       DB component must be set immediately upon creation.
+
+        # TODO: Buttons to start/stop recording, and a label showing current state.
+
+        # TODO: Show DB component
+        # TODO: Show neuron & segment type.
+        # TODO: Button to save data to file.
+
+        self.embed = MatplotlibEmbed(self.get_widget())
+        self.embed.frame.grid(row=0, rowspan=2, column=4)
+
+        # TODO:
+        # self.embed.update(timeseries)
 
 if __name__ == '__main__':
     import sys

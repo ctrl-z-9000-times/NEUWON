@@ -95,11 +95,11 @@ class Scene:
         glEnable(GL_DEPTH_TEST)
         glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
         glDisable(GL_CULL_FACE)
-        # Setup for overlaying text with a transparent background.
+        # Setup transparency for overlaying text.
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-    def draw(self, camera, colors=None, background_color=None):
+    def draw(self, camera, colors=[1,1,1], background_color=[0,0,0]):
         camera.setup_opengl()
         colors = self._clean_color_data(colors)
         self._draw_background(background_color)
@@ -108,29 +108,27 @@ class Scene:
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
 
         glEnableClientState(GL_COLOR_ARRAY)
-        glColorPointer(colors.shape[1], GL_FLOAT, 0, colors)
+        glColorPointer(3, GL_FLOAT, 0, colors)
 
         glDrawElements(GL_TRIANGLES, 3 * len(self.indices), GL_UNSIGNED_INT, self.indices)
 
     def _clean_color_data(self, colors):
         """ Clean up the user input and broadcast it to the correct shape. """
-        if colors is None: colors = [1, 1, 1]
         colors = np.array(colors, dtype=np.float32)
         assert np.all(colors >= 0.0)
         assert np.all(colors <= 1.0)
-        if colors.shape == (3,) or colors.shape == (4,):
+        if colors.shape == (3,):
             colors = np.tile(colors, [len(self.vertices), 1])
         else:
+            assert colors.ndim == 2
+            assert colors.shape[1] == 3
             assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
             colors = np.take(colors, self.segments, axis=0)
-        assert colors.shape[1] in (3, 4)
         return colors
 
     def _draw_background(self, background_color):
-        if background_color is None:
-            background_color = [0,0,0,0]
-        assert len(background_color) == 4
-        glClearColor(*background_color)
+        assert len(background_color) == 3
+        glClearColor(*background_color, 0.0)
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 
     def get_segment(self, camera, screen_coordinates):

@@ -2,9 +2,6 @@ from ..control_panels import *
 from .embedded_plot import MatplotlibEmbed
 from neuwon import TimeSeries
 
-# TODO: Add a virtual DB-component to the options for injecting electric current.
-#       The program will automatically convert from amps into delta-voltage.
-
 class SignalEditor(ManagementPanel):
     def __init__(self, parent):
         options_grid = [
@@ -27,7 +24,7 @@ class SignalEditor(ManagementPanel):
         # 
         self.embed = MatplotlibEmbed(self.get_widget())
         self.embed.frame.grid(row=0, rowspan=2, column=4)
-        self.controlled.add_callback(self._update)
+        self.add_callback(self._update)
 
     def _init_play_settings(self, settings_panel):
         components = [
