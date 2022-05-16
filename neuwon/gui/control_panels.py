@@ -75,6 +75,7 @@ class SettingsPanel(Panel):
         self._variables  = {} # Store the anonymous tkinter variable objects.
         self._defaults   = {}
         self._callbacks  = []
+        self._defer_callbacks = False
         self._override_mode = bool(override_mode)
         if self._override_mode:
             self._changed = set()
@@ -93,6 +94,7 @@ class SettingsPanel(Panel):
         s.configure('Changed.TEntry', fieldbackground=color)
 
     def get_parameters(self):
+        assert not self._defer_callbacks
         if self._override_mode:
             for name, variable in self._variables.items():
                 if name in self._changed:
@@ -109,6 +111,7 @@ class SettingsPanel(Panel):
 
     def set_parameters(self, parameters):
         self._parameters = parameters
+        self._defer_callbacks = True
         # Set the widget variables so that they display the new values.
         for name, variable in self._variables.items():
             try:
@@ -121,21 +124,26 @@ class SettingsPanel(Panel):
                 if self._override_mode:
                     self._set_changed_state[name](True)
             variable.set(value)
+        self._defer_callbacks = False
         self._call_callbacks()
 
     def set_defaults(self, parameters):
         self._defaults = parameters
+        self._defer_callbacks = True
         # Update the widget variables for the non-overridden parameters to display the new default values.
         if self._override_mode:
             for name, variable in self._variables.items():
                 if name not in self._changed:
                     variable.set(self._defaults[name])
+        self._defer_callbacks = False
         self._call_callbacks()
 
     def add_callback(self, callback):
         self._callbacks.append(callback)
 
     def _call_callbacks(self, *args):
+        if self._defer_callbacks:
+            return
         for f in self._callbacks:
             f()
 
@@ -391,6 +399,8 @@ class SettingsPanel(Panel):
                 v = int(v)
             value.configure(text=(str(v) + ' ' + units))
         variable.trace_add('write', update_value_label)
+        # Set the initial value and force tkinter to call all of the bound events.
+        variable.set(self._defaults[parameter_name])
         variable.trace_add('write', self._call_callbacks)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)
@@ -413,8 +423,6 @@ class SettingsPanel(Panel):
             scale.bind('<Delete>',    lambda event: set_changed_state(False))
             # By default mouse-1 doesn't focus on the slider, which is needed for the backspace binding.
             scale.bind('<Button-1>', lambda event: scale.focus_set())
-        # Set the initial value and force tkinter to call all of the bound events.
-        variable.set(self._defaults[parameter_name])
         return scale
 
     def add_entry(self, parameter_name, variable=None, *, title=None, valid_range=(None, None), default=None, units=''):
