@@ -39,6 +39,7 @@ class SignalEditor(ManagementPanel):
         settings_panel.add_dropdown('component', lambda: components)
         settings_panel.add_radio_buttons('assign_method', ['add', 'overwrite'], default='add', title='')
         settings_panel.add_checkbox('loop_forever', default=True)
+        settings_panel.add_entry('delay', valid_range=(0, max_float))
 
     def _init_min_max_period(self, settings_panel, default=(0, 1)):
         settings_panel.add_empty_space()
@@ -65,7 +66,7 @@ class SignalEditor(ManagementPanel):
         settings_panel = self.controlled.add_settings_panel(waveform_name)
         self._init_play_settings(settings_panel)
         settings_panel.add_section(waveform_name + ' Settings')
-        self._init_min_max_period(settings_panel, default=(-1,1))
+        self._init_min_max_period(settings_panel, default=(1, -1))
 
         waveform_name = 'Triangle Wave'
         settings_panel = self.controlled.add_settings_panel(waveform_name)
@@ -103,30 +104,36 @@ class SignalEditor(ManagementPanel):
 
     def export_timeseries(self, signal_parameters):
         signal_type = signal_parameters['signal_type']
+        signal      = TimeSeries()
         if signal_type == 'Constant Wave':
-            return TimeSeries().constant_wave(
+            signal.constant_wave(
                     value       = signal_parameters['value'],
                     duration    = signal_parameters['duration'])
         elif signal_type == 'Square Wave':
-            return TimeSeries().square_wave(
+            signal.square_wave(
                     extremum_1  = signal_parameters['extremum_1'],
                     extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'],
                     duty_cycle  = signal_parameters['duty_cycle'] / 100)
         elif signal_type == 'Sine Wave':
-            return TimeSeries().sine_wave(
+            signal.sine_wave(
                     extremum_1  = signal_parameters['extremum_1'],
                     extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
         elif signal_type == 'Triangle Wave':
-            return TimeSeries().triangle_wave(
+            signal.triangle_wave(
                     extremum_1  = signal_parameters['extremum_1'],
                     extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
         elif signal_type == 'Sawtooth Wave':
-            return TimeSeries().sawtooth_wave(
+            signal.sawtooth_wave(
                     extremum_1  = signal_parameters['extremum_1'],
                     extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
         else:
             raise NotImplementedError(signal_type)
+        delay = signal_parameters['delay']
+        if delay > 0:
+            delay  = TimeSeries().constant_wave(signal.get_data()[0], delay)
+            signal = delay.concatenate(signal)
+        return signal

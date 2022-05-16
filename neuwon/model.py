@@ -22,3 +22,10 @@ class Model(RxD_Model):
 
     def get_parameters(self):
         return self.parameters
+
+    # TODO: Implement the pickle API.
+    #       Pickle the parameters, and then pickle all of the data in the DB.
+    #               But do not pickle the DB itself, @Compute will never pickle.
+    # 
+    #       Reconstruct the model from the parameters, except make zero neurons/synapses.
+    #       Then Overwrite the new model with the saved data.

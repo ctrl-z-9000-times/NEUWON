@@ -283,7 +283,7 @@ def test_pointer_chains():
     inputs  = [n for n in inputs if n not in outputs]
     def burst_of_inputs():
         for x in inputs:
-            TimeSeries().square_wave(0, 60, period=1, duty_cycle=1).play(x, 'v')
+            TimeSeries().square_wave(60, 0, period=1, duty_cycle=1).play(x, 'v')
     burst_of_inputs()
     for _ in range(round(20 / dt)):
         advance()

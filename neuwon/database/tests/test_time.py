@@ -57,7 +57,7 @@ def test_waveforms_basic():
     m = Model()
     f = m.Foo()
 
-    sqr = TimeSeries().square_wave(0, 1, 1)
+    sqr = TimeSeries().square_wave(1, 0, 1)
     sqr.play(f, "bar", mode="=")
 
     assert f.bar == 1
@@ -78,7 +78,7 @@ def test_waveforms_basic():
     for _ in range(int(99.9 / m.clock.dt)): m.clock.tick()
     assert f2.bar == approx(1, .01)
 
-    sin = TimeSeries().sine_wave(2, 5, 10)
+    sin = TimeSeries().sine_wave(5, 2, 10)
 
 def test_waveform_frequency():
     """
@@ -104,7 +104,7 @@ def test_waveform_frequency():
     for _ in range(round(n_cycles * p / m.clock.dt)):
         m.clock.tick()
     # Check for correct phase / no drifting.
-    assert f_sqr.bar == 1
+    assert f_sqr.bar == -1
     assert f_tri.bar == -1
     assert f_saw.bar == -1
     assert f_sin.bar == 0
@@ -143,7 +143,7 @@ def test_obj_trace():
     assert t.get_mean()                 == approx(64)
     assert t.get_standard_deviation()   == approx(0)
     # Test long run behavior.
-    for _ in range(2000):
+    for _ in range(3000):
         f.bar = np.random.normal(12, 5)
         m.clock.tick()
     assert t.get_mean()                 == approx(12, rel=.05)

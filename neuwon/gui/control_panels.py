@@ -54,6 +54,8 @@ class Panel:
         raise NotImplementedError(type(self))
     def set_parameters(self, parameters:dict):
         raise NotImplementedError(type(self))
+    def add_callback(self, function):
+        raise NotImplementedError(type(self))
 
 class SettingsPanel(Panel):
     """ GUI element for editing a table of parameters. """
@@ -138,8 +140,8 @@ class SettingsPanel(Panel):
         self._defer_callbacks = False
         self._call_callbacks()
 
-    def add_callback(self, callback):
-        self._callbacks.append(callback)
+    def add_callback(self, function):
+        self._callbacks.append(function)
 
     def _call_callbacks(self, *args):
         if self._defer_callbacks:
@@ -499,6 +501,7 @@ class SettingsPanel(Panel):
             self._call_callbacks()
         entry.bind('<FocusIn>',  focus_in)
         entry.bind('<FocusOut>', focus_out)
+        entry.bind('<Return>',   focus_out)
         # Up/Down Arrow key controls.
         def arrow_key_control(direction, control_key):
             focus_out()
@@ -582,9 +585,9 @@ class CustomSettingsPanel(Panel):
         self._current.get_widget().grid()
         self._current.set_parameters(parameters)
 
-    def add_callback(self, callback):
+    def add_callback(self, function):
         for panel in self._options.values():
-            panel.add_callback(callback)
+            panel.add_callback(function)
 
 class AutoScrollbar(ttk.Scrollbar):
     """
@@ -868,6 +871,9 @@ class ManagementPanel(Panel):
         self.selector.clear_selection()
         self.parameters = parameters
         self.selector.set_list(self.parameters.keys())
+
+    def add_callback(self, function):
+        self.controlled.add_callback(function)
 
     def _clean_new_name(self, name, old_name=None):
         """ Either returns the cleaned name or raises a ValueError. """
