@@ -57,36 +57,47 @@ class Scene:
         assert database.is_sorted()
         self.Segment = database.get("Segment")
         self.num_seg = num_seg = len(self.Segment)
-        if num_seg == 0:
-            self.vertices = np.empty(0)
-            self.indices  = np.empty(0)
-            self.segments = np.empty(0)
-            return
         # Collect all of the 3D objects, one per segment.
-        objects = np.zeros(num_seg, dtype=object)
+        self.objects = np.zeros(num_seg, dtype=object)
         for idx in range(num_seg):
             seg = self.Segment.index_to_object(idx)
             nslices = max(3, int(lod * seg.diameter))
             if seg.is_sphere():
-                objects[idx] = Sphere(seg.coordinates, 0.5 * seg.diameter, nslices)
+                self.objects[idx] = Sphere(seg.coordinates, 0.5 * seg.diameter, nslices)
             elif seg.is_cylinder():
-                objects[idx] = Cylinder(seg.coordinates, seg.parent.coordinates,
+                self.objects[idx] = Cylinder(seg.coordinates, seg.parent.coordinates,
                                         seg.diameter, nslices)
-            else: raise NotImplementedError
-        # Combine all of the objects into one big object.
-        vertices = [obj.get_vertices() for obj in objects]
-        indices  = [obj.get_indices() for obj in objects]
-        num_v    = np.cumsum([len(x) for x in vertices])
+            else:
+                raise NotImplementedError
+
+    def compile_visible(self, visible_segments):
+        """ Combine all of the visible objects into one big object. """
+        segment_idx = []
+        vertices    = []
+        indices     = []
+        for idx in visible_segments:
+            obj = self.objects[idx]
+            segment_idx.append(idx)
+            vertices.append(obj.get_vertices())
+            indices.append(np.copy(obj.get_indices()))
+        if not segment_idx:
+            self.vertices = np.empty(0, dtype=np.float32)
+            self.indices  = np.empty(0, dtype=np.uint32)
+            self.segments = np.empty(0, dtype=Pointer)
+            return
+        # Offset the indices to point to the new vertex locations in the combined buffer.
+        num_v = np.cumsum([len(x) for x in vertices])
         for v_index, v_offset in zip(indices[1:], num_v):
             v_index += v_offset
         self.vertices = np.vstack(vertices)
         self.indices  = np.vstack(indices)
         # Record which segment generated each vertex.
         self.segments = np.empty(len(self.vertices), dtype=Pointer)
-        for idx in range(num_seg):
-            lower = 0 if idx == 0 else num_v[idx-1]
-            upper = num_v[idx]
-            self.segments[lower:upper] = idx
+        lower = 0
+        for obj_idx, seg_idx in enumerate(segment_idx):
+            upper = num_v[obj_idx]
+            self.segments[lower:upper] = seg_idx
+            lower = upper
 
         # TODO: Move these arrays to the GPU now, instead of copying them at
         # render time. Use VBO's?
@@ -99,42 +110,37 @@ class Scene:
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-    def draw(self, camera, colors=[1,1,1], background_color=[0,0,0]):
+    def draw(self, camera, coloration):
         camera.setup_opengl()
-        colors = self._clean_color_data(colors)
-        self._draw_background(background_color)
+
+        # Draw background.
+        glClearColor(*coloration.background_color, 0.0)
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+
+        if coloration.changed_visible:
+            self.compile_visible(coloration.visible_segments)
+            coloration.changed_visible = False
 
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
 
+        colors = coloration._get()
+        assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
+        colors = np.take(colors, self.segments, axis=0)
         glEnableClientState(GL_COLOR_ARRAY)
         glColorPointer(3, GL_FLOAT, 0, colors)
 
         glDrawElements(GL_TRIANGLES, 3 * len(self.indices), GL_UNSIGNED_INT, self.indices)
 
-    def _clean_color_data(self, colors):
-        """ Clean up the user input and broadcast it to the correct shape. """
-        colors = np.array(colors, dtype=np.float32)
-        assert np.all(colors >= 0.0)
-        assert np.all(colors <= 1.0)
-        if colors.shape == (3,):
-            colors = np.tile(colors, [len(self.vertices), 1])
-        else:
-            assert colors.ndim == 2
-            assert colors.shape[1] == 3
-            assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
-            colors = np.take(colors, self.segments, axis=0)
-        return colors
+    def get_segment(self, camera, coloration, screen_coordinates):
 
-    def _draw_background(self, background_color):
-        assert len(background_color) == 3
-        glClearColor(*background_color, 0.0)
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-
-    def get_segment(self, camera, screen_coordinates):
         camera.setup_opengl()
         x, y = screen_coordinates
         y = camera.size[1] - y
+
+        if coloration.changed_visible:
+            self.compile_visible(coloration.visible_segments)
+            coloration.changed_visible = False
 
         background = 2**24 - 1
         assert self.num_seg < background
@@ -149,7 +155,7 @@ class Scene:
         glScissor(x, y, 1, 1)
         glEnable(GL_SCISSOR_TEST)
 
-        glClearColor(1.0, 1.0, 1.0, 1.0)
+        glClearColor(1.0, 1.0, 1.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 
         glEnableClientState(GL_VERTEX_ARRAY)

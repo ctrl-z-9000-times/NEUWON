@@ -1,11 +1,13 @@
-import matplotlib.pyplot as plt
 import matplotlib.colors
+import matplotlib.pyplot as plt
+import numpy as np
 
 class Coloration:
     """ Holds each segments color & visibility data, manages colormaps. """
     def __init__(self):
         self.segment_values     = None
         self.visible_segments   = None
+        self.changed_visible    = True
         self._color_data        = None
         self.set_colormap(self.get_all_colormaps()[0])
         self.set_background_color('black')
@@ -24,10 +26,12 @@ class Coloration:
 
     def set_visible_segments(self, visible_segments):
         self.visible_segments = visible_segments
+        self.changed_visible = True
 
     def _get(self):
         if self._color_data is None:
-            self._color_data = self.colormap(self.segment_values)
+            rgba = self.colormap(self.segment_values)
+            self._color_data = np.array(rgba[:,:3], dtype=np.float32)
         return self._color_data
 
     def set_background_color(self, color):

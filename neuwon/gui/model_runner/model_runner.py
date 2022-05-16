@@ -283,7 +283,7 @@ def VideoSettings(parent, runner, viewport):
 
     self.add_radio_buttons('background', ['Black', 'White'],
             default  = 'Black',
-            callback = viewport.set_background_color)
+            callback = viewport.get_coloration().set_background_color)
 
     return self
 
@@ -321,11 +321,8 @@ class FilterVisible(Panel):
     def apply_filter(self):
         neuron_types  = [nt for nt, v in self.neurons.get_parameters().items() if v]
         segment_types = [st for st, v in self.segments.get_parameters().items() if v]
-        segment_indices = self.model.filter_segments_by_type(neuron_types, segment_types, _return_objects=False)
-        num_segments = len(self.model.get_Segment().get_database_class())
-        segment_mask = np.zeros(num_segments)
-        segment_mask[segment_indices] = 1
-        self.viewport.get_coloration().set_visible_segments(segment_mask)
+        visible_segment = self.model.filter_segments_by_type(neuron_types, segment_types, _return_objects=False)
+        self.viewport.get_coloration().set_visible_segments(visible_segment)
 
 
 class DataRecorders(ManagementPanel):

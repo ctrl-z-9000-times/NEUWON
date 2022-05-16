@@ -84,7 +84,7 @@ class Viewport:
     def set_scene(self, model):
         self._scene = Scene(model)
         self.coloration.set_segment_values(np.zeros(self._scene.num_seg))
-        self.coloration.set_visible_segments(np.ones(self._scene.num_seg))
+        self.coloration.set_visible_segments(np.arange(self._scene.num_seg))
 
     def get_coloration(self):
         return self.coloration
@@ -122,11 +122,11 @@ class Viewport:
             self._keyboard_movement(dt)
         # Press right mouse button to select a segment.
         if right_click or self.text_overlay._need_segment():
-            segment = self._scene.get_segment(self.camera, pygame.mouse.get_pos())
+            segment = self._scene.get_segment(self.camera, self.coloration, pygame.mouse.get_pos())
         else:
             segment = None
         # 
-        self._scene.draw(self.camera, self.coloration._get(), self.background_color)
+        self._scene.draw(self.camera, self.coloration)
         overlay = self.text_overlay._get(segment)
         self._draw_text_overlay(overlay, (40, 50))
         pygame.display.flip()

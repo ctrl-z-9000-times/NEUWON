@@ -3,6 +3,7 @@ import numpy as np
 from .rotate_align import rotate_align
 
 class Primative:
+    __slots__ = ('vertices', 'indices')
     def get_vertices(self):
         assert self.vertices.dtype == np.float32
         return self.vertices
@@ -11,6 +12,7 @@ class Primative:
         return self.indices
 
 class Sphere(Primative):
+    __slots__ = ()
     def __init__(self, center, radius, slices):
         stacks = slices
         # Calculate the Vertices
@@ -44,6 +46,7 @@ class Sphere(Primative):
             write_idx += 1
 
 class Cylinder(Primative):
+    __slots__ = ()
     def __init__(self, A, B, diameter, num_slices):
         vertices = np.empty((2 * (num_slices + 1), 3), dtype=np.float32)
         vector = B - A
@@ -74,6 +77,7 @@ class Cylinder(Primative):
             indices[2*i+1, 0] = i * 2 + 1
 
 class Disk(Primative):
+    __slots__ = ()
     def __init__(self,):
         1/0 # todo maybe?
         # Do not use triangle fans! Use regular triangles so that this conforms
