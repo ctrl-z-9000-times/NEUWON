@@ -1,8 +1,8 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pygame
 from pygame.locals import *
 from OpenGL import GL
+from .coloration import Coloration
 from .scene import Camera, Scene
 
 epsilon = np.finfo(float).eps
@@ -38,32 +38,6 @@ class TextOverlay:
         if self.segment_type: overlay += f'\nSegment Type: {segment_type}'
         return overlay.strip()
 
-class Coloration:
-    """ Holds the segments color & visibility data, manages colormaps. """
-    def __init__(self):
-        self.segment_values     = None
-        self.visible_segments   = None
-        self.color_data         = None
-        self.set_colormap(self.get_all_colormaps()[0])
-
-    @classmethod
-    def get_all_colormaps(cls):
-        return plt.colormaps()
-
-    def set_colormap(self, colormap):
-        self.colormap = plt.get_cmap(colormap)
-
-    def set_segment_values(self, segment_values):
-        self.segment_values = segment_values
-
-    def set_visible_segments(self, visible_segments):
-        self.visible_segments = visible_segments
-
-    def _get(self):
-        if self.segment_values is None:
-            return None
-        return self.colormap(self.segment_values, self.visible_segments)
-
 class Viewport:
     """
     This class opens the viewport window, embeds the rendered scene,
@@ -77,7 +51,6 @@ class Viewport:
         self.sprint_mod     = 5 # Shift key move_speed multiplier.
         self.coloration     = Coloration()
         self.text_overlay   = TextOverlay()
-        self.set_background_color('black')
         self._open = False
         self.open(window_size)
 
@@ -111,18 +84,7 @@ class Viewport:
     def set_scene(self, model):
         self._scene = Scene(model)
         self.coloration.set_segment_values(np.zeros(self._scene.num_seg))
-
-    def set_background_color(self, color):
-        if isinstance(color, str):
-            color = color.lower()
-            if color == 'black':
-                self.background_color = [0,0,0]
-            elif color == 'white':
-                self.background_color = [1,1,1]
-            else:
-                raise NotImplementedError(color)
-        else:
-            self.background_color = list(float(x) for x in color)
+        self.coloration.set_visible_segments(np.ones(self._scene.num_seg))
 
     def get_coloration(self):
         return self.coloration
@@ -208,7 +170,7 @@ class Viewport:
     def _draw_text_overlay(self, text, position):
         if not text:
             return
-        r,g,b   = self.background_color
+        r,g,b   = self.coloration.background_color
         color   = (255 * (1 - r), 255 * (1 - g), 255 * (1 - b), 255)
         x, y    = position
         for line in text.split('\n'):
