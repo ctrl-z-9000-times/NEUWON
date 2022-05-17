@@ -901,7 +901,7 @@ class ManagementPanel(Panel):
             raise ValueError()
         return name
 
-    def add_button_create(self, radio_options:dict=None, row=0):
+    def add_button_create(self, radio_options:dict=None, callback=None, row=0):
         """
         Argument radio_options is a dict containing a single key-value pair.
                 The value is a grid of options for the user to select from.
@@ -929,6 +929,7 @@ class ManagementPanel(Panel):
                     return
                 self.parameters[name] = {key: choice}
                 self.selector.insert(name)
+                if callback is not None: callback(name)
         else:
             def _callback(name):
                 name = _askstring(title, prompt, _default_new_name(),
@@ -942,6 +943,7 @@ class ManagementPanel(Panel):
                 else:
                     self.parameters[name] = {}
                 self.selector.insert(name)
+                if callback is not None: callback(name)
         button = self.selector.add_button('New', _callback, row=row)
 
     def add_button_delete(self, text:str='Delete', callback=None, require_confirmation=True, row=0):
@@ -953,9 +955,9 @@ class ManagementPanel(Panel):
                         parent=self.frame)
                 if not confirmation:
                     return
+            if callback is not None: callback(name)
             self.selector.delete(name)
             self.parameters.pop(name)
-            if callback is not None: callback(name)
         button = self.selector.add_button(text, _callback, require_selection=True, row=row)
         self.selector.listbox.bind('<Delete>',    lambda event: button.invoke())
         self.selector.listbox.bind('<BackSpace>', lambda event: button.invoke())
@@ -975,7 +977,7 @@ class ManagementPanel(Panel):
             if callback is not None: callback(name, new_name)
         self.selector.add_button('Rename', _callback, require_selection=True, row=row)
 
-    def add_button_duplicate(self, row=0):
+    def add_button_duplicate(self, callback=None, row=0):
         def _callback(name):
             new_name = _askstring(f'Duplicate {self.title}',
                                               f'Enter new {self.title.lower()} name:',
@@ -986,6 +988,7 @@ class ManagementPanel(Panel):
                 return
             self.parameters[new_name] = dict(self.parameters[name]) # Should this be a deep-copy?
             self.selector.insert(new_name)
+            if callback is not None: callback(name, new_name)
         self.selector.add_button('Duplicate', _callback, require_selection=True, row=row)
 
     def add_buttons_up_down(self, row=0):
@@ -1024,6 +1027,8 @@ def _askstring(title, prompt, default='', options_grid=None, *, parent):
             choice = tk.StringVar(value=options_grid[0][0])
             for row_idx, row_data in enumerate(options_grid):
                 for col_idx, value in enumerate(row_data):
+                    if not value:
+                        continue
                     button = ttk.Radiobutton(radio, text=value, variable=choice, value=value)
                     button.grid(row=row_idx, column=col_idx, sticky='w', padx=padx, pady=pady)
         # 

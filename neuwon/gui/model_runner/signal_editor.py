@@ -4,24 +4,27 @@ from neuwon import TimeSeries
 
 class SignalGenerator(ManagementPanel):
     def __init__(self, parent):
+        self.active = {}
         options_grid = [[
             'Square Wave',
             'Sine Wave',
             'Triangle Wave',
             'Sawtooth Wave',
             'Constant Wave',
-        ],
-        # 'Load From File',
-        # 'Random Noise',
-        # ['', '', '', '', '',]
-        ]
+        ], [
+            '', # 'Load From File',
+            '', # 'Random Noise',
+            '',
+            '',
+            '',
+        ]]
         super().__init__(parent, 'Signal',
                          panel=('CustomSettingsPanel', ('signal_type',)))
         # 
         self.add_button_create(radio_options={'signal_type': options_grid})
-        self.add_button_delete()
+        self.add_button_delete(callback=self.delete)
         self.add_button_duplicate(row=1)
-        self.add_button_rename(row=1)
+        self.add_button_rename(row=1, callback=self.rename)
         self.selector.add_button('Start All', self.start_all, row=2)
         self.selector.add_button('Stop All',  self.stop_all,  row=2)
         self.selector.add_button('Start',     self.start,     row=3, require_selection=True)
@@ -32,6 +35,43 @@ class SignalGenerator(ManagementPanel):
         self.embed = MatplotlibEmbed(self.get_widget())
         self.embed.frame.grid(row=0, rowspan=2, column=4)
         self.add_callback(self._update)
+
+    def create(self, name):
+        assert self.selected_segment is not None
+        parameters = self.get_parameters()[name]
+        parameters['segment'] = self.selected_segment
+        self.selected_segment = None
+
+    def delete(self, name):
+        self.stop(name)
+
+    def rename(self, old_name, new_name):
+        if old_name in self.active:
+            self.active[new_name] = self.active.pop(old_name)
+
+    def start_all(self, name=None):
+        for name in self.get_parameters():
+            self.start(name)
+
+    def stop_all(self, name=None):
+        for name in self.get_parameters():
+            self.stop(name)
+
+    def start(self, name):
+        if name in self.active:
+            return
+        parameters = self.get_parameters()[name]
+        component  = parameters['component']
+        mode       = parameters['assign_method']
+        timeseries = self.export_timeseries(parameters)
+        timeseries.play(parameters['segment'], component, mode=mode, loop=parameters['loop_forever'])
+        self.active[name] = timeseries
+
+    def stop(self, name):
+        if name not in self.active:
+            return
+        timeseries = self.active.pop(name)
+        timeseries.stop()
 
     def _init_play_settings(self, settings_panel):
         components = [
@@ -90,7 +130,8 @@ class SignalGenerator(ManagementPanel):
         settings_panel.add_section(waveform_name + ' Settings')
         settings_panel.add_entry('value',
                 valid_range = (-max_float, max_float))
-        settings_panel.add_entry('duration',
+        settings_panel.add_entry('period',
+                title       = 'duration',
                 default     = 10,
                 valid_range = (greater_than_zero, max_float),
                 units       = 'ms')
@@ -100,22 +141,13 @@ class SignalGenerator(ManagementPanel):
         timeseries  = self.export_timeseries(parameters)
         self.embed.update(timeseries)
 
-    def start_all(self, signal=None):
-        pass
-    def stop_all(self, signal=None):
-        pass
-    def start(self, signal):
-        pass
-    def stop(self, signal):
-        pass
-
     def export_timeseries(self, signal_parameters):
         signal_type = signal_parameters['signal_type']
         signal      = TimeSeries()
         if signal_type == 'Constant Wave':
             signal.constant_wave(
                     value       = signal_parameters['value'],
-                    duration    = signal_parameters['duration'])
+                    duration    = signal_parameters['period'])
         elif signal_type == 'Square Wave':
             signal.square_wave(
                     extremum_1  = signal_parameters['extremum_1'],
@@ -137,6 +169,8 @@ class SignalGenerator(ManagementPanel):
                     extremum_1  = signal_parameters['extremum_1'],
                     extremum_2  = signal_parameters['extremum_2'],
                     period      = signal_parameters['period'])
+        elif signal_type == 'Load From File':
+            1/0 # TODO
         else:
             raise NotImplementedError(signal_type)
         delay = signal_parameters['delay']
