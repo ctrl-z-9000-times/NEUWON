@@ -886,6 +886,19 @@ class ManagementPanel(Panel):
     def add_callback(self, function):
         self.controlled.add_callback(function)
 
+    def ask_new_name(self):
+        title  = f'Create {self.title}'
+        prompt = f'Enter new {self.title.lower()} name:'
+        name = _askstring(title, prompt, self._default_new_name(), parent=self.frame)
+        try:
+            return self._clean_new_name(name)
+        except ValueError:
+            return
+
+    def _default_new_name(self):
+        number = len(self.selector.get_list()) + 1
+        return f'{self.title}_{number}'
+
     def _clean_new_name(self, name, old_name=None):
         """ Either returns the cleaned name or raises a ValueError. """
         if not name:
@@ -909,9 +922,6 @@ class ManagementPanel(Panel):
         """
         title  = f'Create {self.title}'
         prompt = f'Enter new {self.title.lower()} name:'
-        def _default_new_name():
-            number = len(self.selector.get_list()) + 1
-            return f'{self.title}_{number}'
         if radio_options is not None:
             key, options = radio_options.popitem()
             assert not radio_options
@@ -921,7 +931,7 @@ class ManagementPanel(Panel):
                 options = options.reshape(1, -1)
             options = options.T
             def _callback(name):
-                name, choice = _askstring(title, prompt, _default_new_name(),
+                name, choice = _askstring(title, prompt, self._default_new_name(),
                                           options_grid=options, parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
@@ -932,7 +942,7 @@ class ManagementPanel(Panel):
                 if callback is not None: callback(name)
         else:
             def _callback(name):
-                name = _askstring(title, prompt, _default_new_name(),
+                name = _askstring(title, prompt, self._default_new_name(),
                                   parent=self.frame)
                 try:
                     name = self._clean_new_name(name)
@@ -980,8 +990,8 @@ class ManagementPanel(Panel):
     def add_button_duplicate(self, callback=None, row=0):
         def _callback(name):
             new_name = _askstring(f'Duplicate {self.title}',
-                                              f'Enter new {self.title.lower()} name:',
-                                              parent=self.frame)
+                    f'Enter new {self.title.lower()} name:',
+                    parent=self.frame)
             try:
                 new_name = self._clean_new_name(new_name)
             except ValueError:
@@ -1034,6 +1044,7 @@ def _askstring(title, prompt, default='', options_grid=None, *, parent):
         # 
         entry .bind('<Return>', ok_callback)
         window.bind('<Escape>', cancel_callback)
+        window.wait_visibility()
         entry.focus_set()
         entry.select_range(0, tk.END)
         # Make the dialog window modal. This prevents user interaction with

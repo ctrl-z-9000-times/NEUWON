@@ -2,29 +2,28 @@ from ..control_panels import *
 from .embedded_plot import MatplotlibEmbed
 from neuwon import TimeSeries
 
+options_grid = [[
+    'Square Wave',
+    'Sine Wave',
+    'Triangle Wave',
+    'Sawtooth Wave',
+    'Constant Wave',
+], [
+    '', # 'Load From File',
+    '', # 'Random Noise',
+    '',
+    '',
+    '',
+]]
+
 class SignalGenerator(ManagementPanel):
     def __init__(self, parent):
         self.active = {}
-        options_grid = [[
-            'Square Wave',
-            'Sine Wave',
-            'Triangle Wave',
-            'Sawtooth Wave',
-            'Constant Wave',
-        ], [
-            '', # 'Load From File',
-            '', # 'Random Noise',
-            '',
-            '',
-            '',
-        ]]
         super().__init__(parent, 'Signal',
                          panel=('CustomSettingsPanel', ('signal_type',)))
         # 
-        self.add_button_create(radio_options={'signal_type': options_grid})
         self.add_button_delete(callback=self.delete)
-        self.add_button_duplicate(row=1)
-        self.add_button_rename(row=1, callback=self.rename)
+        self.add_button_rename(callback=self.rename)
         self.selector.add_button('Start All', self.start_all, row=2)
         self.selector.add_button('Stop All',  self.stop_all,  row=2)
         self.selector.add_button('Start',     self.start,     row=3, require_selection=True)
@@ -34,13 +33,12 @@ class SignalGenerator(ManagementPanel):
         # 
         self.embed = MatplotlibEmbed(self.get_widget())
         self.embed.frame.grid(row=0, rowspan=2, column=4)
-        self.add_callback(self._update)
+        self.add_callback(self._update_plot)
 
-    def create(self, name):
-        assert self.selected_segment is not None
-        parameters = self.get_parameters()[name]
-        parameters['segment'] = self.selected_segment
-        self.selected_segment = None
+    def create(self, segment):
+        name = self.ask_new_name()
+        self.parameters[name] = {'segment': segment, 'signal_type': 'Sine Wave'}
+        self.selector.insert(name)
 
     def delete(self, name):
         self.stop(name)
@@ -63,6 +61,12 @@ class SignalGenerator(ManagementPanel):
         parameters = self.get_parameters()[name]
         component  = parameters['component']
         mode       = parameters['assign_method']
+        if mode == 'add':
+            mode = '+='
+        elif mode == 'overwrite':
+            mode = '='
+        else:
+            raise NotImplementedError(mode)
         timeseries = self.export_timeseries(parameters)
         timeseries.play(parameters['segment'], component, mode=mode, loop=parameters['loop_forever'])
         self.active[name] = timeseries
@@ -73,7 +77,17 @@ class SignalGenerator(ManagementPanel):
         timeseries = self.active.pop(name)
         timeseries.stop()
 
-    def _init_play_settings(self, settings_panel):
+    def _update_plot(self):
+        parameters = self.controlled.get_parameters()
+        timeseries = self.export_timeseries(parameters)
+        self.embed.update(timeseries)
+
+    def _update_signal_type(self):
+        parameters = self.controlled.get_parameters()
+        parameters['signal_type'] = parameters['sig_btn']
+        self.controlled.set_parameters(parameters)
+
+    def _init_control_settings(self, settings_panel):
         components = [
                 'voltage',
                 'current',
@@ -82,11 +96,25 @@ class SignalGenerator(ManagementPanel):
         # TODO: How feasible would it be for the GUI to determine the correct assign_method?
         settings_panel.add_dropdown('component', lambda: components)
         settings_panel.add_radio_buttons('assign_method', ['add', 'overwrite'], default='add', title='')
+
+        row1 = [
+                'Square Wave',
+                'Sine Wave',
+                'Triangle Wave',
+                'Sawtooth Wave',
+                'Constant Wave',
+        ]
+        buttons = settings_panel.add_radio_buttons('sig_btn', row1,
+                title='')
+        for btn in buttons:
+            btn.configure(command=self._update_signal_type)
+
+    def _init_common_settings(self, settings_panel):
         settings_panel.add_checkbox('loop_forever', default=True)
         settings_panel.add_entry('delay', valid_range=(0, max_float))
 
     def _init_min_max_period(self, settings_panel, default=(0, 1)):
-        settings_panel.add_empty_space()
+        self._init_common_settings(settings_panel)
         settings_panel.add_entry('extremum_1',
                 valid_range = (-max_float, max_float),
                 default     = default[0],)
@@ -99,35 +127,25 @@ class SignalGenerator(ManagementPanel):
                 units       = 'ms')
 
     def _init_settings_panel(self):
-        waveform_name = 'Square Wave'
-        settings_panel = self.controlled.add_settings_panel(waveform_name)
-        self._init_play_settings(settings_panel)
-        settings_panel.add_section(waveform_name + ' Settings')
+        settings_panel = self.controlled.add_settings_panel('Square Wave')
+        self._init_control_settings(settings_panel)
         self._init_min_max_period(settings_panel)
         settings_panel.add_slider('duty_cycle', (0, 100), default=50, units='%')
 
-        waveform_name = 'Sine Wave'
-        settings_panel = self.controlled.add_settings_panel(waveform_name)
-        self._init_play_settings(settings_panel)
-        settings_panel.add_section(waveform_name + ' Settings')
+        settings_panel = self.controlled.add_settings_panel('Sine Wave')
+        self._init_control_settings(settings_panel)
         self._init_min_max_period(settings_panel, default=(1, -1))
 
-        waveform_name = 'Triangle Wave'
-        settings_panel = self.controlled.add_settings_panel(waveform_name)
-        self._init_play_settings(settings_panel)
-        settings_panel.add_section(waveform_name + ' Settings')
+        settings_panel = self.controlled.add_settings_panel('Triangle Wave')
+        self._init_control_settings(settings_panel)
         self._init_min_max_period(settings_panel)
 
-        waveform_name = 'Sawtooth Wave'
-        settings_panel = self.controlled.add_settings_panel(waveform_name)
-        self._init_play_settings(settings_panel)
-        settings_panel.add_section(waveform_name + ' Settings')
+        settings_panel = self.controlled.add_settings_panel('Sawtooth Wave')
+        self._init_control_settings(settings_panel)
         self._init_min_max_period(settings_panel)
 
-        waveform_name  = 'Constant Wave'
-        settings_panel = self.controlled.add_settings_panel(waveform_name)
-        self._init_play_settings(settings_panel)
-        settings_panel.add_section(waveform_name + ' Settings')
+        settings_panel = self.controlled.add_settings_panel('Constant Wave')
+        self._init_control_settings(settings_panel)
         settings_panel.add_entry('value',
                 valid_range = (-max_float, max_float))
         settings_panel.add_entry('period',
@@ -136,15 +154,12 @@ class SignalGenerator(ManagementPanel):
                 valid_range = (greater_than_zero, max_float),
                 units       = 'ms')
 
-    def _update(self):
-        parameters  = self.controlled.get_parameters()
-        timeseries  = self.export_timeseries(parameters)
-        self.embed.update(timeseries)
-
     def export_timeseries(self, signal_parameters):
         signal_type = signal_parameters['signal_type']
         signal      = TimeSeries()
-        if signal_type == 'Constant Wave':
+        if signal_type == 'None':
+            return signal
+        elif signal_type == 'Constant Wave':
             signal.constant_wave(
                     value       = signal_parameters['value'],
                     duration    = signal_parameters['period'])

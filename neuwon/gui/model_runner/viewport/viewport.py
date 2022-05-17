@@ -117,7 +117,7 @@ class Viewport:
         right_click = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.close()
+                self._close()
                 return
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:

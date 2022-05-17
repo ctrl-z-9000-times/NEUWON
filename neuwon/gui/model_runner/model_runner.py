@@ -120,7 +120,7 @@ class ModelRunner(OrganizerPanel):
 
     def close(self, event=None):
         self.runner.control_queue.put(M_CMD.QUIT)
-        self.runner.control_queue.put(V_CMD.QUIT)
+        self.viewport.control_queue.put(V_CMD.QUIT)
         if event is None or event.type != tk.EventType.Destroy:
             self.root.destroy()
 
@@ -129,13 +129,17 @@ class ModelRunner(OrganizerPanel):
         #     self.runner.control_queue.put((M_CMD.HEADLESS, True))
         #     return
         start_time = time.time()
-        rclick_segment = self.viewport.tick()
+        selected_segment = self.viewport.tick()
         render_time = 1000 * (time.time() - start_time)
         max_fps = 30
         self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
 
-        if rclick_segment is not None:
-            print(self.current_tab())
+        if selected_segment is not None:
+            tab = self.current_tab()
+            if tab == 'signal_generator':
+                self.signal_generator.create(selected_segment)
+            elif tab == 'data_recorder':
+                self.data_recorder.selected_segment = selected_segment
 
     def _collect_results(self):
         while True:
