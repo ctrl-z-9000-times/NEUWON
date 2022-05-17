@@ -3,7 +3,7 @@ from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
 from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message
-from .signal_editor import SignalEditor
+from .signal_editor import SignalGenerator
 from .viewport.viewport import Viewport, Coloration
 from neuwon import Model
 from tkinter import messagebox
@@ -75,8 +75,8 @@ class ModelRunner(OrganizerPanel):
         super().__init__(parent)
         frame = self.get_widget()
         self.add_tab('run_control', MainControl(frame, self))
-        self.add_tab('signal_editor', SignalEditor(frame))
-        # self.add_tab('probes', )
+        self.add_tab('signal_generator', SignalGenerator(frame))
+        self.add_tab('data_recorder', DataRecorder(frame))
         frame.grid(sticky='nesw')
 
     def model_info(self):
@@ -133,6 +133,9 @@ class ModelRunner(OrganizerPanel):
         render_time = 1000 * (time.time() - start_time)
         max_fps = 30
         self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
+
+        if rclick_segment is not None:
+            print(self.current_tab())
 
     def _collect_results(self):
         while True:
@@ -325,7 +328,7 @@ class FilterVisible(Panel):
         self.viewport.get_coloration().set_visible_segments(visible_segment)
 
 
-class DataRecorders(ManagementPanel):
+class DataRecorder(ManagementPanel):
     def __init__(self, parent):
         super().__init__(parent, "Record")
 

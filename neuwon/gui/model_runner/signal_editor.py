@@ -2,23 +2,30 @@ from ..control_panels import *
 from .embedded_plot import MatplotlibEmbed
 from neuwon import TimeSeries
 
-class SignalEditor(ManagementPanel):
+class SignalGenerator(ManagementPanel):
     def __init__(self, parent):
-        options_grid = [
+        options_grid = [[
             'Square Wave',
             'Sine Wave',
             'Triangle Wave',
             'Sawtooth Wave',
             'Constant Wave',
-            # 'Load From File',
-            # 'Random Noise',
+        ],
+        # 'Load From File',
+        # 'Random Noise',
+        # ['', '', '', '', '',]
         ]
         super().__init__(parent, 'Signal',
                          panel=('CustomSettingsPanel', ('signal_type',)))
         # 
         self.add_button_create(radio_options={'signal_type': options_grid})
         self.add_button_delete()
-        self.add_button_rename()
+        self.add_button_duplicate(row=1)
+        self.add_button_rename(row=1)
+        self.selector.add_button('Start All', self.start_all, row=2)
+        self.selector.add_button('Stop All',  self.stop_all,  row=2)
+        self.selector.add_button('Start',     self.start,     row=3, require_selection=True)
+        self.selector.add_button('Stop',      self.stop,      row=3, require_selection=True)
         # 
         self._init_settings_panel()
         # 
@@ -93,11 +100,14 @@ class SignalEditor(ManagementPanel):
         timeseries  = self.export_timeseries(parameters)
         self.embed.update(timeseries)
 
-    def export(self):
-        data = {}
-        for name, signal_parameters in self.get_parameters():
-            data[name] = self.export_timeseries(signal_parameters)
-        return data
+    def start_all(self, signal=None):
+        pass
+    def stop_all(self, signal=None):
+        pass
+    def start(self, signal):
+        pass
+    def stop(self, signal):
+        pass
 
     def export_timeseries(self, signal_parameters):
         signal_type = signal_parameters['signal_type']

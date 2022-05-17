@@ -1059,6 +1059,15 @@ class OrganizerPanel(Panel):
         self._notebook.add(panel.get_widget(), text=title.title().replace('_', ' '),
                 sticky='nesw', padding=(padx, pad_top))
 
+    def current_tab(self):
+        index   = self._notebook.index('current')
+        panels  = self._notebook.tabs()
+        current = panels[index]
+        for title, panel in self._tabs.items():
+            if str(panel.get_widget()) == current:
+                return title
+        raise RuntimeError
+
     def get_parameters(self):
         for title, panel in self._tabs.items():
             self._parameters[title] = panel.get_parameters()
