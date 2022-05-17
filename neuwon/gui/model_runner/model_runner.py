@@ -2,9 +2,9 @@ from ..control_panels import *
 from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
 from .embedded_plot import MatplotlibEmbed
-from .model_thread import ModelThread, Message
+from .model_thread import ModelThread, Message as R_Message
 from .signal_editor import SignalGenerator
-from .viewport.viewport import Viewport, Coloration
+from .viewport.viewport import Viewport, Coloration, Message as V_Message
 from neuwon import Model
 from tkinter import messagebox
 import queue
@@ -14,10 +14,10 @@ class ModelRunner(OrganizerPanel):
     def __init__(self, filename):
         self.project    = ProjectContainer(filename)
         self.exported   = self.project.export()
+        self.root       = ThemedTk()
         self.runner     = ModelThread()
         self.viewport   = Viewport()
         self._initialize_model()
-        self.root       = ThemedTk()
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
         self.root.columnconfigure(0, weight=1)
@@ -32,17 +32,17 @@ class ModelRunner(OrganizerPanel):
     def _initialize_model(self):
         self.model = Model(**self.exported)
         self.model.get_database().sort()
-        self.runner.control_queue.put((Message.INSTANCE, self.model))
-        self.runner.control_queue.put((Message.HEADLESS, not self.viewport.is_open()))
-        if self.viewport.is_open():
-            self.viewport.set_scene(self.model)
+        self.runner.control_queue.put((R_Message.INSTANCE, self.model))
+        self.runner.control_queue.put((R_Message.HEADLESS, False))
+        self.viewport.control_queue.put((V_Message.OPEN, (640,480)))
+        self.viewport.control_queue.put((V_Message.SET_SCENE, self.model))
 
     def _open_viewport(self):
         if not self.viewport.is_open():
             self.viewport.open()
             self.root.after(0, self._viewport_tick)
         self.viewport.set_scene(self.model)
-        self.runner.control_queue.put((Message.HEADLESS, False))
+        self.runner.control_queue.put((R_Message.HEADLESS, False))
 
     def _init_menu(self, parent):
         menubar = tk.Menu(parent)
@@ -58,11 +58,11 @@ class ModelRunner(OrganizerPanel):
         #           Then they would fit more naturally into my imagined workflow.
         file_menu = tk.Menu(parent_menu, tearoff=False)
         parent_menu.add_cascade(label='File', menu=file_menu)
-        file_menu.add_command(label='Save',    underline=0, command=self.save,    accelerator='Ctrl+S')
-        file_menu.add_command(label='Save As', underline=5, command=self.save_as, accelerator='Ctrl+Shift+S')
+        # file_menu.add_command(label='Save',    underline=0, command=self.save,    accelerator='Ctrl+S')
+        # file_menu.add_command(label='Save As', underline=5, command=self.save_as, accelerator='Ctrl+Shift+S')
         file_menu.add_command(label='Quit',    underline=0, command=self.close)
-        self.root.bind_all('<Control-s>', self.save)
-        self.root.bind_all('<Control-S>', self.save_as)
+        # self.root.bind_all('<Control-s>', self.save)
+        # self.root.bind_all('<Control-S>', self.save_as)
 
     def _init_model_menu(self, parent_menu):
         model_menu = tk.Menu(parent_menu, tearoff=False)
@@ -119,15 +119,15 @@ class ModelRunner(OrganizerPanel):
         1/0 # TODO
 
     def close(self, event=None):
-        self.runner.control_queue.put(Message.QUIT)
-        self.viewport.close()
+        self.runner.control_queue.put(R_Message.QUIT)
+        self.runner.control_queue.put(V_Message.QUIT)
         if event is None or event.type != tk.EventType.Destroy:
             self.root.destroy()
 
     def _viewport_tick(self):
-        if not self.viewport.is_open():
-            self.runner.control_queue.put((Message.HEADLESS, True))
-            return
+        # if not self.viewport.is_open():
+        #     self.runner.control_queue.put((R_Message.HEADLESS, True))
+        #     return
         start_time = time.time()
         rclick_segment = self.viewport.tick()
         render_time = 1000 * (time.time() - start_time)
@@ -150,7 +150,7 @@ class ModelRunner(OrganizerPanel):
             except queue.Empty:
                 self.root.after(10, self._collect_results)
                 return
-            if results == Message.PAUSE:
+            if results == R_Message.PAUSE:
                 self.run_control.run_ctrl.pause()
             else:
                 timestamp, remaining, render_data = results
@@ -163,16 +163,13 @@ class ModelRunner(OrganizerPanel):
 
                 if self.viewport.is_open():
                     if self.run_control.video.get_parameters()['show_time']:
-                        text = f'Clock: {timestamp} ms'
-                    else:
-                        text = ''
-                    self.viewport.get_text_overlay().set_text(text)
+                        self.viewport.control_queue.put((V_Message.SHOW_TIME, timestamp))
                     # Normalize the render_data into the range [0,1]
                     vmin = -100
                     vmax = +100
                     render_data -= vmin
                     render_data /= (vmax - vmin)
-                    self.viewport.get_coloration().set_segment_values(render_data)
+                    self.viewport.control_queue.put((V_Message.SET_VALUES, render_data))
                     # TODO: Read these values from the parameters & model.clock!
                     slowdown = 1000
                     dt = .1
@@ -231,16 +228,16 @@ class RunControl(Panel):
             self.start()
 
     def pause(self):
-        self.runner.control_queue.put(Message.PAUSE)
+        self.runner.control_queue.put(R_Message.PAUSE)
         for entry in self.disable_while_running:
             entry.configure(state='enabled')
         self.running = False
 
     def start(self):
         parameters = self.get_parameters()
-        self.runner.control_queue.put((Message.SET_TIME, parameters['clock']))
-        self.runner.control_queue.put((Message.DURATION, parameters['run_for']))
-        self.runner.control_queue.put(Message.RUN)
+        self.runner.control_queue.put((R_Message.SET_TIME, parameters['clock']))
+        self.runner.control_queue.put((R_Message.DURATION, parameters['run_for']))
+        self.runner.control_queue.put(R_Message.RUN)
         for entry in self.disable_while_running:
             entry.configure(state='readonly')
         self.running = True
@@ -266,27 +263,25 @@ def VideoSettings(parent, runner, viewport):
             # TODO: All of the species concentrations.
     ]
     def set_component(component):
-        runner.control_queue.put((Message.COMPONENT, f'Segment.{component}'))
+        runner.control_queue.put((R_Message.COMPONENT, f'Segment.{component}'))
     self.add_dropdown('component', available_components,
             default  = available_components[0],
             callback = set_component)
 
     self.add_dropdown('colormap', Coloration.get_all_colormaps(),
             default  = 'turbo',
-            callback = viewport.coloration.set_colormap)
+            callback = lambda x: viewport.control_queue.put((V_Message.SET_COLORMAP, x)))
 
     self.add_checkbox('show_scale', default=True)
 
-    def show_type(x: bool):
-        viewport.text_overlay.show_neuron_type(x)
-        viewport.text_overlay.show_segment_type(x)
-    self.add_checkbox('show_type', default=True, callback=show_type)
+    self.add_checkbox('show_type', default=True,
+            callback= lambda x: viewport.control_queue.put((V_Message.SHOW_TYPE, x)))
 
     self.add_checkbox('show_time', default=True)
 
     self.add_radio_buttons('background', ['Black', 'White'],
             default  = 'Black',
-            callback = viewport.get_coloration().set_background_color)
+            callback = lambda x: viewport.control_queue.put((V_Message.SET_BACKGROUND, x)))
 
     return self
 
@@ -325,7 +320,7 @@ class FilterVisible(Panel):
         neuron_types  = [nt for nt, v in self.neurons.get_parameters().items() if v]
         segment_types = [st for st, v in self.segments.get_parameters().items() if v]
         visible_segment = self.model.filter_segments_by_type(neuron_types, segment_types, _return_objects=False)
-        self.viewport.get_coloration().set_visible_segments(visible_segment)
+        self.viewport.control_queue.put((V_Message.SET_VISIBLE, visible_segment))
 
 
 class DataRecorder(ManagementPanel):

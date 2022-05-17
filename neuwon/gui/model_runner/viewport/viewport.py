@@ -3,62 +3,87 @@ import pygame
 from pygame.locals import *
 from OpenGL import GL
 from .coloration import Coloration
+from .text_overlay import TextOverlay
 from .scene import Camera, Scene
+import enum
+import collections.abc
+import queue
 
 epsilon = np.finfo(float).eps
 
-class TextOverlay:
-    """ Holds the state of the standard text overlay. """
-    def __init__(self):
-        self.set_text('')
-        self.show_neuron_type()
-        self.show_segment_type()
+class Message(enum.Enum):
+    OPEN            = enum.auto()
+    SET_SCENE       = enum.auto()
+    SET_COLORMAP    = enum.auto()
+    SET_VALUES      = enum.auto()
+    SET_VISIBLE     = enum.auto()
+    SET_BACKGROUND  = enum.auto()
+    SHOW_TEXT       = enum.auto()
+    SHOW_TIME       = enum.auto()
+    SHOW_TYPE       = enum.auto()
+    QUIT            = enum.auto()
 
-    def set_text(self, text):
-        self.text = str(text)
+class _Clock:
+    def __init__(self, fps):
+        self._period    = 1 / fps
+        self._prev_tick = time.time()
 
-    def show_neuron_type(self, value=True):
-        self.neuron_type = bool(value)
-
-    def show_segment_type(self, value=True):
-        self.segment_type = bool(value)
-
-    def _need_segment(self):
-        return self.neuron_type or self.segment_type
-
-    def _get(self, segment=None):
-        overlay = self.text
-        if segment is None:
-            neuron_type  = None
-            segment_type = None
-        else:
-            neuron_type  = segment.neuron.neuron_type
-            segment_type = segment.segment_type
-        if self.neuron_type:  overlay += f'\nNeuron Type: {neuron_type}'
-        if self.segment_type: overlay += f'\nSegment Type: {segment_type}'
-        return overlay.strip()
+    def tick(self):
+        t       = time.time()
+        dt      = t - self._prev_tick
+        delay   = self._period - dt
+        if delay > 0:
+            time.sleep(delay)
+            t  = time.time()
+            dt = t - self._prev_tick
+        self._prev_tick = t
+        return dt
 
 class Viewport:
     """
     This class opens the viewport window, embeds the rendered scene,
     and handles the user input.
     """
-    def __init__(self, window_size=(2*640,2*480),
+    def __init__(self,
                 move_speed = .02,
-                mouse_sensitivity = .001,):
+                mouse_sensitivity = .001,
+                sprint_modifier = 5):
         self.move_speed     = float(move_speed)
         self.turn_speed     = float(mouse_sensitivity)
-        self.sprint_mod     = 5 # Shift key move_speed multiplier.
-        self.coloration     = Coloration()
-        self.text_overlay   = TextOverlay()
-        self._open = False
-        self.open(window_size)
+        self.sprint_mod     = float(sprint_modifier) # Shift key move_speed multiplier.
+        self.control_queue  = queue.Queue()
+        self._coloration    = Coloration()
+        self._text_overlay  = TextOverlay()
+        self._is_open       = False
+        self._scene         = None
 
-    def open(self, window_size):
-        if self._open:
+    def _update_control(self):
+        while True:
+            try:
+                m = self.control_queue.get_nowait()
+            except queue.Empty:
+                return
+            if isinstance(m, collections.abc.Iterable):
+                m, payload = m
+            assert isinstance(m, Message)
+
+            if   m == Message.OPEN:         self._open(payload)
+            elif m == Message.SET_SCENE:    self._set_scene(payload)
+            elif m == Message.SET_COLORMAP: self._coloration.set_colormap(payload)
+            elif m == Message.SET_VALUES:   self._coloration.set_segment_values(payload)
+            elif m == Message.SET_VISIBLE:  self._coloration.set_visible_segments(payload)
+            elif m == Message.SET_BACKGROUND: self._coloration.set_background_color(payload)
+            elif m == Message.SHOW_TEXT:    self._text_overlay.show_text(payload)
+            elif m == Message.SHOW_TIME:    self._text_overlay.show_time(payload)
+            elif m == Message.SHOW_TYPE:    self._text_overlay.show_type(payload)
+            elif m == Message.QUIT:         self._close()
+            else: raise NotImplementedError(m)
+
+    def _open(self, window_size):
+        if self._is_open:
             return
         self._left_click = False
-        self._open       = True
+        self._is_open       = True
         # Setup pygame.
         pygame.init()
         pygame.font.init()
@@ -67,32 +92,26 @@ class Viewport:
         self.clock  = pygame.time.Clock()
         self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
 
-    def close(self):
-        if not self._open:
+    def _close(self):
+        if not self._is_open:
             return
         pygame.mouse.set_visible(True)
         pygame.display.quit()
         pygame.quit()
-        self._open = False
-        # Drop the big data buffers.
-        del self._scene
-        self.coloration.segment_values = None
+        self._is_open   = False
+        self._scene     = None
+        self._coloration.clear_data()
 
     def is_open(self):
-        return self._open
+        return self._is_open
 
-    def set_scene(self, model):
+    def _set_scene(self, model):
         self._scene = Scene(model)
-        self.coloration.set_segment_values(np.zeros(self._scene.num_seg))
-        self.coloration.set_visible_segments(np.arange(self._scene.num_seg))
-
-    def get_coloration(self):
-        return self.coloration
-
-    def get_text_overlay(self):
-        return self.text_overlay
+        self._coloration.set_segment_values(np.zeros(self._scene.num_seg))
+        self._coloration.set_visible_segments(np.arange(self._scene.num_seg))
 
     def tick(self):
+        self._update_control()
         dt = self.clock.tick()
         # Process queued events.
         right_click = False
@@ -121,13 +140,13 @@ class Viewport:
             self._mouse_movement(dt)
             self._keyboard_movement(dt)
         # Press right mouse button to select a segment.
-        if right_click or self.text_overlay._need_segment():
-            segment = self._scene.get_segment(self.camera, self.coloration, pygame.mouse.get_pos())
+        if right_click or self._text_overlay._show_type:
+            segment = self._scene.get_segment(self.camera, self._coloration, pygame.mouse.get_pos())
         else:
             segment = None
         # 
-        self._scene.draw(self.camera, self.coloration)
-        overlay = self.text_overlay._get(segment)
+        self._scene.draw(self.camera, self._coloration)
+        overlay = self._text_overlay._get(segment)
         self._draw_text_overlay(overlay, (40, 50))
         pygame.display.flip()
         # 
@@ -170,7 +189,7 @@ class Viewport:
     def _draw_text_overlay(self, text, position):
         if not text:
             return
-        r,g,b   = self.coloration.background_color
+        r,g,b   = self._coloration.background_color
         color   = (255 * (1 - r), 255 * (1 - g), 255 * (1 - b), 255)
         x, y    = position
         for line in text.split('\n'):

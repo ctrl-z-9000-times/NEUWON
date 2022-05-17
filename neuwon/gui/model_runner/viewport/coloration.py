@@ -36,3 +36,8 @@ class Coloration:
 
     def set_background_color(self, color):
         self.background_color = matplotlib.colors.to_rgb(color)
+
+    def clear_data(self):
+        self.segment_values = None
+        self.visible_segments = None
+        self._color_data = None
