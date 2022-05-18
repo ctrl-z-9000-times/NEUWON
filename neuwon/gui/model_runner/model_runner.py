@@ -3,7 +3,7 @@ from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
 from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message as M_CMD
-from .signal_editor import SignalGenerator
+from .signal_generator import SignalGenerator
 from .viewport.viewport import Viewport, Coloration, Message as V_CMD
 from neuwon import Model
 from tkinter import messagebox
