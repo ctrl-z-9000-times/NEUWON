@@ -159,7 +159,9 @@ class ModelRunner(OrganizerPanel):
                 self.run_control.run_ctrl.pause()
             else:
                 timestamp, remaining, render_data = results
-                timestamp = round(timestamp, 6) # Round to nearest nanosecond
+                # Round times to the nearest femtosecond.
+                remaining = round(remaining, 9)
+                timestamp = round(timestamp, 9)
 
                 self.run_control.run_ctrl.set_parameters({
                         'run_for': remaining,
