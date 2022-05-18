@@ -112,6 +112,8 @@ class Viewport:
 
     def tick(self):
         self._update_control()
+        if not self._is_open:
+            return
         dt = self.clock.tick()
         # Process queued events.
         right_click = False

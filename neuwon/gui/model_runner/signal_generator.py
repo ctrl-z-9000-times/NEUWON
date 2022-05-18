@@ -48,15 +48,16 @@ class SignalGenerator(ManagementPanel):
             self.active[new_name] = self.active.pop(old_name)
 
     def start_all(self, name=None):
-        for name in self.get_parameters():
+        for name in list(self.get_parameters()):
             self.start(name)
 
     def stop_all(self, name=None):
-        for name in self.get_parameters():
+        for name in list(self.get_parameters()):
             self.stop(name)
 
     def start(self, name):
         if name in self.active:
+            self.frame.bell()
             return
         parameters = self.get_parameters()[name]
         component  = parameters['component']
@@ -73,6 +74,7 @@ class SignalGenerator(ManagementPanel):
 
     def stop(self, name):
         if name not in self.active:
+            self.frame.bell()
             return
         timeseries = self.active.pop(name)
         timeseries.stop()
@@ -94,7 +96,7 @@ class SignalGenerator(ManagementPanel):
                 # TODO: all of the species concentrations, and their delta's.
         ]
         # TODO: How feasible would it be for the GUI to determine the correct assign_method?
-        settings_panel.add_dropdown('component', lambda: components)
+        settings_panel.add_dropdown('component', lambda: components, default='voltage')
         settings_panel.add_radio_buttons('assign_method', ['add', 'overwrite'], default='add', title='')
 
         row1 = [

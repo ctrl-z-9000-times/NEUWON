@@ -886,14 +886,21 @@ class ManagementPanel(Panel):
     def add_callback(self, function):
         self.controlled.add_callback(function)
 
-    def ask_new_name(self):
+    def ask_new_name(self, options_grid=None):
         title  = f'Create {self.title}'
         prompt = f'Enter new {self.title.lower()} name:'
-        name = _askstring(title, prompt, self._default_new_name(), parent=self.frame)
-        try:
-            return self._clean_new_name(name)
-        except ValueError:
-            return
+        response = _askstring(title, prompt, self._default_new_name(),
+                                options_grid=options_grid, parent=self.frame)
+        if options_grid is None:
+            try:
+                return self._clean_new_name(response)
+            except ValueError:
+                return
+        else:
+            try:
+                return (self._clean_new_name(response[0]), response[1])
+            except ValueError:
+                return (None, None)
 
     def _default_new_name(self):
         number = len(self.selector.get_list()) + 1

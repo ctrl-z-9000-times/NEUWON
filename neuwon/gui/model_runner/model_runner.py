@@ -4,6 +4,7 @@ from ..themes import ThemedTk, set_theme, pick_theme
 from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message as M_CMD
 from .signal_generator import SignalGenerator
+from .data_recorder import DataRecorder
 from .viewport.viewport import Viewport, Coloration, Message as V_CMD
 from neuwon import Model
 from tkinter import messagebox
@@ -139,7 +140,7 @@ class ModelRunner(OrganizerPanel):
             if tab == 'signal_generator':
                 self.signal_generator.create(selected_segment)
             elif tab == 'data_recorder':
-                self.data_recorder.selected_segment = selected_segment
+                self.data_recorder.create(selected_segment)
 
     def _collect_results(self):
         while True:
@@ -164,6 +165,9 @@ class ModelRunner(OrganizerPanel):
                         'run_for': remaining,
                         'clock':   timestamp,
                 })
+
+                if self.current_tab() == 'data_recorder':
+                    self.data_recorder.update_plot()
 
                 if self.viewport.is_open():
                     if self.run_control.video.get_parameters()['show_time']:
@@ -326,29 +330,6 @@ class FilterVisible(Panel):
         visible_segment = self.model.filter_segments_by_type(neuron_types, segment_types, _return_objects=False)
         self.viewport.control_queue.put((V_CMD.SET_VISIBLE, visible_segment))
 
-
-class DataRecorder(ManagementPanel):
-    def __init__(self, parent):
-        super().__init__(parent, "Record")
-
-        self.add_button_rename()
-        self.add_button_duplicate()
-        self.add_button_delete()
-
-        # Note: This has no settings!
-        #       DB component must be set immediately upon creation.
-
-        # TODO: Buttons to start/stop recording, and a label showing current state.
-
-        # TODO: Show DB component
-        # TODO: Show neuron & segment type.
-        # TODO: Button to save data to file.
-
-        self.embed = MatplotlibEmbed(self.get_widget())
-        self.embed.frame.grid(row=0, rowspan=2, column=4)
-
-        # TODO:
-        # self.embed.update(timeseries)
 
 if __name__ == '__main__':
     import sys
