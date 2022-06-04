@@ -6,6 +6,7 @@ from .mechanism_editor import MechanismManager
 from .neuron_editor import SegmentEditor, NeuronEditor
 from .region_editor import RegionEditor
 from .species_editor import SpeciesEditor
+from .synapse_editor import SynapseEditor
 from tkinter import filedialog
 import json
 
@@ -59,6 +60,7 @@ class ModelEditor(OrganizerPanel):
         self.add_tab('regions',    RegionEditor(frame))
         self.add_tab('segments',   SegmentEditor(frame, self))
         self.add_tab('neurons',    NeuronEditor(frame, self))
+        self.add_tab('synapses',   SynapseEditor(frame, self))
         frame.grid(sticky='nesw')
 
     def _set_title(self):

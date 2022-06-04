@@ -175,10 +175,12 @@ class ModelRunner(OrganizerPanel):
                     if self.run_control.video.get_parameters()['show_time']:
                         self.viewport.control_queue.put((V_CMD.SHOW_TIME, timestamp))
                     # Normalize the render_data into the range [0,1]
-                    vmin = -100
-                    vmax = +100
+                    render_data = np.array(render_data, dtype=np.float32)
+                    vmin = np.min(render_data)
+                    vmax = np.max(render_data)
                     render_data -= vmin
                     render_data /= (vmax - vmin)
+                    np.nan_to_num(render_data, copy=False)
                     self.viewport.control_queue.put((V_CMD.SET_VALUES, render_data))
                     # TODO: Read these values from the parameters & model.clock!
                     slowdown = 1000
@@ -268,14 +270,12 @@ def VideoSettings(parent, runner, viewport):
             default = 1000,
             units   = 'Real-Time : Model-Time')
 
-    available_components = [
-            'voltage'
-            # TODO: All of the species concentrations.
-    ]
+    available_components = runner._instance.get_database().get('Segment').get_all_components()
+    available_components = (x.get_name() for x in available_components)
     def set_component(component):
         runner.control_queue.put((M_CMD.COMPONENT, f'Segment.{component}'))
     self.add_dropdown('component', available_components,
-            default  = available_components[0],
+            default  = 'voltage',
             callback = set_component)
 
     self.add_dropdown('colormap', Coloration.get_all_colormaps(),
