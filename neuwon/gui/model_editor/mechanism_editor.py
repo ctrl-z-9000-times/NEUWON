@@ -9,8 +9,8 @@ class MechanismManager(ManagementPanel):
         # 
         self.selector.add_button('Import', self.import_mechanisms)
         self.add_button_delete('Remove')
-        self.add_button_rename(row=1)
-        self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
+        # self.add_button_rename(row=1)
+        # self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
         self.documentation = {}
 
     def import_mechanisms(self, selected):

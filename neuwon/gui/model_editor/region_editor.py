@@ -10,7 +10,7 @@ class RegionEditor(ManagementPanel):
         options_grid  = [shape_options, csg_options]
         self.add_button_create(radio_options={'region_type': options_grid})
         self.add_button_delete()
-        self.add_button_rename(row=1)
+        # self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
         geometry_kwargs = {

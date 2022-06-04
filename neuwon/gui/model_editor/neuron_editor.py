@@ -13,7 +13,7 @@ class NeuronEditor(ManagementPanel):
                     'panel': (SegmentSettings, (model_editor,), {'override_mode': True})}))
         self.add_button_create()
         self.add_button_delete()
-        self.add_button_rename(row=1)
+        # self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
         self.segments = self.controlled

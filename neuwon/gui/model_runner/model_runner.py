@@ -49,7 +49,7 @@ class ModelRunner(OrganizerPanel):
         menubar = tk.Menu(parent)
         parent.config(menu=menubar)
         self._init_file_menu(menubar)
-        menubar.add_command(label='Themes', command=lambda: pick_theme(self.root))
+        # menubar.add_command(label='Themes', command=lambda: pick_theme(self.root))
         self._init_model_menu(menubar)
 
     def _init_file_menu(self, parent_menu):

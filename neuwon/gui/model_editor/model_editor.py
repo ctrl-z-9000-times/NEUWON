@@ -34,7 +34,7 @@ class ModelEditor(OrganizerPanel):
         parent.config(menu = self.menubar)
         self.filemenu = self._init_file_menu(self.menubar)
 
-        self.menubar.add_command(label='Themes', command=lambda: pick_theme(self.root))
+        # self.menubar.add_command(label='Themes', command=lambda: pick_theme(self.root))
         self.menubar.add_command(label='Run', command=self.switch_to_run_control)
 
     def _init_file_menu(self, parent_menu):
