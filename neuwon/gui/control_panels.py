@@ -1052,8 +1052,12 @@ def _askstring(title, prompt, default='', options_grid=None, *, parent):
             return response.get().strip()
 
 class OrganizerPanel(Panel):
-    def __init__(self, parent):
-        self._notebook   = ttk.Notebook(parent)
+    def __init__(self, parent, tabs=True):
+        self.tabs = bool(tabs)
+        if self.tabs:
+            self._notebook = ttk.Notebook(parent)
+        else:
+            self._notebook = ttk.Frame(parent)
         self._parameters = {}
         self._tabs       = {}
 
@@ -1065,10 +1069,23 @@ class OrganizerPanel(Panel):
         assert title not in dir(self), 'Duplicate panel or name conflict!'
         setattr(self, title, panel)
         self._tabs[title] = panel
-        self._notebook.add(panel.get_widget(), text=title.title().replace('_', ' '),
-                sticky='nesw', padding=(padx, pad_top))
+        title = title.replace('_', ' ').title()
+        if self.tabs:
+            self._notebook.add(panel.get_widget(), text=title,
+                                sticky='nesw', padding=(padx, pad_top))
+        else:
+            column = 2 * len(self._tabs)
+            if column > 2:
+                div = ttk.Separator(self._notebook, orient='vertical')
+                div.grid(row=0, rowspan=2, column=(column - 1),
+                         sticky='ns', padx=padx, pady=pad_top)
+            label = ttk.Label(self._notebook, text=title)
+            label.grid(row=0, column=column, padx=padx, pady=pad_top)
+            panel.get_widget().grid(row=1, column=column,
+                                    sticky='nesw', padx=padx, pady=pady)
 
     def current_tab(self):
+        assert self.tabs
         index   = self._notebook.index('current')
         panels  = self._notebook.tabs()
         current = panels[index]

@@ -108,7 +108,7 @@ class SegmentEditor(ManagementPanel):
 
 class SegmentSettings(OrganizerPanel):
     def __init__(self, parent, model_editor, override_mode=False):
-        super().__init__(parent)
+        super().__init__(parent, tabs=False)
         frame = self.get_widget()
         self.add_tab('morphology', MorphologyEditor(frame, model_editor,
                 override_mode=override_mode))
