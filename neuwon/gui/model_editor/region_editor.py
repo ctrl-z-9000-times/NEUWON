@@ -2,7 +2,7 @@ from ..control_panels import *
 
 class RegionEditor(ManagementPanel):
     def __init__(self, root):
-        super().__init__(root, 'Region', custom_title=self.custom_title,
+        super().__init__(root, 'Region',
                          panel=('CustomSettingsPanel', ('region_type',)))
 
         shape_options = ['Rectangle', 'Sphere', 'Cylinder']
@@ -56,9 +56,6 @@ class RegionEditor(ManagementPanel):
 
         inverse = self.controlled.add_settings_panel('Not')
         inverse.add_dropdown('region', get_region_options)
-
-    def custom_title(self, item):
-        return f"{self.parameters[item]['region_type']}: {item}"
 
 def export(parameters: dict) -> dict:
     for name, rgn in parameters.items():

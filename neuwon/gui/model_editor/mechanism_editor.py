@@ -68,7 +68,7 @@ class MechanismManager(ManagementPanel):
 
 class MechanismSelector(ManagementPanel):
     def __init__(self, root, mechanism_manager, override_mode=False):
-        super().__init__(root, 'Mechanism',
+        super().__init__(root, 'Mechanism', inline_panel=True,
                          panel=('SettingsPanel', {'override_mode': override_mode}))
         self.mechanisms = mechanism_manager
         # 

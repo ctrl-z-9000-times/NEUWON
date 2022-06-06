@@ -676,7 +676,7 @@ class ItemSelector:
         self._column_idx = [0, 0, 0, 0, 0, 0] # Indexes for appending buttons.
         # 
         listbox_frame = ttk.Frame(self.frame)
-        listbox_frame.grid(row=1, column=0, sticky='nesw')
+        listbox_frame.grid(row=2, column=0, sticky='nesw')
         self.listbox = tk.Listbox(listbox_frame, selectmode='browse', exportselection=False)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
         self.listbox.grid(row=0, column=0, sticky='nesw')
@@ -685,7 +685,7 @@ class ItemSelector:
         self.listbox.configure(yscrollcommand=scrollbar.set)
         scrollbar   .configure(command=self.listbox.yview)
         # Resize vertically.
-        self.frame   .grid_rowconfigure(1, weight=1)
+        self.frame   .grid_rowconfigure(2, weight=1)
         listbox_frame.grid_rowconfigure(0, weight=1)
         # Resize whichever widget is smaller horizonally to fill space
         # (buttons or listbox), but do not resize the outer frame.
@@ -790,20 +790,16 @@ class ManagementPanel(Panel):
     """ GUI element to use a ItemSelector to control another panel. """
     def __init__(self, parent, title:str, *,
                 keep_sorted:bool=True,
-                custom_title=None,
+                inline_panel=False,
                 panel='SettingsPanel',):
-        self.title      = str(title).title()
-        self.parameters = {}
-        self.selector   = ItemSelector(parent, self._on_select, keep_sorted)
-        self.frame      = self.selector.frame
+        self.title          = str(title).title()
+        self.parameters     = {}
+        self.selector       = ItemSelector(parent, self._on_select, keep_sorted)
+        self.frame          = self.selector.frame
         self.frame.grid_columnconfigure(2, minsize=padx) # Cosmetic spacing between the two halves of the panel.
-        self._custom_title = custom_title
-        self._inner_frame  = ttk.LabelFrame(self.frame, padding=padx,)
-        self._inner_frame.grid(row=0, rowspan=2, column=3, sticky='nesw', padx=padx, pady=pady)
-        self._set_title(None)
-        self._init_controlled_panel(panel)
+        self._init_controlled_panel(panel, inline_panel)
 
-    def _init_controlled_panel(self, arguments):
+    def _init_controlled_panel(self, arguments, inline_panel):
         # Gather the panel_type and arguments.
         if isinstance(arguments, str) or isinstance(arguments, type):
             panel_type = arguments
@@ -835,21 +831,12 @@ class ManagementPanel(Panel):
         }
         panel_type = builtin_panel_types.get(panel_type, panel_type)
         # 
-        self.controlled = panel_type(self._inner_frame, *args, **kwargs)
-        self.controlled.get_widget().grid(row=0, column=0, sticky='nesw', padx=padx, pady=pady)
-        self._inner_frame.grid_rowconfigure(0, weight=1)
-        self._inner_frame.grid_columnconfigure(0, weight=1)
-        self.panel = self.controlled
-
-    def _set_title(self, item):
-        # By default, display the primary title and the currently selected item.
-        if item is None:
-            text = f'{self.title}: nothing selected'
-        elif self._custom_title is not None:
-            text = self._custom_title(item)
+        self.panel = self.controlled = panel_type(self.frame, *args, **kwargs)
+        if inline_panel:
+            self.controlled.get_widget().grid(row=1, column=0, sticky='nesw', pady=pady)
         else:
-            text = f'{self.title}: {item}'
-        self._inner_frame.configure(text=text)
+            self.controlled.get_widget().grid(row=0, rowspan=3, column=1, sticky='nesw', padx=padx, pady=pady)
+            self.frame.grid_columnconfigure(1, weight=1)
 
     def _on_select(self, old_item, new_item):
         # Save the current parameters out of the SettingsPanel.
@@ -860,7 +847,6 @@ class ManagementPanel(Panel):
             self.controlled.set_parameters(self.parameters[new_item])
         else:
             self.controlled.set_parameters({})
-        self._set_title(new_item)
 
     def get_parameters(self) -> dict:
         # Save the currently selected item out of the SettingsPanel.

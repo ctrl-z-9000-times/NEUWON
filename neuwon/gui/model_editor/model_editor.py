@@ -10,7 +10,7 @@ from .synapse_editor import SynapseEditor
 from tkinter import filedialog
 import json
 
-# TODO: The rename & delete buttons need callbacks to apply the changes through
+# TODO: The create & delete buttons need callbacks to apply the changes through
 # the whole program.
 
 
