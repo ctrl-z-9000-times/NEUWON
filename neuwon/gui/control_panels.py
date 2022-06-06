@@ -585,6 +585,11 @@ class CustomSettingsPanel(Panel):
         self._current.get_widget().grid()
         self._current.set_parameters(parameters)
 
+    def set_defaults(self, parameters:dict):
+        option = parameters[self._key]
+        panel = self._options[option]
+        panel.set_defaults(parameters)
+
     def add_callback(self, function):
         for panel in self._options.values():
             panel.add_callback(function)
@@ -705,8 +710,9 @@ class ItemSelector:
         elif self._current_selection is None:
             for button in self._buttons_requiring_selection:
                 button.configure(state='normal')
-        self._on_select_callback(self._current_selection, item)
+        old_item = self._current_selection
         self._current_selection = item
+        self._on_select_callback(old_item, item)
 
     def touch(self):
         """ Issue an event as though the user just selected the current item. """

@@ -8,9 +8,7 @@ from .mechanism_editor import MechanismSelector
 class NeuronEditor(ManagementPanel):
     def __init__(self, parent, model_editor):
         self.segment_editor = model_editor.segments
-        super().__init__(parent, 'Neuron', panel=('ManagementPanel',
-                    {'title': 'Segment', 'keep_sorted': False,
-                    'panel': (SegmentSettings, (model_editor,), {'override_mode': True})}))
+        super().__init__(parent, 'Neuron', panel=(SegmentSelector, (model_editor,)))
         self.add_button_create()
         self.add_button_delete()
         # self.add_button_rename(row=1)
@@ -64,15 +62,6 @@ class NeuronEditor(ManagementPanel):
         self.segments.parameters[selected] = {'morphology_type': morphology}
         self.segments.selector.insert(selected)
 
-    def _set_defaults(self):
-        # TODO: Where should this be called from?
-        selected = self.segments.selector.get()
-        if selected is None:
-            return
-        defaults = self.segment_editor.get_parameters()[selected]
-        self.morphology.set_defaults(defaults['morphology'])
-        self.mechanisms.set_defaults(defaults['mechanisms'])
-
     @classmethod
     def export(cls, parameters:dict) -> dict:
         for neuron_type, neuron_parameters in parameters.items():
@@ -96,7 +85,6 @@ class SegmentEditor(ManagementPanel):
 
         self.add_button_create(options_grid)
         self.add_button_delete()
-        self.add_button_rename(row=1)
         self.add_button_duplicate(row=1)
 
     @classmethod
@@ -106,20 +94,42 @@ class SegmentEditor(ManagementPanel):
         return parameters
 
 
+class SegmentSelector(ManagementPanel):
+    def __init__(self, parent, model_editor):
+        super().__init__(parent, 'Segment', keep_sorted=False,
+                panel=(SegmentSettings, (model_editor,),
+                        {'override_mode': True, 'segment_selector': self}))
+
+
 class SegmentSettings(OrganizerPanel):
-    def __init__(self, parent, model_editor, override_mode=False):
+    def __init__(self, parent, model_editor, override_mode=False, segment_selector=None):
         super().__init__(parent, tabs=False)
         frame = self.get_widget()
+        self.override_mode = bool(override_mode)
+        if self.override_mode:
+            self.segment_editor = model_editor.segments
+            self.segment_selector = segment_selector.selector
         self.add_tab('morphology', MorphologyEditor(frame, model_editor,
-                override_mode=override_mode))
+                override_mode=self.override_mode))
         self.add_tab('mechanisms', MechanismSelector(frame, model_editor.mechanisms,
-                override_mode=override_mode))
+                override_mode=self.override_mode))
 
     def set_parameters(self, parameters):
         if 'morphology_type' in parameters:
             morphology = parameters.setdefault('morphology', {})
             morphology['morphology_type'] = parameters.pop('morphology_type')
         super().set_parameters(parameters)
+        if self.override_mode:
+            self._set_defaults()
+
+    def _set_defaults(self):
+        selected = self.segment_selector.get()
+        if selected is None:
+            return
+        defaults = self.segment_editor.get_parameters()[selected]
+        self.morphology.set_defaults(defaults['morphology'])
+        # TODO: Update the mechanisms too:
+        # self.mechanisms.set_defaults(defaults['mechanisms'])
 
     @classmethod
     def export(cls, parameters):
