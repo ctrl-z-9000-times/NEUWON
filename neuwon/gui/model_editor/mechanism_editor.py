@@ -9,7 +9,6 @@ class MechanismManager(ManagementPanel):
         # 
         self.selector.add_button('Import', self.import_mechanisms)
         self.add_button_delete('Remove')
-        # self.add_button_rename(row=1)
         # self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
         self.documentation = {}
 
@@ -109,3 +108,7 @@ class MechanismSelector(ManagementPanel):
                 continue
             self.parameters[x] = {}
             self.selector.insert(x)
+
+    @classmethod
+    def export(cls, parameters):
+        return {k: v['magnitude'] for k, v in parameters.items()}

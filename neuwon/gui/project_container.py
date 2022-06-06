@@ -2,6 +2,7 @@ from .model_editor import species_editor
 from .model_editor import region_editor
 from .model_editor.mechanism_editor  import MechanismManager
 from .model_editor.neuron_editor     import SegmentEditor, NeuronEditor
+from .model_editor.synapse_editor    import SynapseEditor
 import os.path
 import json
 
@@ -41,4 +42,5 @@ class ProjectContainer:
             'regions':      region_editor.export(       parameters["regions"]),
             'segments':     SegmentEditor.export(       parameters["segments"]),
             'neurons':      NeuronEditor.export(        parameters["neurons"]),
+            'synapses':     SynapseEditor.export(       parameters["synapses"]),
         }

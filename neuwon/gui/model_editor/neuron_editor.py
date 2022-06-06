@@ -138,9 +138,7 @@ class SegmentSettings(OrganizerPanel):
                 morphology['extension_angle'] *= np.pi / 180
             if 'bifurcation_angle' in morphology:
                 morphology['bifurcation_angle'] *= np.pi / 180
-        mechanisms = parameters['mechanisms']
-        for k, v in mechanisms.items():
-            mechanisms[k] = v['magnitude']
+        parameters['mechanisms'] = MechanismSelector.export(parameters['mechanisms'])
         return parameters
 
 

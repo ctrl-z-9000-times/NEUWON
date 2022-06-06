@@ -270,7 +270,7 @@ class SettingsPanel(Panel):
             options = [str(x) for x in options]
             menu.configure(values=options)
         label = ttk.Label(self.frame, text=title)
-        menu  = ttk.Combobox(self.frame, textvar=variable, postcommand=postcommand)
+        menu  = ttk.Combobox(self.frame, textvar=variable, postcommand=postcommand, width=12)
         menu.configure(state='readonly')
         menu.bind('<<ComboboxSelected>>', lambda event: menu.selection_clear())
         variable.trace_add('write', self._call_callbacks)
@@ -435,7 +435,7 @@ class SettingsPanel(Panel):
         if title is None: title = parameter_name.replace('_', ' ').title()
         # Create the widgets.
         label = ttk.Label(self.frame, text=title)
-        entry = ttk.Entry(self.frame, textvar=variable, justify='right')
+        entry = ttk.Entry(self.frame, textvar=variable, justify='right', width=12)
         units = ttk.Label(self.frame, text=units)
         # Arrange the widgets.
         label.grid(row=self._row_idx, column=self._col_idx+0, sticky='w', padx=padx, pady=pady)

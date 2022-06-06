@@ -23,8 +23,8 @@ class Synapse:
     @classmethod
     def _initialize(cls, model, synapse_type, *,
                 attachment_points,
-                cleft={},
-                region=None,
+                cleft_volume=0.0,
+                cleft_spillover_area=0.0,
                 maximum_distance=math.inf,
                 number=0,):
         database = model.get_database()
@@ -36,12 +36,12 @@ class Synapse:
         for index, syn_parameters in enumerate(attachment_points):
             cls._attachment_points.append(
                     _AttachmentPoint(db_class, index, **syn_parameters))
-        cls._initialize_cleft(db_class, **cleft)
+        cls._initialize_cleft(db_class, cleft_volume, cleft_spillover_area)
         if number: cls.grow(number)
         return cls
 
     @classmethod
-    def _initialize_cleft(cls, db_class, *, volume=0.0, spillover_area=0.0):
+    def _initialize_cleft(cls, db_class, volume, spillover_area):
         cls._cleft_volume           = float(volume)
         cls._cleft_spillover_area   = float(spillover_area)
         assert cls._cleft_volume >= 0.0
@@ -94,7 +94,7 @@ class Synapse:
     def __init__(self, *attachment_points):
         cls = type(self)
         db_class = cls.get_database_class()
-        # Initialize the synaptic cleft's extracellular volume.
+        # Initialize the cleft's extracellular volume.
         cleft = None
         if hasattr(db_class, 'cleft'):
             volume          = cls._cleft_volume
