@@ -25,7 +25,7 @@ class DataRecorder(ManagementPanel):
         # TODO: Button to save data to file.
 
         self.embed = MatplotlibEmbed(self.get_widget())
-        self.embed.frame.grid(row=0, rowspan=2, column=4)
+        self.embed.frame.grid(row=0, rowspan=3, column=4)
         self.add_callback(self.update_plot)
 
     def create(self, segment):

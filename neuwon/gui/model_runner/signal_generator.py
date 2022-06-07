@@ -32,7 +32,7 @@ class SignalGenerator(ManagementPanel):
         self._init_settings_panel()
         # 
         self.embed = MatplotlibEmbed(self.get_widget())
-        self.embed.frame.grid(row=0, rowspan=2, column=4)
+        self.embed.frame.grid(row=0, rowspan=3, column=4)
         self.add_callback(self._update_plot)
 
     def create(self, segment):

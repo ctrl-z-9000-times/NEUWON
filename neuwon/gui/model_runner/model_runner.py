@@ -10,6 +10,7 @@ from neuwon import Model
 from tkinter import messagebox
 import queue
 import time
+import traceback
 
 class ModelRunner(OrganizerPanel):
     def __init__(self, filename):
@@ -31,7 +32,15 @@ class ModelRunner(OrganizerPanel):
         self.root.after(0, self._viewport_tick)
 
     def _initialize_model(self):
-        self.model = Model(**self.exported)
+        try:
+            self.model = Model(**self.exported)
+        except (AssertionError, ValueError) as err:
+            # Open a dialog box showing the error and then force the user back
+            # into the model_editor.
+            traceback.print_exc()
+            messagebox.showerror("Error", err)
+            self.switch_to_model_editor(save=False)
+            return
         self.model.get_database().sort()
         self.runner.control_queue.put((M_CMD.INSTANCE, self.model))
         self.runner.control_queue.put((M_CMD.HEADLESS, False))
@@ -94,8 +103,9 @@ class ModelRunner(OrganizerPanel):
         info = ttk.Label(frame, text='TODO', justify='left', padding=padx)
         info.grid(row=0, column=0, padx=padx, pady=pady)
 
-    def switch_to_model_editor(self):
-        self.save()
+    def switch_to_model_editor(self, save=True):
+        if save:
+            self.save()
         if self.project.filename is None:
             return
         self.close()

@@ -146,6 +146,10 @@ class NmodlParser:
             if op == ">": return lhs > rhs
             if op == "<=": return lhs <= rhs
             if op == ">=": return lhs >= rhs
+            if op == "==": return lhs == rhs
+            if op == "!=": return lhs != rhs
+            if op == "&&": return lhs & rhs
+            if op == "||": return lhs | rhs
             raise ValueError("Unrecognized syntax at %s."%cls.to_nmodl(AST))
         if AST.is_function_call():
             name = AST.name.get_node_name()
@@ -279,7 +283,7 @@ class SolveStatement:
         elif AST.method:
             self.method = AST.method.get_node_name()
         else:
-            self.method = "exact"
+            self.method = ""
         assert not AST.ifsolerr # Block to be executed on error, is not supported.
 
 class ConserveStatement:

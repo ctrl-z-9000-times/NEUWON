@@ -25,7 +25,7 @@ class SpeciesInstance:
         assert self.decay_period > 0.0
         assert self.diffusivity >= 0.0
         if self.global_constant:
-            assert self.decay_period == math.inf
+            # assert self.decay_period == math.inf
             assert self.diffusivity == 0.0
 
         if self.diffusivity != 0.0:

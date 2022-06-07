@@ -173,7 +173,7 @@ class NMODL:
             'euler':            solver.forward_euler,
             'derivimplicit':    solver.backward_euler,
             'cnexp':            solver.crank_nicholson,
-            'exact':            solver.sympy_solve_ode,
+            ' ':                solver.sympy_solve_ode,
         }
         def solve(solve_stmt):
             # Solve in-place but return a copy.
