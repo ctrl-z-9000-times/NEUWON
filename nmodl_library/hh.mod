@@ -40,7 +40,7 @@ STATE {
 }
 
 BREAKPOINT {
-    SOLVE states METHOD cnexp
+    SOLVE states
     gna = gnabar*m*m*m*h
     gk = gkbar*n*n*n*n
     gl = glbar
