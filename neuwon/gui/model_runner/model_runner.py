@@ -155,11 +155,10 @@ class ModelRunner(OrganizerPanel):
     def _collect_results(self):
         while True:
             if self.runner.exception is not None:
-                # TODO: Display the text of the exception to the user in a modal
-                # pop-up dialog. Allow the user to keep running this program,
-                # but warn them that its effectively dead.
-                # -> User might want to save recorded data, or save recording of video.
-                1/0
+                traceback.print_exc()
+                messagebox.showerror("Error", self.runner.exception)
+                self.switch_to_model_editor(save=False)
+                return
             try:
                 results = self.runner.results_queue.get_nowait()
             except queue.Empty:

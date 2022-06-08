@@ -92,7 +92,7 @@ class SignalGenerator(ManagementPanel):
     def _init_control_settings(self, settings_panel):
         components = [
                 'voltage',
-                'current',
+                'nonspecific_current',
                 # TODO: all of the species concentrations, and their delta's.
         ]
         # TODO: How feasible would it be for the GUI to determine the correct assign_method?

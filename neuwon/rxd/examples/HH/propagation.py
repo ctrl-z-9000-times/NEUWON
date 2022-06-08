@@ -43,9 +43,9 @@ class main:
                 [0,0,self.axon_length], self.axon_diameter,
                 maximum_segment_length=self.length_step)
         self.segments = [self.soma] + self.axon
-        self.hh = [hh(seg, scale=1) for seg in self.segments]
+        self.hh = [hh(seg, magnitude=1) for seg in self.segments]
         if True:
-            print("Number of Locations:", len(self.model))
+            print("Number of Locations:", len(self.model.Segment.get_database_class()))
             sa_units = self.soma.get_database_class().get("surface_area").get_units()
             sa = self.soma.surface_area
             print("Soma surface area:", sa, sa_units)
