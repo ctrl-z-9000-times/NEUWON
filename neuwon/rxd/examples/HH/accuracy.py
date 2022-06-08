@@ -43,7 +43,7 @@ class Model:
         self.m_data = TimeSeries().record(self.hh, "m")
         ap_times = [10, 26, 40]
         while self.model.clock() < 50:
-            if ap_times and self.model.clock() >= ap_times[0]:
+            if ap_times and self.model.clock.is_now(ap_times[0]):
                 ap_times.pop(0)
                 self.soma.inject_current(self.stimulus, duration=1)
             if self.stagger:

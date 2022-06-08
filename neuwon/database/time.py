@@ -116,6 +116,10 @@ class Clock:
         self.ticks += 1
         self._callbacks()
 
+    def is_now(self, time: float) -> bool:
+        """ Determines if the clock is currently at its closest to the given time. """
+        return round(float(time) / self.dt) == self.ticks
+
 class TimeSeries:
     """ Buffer for time-series data, and associated helper methods. """
     def __init__(self, initial_data=None, timestamps=None):
