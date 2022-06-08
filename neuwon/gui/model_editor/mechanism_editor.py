@@ -3,13 +3,15 @@ from neuwon.rxd.nmodl.parser import NmodlParser
 from tkinter import filedialog
 import os.path
 
+# TODO: I want a button to show the full text of the file, not just the info...
+
 class MechanismManager(ManagementPanel):
     def __init__(self, root):
         super().__init__(root, 'Mechanism', panel=('CustomSettingsPanel', ('filename',)))
         # 
         self.selector.add_button('Import', self.import_mechanisms)
         self.add_button_delete('Remove')
-        # self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
+        self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
         self.documentation = {}
 
     def import_mechanisms(self, selected):

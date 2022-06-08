@@ -71,7 +71,7 @@ the data. The database also provides ancillary features for managing data such
 as: error checking, sorting, recording, moving data to/from a graphic card, and
 executing python functions on the database using JIT compilation.
 
-## Installation
+## Installation and Usage
 
 #### Prerequisites
 
@@ -85,26 +85,8 @@ executing python functions on the database using JIT compilation.
 $ pip install neuwon
 ```
 
-#### Verify the Installation
+#### Run the graphical user interface
 
 ```
-$ python -m neuwon.examples.HH
+$ python -m neuwon
 ```
-
-## Model Specification
-
-NEUWON require many parameters, all of which must be provided when the model is
-created. The parameters are organized into a hierarchy of nested lists and
-dictionaries. This format is compatible with most unstructured data
-serialization formats, such as JSON and YAML.
-
-The root of the parameter structure is a `dict` with the following entries:
-
-|Entry Name | Description |
-|:---|:---|
-|simulation | This section contains the global simulation-wide parameters. |
-|species | This section specifies simple chemical substances and their properties. These chemicals may diffuse and so they cannot be restricted to arbitrary areas of the model. |
-|mechanisms | This section specifies chemical reactions and complex chemical substances which have an internal state (such as proteins). These chemicals can not diffuse and they must be inserted into the model at specific locations. |
-|regions | This section specifies the large-scale 3D areas in which the model and its various parts are physically located. |
-|neurons | |
-|synapses | |
