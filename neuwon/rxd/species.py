@@ -24,17 +24,7 @@ class SpeciesInstance:
         self.diffusivity        = float(diffusivity)
         assert self.decay_period > 0.0
         assert self.diffusivity >= 0.0
-        if self.global_constant:
-            # assert self.decay_period == math.inf
-            assert self.diffusivity == 0.0
 
-        if self.diffusivity != 0.0:
-            self.geometry = db_class.get(geometry_component)
-            self.diffusion_matrix = db_class.add_sparse_matrix(
-                    self.name + '_diffusion',
-                    db_class,
-                    doc='Propagator matrix.')
-            self._matrix_valid = False
         if self.global_constant:
             self.concentration = db_class.add_class_attribute(f"{self.name}",
                     initial_concentration,
@@ -45,25 +35,32 @@ class SpeciesInstance:
                     initial_concentration,
                     valid_range=(0.0, np.inf),
                     units="millimolar")
-            self.delta = db_class.add_attribute(f"{self.name}_delta",
+            self.derivative = db_class.add_attribute(f"{self.name}_derivative",
                     initial_value=0.0,
-                    units="millimolar / timestep")
+                    units="millimolar / millisecond")
+            if self.diffusivity != 0.0:
+                self.geometry = db_class.get(geometry_component)
+                self.diffusion_matrix = db_class.add_sparse_matrix(
+                        self.name + '_diffusion',
+                        db_class,
+                        doc='Propagator matrix.')
+                self._matrix_valid = False
 
     def __repr__(self):
         return f'<Species: {self.name} @ {self.db_class.get_name()}>'
 
     def _zero_input_accumulators(self):
         if not self.global_constant:
-            self.delta.get_data().fill(0.0)
+            self.derivative.get_data().fill(0.0)
 
     def _advance(self):
         """ Update the chemical concentrations with local changes and diffusion. """
         if self.global_constant:
             return
-        c  = self.concentration.get_data()
-        rr = self.delta.get_data()
-        xp = self.concentration.get_database().get_memory_space().get_array_module()
-        xp.maximum(0, c + rr * 0.5, out=c)
+        c       = self.concentration.get_data()
+        dcdt    = self.derivative.get_data()
+        xp      = self.db_class.get_database().get_array_module()
+        xp.maximum(0, c + dcdt * self.time_step, out=c)
         if self.diffusivity == 0.0:
             if self.decay_period < math.inf:
                 c *= math.exp(-self.time_step / self.decay_period)
@@ -78,19 +75,19 @@ class SpeciesInstance:
 
     def _compute_matrix(self):
         1/0
-        # Note: always use double precision floating point for building the impulse response matrix.
+        # Note: always use double precision floating point for building the matrix.
         coef = scipy.sparse.csc_matrix(coef, shape=(len(db_cls), len(db_cls)), dtype=np.float64)
         matrix = scipy.sparse.linalg.expm(coef)
-        # Prune the impulse response matrix.
+        # Prune the matrix.
         matrix.data[np.abs(matrix.data) < epsilon] = 0.0
         matrix.eliminate_zeros()
-        db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
+        db_cls.get("electric_propagator_matrix").free().to_csr().set_data(matrix)
         self._matrix_valid = True
 
 class SpeciesType:
     def __init__(self, name, factory, *,
                 charge              = 0,
-                reversal_potential  = np.nan,
+                reversal_potential  = None,
                 diffusivity         = 0.0,
                 decay_period        = np.inf,
                 inside_initial_concentration    = 0.0,
@@ -100,13 +97,32 @@ class SpeciesType:
         self.name       = str(name)
         self.factory    = factory
         self.charge     = int(charge)
-        try:
-            self.reversal_potential = float(reversal_potential)
-        except ValueError:
-            self.reversal_potential = str(reversal_potential).lower()
-            assert self.reversal_potential in ("nerst", "ghk")
-        self.electric = (self.charge != 0 or not math.isnan(self.reversal_potential))
+
+        db_class = self.factory.database.get_class("Segment")
+        self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+                initial_concentration   = inside_initial_concentration,
+                global_constant         = inside_global_constant,
+                decay_period            = decay_period,
+                diffusivity             = diffusivity,
+                geometry_component      = None) # TODO: geometry_component
+
+        db_class = self.factory.database.get_class("Extracellular")
+        self.outside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+                initial_concentration   = outside_initial_concentration,
+                global_constant         = outside_global_constant,
+                decay_period            = decay_period,
+                diffusivity             = diffusivity,
+                geometry_component      = None) # TODO: geometry_component
+
+        self.electric = (reversal_potential is not None)
         if self.electric:
+            try:
+                self.reversal_potential = float(reversal_potential)
+                self.reversal_potential_type = "const"
+            except ValueError:
+                self.reversal_potential_type = str(reversal_potential).lower()
+            assert self.reversal_potential_type in ("const", "nerst", "ghk")
+
             segment_data = factory.database.get("Segment")
             self.current = segment_data.add_attribute(f"{self.name}_current",
                     initial_value=0.0,
@@ -116,32 +132,16 @@ class SpeciesType:
                     initial_value=0.0,
                     valid_range=(0, np.inf),
                     units="Siemens")
-            if isinstance(self.reversal_potential, float):
-                self.reversal_potential_data = segment_data.add_class_attribute(
+            if self.reversal_potential_type == "const":
+                self.reversal_potential = segment_data.add_class_attribute(
                         f"{self.name}_reversal_potential",
                         initial_value=self.reversal_potential,
                         units="mV")
             else:
-                self.reversal_potential_data = segment_data.add_attribute(
+                self.reversal_potential = segment_data.add_attribute(
                         f"{self.name}_reversal_potential",
                         initial_value=0.0,
                         units="mV")
-
-        db_class = self.factory.database.get_class("Segment")
-        self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
-                initial_concentration   = inside_initial_concentration,
-                global_constant         = inside_global_constant,
-                decay_period            = decay_period,
-                diffusivity             = diffusivity,
-                geometry_component      = None)
-
-        db_class = self.factory.database.get_class("Extracellular")
-        self.outside = SpeciesInstance(self.factory.time_step, db_class, self.name,
-                initial_concentration   = outside_initial_concentration,
-                global_constant         = outside_global_constant,
-                decay_period            = decay_period,
-                diffusivity             = diffusivity,
-                geometry_component      = None)
 
     def get_name(self) -> str:
         return self.name
@@ -158,9 +158,10 @@ class SpeciesType:
         self.outside._zero_input_accumulators()
 
     def _compute_reversal_potential(self):
-        x = self.reversal_potential_data.get_data()
-        if isinstance(x, float): return x
+        if self.reversal_potential_type == 'const':
+            return self.reversal_potential.get_data()
         1/0 # The following code needs to be rewritten for the new database & schema.
+        x = self.reversal_potential_data.get_data()
         inside  = access(self.inside_archetype+"/concentrations/"+self.name)
         outside = access("outside/concentrations/"+self.name)
         if not isinstance(inside, float) and self.use_shells:
