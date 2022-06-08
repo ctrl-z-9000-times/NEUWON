@@ -94,10 +94,10 @@ class RxD_Model:
         # Accumulate species-specific currents & conductances.
         for species in self.species.values():
             if species.electric:
-                species_conductance = species.conductance.get_data()
                 sum_current     += species.current.get_data()
-                sum_conductance += species_conductance
-                driving_voltage += species_conductance * species._compute_reversal_potential()
+                conductance      = species.conductance.get_data()
+                sum_conductance += conductance
+                driving_voltage += conductance * species._compute_reversal_potential()
         self.input_hook.tick() # Callback for external inputs to currents or conductances.
         # 
         driving_voltage /= sum_conductance

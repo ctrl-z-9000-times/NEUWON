@@ -123,7 +123,7 @@ class Electric:
         # TODO: Consider changing the default duration to just "1" so that it's a
         # nice round number that's easy to remember.
         # 
-        # TODO:  Conisder switching inject current to units of nano-Amps.
+        # TODO:  Consider switching inject current to units of nano-Amps.
         #        Does anyone else use nA?
         #        What does NEURON use?
         #        Is nA actually a good unit? or is my using it a fluke?
@@ -132,8 +132,12 @@ class Electric:
         current = float(current)
         clock = type(self)._model.input_hook
 
-        input_signal = TimeSeries().constant_wave(current, duration)
-        input_signal.play(self, "sum_current", clock=clock)
+        # input_signal = TimeSeries().constant_wave(current, duration)
+        # input_signal.play(self, "sum_current", clock=clock)
+
+        dv = clock.get_time_step() * current / self.capacitance
+        input_signal = TimeSeries().constant_wave(dv, duration)
+        input_signal.play(self, "voltage", clock=clock, immediate=False)
 
     def get_time_constant(self):
         return self.capacitance / self.sum_conductance

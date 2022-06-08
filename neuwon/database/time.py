@@ -186,6 +186,7 @@ class TimeSeries:
             record_duration:float=np.inf,
             discard_after:float=np.inf,
             clock:Clock=None,
+            immediate=True,
             ) -> 'self':
         """ Record data samples immediately after each clock tick.
 
@@ -202,6 +203,9 @@ class TimeSeries:
 
         Argument clock is optional, if not given then this uses the database's
                 default clock. See method: "Database.get_clock()".
+
+        Argument immediate makes it record the current value as the first sample.
+                Otherwise it waits until the next clock tick to begin recording.
         """
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
@@ -209,7 +213,8 @@ class TimeSeries:
         self.clock.register_callback(self._record_implementation, weakref=True)
         self.record_duration = float(record_duration)
         self.discard_after = float(discard_after)
-        self._record_implementation() # Collect the current value as the first data sample.
+        if immediate:
+            self._record_implementation()
         return self
 
     def _record_implementation(self):
@@ -237,6 +242,7 @@ class TimeSeries:
             mode:str="+=",
             loop:bool=False,
             clock:Clock=None,
+            immediate:bool=True,
             ) -> 'self':
         """
         Play back the time series data, writing one value after each clock tick.
@@ -256,6 +262,9 @@ class TimeSeries:
 
         Argument clock is optional, if not given then this uses the database's
                 default clock. See method: "Database.get_clock()".
+
+        Argument immediate makes it immediately write the first value.
+                Otherwise it waits to begin playing until the next clock tick.
         """
         assert self.is_stopped()
         self._setup_pointers(db_object, component, clock)
@@ -267,7 +276,8 @@ class TimeSeries:
         self.play_index = 0
         self.play_loop  = bool(loop)
         self.mode       = str(mode)
-        self._play_implementation() # Immediately write the first value.
+        if immediate:
+            self._play_implementation()
         return self
 
     def _play_implementation(self):

@@ -41,7 +41,7 @@ class Model:
     def run_experiment(self):
         self.v_data = TimeSeries().record(self.soma, "voltage")
         self.m_data = TimeSeries().record(self.hh, "m")
-        ap_times = [10, 25, 40]
+        ap_times = [10, 26, 40]
         while self.model.clock() < 50:
             if ap_times and self.model.clock() >= ap_times[0]:
                 ap_times.pop(0)
