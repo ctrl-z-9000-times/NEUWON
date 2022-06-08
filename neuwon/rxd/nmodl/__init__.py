@@ -125,7 +125,7 @@ class NMODL:
             if var_name in equilibrium:
                 pass # Ignored, mechanisms output conductances instead of currents.
             elif var_name in inside:
-                self.pointers[var_name] = f"self.segment.inside_concentrations_{ion}"
+                self.pointers[var_name] = f"self.segment.{ion}"
             elif var_name in outside:
                 self.pointers[var_name] = f"self.outside.{ion}"
                 self.outside = True
@@ -140,10 +140,10 @@ class NMODL:
                 self.pointers[var_name] = f"self.segment.{ion}_conductance"
                 self.accumulators.add(var_name)
             elif var_name in inside:
-                self.pointers[var_name] = f"self.segment.inside.{ion}_delta"
+                self.pointers[var_name] = f"self.segment.{ion}_derivative"
                 self.accumulators.add(var_name)
             elif var_name in outside:
-                self.pointers[var_name] = f"self.outside.{ion}_delta"
+                self.pointers[var_name] = f"self.outside.{ion}_derivative"
                 self.accumulators.add(var_name)
                 self.outside = True
             else:
