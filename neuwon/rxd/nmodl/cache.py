@@ -1,7 +1,7 @@
-from os.path import abspath, join, exists, getmtime
+from os import makedirs, listdir
+from os.path import abspath, dirname, join, exists, getmtime
 from sys import stderr
 from zlib import crc32
-import os
 import pickle
 
 def _dir_and_file(filename):
@@ -14,11 +14,19 @@ def try_loading(filename, obj):
     """ Returns True on success, False indicates that no changes were made to the object. """
     cache_dir, cache_file = _dir_and_file(filename)
     if not exists(cache_file): return False
+    # Check file modification time stamps.
     try:
         nmodl_ts  = getmtime(filename)
         cache_ts  = getmtime(cache_file)
     except FileNotFoundError: return False
     if nmodl_ts > cache_ts: return False
+    # Check that the nmodl module is older than the cache too.
+    src_dir = dirname(__file__)
+    for src_file in listdir(src_dir):
+        if src_file.endswith('.py'):
+            src_ts = getmtime(join(src_dir, src_file))
+            if src_ts > cache_ts: return False
+    # Load the cache.
     try:
         with open(cache_file, 'rb') as f:
             cache_obj = pickle.load(f)
@@ -32,7 +40,7 @@ def try_loading(filename, obj):
 def save(filename, obj):
     cache_dir, cache_file = _dir_and_file(filename)
     try:
-        os.makedirs(cache_dir, exist_ok=True)
+        makedirs(cache_dir, exist_ok=True)
         with open(cache_file, 'wb') as f:
             pickle.dump(obj, f)
     except Exception as x:
