@@ -3,8 +3,6 @@ from neuwon.rxd.nmodl.parser import NmodlParser
 from tkinter import filedialog
 import os.path
 
-# TODO: I want a button to show the full text of the file, not just the info...
-
 class MechanismManager(ManagementPanel):
     def __init__(self, root):
         super().__init__(root, 'Mechanism', panel=('CustomSettingsPanel', ('filename',)))
@@ -47,17 +45,17 @@ class MechanismManager(ManagementPanel):
         window, frame = Toplevel(selected + ' Documentation')
         # Display filename in a raised box.
         filename = self.parameters[selected]['filename']
-        fn = ttk.Label(frame, text=filename, padding=padx, relief='raised')
-        fn.grid(row=0, column=0, padx=padx, pady=pad_top, sticky='e')
-        # Button to copy the filename to the clipboard.
-        def copy_filename():
-            window.clipboard_clear()
-            window.clipboard_append(filename)
-        copy = ttk.Button(frame, text='Copy', command=copy_filename)
-        copy.grid(row=0, column=1, padx=padx, pady=pad_top, sticky='w')
+        file_var = tk.StringVar(value=filename)
+        file_var.trace_add('write', lambda *args: file_var.set(filename))
+        file = ttk.Entry(frame, textvariable=file_var)
+        file.grid(row=0, column=0, padx=padx, pady=pad_top, sticky='ew')
         # Show documentation scraped from the NMODL file.
-        docs = ttk.Label(frame, text=self.documentation[filename], justify='left', padding=padx)
-        docs.grid(row=1, column=0, columnspan=2, padx=padx, pady=pady)
+        with open(filename, 'rt') as f:
+            source_code = f.read()
+        docs = tk.Text(frame)
+        docs.insert('1.0', source_code)
+        docs.configure(state='disabled')
+        docs.grid(row=1, column=0, padx=padx, pady=pady, sticky='nsw')
 
     @classmethod
     def export(cls, parameters):
