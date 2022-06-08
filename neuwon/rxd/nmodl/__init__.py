@@ -66,7 +66,6 @@ class NMODL:
         disallow = (
             "FUNCTION_TABLE_BLOCK",
             "LON_DIFUSE",
-            "NONSPECIFIC_CUR_VAR",
             "TABLE_STATEMENT",
             "VERBATIM",
         )
@@ -99,6 +98,7 @@ class NMODL:
         for x in parser.lookup(ANT.USEION):
             self._process_useion_statement(x)
         self._gather_conductance_hints(parser)
+        self._gather_nonspecific_currents(parser)
         self._gather_other_mechanisms_IO(parser)
 
     def _gather_segment_IO(self):
@@ -154,15 +154,21 @@ class NMODL:
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                self.pointers[var_name] = f"Segment.{ion}_conductance"
+                self.pointers[var_name] = f"self.segment.{ion}_conductance"
                 self.accumulators.add(var_name)
+
+    def _gather_nonspecific_currents(self, parser):
+        for x in parser.lookup(ANT.NONSPECIFIC_CUR_VAR):
+            var_name = x.get_node_name()
+            self.pointers[var_name] = f"self.segment.nonspecific_current"
+            self.accumulators.add(var_name)
 
     def _gather_other_mechanisms_IO(self, parser):
         self.other_mechanisms_ = []
         for x in parser.lookup(ANT.POINTER_VAR):
-            name = x.get_node_name()
-            self.other_mechanisms_.append(name)
-            self.pointers[name] = f"self.{name}.magnitude"
+            var_name = x.get_node_name()
+            self.other_mechanisms_.append(var_name)
+            self.pointers[var_name] = f"self.{var_name}.magnitude"
         self.other_mechanisms_ = tuple(sorted(self.other_mechanisms_))
 
     def _solve(self):
