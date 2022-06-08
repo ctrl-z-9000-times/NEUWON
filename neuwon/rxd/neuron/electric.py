@@ -10,11 +10,11 @@ class Electric:
     __slots__ = ()
     @staticmethod
     def _initialize(database, *,
-                initial_voltage = -70.0,
-                cytoplasmic_resistance = 100.0,
-                membrane_capacitance = 1.0,):
+                initial_voltage: 'mV' = -70,
+                cytoplasmic_resistance: 'ohm-cm' = 100,
+                membrane_capacitance: 'μF/cm²' = 1,):
         seg_data = database.get_class('Segment')
-        seg_data.add_attribute("voltage", float(initial_voltage),
+        seg_data.add_attribute("voltage", initial_voltage,
                 units="mV")
         seg_data.add_attribute("integral_voltage", 0.0,
                 units="mV")
@@ -28,7 +28,7 @@ class Electric:
                 units="ohm-cm",
                 valid_range=(epsilon, np.inf))
         seg_data.add_class_attribute("membrane_capacitance", membrane_capacitance,
-                units="?",
+                units="μF/cm²",
                 valid_range=(epsilon, np.inf))
         seg_data.add_attribute("nonspecific_current", 0.0,
                 units="Amperes",
@@ -119,14 +119,12 @@ class Electric:
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._matrix_valid = True
 
-    def inject_current(self, current, duration = 1.4):
-        # TODO: Consider changing the default duration to just "1" so that it's a
-        # nice round number that's easy to remember.
-        # 
+    def inject_current(self, current: 'Amperes', duration: 'ms' = 1.0):
         # TODO:  Consider switching inject current to units of nano-Amps.
         #        Does anyone else use nA?
         #        What does NEURON use?
         #        Is nA actually a good unit? or is my using it a fluke?
+        current  = float(current)
         duration = float(duration)
         assert duration >= 0
         current = float(current)

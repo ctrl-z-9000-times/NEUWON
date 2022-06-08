@@ -8,9 +8,9 @@ import numpy as np
 class RxD_Model:
     def __init__(self, time_step: 'ms' = 0.1, *,
                 temperature: 'celsius' = 37,
-                initial_voltage: 'mv' = -70,
-                cytoplasmic_resistance = 100,
-                membrane_capacitance: 'μf/cm^2' = 1,
+                initial_voltage: 'mV' = -70,
+                cytoplasmic_resistance: 'ohm-cm' = 100,
+                membrane_capacitance: 'μF/cm²' = 1,
                 extracellular_tortuosity = 1.55,
                 extracellular_max_distance: 'μm' = 20e-6,
                 species={},
