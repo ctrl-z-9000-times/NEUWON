@@ -84,25 +84,35 @@ class RxD_Model:
 
     def _advance_species(self):
         """ Note: Each call to this method integrates over half a time step. """
+        sum_current     = self.database.get_data("Segment.sum_current")
         sum_conductance = self.database.get_data("Segment.sum_conductance")
         driving_voltage = self.database.get_data("Segment.driving_voltage")
-        # Zero the accumulators.
+        # Zero/initialize the accumulators.
+        sum_current[:] = self.database.get_data("Segment.nonspecific_current")
         sum_conductance.fill(0.0)
         driving_voltage.fill(0.0)
-        # Call the input_hook, which does the following:
-        #       Accumulate the species conductances & driving-voltages.
-        #       Currect injection.
-        self.input_hook.tick()
+        # Accumulate species-specific currents & conductances.
+        for species in self.species.values():
+            if species.electric:
+                species_conductance = species.conductance.get_data()
+                sum_current     += species.current.get_data()
+                sum_conductance += species_conductance
+                driving_voltage += species_conductance * species._compute_reversal_potential()
+        self.input_hook.tick() # Callback for external inputs to currents or conductances.
         # 
         driving_voltage /= sum_conductance
         # If conductance is zero then the driving_voltage is also zero.
         xp = self.database.get_array_module()
         driving_voltage[:] = xp.nan_to_num(driving_voltage)
+        # 
         self.Segment._advance_electric(self.species.time_step)
-        self.species._advance()
+        for species in self.species.values():
+            species._advance()
 
     def _advance_mechanisms(self):
-        self.species._zero_input_accumulators()
+        for species in self.species.values():
+            species._zero_input_accumulators()
+        self.database.get_data("Segment.nonspecific_current").fill(0.0)
         for name, m in self.mechanisms.items():
             try: m.advance()
             except Exception:

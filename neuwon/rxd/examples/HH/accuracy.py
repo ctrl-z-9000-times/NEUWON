@@ -27,8 +27,8 @@ class Model:
     def make_model(self):
         self.model = m = make_model_with_hh(self.time_step)
         hh         = m.mechanisms['hh']
-        self.soma  = m.Segment(None, [0,0,0], self.soma_diameter)
-        self.hh    = hh(self.soma, scale=1)
+        self.soma  = m.Neuron([0,0,0], self.soma_diameter).root
+        self.hh    = hh(self.soma, magnitude=1)
         if True:
             sa_units = self.soma.get_database_class().get("surface_area").get_units()
             print("Soma surface area:", self.soma.surface_area, sa_units)

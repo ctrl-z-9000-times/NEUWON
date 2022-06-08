@@ -1,4 +1,4 @@
-from neuwon.database import epsilon, NULL
+from neuwon.database import epsilon, NULL, Compute
 from neuwon.database.time import TimeSeries
 import cupy
 import math
@@ -30,6 +30,11 @@ class Electric:
         seg_data.add_class_attribute("membrane_capacitance", membrane_capacitance,
                 units="?",
                 valid_range=(epsilon, np.inf))
+        seg_data.add_attribute("nonspecific_current", 0.0,
+                units="Amperes",
+                valid_range=(0, np.inf))
+        seg_data.add_attribute("sum_current", 0.0,
+                units="Amperes")
         seg_data.add_attribute("sum_conductance", 0.0,
                 units="Siemens",
                 valid_range=(0, np.inf))
@@ -54,21 +59,24 @@ class Electric:
     def _advance_electric(cls, time_step):
         if not cls._matrix_valid:
             cls._compute_propagator_matrix(time_step)
-        dt = time_step * 1e-3
+        dt = time_step * 1e-3 # Convert to seconds
         db_cls              = cls.get_database_class()
         xp                  = db_cls.get_database().get_memory_space().array_module
-        sum_conductance     = db_cls.get_data("sum_conductance")
-        driving_voltage     = db_cls.get_data("driving_voltage")
+        sum_conductance     = db_cls.get_data("sum_conductance") # Siemens
+        driving_voltage     = db_cls.get_data("driving_voltage") # mV
         capacitance         = db_cls.get_data("capacitance")
-        voltage             = db_cls.get_data("voltage")
-        integral_v          = db_cls.get_data("integral_voltage")
+        voltage             = db_cls.get_data("voltage") # mV
+        integral_v          = db_cls.get_data("integral_voltage") # mV * seconds
         irm                 = db_cls.get("electric_propagator_matrix").to_csr().get_data()
+        sum_current         = db_cls.get_data("sum_current")
         # Update voltages.
+        i = 1e3 * dt * sum_current / capacitance
+        voltage += i
         exponent        = -dt * sum_conductance / capacitance
         alpha           = xp.exp(exponent)
         diff_v          = driving_voltage - voltage
         voltage[:]      = irm.dot(driving_voltage - diff_v * alpha)
-        integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha
+        integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha + (.5 * dt * i)
 
     @classmethod
     def _compute_propagator_matrix(cls, time_step):
@@ -123,10 +131,9 @@ class Electric:
         assert duration >= 0
         current = float(current)
         clock = type(self)._model.input_hook
-        dt = clock.get_time_step()
-        dv = current * dt / self.capacitance
-        input_signal = TimeSeries().constant_wave(dv, duration)
-        input_signal.play(self, "voltage", clock=clock)
+
+        input_signal = TimeSeries().constant_wave(current, duration)
+        input_signal.play(self, "sum_current", clock=clock)
 
     def get_time_constant(self):
         return self.capacitance / self.sum_conductance

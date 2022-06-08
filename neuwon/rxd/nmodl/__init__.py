@@ -134,7 +134,8 @@ class NMODL:
         for y in stmt.writelist:
             var_name = y.name.value.eval()
             if var_name in current:
-                pass # Ignored, mechanisms output conductances instead of currents.
+                self.pointers[var_name] = f"self.segment.{ion}_current"
+                self.accumulators.add(var_name)
             elif var_name in conductance:
                 self.pointers[var_name] = f"self.segment.{ion}_conductance"
                 self.accumulators.add(var_name)

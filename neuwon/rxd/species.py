@@ -105,9 +105,13 @@ class SpeciesType:
         except ValueError:
             self.reversal_potential = str(reversal_potential).lower()
             assert self.reversal_potential in ("nerst", "ghk")
-        self.electric = (self.charge != 0)
+        self.electric = (self.charge != 0 or not math.isnan(self.reversal_potential))
         if self.electric:
             segment_data = factory.database.get("Segment")
+            self.current = segment_data.add_attribute(f"{self.name}_current",
+                    initial_value=0.0,
+                    valid_range=(0, np.inf),
+                    units="Amperes")
             self.conductance = segment_data.add_attribute(f"{self.name}_conductance",
                     initial_value=0.0,
                     valid_range=(0, np.inf),
@@ -122,7 +126,6 @@ class SpeciesType:
                         f"{self.name}_reversal_potential",
                         initial_value=0.0,
                         units="mV")
-            factory.input_hook.register_callback(self._accumulate_conductance)
 
         db_class = self.factory.database.get_class("Segment")
         self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
@@ -147,19 +150,12 @@ class SpeciesType:
         return f'<Species: {self.name}>'
 
     def _zero_input_accumulators(self):
+        """ Zero all data buffers which the mechanisms can write to. """
         if self.electric:
+            self.current.get_data().fill(0.0)
             self.conductance.get_data().fill(0.0)
         self.inside ._zero_input_accumulators()
         self.outside._zero_input_accumulators()
-
-    def _accumulate_conductance(self):
-        database            = self.factory.database
-        sum_conductance     = database.get_data("Segment.sum_conductance")
-        driving_voltage     = database.get_data("Segment.driving_voltage")
-        species_conductance = self.conductance.get_data()
-        reversal_potential  = self._compute_reversal_potential()
-        sum_conductance += species_conductance
-        driving_voltage += species_conductance * reversal_potential
 
     def _compute_reversal_potential(self):
         x = self.reversal_potential_data.get_data()
@@ -245,13 +241,3 @@ class SpeciesFactory(dict):
         else:
             self[name] = species = SpeciesType(name, self, **species_kwargs)
         return species
-
-    def _zero_input_accumulators(self):
-        """ Zero all data buffers which the mechanisms can write to. """
-        for species in self.values():
-            species._zero_input_accumulators()
-
-    def _advance(self):
-        """ """
-        for species in self.values():
-            species._advance()
