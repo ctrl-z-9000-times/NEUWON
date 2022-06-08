@@ -70,13 +70,12 @@ class Electric:
         irm                 = db_cls.get("electric_propagator_matrix").to_csr().get_data()
         sum_current         = db_cls.get_data("sum_current")
         # Update voltages.
-        i = 1e3 * dt * sum_current / capacitance
-        voltage += i
+        dv_currents     = time_step * sum_current / capacitance
         exponent        = -dt * sum_conductance / capacitance
         alpha           = xp.exp(exponent)
         diff_v          = driving_voltage - voltage
-        voltage[:]      = irm.dot(driving_voltage - diff_v * alpha)
-        integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha + (.5 * dt * i)
+        voltage[:]      = irm.dot(driving_voltage - diff_v * alpha + dv_currents)
+        integral_v[:]   = dt * driving_voltage - exponent * diff_v * alpha + (.5 * dt * dv_currents)
 
     @classmethod
     def _compute_propagator_matrix(cls, time_step):
@@ -127,15 +126,9 @@ class Electric:
         current  = float(current)
         duration = float(duration)
         assert duration >= 0
-        current = float(current)
-        clock = type(self)._model.input_hook
-
-        # input_signal = TimeSeries().constant_wave(current, duration)
-        # input_signal.play(self, "sum_current", clock=clock)
-
-        dv = clock.get_time_step() * current / self.capacitance
-        input_signal = TimeSeries().constant_wave(dv, duration)
-        input_signal.play(self, "voltage", clock=clock, immediate=False)
+        input_signal = TimeSeries().constant_wave(current, duration)
+        input_signal.play(self, "sum_current",
+                          clock=type(self)._model.input_hook, immediate=False)
 
     def get_time_constant(self):
         return self.capacitance / self.sum_conductance
