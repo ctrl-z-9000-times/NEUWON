@@ -11,6 +11,9 @@ class DataComponent(Documentation):
     def __init__(self, db_class, name, *,
                 doc, units, shape, dtype, initial_value, allow_invalid, valid_range,
                 initial_distribution=None, class_attribute=False):
+        self.units = str(units).strip()
+        if self.units:
+            doc = doc + "\nunits: " + self.units
         Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
         assert self.name not in db_class.components
@@ -38,7 +41,6 @@ class DataComponent(Documentation):
             else:
                 self.initial_value = self.dtype.type(initial_value)
             self.reference = False
-        self.units = str(units)
         self.allow_invalid = bool(allow_invalid)
         # This restriction prevents indefinitely long chain reactions when destroying objects.
         if self.reference is self.db_class: assert self.allow_invalid
