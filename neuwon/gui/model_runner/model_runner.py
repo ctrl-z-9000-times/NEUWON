@@ -185,8 +185,13 @@ class ModelRunner(OrganizerPanel):
                         self.viewport.control_queue.put((V_CMD.SHOW_TIME, timestamp))
                     # Normalize the render_data into the range [0,1]
                     render_data = np.array(render_data, dtype=np.float32)
-                    vmin = np.min(render_data)
-                    vmax = np.max(render_data)
+                    component = self.run_control.video.get_parameters()['component']
+                    if component == "v":
+                        vmax = +100
+                        vmin = -100
+                    else:
+                        vmin = np.min(render_data)
+                        vmax = np.max(render_data)
                     render_data -= vmin
                     render_data /= (vmax - vmin)
                     np.nan_to_num(render_data, copy=False)
