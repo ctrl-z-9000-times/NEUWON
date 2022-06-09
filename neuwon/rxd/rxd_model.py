@@ -87,17 +87,14 @@ class RxD_Model:
         sum_current     = self.database.get_data("Segment.sum_current")
         sum_conductance = self.database.get_data("Segment.sum_conductance")
         driving_voltage = self.database.get_data("Segment.driving_voltage")
-        # Zero/initialize the accumulators.
+        # Zero/initialize the electric accumulators.
         sum_current[:] = self.database.get_data("Segment.nonspecific_current")
         sum_conductance.fill(0.0)
         driving_voltage.fill(0.0)
         # Accumulate species-specific currents & conductances.
         for species in self.species.values():
             if species.electric:
-                sum_current     += species.current.get_data()
-                conductance      = species.conductance.get_data()
-                sum_conductance += conductance
-                driving_voltage += conductance * species._compute_reversal_potential()
+                species._apply_accumulators(sum_current, sum_conductance, driving_voltage)
         self.input_hook.tick() # Callback for external inputs to currents or conductances.
         # 
         driving_voltage /= sum_conductance
@@ -111,7 +108,7 @@ class RxD_Model:
 
     def _advance_mechanisms(self):
         for species in self.species.values():
-            species._zero_input_accumulators()
+            species._zero_accumulators()
         self.database.get_data("Segment.nonspecific_current").fill(0.0)
         for name, m in self.mechanisms.items():
             try: m.advance()

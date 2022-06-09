@@ -49,7 +49,8 @@ class SpeciesInstance:
     def __repr__(self):
         return f'<Species: {self.name} @ {self.db_class.get_name()}>'
 
-    def _zero_input_accumulators(self):
+    def _zero_accumulators(self):
+        """ Zero all data buffers which the mechanisms can write to. """
         if not self.global_constant:
             self.derivative.get_data().fill(0.0)
 
@@ -149,13 +150,20 @@ class SpeciesType:
     def __repr__(self):
         return f'<Species: {self.name}>'
 
-    def _zero_input_accumulators(self):
+    def _zero_accumulators(self):
         """ Zero all data buffers which the mechanisms can write to. """
         if self.electric:
             self.current.get_data().fill(0.0)
             self.conductance.get_data().fill(0.0)
-        self.inside ._zero_input_accumulators()
-        self.outside._zero_input_accumulators()
+        self.inside ._zero_accumulators()
+        self.outside._zero_accumulators()
+
+    def _apply_accumulators(self, sum_current, sum_conductance, driving_voltage):
+        current          = self.current.get_data()
+        conductance      = self.conductance.get_data()
+        sum_current     += current
+        sum_conductance += conductance
+        driving_voltage += conductance * self._compute_reversal_potential()
 
     def _compute_reversal_potential(self):
         if self.reversal_potential_type == 'const':
@@ -220,6 +228,44 @@ def _efun(z):
         return 1 - z / 2
     else:
         return z / (math.exp(z) - 1)
+
+class NonspecificConductance(SpeciesType):
+    def __init__(self, name, factory, *, db_class, reversal_potential):
+        self.name       = str(name)
+        self.factory    = factory
+        self.electric   = True
+
+        self.location = factory.database.get_class(db_class)
+        self.conductance = self.location.add_attribute(f"{self.name}_conductance",
+                initial_value=0.0,
+                valid_range=(0, np.inf),
+                units="Siemens")
+        self.reversal_potential = self.location.add_class_attribute(
+                f"{self.name}_reversal_potential",
+                initial_value=reversal_potential,
+                units="mV")
+
+    def get_name(self) -> str:
+        return self.name
+
+    def __repr__(self):
+        return f'<NonspecificConductance: {self.name}>'
+
+    def _zero_accumulators(self):
+        """ Zero all data buffers which the mechanisms can write to. """
+        self.conductance.get_data().fill(0.0)
+
+    def _apply_accumulators(self, sum_current, sum_conductance, driving_voltage):
+        locations   = self.location.get_data('segment')
+        conductance = self.conductance.get_data()
+        sum_conductance[locations] += conductance
+        driving_voltage[locations] += conductance * self._compute_reversal_potential()
+
+    def _compute_reversal_potential(self):
+        return self.reversal_potential.get_data()
+
+    def _advance(self):
+        pass
 
 class SpeciesFactory(dict):
     def __init__(self, parameters: dict, database, input_hook, temperature):
