@@ -29,11 +29,14 @@ class Region:
         """ Returns pair (lower_corner, upper_corner) of an axis aligned
         bounding box which entirely contains this region. """
         raise NotImplementedError
-    def sample_point(self):
-        """ Returns a random point from within the region. """
+    def _check_region_is_finite(self):
         lower, upper = self.aabb()
         if not (all(np.isfinite(lower)) and all(np.isfinite(upper))):
             raise TypeError("Region is infinite!")
+    def sample_point(self):
+        """ Returns a random point from within the region. """
+        self._check_region_is_finite()
+        lower, upper = self.aabb()
         span = np.subtract(upper, lower)
         while True:
             x = np.add(lower, np.random.uniform(size=(3)) * span)
@@ -44,13 +47,29 @@ class Region:
         approximate and is specified as points per unit of length cubed. """
         density = float(density)
         assert density >= 0.0
+        self._check_region_is_finite()
         lower, upper = self.aabb()
-        if not (all(np.isfinite(lower)) and all(np.isfinite(upper))):
-            raise TypeError("Region is infinite!")
         aabb_volume = np.product(np.subtract(upper, lower))
         num_points = int(round(density * aabb_volume))
         points = np.add(lower, np.random.uniform(size=(num_points, 3)) * np.subtract(upper, lower))
         return points[[self.contains(x) for x in points]]
+    def grid_points(self, density):
+        """ Returns a list of points from within the region. Density is
+        approximate and is specified as points per unit of length cubed. """
+        length = float(density) ** (1/3)
+        (xl, yl, zl), (xu, yu, zu) in self.aabb()
+        x_grid = np.arange(np.floor(xl / length), np.ceil(xu / length) + 1) * length
+        y_grid = np.arange(np.floor(yl / length), np.ceil(yu / length) + 1) * length
+        z_grid = np.arange(np.floor(zl / length), np.ceil(zu / length) + 1) * length
+        points = []
+        for x in x_grid:
+            for y in y_grid:
+                for z in z_grid:
+                    coordinates = (x * length, y * length, z * length)
+                    if self.contains(coordinates):
+                        points.append(coordinates)
+        return points
+
 
 class Intersection(Region):
     """ Intersection of regions """
@@ -170,6 +189,7 @@ class Cylinder(Region):
         self.length_sqr = sum(self.axis ** 2)
         self.radius_sqr = self.radius ** 2
     def aabb(self):
+        # TODO: Should this be expanded by the radius?
         return (self.lower, self.upper)
     def contains(self, coordinates):
         # https://flipcode.com/archives/Fast_Point-In-Cylinder_Test.shtml
