@@ -1,20 +1,25 @@
-import cupy
-import cupyx.scipy.sparse
 import enum
 import numba
-import numba.cuda
 import numpy
 import scipy.sparse
+try:
+    import cupy
+    import cupyx.scipy.sparse as cupyx_scipy_sparse
+    import numba.cuda as numba_cuda
+except ModuleNotFoundError:
+    cupy = None
+    cupyx_scipy_sparse = None
+    numba_cuda = None
 
 class MemorySpace(enum.Enum):
-    host = (numpy, scipy.sparse, numba.njit)
-    cuda = (cupy, cupyx.scipy.sparse, numba.cuda.jit)
+    host = (numpy, scipy.sparse, numba)
+    cuda = (cupy, cupyx_scipy_sparse, numba_cuda)
 
-    def __init__(self, array_module, matrix_module, jit_wrapper):
-        self.matrix_module   = matrix_module
+    def __init__(self, array_module, matrix_module, jit_module):
         self.array_module    = array_module
         self.array           = array_module.array
-        self.jit_wrapper     = jit_wrapper
+        self.matrix_module   = matrix_module
+        self.jit_module      = jit_module
 
     def __repr__(self):
         return f"<MemorySpace.{self.name}>"
@@ -33,6 +38,8 @@ class ContextManager:
             self.memory_space = memory_space
         else:
             self.memory_space = MemorySpace[str(memory_space)]
+        if self.memory_space.array_module is None:
+            raise ModuleNotFoundError("cupy or cupyx not found.")
 
     def __enter__(self):
         self.prior_memory_space    = self.database.memory_space

@@ -7,7 +7,6 @@ from .memory_spaces import host, cuda
 import ast
 import inspect
 import numba
-import numba.cuda
 import numpy
 import textwrap
 
@@ -275,9 +274,9 @@ class _JIT:
         self.py_function    = self.closure[self.name]
         # Apply JIT compilation to the function.
         if self.target is host:
-            self.jit_function = numba.njit(self.py_function)
+            self.jit_function = host.jit_module.njit(self.py_function)
         elif self.target is cuda:
-            self.jit_function = numba.cuda.jit(self.py_function, device=True)
+            self.jit_function = cuda.jit_module.jit(self.py_function, device=True)
 
     def write_entry_point(self):
         exec_scope = {
@@ -328,7 +327,7 @@ class _JIT:
                             return_array[index] = function(self, {arguments})
                     '''
         elif self.target is cuda:
-            exec_scope['cuda'] = numba.cuda
+            exec_scope['cuda'] = cuda.jit_module
             if self.return_type is None:
                 py_code = f'''
                     def entry_point(instances, {arguments}):
