@@ -2,7 +2,7 @@ from collections.abc import Iterable, Mapping, Hashable
 from .electric import Electric
 from .geometry import Geometry
 from .tree     import Tree
-from ..mechanisms import LocalMechanismInstance
+from ..mechanisms import Mechanism
 from neuwon.database import Real, epsilon, Pointer, NULL, Compute
 import numpy as np
 
@@ -131,7 +131,7 @@ class Segment(Tree, Geometry, Electric):
             assert isinstance(mechanism_name, str)
             magnitude = float(mechanisms[mechanism_name])
             mechanism_class = all_mechanisms[mechanism_name]
-            assert issubclass(mechanism_class, LocalMechanismInstance)
+            assert issubclass(mechanism_class, Mechanism) and not mechanism_class.omnipresent
             other_mechanisms = dependencies[mechanism_name]
             other_mechanisms = (insert_recusive(x) for x in other_mechanisms)
             mechanism = mechanism_class(self, magnitude, *other_mechanisms, **kwargs)

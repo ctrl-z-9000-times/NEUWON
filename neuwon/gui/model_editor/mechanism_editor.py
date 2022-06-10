@@ -1,5 +1,6 @@
 from ..control_panels import *
 from neuwon.rxd.nmodl.parser import NmodlParser
+from neuwon.rxd.mechanisms import import_python_mechanism
 from tkinter import filedialog
 import os.path
 
@@ -10,18 +11,20 @@ class MechanismManager(ManagementPanel):
         self.selector.add_button('Import', self.import_mechanisms)
         self.add_button_delete('Remove')
         self.selector.add_button('Info', self.info_on_mechanism, require_selection=True, row=1)
-        self.documentation = {}
 
     def import_mechanisms(self, selected):
         files = filedialog.askopenfilenames(
                 title='Import Mechanisms',
-                filetypes=[('NMODL', '.mod')])
+                filetypes=[
+                    ('any', '*'),
+                    ('NMODL', '.mod'),
+                    ('Python', '.py')])
         for abspath in files:
-            name = os.path.splitext(os.path.basename(abspath))[0]
+            name, ext = os.path.splitext(os.path.basename(abspath))
             if name in self.parameters:
                 continue
             self.parameters[name] = {'filename': abspath}
-            self._make_nmodl_settings_panel(abspath)
+            self._make_settings_panel(abspath)
             self.selector.insert(name)
 
     def set_parameters(self, parameters):
@@ -30,16 +33,29 @@ class MechanismManager(ManagementPanel):
             try:
                 self.controlled.get_panel(filename)
             except KeyError:
-                self._make_nmodl_settings_panel(filename)
+                self._make_settings_panel(filename)
         super().set_parameters(parameters)
+
+    def _make_settings_panel(self, filename):
+            if filename.endswith('.mod'):
+                self._make_nmodl_settings_panel(filename)
+            elif filename.endswith('.py'):
+                self._make_py_settings_panel(filename)
 
     def _make_nmodl_settings_panel(self, filename):
         settings_panel = self.controlled.add_settings_panel(filename, override_mode=True)
         parser = NmodlParser(filename, preprocess=False)
         for name, (value, units) in parser.gather_parameters().items():
             settings_panel.add_entry(name, title=name, default=value, units=units)
-        name, point_process, title, description = parser.gather_documentation()
-        self.documentation[filename] = title + '\n\n' + description
+
+    def _make_py_settings_panel(self, filename):
+        settings_panel = self.controlled.add_settings_panel(filename, override_mode=True)
+        mechanism = import_python_mechanism(filename)
+        if mechanism is None:
+            return
+        parameters = mechanism.get_parameters()
+        for name, dtype in parameters.items():
+            settings_panel.add_entry(name)
 
     def info_on_mechanism(self, selected):
         window, frame = Toplevel(selected + ' Documentation')
@@ -49,7 +65,7 @@ class MechanismManager(ManagementPanel):
         file_var.trace_add('write', lambda *args: file_var.set(filename))
         file = ttk.Entry(frame, textvariable=file_var)
         file.grid(row=0, column=0, padx=padx, pady=pad_top, sticky='ew')
-        # Show documentation scraped from the NMODL file.
+        # Show the NMODL file.
         with open(filename, 'rt') as f:
             source_code = f.read()
         docs = tk.Text(frame)

@@ -1,6 +1,6 @@
 from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Compute
-from neuwon.rxd.mechanisms import OmnipresentMechanism, LocalMechanismSpecification, LocalMechanismInstance
+from neuwon.rxd.mechanisms import Mechanism
 from . import code_gen, cache, solver
 from .parser import (NmodlParser, ANT,
         SolveStatement,
@@ -25,8 +25,8 @@ __all__ = ["NMODL"]
 #         and stmt.pointer and "conductance" in stmt.pointer.name))
 
 
-class NMODL:
-    def __init__(self, filename, parameters={}, use_cache=True):
+class NMODL(Mechanism):
+    def __init__(self, filename, use_cache=True):
         """
         Argument filename is an NMODL file to load.
                 The standard NMODL file name extension is ".mod"
@@ -49,15 +49,33 @@ class NMODL:
                 self.breakpoint_block = blocks['BREAKPOINT']
                 self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
-                self.__class__ = OmnipresentNmodlMechanism if self.omnipresent else LocalNmodlMechanismSpecification
                 self._solve()
                 self._fixup_breakpoint_IO()
             except Exception:
                 print("ERROR while loading file", self.filename, flush=True)
                 raise
             cache.save(self.filename, self)
-        self.parameters.update(parameters, strict=True)
-        self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
+
+    def initialize(self, rxd_model, name, **parameters):
+        try:
+            database = rxd_model.get_database()
+            builtin_parameters = {
+                    "dt":       rxd_model.get_time_step(),
+                    "celsius":  rxd_model.get_temperature(),
+            }
+            self.name = str(name)
+            self.parameters.update(parameters, strict=True)
+            self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
+            self.parameters.update(builtin_parameters, strict=True, override=False)
+            self._run_initial_block(database)
+            self._compile_breakpoint_block()
+            if self.omnipresent:
+                return self._initialize_omnipresent_mechanism_class(database)
+            else:
+                return self._initialize_local_mechanism_class(database)
+        except Exception:
+            print("ERROR while loading file", self.filename, flush=True)
+            raise
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -212,25 +230,6 @@ class NMODL:
                     stmt.operation = '+='
         self.breakpoint_block.rename_variables(self.pointers)
 
-    def initialize(self, rxd_model, name):
-        database = rxd_model.get_database()
-        builtin_parameters = {
-                "dt":       rxd_model.get_time_step(),
-                "celsius":  rxd_model.get_temperature(),
-        }
-        self.name = str(name)
-        try:
-            self.parameters.update(builtin_parameters, strict=True, override=False)
-            self._run_initial_block(database)
-            self._compile_breakpoint_block()
-            if self.omnipresent:
-                return self._initialize_omnipresent_mechanism_class(database)
-            else:
-                return self._initialize_local_mechanism_class(database)
-        except Exception:
-            print("ERROR while loading file", self.filename, flush=True)
-            raise
-
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
         init_state = {state: 0.0 for state in self.states}
@@ -372,20 +371,6 @@ class NMODL:
         self.advance_bytecode = globals_['advance']
 
 
-    def _initialize_kinetic_model(self, block):
-        assert block.derivative
-
-
-        # Get the derivative function
-        pass
-        # Build the IRM table
-        pass
-        # Make Compute'd method to advance the state.
-        pass
-
-        return advance_function
-
-
 
     def _initialize_omnipresent_mechanism_class(self, database):
         1/0 # TODO
@@ -405,7 +390,7 @@ class NMODL:
         # instances of the associated entity.
 
     def _initialize_local_mechanism_class(self, database):
-        mechanism_superclass = type(self.name, (LocalMechanismInstance,), {
+        mechanism_superclass = type(self.name, (NmodlMechanism,), {
             '__doc__':              self.title + "\n\n" + self.description,
             '__slots__':            (),
             '__init__':             NMODL._instance__init__,
@@ -521,9 +506,8 @@ class ParameterTable(dict):
             block.statements.insert(0, AssignStatement(name, value))
             block.arguments.remove(name)
 
-class OmnipresentNmodlMechanism(NMODL, OmnipresentMechanism):
-    pass
-
-class LocalNmodlMechanismSpecification(NMODL, LocalMechanismSpecification):
-    def other_mechanisms(self):
-        return self.other_mechanisms_
+class NmodlMechanism(Mechanism):
+    __slots__ = ()
+    @classmethod
+    def other_mechanisms(cls):
+        return cls._other_mechanisms

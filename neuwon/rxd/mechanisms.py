@@ -1,65 +1,54 @@
 from neuwon.database import Real, DB_Object
 from neuwon.database.data_components import Attribute
 
-class OmnipresentMechanism:
+
+class Mechanism:
+
+    __slots__ = ()
+
     """
-    Abstract class for specifying chemical reactions and mechanisms which exist
+    Use this option to specify chemical reactions and mechanisms which exist
     everywhere throughout the model. These mechanisms can only interact with
     other omnipresent entities, such as species and segments, and they can not
     be inserted into any specific place in the model.
     """
-    def initialize(self, model, mechanism_name:str):
-        """ Optional method to setup this mechanism. """
+    omnipresent = False
+
+    @classmethod
+    def get_parameters(cls) -> {}:
+        """ Define the parameters for the graphical user interface. """
+        return {}
+
+    @classmethod
+    def initialize(cls, model, mechanism_name:str, **parameters) -> 'Mechanism':
+        """ Method to setup this mechanism.
+
+        Returns a LocalMechanismInstance which implements this mechanism.
+        """
         pass
 
-    def advance(self):
-        """ Advance this mechanism. """
-        raise NotImplementedError(type(self))
+    @classmethod
+    def other_mechanisms(self) -> [str]:
+        """
+        Returns a list of Mechanism names which will be created and given
+        to this mechanism's constructor.
 
-class LocalMechanismInstance:
-    """
-    Base class for instances of LocalMechanisms.
-
-    All subclasses must also inherit from `DB_Object`, meaning they must be
-    created by the method `database.add_class()` and the retrieved by the
-    method `database.get_instance_type()`.
-
-    All LocalMechanisms must have a "magnitude" attribute which controls the
-    strength of the element. A magnitude of one should always be a sensible
-    value.
-    """
-
-    __slots__ = ()
+        This is called after initialize().
+        """
+        return []
 
     def __init__(self, segment, magnitude, *other_mechanisms, outside=None):
+        """
+        All Mechanisms must have a "magnitude" attribute which controls the
+        strength of the element. A magnitude of one should always be a sensible
+        value.
+        """
         raise NotImplementedError(type(self))
 
     @classmethod
     def advance(cls):
-        """ Advance all instances of this mechanism. """
+        """ Advance this mechanism. """
         raise NotImplementedError(cls)
-
-class LocalMechanismSpecification:
-    """
-    Abstract class for specifying chemical reactions and mechanisms which only
-    exist at specific locations in the model. These mechanisms are inserted
-    onto segments and can interact with other LocalMechanismInstance's which
-    are inserted onto the same segment.
-    """
-    def initialize(self, model, mechanism_name:str) -> LocalMechanismInstance:
-        """
-        Setup this mechanism.
-
-        Returns a LocalMechanismInstance which implements this mechanism.
-        """
-        raise NotImplementedError(type(self))
-
-    def other_mechanisms(self) -> [str]:
-        """
-        Returns a list of LocalMechanism names which will be created and given
-        to this mechanism's constructor.
-        """
-        return []
 
 class MechanismsFactory(dict):
     def __init__(self, model, parameters:dict):
@@ -69,51 +58,48 @@ class MechanismsFactory(dict):
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters:dict) -> '[Mechanism]':
-        return [self.add_mechanism(name, mechanism)
-                    for name, mechanism in parameters.items()]
+        return [self.add_mechanism(name, mechanism, spec)
+                    for name, (mechanism, spec) in parameters.items()]
 
-    def add_mechanism(self, name, mechanism) -> 'Mechanism':
+    def add_mechanism(self, name, mechanism, parameters={}) -> 'Mechanism':
         """ """
         # Unpack the specification & parameters.
         name = str(name)
         assert name not in self
-        if isinstance(mechanism, str):
-            parameters = {}
-        elif isinstance(mechanism, LocalMechanismSpecification) or isinstance(mechanism, OmnipresentMechanism):
-            parameters = {}
-        else:
-            mechanism, parameters = mechanism
-        # Create the Mechanism object.
+        # Load the Mechanism class.
         if isinstance(mechanism, str):
             if mechanism.endswith(".mod"):
-                mechanism = neuwon.rxd.nmodl.NMODL(mechanism, parameters)
-            # elif mechanism.endswith(".py"):
-            #     1/0 # TODO?
+                mechanism = neuwon.rxd.nmodl.NMODL(mechanism)
+            elif mechanism.endswith(".py"):
+                mechanism = import_python_mechanism(mechanism)
             else:
                 raise ValueError("File extension not understood")
-        omnipresent = isinstance(mechanism, OmnipresentMechanism)
-        local       = isinstance(mechanism, LocalMechanismSpecification)
-        assert local or omnipresent
-        assert not (local and omnipresent)
+        assert (isinstance(mechanism, Mechanism) or
+                (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
+        # Initialize the mechanism.
+        mechanism = mechanism.initialize(self._model, name, **parameters)
+        assert (isinstance(mechanism, Mechanism) or
+                (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
         # 
-        if local:
+        if not mechanism.omnipresent:
             dependencies = mechanism.other_mechanisms()
-            assert not isinstance(dependencies, str)
-            self._local_dependencies[name] = tuple(str(x) for x in dependencies)
+            if isinstance(dependencies, str):
+                self._local_dependencies[name] = (dependencies,)
+            else:
+                self._local_dependencies[name] = tuple(str(x) for x in dependencies)
         # 
-        retval = mechanism.initialize(self._model, name)
-        if local or (omnipresent and retval is not None):
-            mechanism = retval
         self[name] = mechanism
-        # Ye olde heap o' assert statements.
-        if local:
-            assert issubclass(mechanism, LocalMechanismInstance) and issubclass(mechanism, DB_Object)
-            magnitude = mechanism.get_database_class().get('magnitude')
-            assert isinstance(magnitude, Attribute)
-            assert magnitude.get_shape() == (1,)
-            assert magnitude.get_dtype() == Real
-        elif omnipresent:
-            assert isinstance(mechanism, OmnipresentMechanism)
         return mechanism
+
+def import_python_mechanism(filename):
+    assert filename.endswith(".py")
+    with open(filename, 'rt') as f:
+        src = f.read()
+    globals_ = {}
+    exec(src, globals_)
+    for x in globals_.values():
+        if isinstance(x, type):
+            if issubclass(x, Mechanism):
+                return x
 
 import neuwon.rxd.nmodl # Import namespace after defining the Mechanisms API to prevent circular dependency.

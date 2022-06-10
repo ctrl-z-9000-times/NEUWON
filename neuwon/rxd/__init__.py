@@ -6,11 +6,9 @@ This module aims to be un-opinionated and applicable to any neural simulation.
 """
 
 from .rxd_model import RxD_Model
-from .mechanisms import OmnipresentMechanism, LocalMechanismSpecification, LocalMechanismInstance
+from .mechanisms import Mechanism
 
 __all__ = (
     'RxD_Model',
-    'OmnipresentMechanism',
-    'LocalMechanismSpecification',
-    'LocalMechanismInstance',
+    'Mechanism',
 )

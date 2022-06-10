@@ -9,7 +9,7 @@ dirname = os.path.dirname(__file__)
 def test_hh():
     m = RxD_Model(time_step = .1,
         mechanisms={
-            'hh': NMODL(dirname + "/mod/hh.mod", use_cache=False)},
+            'hh': (NMODL(dirname + "/mod/hh.mod", use_cache=False), {})},
         species={
             'na': {'reversal_potential': +60,},
             'k': {'reversal_potential': -88,},
