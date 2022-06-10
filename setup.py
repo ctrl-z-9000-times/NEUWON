@@ -13,7 +13,7 @@ setuptools.setup(
     author_email = "dam1784@rit.edu",
     url="https://github.com/ctrl-z-9000-times/NEUWON",
     install_requires=[
-            "cupy-cuda91",
+            # "cupy-cuda91", # How to recommend (without requiring?)
             "graph-algorithms",
             "matplotlib",
             "NMODL",

@@ -186,7 +186,7 @@ class ModelRunner(OrganizerPanel):
                     # Normalize the render_data into the range [0,1]
                     render_data = np.array(render_data, dtype=np.float32)
                     component = self.run_control.video.get_parameters()['component']
-                    if component == "v":
+                    if component == "voltage":
                         vmax = +100
                         vmin = -100
                     else:

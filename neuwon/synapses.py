@@ -6,6 +6,10 @@ from collections import namedtuple
 
 class _AttachmentPoint:
     def __init__(self, db_class, index, *,
+                # TODO: Consider inlining constaints directly into these kwargs?
+                # It's only got three things and its all pretty unambiguous at
+                # this level of abstraction. Nesting things excessively does
+                # not help.
                 constraints = {},
                 mechanisms = {}):
         self.constraints = constraints

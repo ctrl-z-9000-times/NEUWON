@@ -19,7 +19,7 @@ class Electric:
         seg_data.add_attribute("integral_voltage", 0.0,
                 units="mV")
         seg_data.add_attribute("axial_resistance",
-                units="Ohms",
+                units="ohm",
                 valid_range=(0, np.inf))
         seg_data.add_attribute("capacitance",
                 units="Farads",

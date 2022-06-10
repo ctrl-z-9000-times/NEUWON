@@ -8,7 +8,7 @@ class Documentation:
     """
     def __init__(self, name:str, doc:str=''):
         self.name = str(name)
-        assert '.' not in self.name
+        assert self.name.isidentifier()
         if not doc: doc = ''
         self.doc = textwrap.dedent(str(doc)).strip()
 
