@@ -5,21 +5,20 @@ from neuwon.database import Compute, Real
 class Presynapse(Mechanism):
     __slots__ = ()
 
-    @staticmethod
-    def get_parameters():
-        return {'neurtransmitter': "None",
-                'initial_strength': 0,
-                'minimum_utilization': 0,
-                'utilization_decay': 0,
-                'resource_recovery': 0,}
+    @classmethod
+    def get_parameters(cls):
+        return {'neurotransmitter': "<Species>"
+                'initial_strength': 1e-3,
+                'minimum_utilization': 0.2,
+                'utilization_decay': 5,
+                'resource_recovery': 20,}
 
     @classmethod
     def initialize(cls, model, mechanism_name, **kwargs):
         db = model.get_database()
         db_class = db.add_class(mechanism_name, cls, sort_key='segment')
 
-        db_class.add_class_attribute('initial_strength', kwargs['initial_strength'])
-        db_class.add_attribute('magnitude')
+        db_class.add_attribute('magnitude', kwargs['initial_strength'])
 
         db_class.add_attribute('segment', dtype='Segment')
         db_class.add_attribute('outside', dtype='Outside')
@@ -46,7 +45,7 @@ class Presynapse(Mechanism):
 
     def __init__(self, segment, magnitude, outside):
         self.segment = segment
-        self.magnitude = magnitude * self.initial_strength
+        self.magnitude *= magnitude
         self.outside = outside
 
     @classmethod
@@ -89,4 +88,4 @@ class Presynapse(Mechanism):
         self.last_update = timestamp
         self.utilization = utilization
         self.resources   = resources
-        return release * self.magnitude
+        return release * self.magnitude / self.outside.volume
