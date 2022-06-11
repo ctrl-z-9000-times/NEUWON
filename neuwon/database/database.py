@@ -2,7 +2,6 @@ from graph_algorithms import topological_sort
 from . import memory_spaces
 from .doc import Documentation
 from .dtypes import *
-from .sql import save_sqlite3, load_sqlite3
 import inspect
 import itertools
 import numpy as np
@@ -223,10 +222,10 @@ class Database:
             db_class._sort()
 
     def save_sqlite3(self, filename):
-        save_sqlite3(filename, self)
+        save_sqlite3(self, filename)
 
     def load_sqlite3(self, filename):
-        load_sqlite3(filename, self)
+        load_sqlite3(self, filename)
 
     def check(self, name:str=None):
         """ Run all configured checks on the database.
@@ -438,6 +437,24 @@ class DB_Class(Documentation):
         self.instances.append(weakref.ref(new_instance))
         if self.sort_key: self._is_sorted = False
 
+    def _init_many(self, num_instances):
+        assert num_instances >= 0
+        old_size  = self.size
+        new_size  = old_size + num_instances
+        self.size = new_size
+        for x in self.components.values():
+            if isinstance(x, Attribute): x._append(old_size, new_size)
+            elif isinstance(x, ClassAttribute): pass
+            elif isinstance(x, SparseMatrix): x._resize()
+            else: raise NotImplementedError(type(x))
+        for x in self.referenced_by_matrix_columns: x._resize()
+        for idx in range(num_instances):
+            new_instance = self.instance_type.__new__(self.instance_type)
+            new_instance._idx = idx
+            self.instances.append(weakref.ref(new_instance))
+        if self.sort_key: self._is_sorted = False
+        return range(old_size, new_size)
+
     def _destroy_instance(self, instance):
         idx = instance._idx
         self._destroyed_list.append(idx)
@@ -626,3 +643,4 @@ Database.add_class.__doc__ = DB_Class.__init__.__doc__
 from .data_components import (DataComponent, ClassAttribute, Attribute,
                               SparseMatrix, ConnectivityMatrix)
 from .compute import Compute
+from .sql import save_sqlite3, load_sqlite3
