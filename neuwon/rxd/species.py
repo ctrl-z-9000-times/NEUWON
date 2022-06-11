@@ -230,18 +230,25 @@ def _efun(z):
         return z / (math.exp(z) - 1)
 
 class NonspecificConductance(SpeciesType):
-    def __init__(self, name, factory, *, db_class, reversal_potential):
-        self.name       = str(name)
+    """ Attach an ion channel to a DB_Class.
+
+    This conductance will not factor into the concentrations of any species.
+
+    The db_class must have a reference named "segment".
+    """
+    def __init__(self, factory, name, db_class, reversal_potential):
         self.factory    = factory
+        self.location   = factory.database.get_class(db_class)
+        ion_name        = str(name)
+        self.name       = f'{self.location.get_name()}_{ion_name}'
         self.electric   = True
 
-        self.location = factory.database.get_class(db_class)
-        self.conductance = self.location.add_attribute(f"{self.name}_conductance",
+        self.conductance = self.location.add_attribute(f"{ion_name}_conductance",
                 initial_value=0.0,
                 valid_range=(0, np.inf),
                 units="Siemens")
         self.reversal_potential = self.location.add_class_attribute(
-                f"{self.name}_reversal_potential",
+                f"{ion_name}_reversal_potential",
                 initial_value=reversal_potential,
                 units="mV")
 
@@ -288,3 +295,9 @@ class SpeciesFactory(dict):
         else:
             self[name] = species = SpeciesType(name, self, **species_kwargs)
         return species
+
+    def add_nonspecific_conductance(self, name, db_class, reversal_potential):
+        name = str(name)
+        self[name] = species = NonspecificConductance(self, name, db_class, reversal_potential)
+        return species
+    add_nonspecific_conductance.__doc__ = NonspecificConductance.__doc__

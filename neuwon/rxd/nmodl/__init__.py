@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable, Mapping
+from typing import NamedTuple
 from neuwon.database import Compute
 from neuwon.rxd.mechanisms import Mechanism
 from . import code_gen, cache, solver
@@ -24,6 +25,9 @@ __all__ = ["NMODL"]
 #         isinstance(stmt, AssignStatement)
 #         and stmt.pointer and "conductance" in stmt.pointer.name))
 
+class _NonspecificConductance(NamedTuple):
+    ion: str
+    e: str
 
 class NMODL(Mechanism):
     def __init__(self, filename, use_cache=True):
@@ -70,9 +74,14 @@ class NMODL(Mechanism):
             self._run_initial_block(database)
             self._compile_breakpoint_block()
             if self.omnipresent:
-                return self._initialize_omnipresent_mechanism_class(database)
+                cls = self._initialize_omnipresent_mechanism_class(database)
             else:
-                return self._initialize_local_mechanism_class(database)
+                cls = self._initialize_local_mechanism_class(database)
+            for (ion, e_variable) in self.nonspecific_conductances.items():
+                e, e_units = self.parameters[e_variable]
+                if e_units is not None: assert e_units.lower() == 'mv'
+                rxd_model.species.add_nonspecific_conductance(ion, cls, e)
+            return cls
         except Exception:
             print("ERROR while loading file", self.filename, flush=True)
             raise
@@ -108,6 +117,7 @@ class NMODL(Mechanism):
         """
         self.pointers = {}
         self.accumulators = set()
+        self.nonspecific_conductances = {} # Dict of {'ion_name': 'equilibrium_variable'}
         self.omnipresent = False # TODO!
         self.outside = False
         for state in self.states:
@@ -136,12 +146,18 @@ class NMODL(Mechanism):
         equilibrium = ('e' + ion, ion + '_equilibrium',)
         current     = ('i' + ion, ion + '_current',)
         conductance = ('g' + ion, ion + '_conductance',)
-        inside      = (ion + 'i', 'intra_' + ion,)
-        outside     = (ion + 'o', 'extra_' + ion,)
-        for y in stmt.readlist:
-            var_name = y.name.value.eval()
+        inside      = (ion + 'i', ion + '_inside',)
+        outside     = (ion + 'o', ion + '_outside',)
+        # 
+        read_vars   = [x.name.value.eval() for x in stmt.readlist]
+        write_vars  = [x.name.value.eval() for x in stmt.writelist]
+        nonspecific = any(x in equilibrium for x in write_vars)
+        # 
+        for var_name in read_vars:
+            assert not nonspecific
             if var_name in equilibrium:
                 pass # Ignored, mechanisms output conductances instead of currents.
+                # self.pointers[var_name] = f"self.segment.{ion}_reversal_potential"
             elif var_name in inside:
                 self.pointers[var_name] = f"self.segment.{ion}"
             elif var_name in outside:
@@ -149,18 +165,28 @@ class NMODL(Mechanism):
                 self.outside = True
             else:
                 raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
-        for y in stmt.writelist:
-            var_name = y.name.value.eval()
-            if var_name in current:
-                self.pointers[var_name] = f"self.segment.{ion}_current"
+        for var_name in write_vars:
+            if var_name in equilibrium:
+                self.pointers[var_name] = f"self.segment.{ion}_reversal_potential"
+                self.nonspecific_conductances[ion] = var_name
+            elif var_name in current:
+                if nonspecific:
+                    self.pointers[var_name] = f"self.segment.nonspecific_current"
+                else:
+                    self.pointers[var_name] = f"self.segment.{ion}_current"
                 self.accumulators.add(var_name)
             elif var_name in conductance:
-                self.pointers[var_name] = f"self.segment.{ion}_conductance"
+                if nonspecific:
+                    self.pointers[var_name] = f"self.{ion}_conductance"
+                else:
+                    self.pointers[var_name] = f"self.segment.{ion}_conductance"
                 self.accumulators.add(var_name)
             elif var_name in inside:
+                assert not nonspecific
                 self.pointers[var_name] = f"self.segment.{ion}_derivative"
                 self.accumulators.add(var_name)
             elif var_name in outside:
+                assert not nonspecific
                 self.pointers[var_name] = f"self.outside.{ion}_derivative"
                 self.accumulators.add(var_name)
                 self.outside = True
