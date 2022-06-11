@@ -3,15 +3,19 @@ from neuwon.database.data_components import Attribute
 
 
 class Mechanism:
+    """
+    Abstract class for specifying chemical reactions and mechanisms.
 
+    Mechanisms can be inserted onto segments and can interact with other
+    Mechanisms which are inserted onto the same segment.
+
+    Use the "omnipresent" class attribute to specify mechanisms which exist
+    everywhere throughout the model. These mechanisms can only interact with
+    other omnipresent entities, and they will not be inserted into any specific
+    place in the model.
+    """
     __slots__ = ()
 
-    """
-    Use this option to specify chemical reactions and mechanisms which exist
-    everywhere throughout the model. These mechanisms can only interact with
-    other omnipresent entities, such as species and segments, and they can not
-    be inserted into any specific place in the model.
-    """
     omnipresent = False
 
     @classmethod
@@ -37,11 +41,12 @@ class Mechanism:
         """
         return []
 
-    def __init__(self, segment, magnitude, *other_mechanisms, outside=None):
+    def __init__(self, segment, magnitude, *other_mechanisms, outside):
         """
-        All Mechanisms must have a "magnitude" attribute which controls the
-        strength of the element. A magnitude of one should always be a sensible
-        value.
+        Inserts a new instance of this Mechanism.
+
+        Argument magnitude is a positive number which controls the strength of
+        this mechanism. The default value is 1.
         """
         raise NotImplementedError(type(self))
 
