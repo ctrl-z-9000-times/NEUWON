@@ -2,6 +2,7 @@ from graph_algorithms import topological_sort
 from . import memory_spaces
 from .doc import Documentation
 from .dtypes import *
+from .sql import save_sqlite3, load_sqlite3
 import inspect
 import itertools
 import numpy as np
@@ -220,6 +221,12 @@ class Database:
         # Sort all db_classes.
         for db_class in reversed(self._sort_order):
             db_class._sort()
+
+    def save_sqlite3(self, filename):
+        save_sqlite3(filename, self)
+
+    def load_sqlite3(self, filename):
+        load_sqlite3(filename, self)
 
     def check(self, name:str=None):
         """ Run all configured checks on the database.
