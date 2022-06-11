@@ -53,8 +53,7 @@ class MechanismManager(ManagementPanel):
         mechanism = import_python_mechanism(filename)
         if mechanism is None:
             return
-        parameters = mechanism.get_parameters()
-        for name, dtype in parameters.items():
+        for name, dtype in mechanism.get_parameters().items():
             settings_panel.add_entry(name)
 
     def info_on_mechanism(self, selected):

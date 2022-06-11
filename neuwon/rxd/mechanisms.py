@@ -103,8 +103,7 @@ def import_python_mechanism(filename):
     globals_ = {}
     exec(src, globals_)
     for x in globals_.values():
-        if isinstance(x, type):
-            if issubclass(x, Mechanism):
-                return x
+        if isinstance(x, type) and issubclass(x, Mechanism) and (x is not Mechanism):
+            return x
 
 import neuwon.rxd.nmodl # Import namespace after defining the Mechanisms API to prevent circular dependency.
