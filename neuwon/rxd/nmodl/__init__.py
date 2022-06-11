@@ -232,21 +232,20 @@ class NMODL(Mechanism):
                 return [solve_stmt]
             solve_block  = solve_stmt.block
             solve_method = solve_stmt.method
-            if solve_method in ode_methods:
-                # Move the CONSERVE statements to the end of the block.
-                solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
-                # Replace CONSERVE statements with a simple multiplicative solution.
-                solve_block.map(solver.conserve_statement_solution)
-                # 
-                method = ode_methods[solve_method]
-                assert solve_block.derivative
-                solve_block.derivative = False
-                for stmt in solve_block:
-                    if isinstance(stmt, AssignStatement) and stmt.derivative:
-                        method(stmt)
-                return [copy.copy(x) for x in solve_block.statements]
-            else:
+            if solve_method not in ode_methods:
                 return [solve_stmt]
+            # Move the CONSERVE statements to the end of the block.
+            solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
+            # Replace CONSERVE statements with a simple multiplicative solution.
+            solve_block.map(solver.conserve_statement_solution)
+            # 
+            method = ode_methods[solve_method]
+            assert solve_block.derivative
+            solve_block.derivative = False
+            for stmt in solve_block:
+                if isinstance(stmt, AssignStatement) and stmt.derivative:
+                    method(stmt)
+            return [copy.copy(x) for x in solve_block.statements]
         self.breakpoint_block.map(solve)
 
     def _fixup_breakpoint_IO(self):
