@@ -37,12 +37,6 @@ been extended many times, and NEUWON further improves the file format.
     * "ASSIGNED" variables are now freed from memory at the end of the
       BREAKPOINT block, for improved memory consumption.  
 
-* "ASSIGNED", "RANGE", and "LOCAL" statements no longer mean anything and are
-   not necessary.
-
-    * Local variable are automatically created when a new variable name is
-      assigned to, like it is in python.
-
 ### History of NMODL
 
 NMODL is an extension of the model description language developed for SCoP;
