@@ -57,8 +57,10 @@ def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
         # Otherwise try to solve ODE with sympy:
         # First classify ODE, if it is too hard then exit.
         ode_properties = set(sympy.classify_ode(diffeq))
-        assert ode_properties.issuperset(ode_properties_require_all), "ODE too hard"
-        assert ode_properties.intersection(ode_properties_require_one_of), "ODE too hard"
+        if (not ode_properties.issuperset(ode_properties_require_all) or
+            not ode_properties.intersection(ode_properties_require_one_of)):
+            return False
+
         # Try to find analytic solution, with initial condition x_t(t=0) = x
         # (note dsolve can return a list of solutions, in which case this currently fails)
         solution = sympy.dsolve(diffeq, x_t, ics={x_t.subs({t: 0}): x})
@@ -69,6 +71,8 @@ def sympy_solve_ode(self: AssignStatement, use_pade_approx=False):
 
     if use_pade_approx:
         pade_approx(self)
+
+    return True
 
 def pade_approx(self: AssignStatement):
     """
@@ -91,6 +95,7 @@ def pade_approx(self: AssignStatement):
         self.rhs = _a0
 
 def forward_euler(self: AssignStatement):
+    if sympy_solve_ode(self): return
     assert self.derivative
     self.derivative = False
     init_state      = sympy.Symbol(self.lhsn, real=True)
@@ -98,6 +103,7 @@ def forward_euler(self: AssignStatement):
     self.rhs = self.rhs.simplify()
 
 def backward_euler(self: AssignStatement):
+    if sympy_solve_ode(self): return
     assert self.derivative
     self.derivative = False
     init_state      = sympy.Symbol(self.lhsn, real=True)
@@ -110,6 +116,7 @@ def backward_euler(self: AssignStatement):
     self.rhs = self.rhs.simplify()
 
 def crank_nicholson(self: AssignStatement):
+    if sympy_solve_ode(self): return
     assert self.derivative
     self.derivative = False
     init_state      = sympy.Symbol(self.lhsn, real=True)

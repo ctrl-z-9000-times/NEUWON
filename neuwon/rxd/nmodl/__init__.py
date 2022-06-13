@@ -1,5 +1,4 @@
 from collections.abc import Callable, Iterable, Mapping
-from typing import NamedTuple
 from neuwon.database import Compute
 from neuwon.rxd.mechanisms import Mechanism
 from . import code_gen, cache, solver
@@ -17,17 +16,6 @@ __all__ = ["NMODL"]
 
 
 # TODO: support for arrays? - arrays should really be unrolled in an AST pass...
-
-# TODO: Move assignments to conductances to the end of the breakpoint block,
-# where they belong. This is needed because the nmodl library inserts
-# conductance hints and associated statements at the beginning of the block.
-# self.breakpoint_block.statements.sort(key=lambda stmt: bool(
-#         isinstance(stmt, AssignStatement)
-#         and stmt.pointer and "conductance" in stmt.pointer.name))
-
-class _NonspecificConductance(NamedTuple):
-    ion: str
-    e: str
 
 class NMODL(Mechanism):
     def __init__(self, filename, use_cache=True):
@@ -222,13 +210,11 @@ class NMODL(Mechanism):
         Replace SolveStatements with the solved equations to advance the systems
         of differential equations.
         """
-        # TODO: Both derivimplicit & cnexp should try sympy first, and then
-        # fallback to "real" approximate integration if that fails?
         ode_methods = {
             'euler':            solver.forward_euler,
             'derivimplicit':    solver.backward_euler,
+            '':                 solver.backward_euler,
             'cnexp':            solver.crank_nicholson,
-            '':                 solver.sympy_solve_ode,
         }
         def solve(solve_stmt):
             # Solve in-place and return a copy.
