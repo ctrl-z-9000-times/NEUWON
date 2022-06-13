@@ -192,7 +192,7 @@ def test_network_ei():
     while model.clock() < 500:
         if model.clock() >= next_stim:
             n = random.choice(excit)
-            n.inject_current(1e-9, 1)
+            n.inject_current(1, 1)
             next_stim += 100
 
         # v = ((voltage.get_data() - min_v) / (max_v - min_v)).clip(0, 1)

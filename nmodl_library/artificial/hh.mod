@@ -20,12 +20,9 @@ UNITS {
 ? interface
 NEURON {
     SUFFIX hh
-    USEION na WRITE gna
-    USEION k WRITE gk
-    USEION l WRITE gl
-    RANGE gnabar, gkbar, glbar, gl, el, gna, gk
-    RANGE minf, hinf, ninf, mtau, htau, ntau
-    THREADSAFE
+    USEION na WRITE gna, ena
+    USEION k WRITE gk, ek
+    USEION l WRITE gl, el
 }
 
 PARAMETER {

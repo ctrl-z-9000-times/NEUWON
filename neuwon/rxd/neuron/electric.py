@@ -31,7 +31,7 @@ class Electric:
                 units="μF/cm²",
                 valid_range=(epsilon, np.inf))
         seg_data.add_attribute("nonspecific_current", 0.0,
-                units="Amperes",
+                units="Amperes", # TODO: Consider converting this to use "nA".
                 valid_range=(0, np.inf))
         seg_data.add_attribute("sum_current", 0.0,
                 units="Amperes")

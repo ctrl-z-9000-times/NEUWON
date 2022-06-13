@@ -53,7 +53,7 @@ class NMODL(Mechanism):
                 self.breakpoint_block = blocks['BREAKPOINT']
                 self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
-                self._solve()
+                self._solve_equation()
                 self._fixup_breakpoint_IO()
             except Exception:
                 print("ERROR while loading file", self.filename, flush=True)
@@ -135,6 +135,8 @@ class NMODL(Mechanism):
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
         if "v" in all_args:
             self.pointers["v"] = "self.segment.voltage"
+        if "diam" in all_args:
+            self.pointers["diam"] = "self.segment.diameter"
         if "area" in all_args:
             self.pointers["area"] = "self.segment.surface_area"
         if "volume" in all_args:
@@ -215,11 +217,13 @@ class NMODL(Mechanism):
             self.pointers[var_name] = f"self.{var_name}.magnitude"
         self.other_mechanisms_ = tuple(sorted(self.other_mechanisms_))
 
-    def _solve(self):
+    def _solve_equation(self):
         """
         Replace SolveStatements with the solved equations to advance the systems
         of differential equations.
         """
+        # TODO: Both derivimplicit & cnexp should try sympy first, and then
+        # fallback to "real" approximate integration if that fails?
         ode_methods = {
             'euler':            solver.forward_euler,
             'derivimplicit':    solver.backward_euler,
@@ -227,7 +231,7 @@ class NMODL(Mechanism):
             '':                 solver.sympy_solve_ode,
         }
         def solve(solve_stmt):
-            # Solve in-place but return a copy.
+            # Solve in-place and return a copy.
             if not isinstance(solve_stmt, SolveStatement):
                 return [solve_stmt]
             solve_block  = solve_stmt.block

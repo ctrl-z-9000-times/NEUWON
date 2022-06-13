@@ -27,7 +27,7 @@ class Mechanism:
     def initialize(cls, model, mechanism_name:str, **parameters) -> 'Mechanism':
         """ Method to setup this mechanism.
 
-        Returns a LocalMechanismInstance which implements this mechanism.
+        Returns a "Mechanism" subclass which implements this mechanism.
         """
         pass
 

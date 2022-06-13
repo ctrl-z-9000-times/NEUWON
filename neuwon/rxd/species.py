@@ -128,11 +128,11 @@ class SpeciesType:
             self.current = segment_data.add_attribute(f"{self.name}_current",
                     initial_value=0.0,
                     valid_range=(0, np.inf),
-                    units="Amperes")
+                    units="Amperes") # TODO: Consider converting this to use "nA".
             self.conductance = segment_data.add_attribute(f"{self.name}_conductance",
                     initial_value=0.0,
                     valid_range=(0, np.inf),
-                    units="Siemens")
+                    units="Siemens") # TODO: Consider converting this to use "uS".
             if self.reversal_potential_type == "const":
                 self.reversal_potential = segment_data.add_class_attribute(
                         f"{self.name}_reversal_potential",
