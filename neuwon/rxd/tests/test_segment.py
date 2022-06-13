@@ -96,7 +96,7 @@ def test_insert_interacting_mechanisms():
 
     # Check that AP works.
     my_model.clock.reset()
-    my_root.inject_current(.1e-9, .5)
+    my_root.inject_current(.1, .5)
     while my_model.clock() < 20:
         my_model.advance()
     assert any(v > 20 for v in probe.get_data())
@@ -107,7 +107,7 @@ def test_insert_interacting_mechanisms():
 
     # Check that AP is gone.
     my_model.clock.reset()
-    my_root.inject_current(.1e-9, .5)
+    my_root.inject_current(.1, .5)
     while my_model.clock() < 20:
         my_model.advance()
     assert all(v < -20 for v in probe.get_data())

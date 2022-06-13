@@ -14,7 +14,7 @@ class Model:
             stagger       = True,
             # These parameters approximately match Figure 4.9 & 4.10 of the NEURON book.
             soma_diameter = 5.642,
-            stimulus      = 0.025e-9,
+            stimulus      = 0.025,
         ):
         self.time_step      = time_step
         self.stagger        = stagger

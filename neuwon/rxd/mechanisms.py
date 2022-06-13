@@ -1,6 +1,6 @@
+from collections.abc import Iterable
 from neuwon.database import Real, DB_Object
 from neuwon.database.data_components import Attribute
-
 
 class Mechanism:
     """
@@ -63,8 +63,13 @@ class MechanismsFactory(dict):
         self.add_parameters(parameters)
 
     def add_parameters(self, parameters:dict) -> '[Mechanism]':
-        return [self.add_mechanism(name, mechanism, spec)
-                    for name, (mechanism, spec) in parameters.items()]
+        new_mechanisms = []
+        for name, mechanism in parameters.items():
+            if isinstance(mechanism, Iterable):
+                mechanism, parameters = mechanism
+            else:
+                parameters = {}
+            self.add_mechanism(name, mechanism, parameters)
 
     def add_mechanism(self, name, mechanism, parameters={}) -> 'Mechanism':
         """ """

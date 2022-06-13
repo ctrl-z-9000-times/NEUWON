@@ -17,7 +17,7 @@ class main:
             time_step     = 2.5e-3,
             length_step   = 20,
             num_probes    = 6,
-            stimulus      = 2e-9,
+            stimulus      = 2,
         ):
         self.time_step      = time_step
         self.length_step    = length_step

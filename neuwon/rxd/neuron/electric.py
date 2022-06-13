@@ -17,7 +17,7 @@ class Electric:
         seg_data.add_attribute("voltage", initial_voltage,
                 units="mV")
         seg_data.add_attribute("integral_voltage", 0.0,
-                units="mV")
+                units="mV-ms")
         seg_data.add_attribute("axial_resistance",
                 units="ohm",
                 valid_range=(0, np.inf))
@@ -64,7 +64,7 @@ class Electric:
         xp                  = db_cls.get_database().get_memory_space().array_module
         sum_conductance     = db_cls.get_data("sum_conductance") # Siemens
         driving_voltage     = db_cls.get_data("driving_voltage") # mV
-        capacitance         = db_cls.get_data("capacitance")
+        capacitance         = db_cls.get_data("capacitance") # F
         voltage             = db_cls.get_data("voltage") # mV
         integral_v          = db_cls.get_data("integral_voltage") # mV * seconds
         irm                 = db_cls.get("electric_propagator_matrix").to_csr().get_data()
@@ -118,12 +118,8 @@ class Electric:
         db_cls.get("electric_propagator_matrix").to_csr().set_data(matrix)
         cls._matrix_valid = True
 
-    def inject_current(self, current: 'Amperes', duration: 'ms' = 1.0):
-        # TODO:  Consider switching inject current to units of nano-Amps.
-        #        Does anyone else use nA?
-        #        What does NEURON use?
-        #        Is nA actually a good unit? or is my using it a fluke?
-        current  = float(current)
+    def inject_current(self, current: 'nA' = 1.0, duration: 'ms' = 1.0):
+        current  = float(current) * 1e-9
         duration = float(duration)
         assert duration >= 0
         input_signal = TimeSeries().constant_wave(current, duration)
