@@ -5,7 +5,7 @@ __all__ = ('ThemedTk', 'set_theme', 'pick_theme')
 
 # TODO: This should save the selected theme to a hidden file in the users home folder.
 
-default_theme = 'blue'
+default_theme = 'black'
 
 def set_theme(root, theme=None):
     if theme is None:

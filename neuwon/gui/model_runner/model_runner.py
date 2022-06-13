@@ -12,6 +12,8 @@ import queue
 import time
 import traceback
 
+window_resolution = (2*640, 2*480)
+
 class ModelRunner(OrganizerPanel):
     def __init__(self, filename):
         self.project    = ProjectContainer(filename)
@@ -44,7 +46,7 @@ class ModelRunner(OrganizerPanel):
         self.model.get_database().sort()
         self.runner.control_queue.put((M_CMD.INSTANCE, self.model))
         self.runner.control_queue.put((M_CMD.HEADLESS, False))
-        self.viewport.control_queue.put((V_CMD.OPEN, (640,480)))
+        self.viewport.control_queue.put((V_CMD.OPEN, window_resolution))
         self.viewport.control_queue.put((V_CMD.SET_SCENE, self.model))
 
     def _open_viewport(self):
@@ -58,7 +60,7 @@ class ModelRunner(OrganizerPanel):
         menubar = tk.Menu(parent)
         parent.config(menu=menubar)
         self._init_file_menu(menubar)
-        # menubar.add_command(label='Themes', command=lambda: pick_theme(self.root))
+        menubar.add_command(label='Themes', command=lambda: pick_theme(self.root))
         self._init_model_menu(menubar)
 
     def _init_file_menu(self, parent_menu):
