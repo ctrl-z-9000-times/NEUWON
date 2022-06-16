@@ -5,7 +5,7 @@ from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message as M_CMD
 from .signal_generator import SignalGenerator
 from .data_recorder import DataRecorder
-from .viewport import Viewport
+from ..viewport import Viewport
 from neuwon import Model
 from tkinter import messagebox
 import queue
