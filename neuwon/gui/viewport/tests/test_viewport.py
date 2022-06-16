@@ -8,10 +8,12 @@ def test_viewport():
     v = Viewport((400,400))
     v.set_model(m)
 
-    m.Neuron([1,2,3], 4)
+    m.Neuron([0, 0, -3], 1)
     m.database.sort()
     v.set_model(m)
 
     time.sleep(2)
+
+    assert v._process.is_alive()
 
     del v

@@ -1,10 +1,9 @@
 import numpy as np
-import math
 
 epsilon = np.finfo(np.float32).eps
 
 def magnitude(vector):
-    return math.sqrt(vector.dot(vector))
+    return np.sqrt(vector.dot(vector))
 
 def rotate_align(a, b):
     # https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d/476311#476311

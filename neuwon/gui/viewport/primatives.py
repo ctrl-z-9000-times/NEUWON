@@ -1,6 +1,5 @@
-import math
-import numpy as np
 from .rotate_align import rotate_align
+import numpy as np
 
 class Primative:
     __slots__ = ('vertices', 'indices')
@@ -20,14 +19,14 @@ class Sphere(Primative):
         self.vertices = vertices = np.empty((num_vertices, 3), dtype=np.float32)
         write_idx = 0
         for i in range(stacks + 1):
-            phi = math.pi * (i / stacks)
+            phi = np.pi * (i / stacks)
             # Loop Through Slices
             for j in range(slices + 1):
-                theta = 2 * math.pi * (j / slices)
+                theta = 2 * np.pi * (j / slices)
                 # Calculate The Vertex Positions
-                vertices[write_idx, 0] = math.cos(theta) * math.sin(phi)
-                vertices[write_idx, 1] = math.cos(phi)
-                vertices[write_idx, 2] = math.sin(theta) * math.sin(phi)
+                vertices[write_idx, 0] = np.cos(theta) * np.sin(phi)
+                vertices[write_idx, 1] = np.cos(phi)
+                vertices[write_idx, 2] = np.sin(theta) * np.sin(phi)
                 write_idx += 1
         vertices *= radius
         vertices += center
@@ -55,9 +54,9 @@ class Cylinder(Primative):
         ref_vector = np.array([0.0, 0.0, 1.0])
         rot_matrix = rotate_align(vector, ref_vector)
         for s in range(num_slices + 1):
-            f = 2 * math.pi * (s / num_slices)
-            y = math.sin(f)
-            x = math.cos(f)
+            f = 2 * np.pi * (s / num_slices)
+            y = np.sin(f)
+            x = np.cos(f)
             vertices[2*s,   0] = x
             vertices[2*s,   1] = y
             vertices[2*s,   2] = 0.
@@ -84,9 +83,9 @@ class Disk(Primative):
         # to the same API as the other primatives.
         triangle_fan = np.empty((num_slices, 3), dtype=np.float32)
         for s in range(num_slices):
-            f = 2 * math.pi * (s / num_slices)
-            y = math.sin(f)
-            x = math.cos(f)
+            f = 2 * np.pi * (s / num_slices)
+            y = np.sin(f)
+            x = np.cos(f)
             triangle_fan[s, 0] = x
             triangle_fan[s, 1] = y
             triangle_fan[s, 2] = 0.

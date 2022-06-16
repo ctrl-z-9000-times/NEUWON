@@ -1,13 +1,11 @@
+from .scene import Camera, Scene
+from multiprocessing import Process, Pipe
+from neuwon.database import Pointer, NULL
+from OpenGL import GL
+from pygame.locals import *
+import enum
 import numpy as np
 import pygame
-from pygame.locals import *
-from OpenGL import GL
-from .coloration import Coloration
-from .text_overlay import TextOverlay
-from .scene import Camera, Scene
-import enum
-import collections.abc
-from multiprocessing import Process, Pipe
 
 epsilon = np.finfo(float).eps
 
@@ -24,7 +22,7 @@ class ViewportAPI:
         try:
             self._pipe.send((message, args))
         except BrokenPipeError:
-            self._process.join()
+            pass
 
     def __del__(self):
         self._send(Message.CLOSE)
@@ -38,31 +36,42 @@ class ViewportAPI:
         self._send(Message.SET_MODEL, parent, coordinates, diameter)
 
     def set_colors(self, colors):
+        assert isinstance(colors, np.ndarray)
+        assert colors.dtype == np.float32
+        assert visible.ndim == 2
+        assert colors.shape[1] == 3
         self._send(Message.SET_COLORS, colors)
 
     def set_visible(self, visible):
+        assert isinstance(visible, np.ndarray)
+        assert visible.dtype == Pointer
+        assert visible.ndim == 1
         self._send(Message.SET_VISIBLE, visible)
 
     def set_background(self, color):
+        assert len(color) == 3
+        assert all(0.0 <= x <= 1.0 for x in color)
         self._send(Message.SET_BACKGND, color)
 
     def set_text(self, text):
+        assert isinstance(text, str)
         self._send(Message.SET_TEXT, text)
 
     def get_selected(self) -> 'Segment-Index':
-        return None
+        # TODO!
+        return NULL
         if self._process.stdout.poll():
             segment_index = self.process.stdout.recv()
             segment_index = int(segment_index)
             return segment_index
 
 class Message(enum.Enum):
-    CLOSE           = enum.auto()
     SET_MODEL       = enum.auto()
     SET_COLORS      = enum.auto()
     SET_VISIBLE     = enum.auto()
     SET_BACKGND     = enum.auto()
     SET_TEXT        = enum.auto()
+    CLOSE           = enum.auto()
 
 class ViewportImpl:
     def __init__(self, window_size,
@@ -75,14 +84,16 @@ class ViewportImpl:
         self.sprint_mod     = float(sprint_modifier) # Shift key move_speed multiplier.
         self._is_open       = False
         self._scene         = None
-        self._coloration    = Coloration()
-        self._text_overlay  = TextOverlay()
+        self._colors        = None
+        self._backgnd       = (0.0, 0.0, 0.0)
+        self._text          = ""
 
     def mainloop(self, pipe):
         self._pipe = pipe
         self._open()
         while self._is_open:
-            self._tick()
+            if self._scene:
+                self._tick()
             self._recv_messages()
 
     def _open(self):
@@ -91,7 +102,7 @@ class ViewportImpl:
         # Setup pygame.
         pygame.init()
         pygame.font.init()
-        self.screen = pygame.display.set_mode(self.window_size, OPENGL)
+        self.screen = pygame.display.set_mode(self.window_size, OPENGL|DOUBLEBUF)
         self.font   = pygame.font.SysFont(None, 24)
         self.clock  = pygame.time.Clock()
         self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
@@ -106,20 +117,19 @@ class ViewportImpl:
         while self._pipe.poll():
             m, args = self._pipe.recv()
             if   m == Message.SET_MODEL:    self._set_model(*args)
-            elif m == Message.SET_COLORS:   self._coloration.set_colormap(*args)
-            elif m == Message.SET_VISIBLE:  self._coloration.set_visible_segments(*args)
-            elif m == Message.SET_BACKGND:  self._coloration.set_background_color(*args)
-            elif m == Message.SET_TEXT:     self._text_overlay.show_text(*args)
+            elif m == Message.SET_COLORS:   self._colors    = args[0]
+            elif m == Message.SET_VISIBLE:  self._scene.compile_visible(*args)
+            elif m == Message.SET_BACKGND:  self._backgnd   = args[0]
+            elif m == Message.SET_TEXT:     self._text      = args[0]
             elif m == Message.CLOSE:        self._close()
             else: raise NotImplementedError(m)
 
     def _set_model(self, *args):
         self._scene = Scene(*args)
-        self._coloration.set_segment_values(np.zeros(self._scene.num_seg))
-        self._coloration.set_visible_segments(np.arange(self._scene.num_seg))
+        self._colors = np.ones((self._scene.num_seg, 3), dtype=np.float32)
 
     def _tick(self):
-        dt = self.clock.tick()
+        dt = self.clock.tick(60)
         # Process queued events.
         right_click = False
         for event in pygame.event.get():
@@ -147,15 +157,11 @@ class ViewportImpl:
             self._mouse_movement(dt)
             self._keyboard_movement(dt)
         # Press right mouse button to select a segment.
-        if self._scene and (right_click or self._text_overlay._show_type):
-            segment = self._scene.get_segment(self.camera, self._coloration, pygame.mouse.get_pos())
-        else:
-            segment = None
+        segment = self._scene.get_segment(self.camera, pygame.mouse.get_pos())
         # 
         if self._scene:
-            self._scene.draw(self.camera, self._coloration)
-        overlay = self._text_overlay._get(segment)
-        self._draw_text_overlay(overlay, (40, 50))
+            self._scene.draw(self.camera, self._colors, self._backgnd)
+        self._draw_text_overlay(self._text, (40, 50))
         pygame.display.flip()
         # 
         if right_click:

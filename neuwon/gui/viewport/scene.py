@@ -1,12 +1,9 @@
-import numpy as np
-from scipy.spatial.transform import Rotation
-
+from .primatives import Sphere, Cylinder
+from neuwon.database import Pointer, NULL
 from OpenGL.GL import *
 from OpenGL.GLU import *
-from OpenGL.GLUT import *
-
-from neuwon.database import Pointer, NULL
-from .primatives import Sphere, Cylinder
+from scipy.spatial.transform import Rotation
+import numpy as np
 
 class Camera:
     def __init__(self, size, fov, dist):
@@ -70,6 +67,8 @@ class Scene:
             else:
                 p_coords = coordinates[p]
                 objects[idx] = Cylinder(coords, p_coords, diam, nslices)
+        # Render all segments until told to do otherwise.
+        self.compile_visible(np.arange(num_seg, dtype=Pointer))
 
     def _init_opengl_settings(self):
         glEnable(GL_DEPTH_TEST)
@@ -111,37 +110,28 @@ class Scene:
         # TODO: Move these arrays to the GPU now, instead of copying them at
         # render time. Use VBO's?
 
-    def draw(self, camera, coloration):
+    def draw(self, camera, segment_colors, background_color):
         camera.setup_opengl()
 
         # Draw background.
-        glClearColor(*coloration.background_color, 0.0)
+        glClearColor(*background_color, 0.0)
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-
-        if coloration.changed_visible:
-            self.compile_visible(coloration.visible_segments)
-            coloration.changed_visible = False
 
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
 
-        colors = coloration._get()
-        assert len(colors) == self.num_seg, "Model changed, but 3d mesh did not!"
-        colors = np.take(colors, self.segments, axis=0)
+        assert len(segment_colors) == self.num_seg, "Model changed, but 3d mesh did not!"
+        colors = np.take(segment_colors, self.segments, axis=0)
         glEnableClientState(GL_COLOR_ARRAY)
         glColorPointer(3, GL_FLOAT, 0, colors)
 
         glDrawElements(GL_TRIANGLES, 3 * len(self.indices), GL_UNSIGNED_INT, self.indices)
 
-    def get_segment(self, camera, coloration, screen_coordinates):
+    def get_segment(self, camera, screen_coordinates):
 
         camera.setup_opengl()
         x, y = screen_coordinates
         y = camera.size[1] - y
-
-        if coloration.changed_visible:
-            self.compile_visible(coloration.visible_segments)
-            coloration.changed_visible = False
 
         background = 2**24 - 1
         assert self.num_seg < background
