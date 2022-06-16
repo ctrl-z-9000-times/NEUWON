@@ -16,8 +16,8 @@ class DataComponent(Documentation):
             doc = doc + "\nunits: " + self.units
         Documentation.__init__(self, name, doc)
         assert isinstance(db_class, DB_Class)
-        assert self.name not in db_class.components
-        assert self.name not in db_class.methods
+        assert self.name not in dir(db_class.instance_type), "name conflict."
+        assert self.name not in dir(db_class.ClassAttrMeta), "name conflict."
         self.db_class = db_class
         self.db_class.components[self.name] = self
         self.qualname = f'{self.db_class.name}.{self.name}'
@@ -52,6 +52,9 @@ class DataComponent(Documentation):
         setattr(self.db_class.instance_type, self.name,
                 property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
         if class_attribute:
+            # Add class_attributes to the instance_type as well as the
+            # ClassAttrMeta because the meta class does not show up in the
+            # documentation.
             setattr(self.db_class.ClassAttrMeta, self.name,
                     property(self._getter_wrapper, self._setter_wrapper, doc=self.doc,))
 

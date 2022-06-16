@@ -495,6 +495,7 @@ class DB_Class(Documentation):
     def index_to_object(self, unstable_index: int) -> DB_Object:
         """ Create a new DB_Object given its index. """
         if type(unstable_index) is self.instance_type: return unstable_index
+        if unstable_index is None: return None
         idx = int(unstable_index)
         if idx == NULL: return None
         obj = self.instances[idx]
