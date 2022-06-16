@@ -16,6 +16,7 @@ class TextOverlay:
         self._show_type = bool(value)
 
     def _get(self, segment=None):
+        return ""
         overlay = self._text
         if self._time is not None:
             overlay += f'\nTime: {self._time}'

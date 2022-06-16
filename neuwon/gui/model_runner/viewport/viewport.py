@@ -7,113 +7,118 @@ from .text_overlay import TextOverlay
 from .scene import Camera, Scene
 import enum
 import collections.abc
-import queue
+from multiprocessing import Process, Pipe
 
 epsilon = np.finfo(float).eps
 
+class ViewportAPI:
+    def __init__(self, window_size):
+        viewport = ViewportImpl(window_size)
+        self._pipe, other_end = Pipe()
+        self._process = Process(target=viewport.mainloop, args=(other_end,),
+                                name="Viewport")
+        self._process.start()
+
+    def _send(self, message, *args):
+        assert isinstance(message, Message)
+        try:
+            self._pipe.send((message, args))
+        except BrokenPipeError:
+            self._process.join()
+
+    def __del__(self):
+        self._send(Message.CLOSE)
+
+    def set_model(self, model):
+        database = model.get_database()
+        assert database.is_sorted()
+        parent      = database.get_data('Segment.parent')
+        coordinates = database.get_data('Segment.coordinates')
+        diameter    = database.get_data('Segment.diameter')
+        self._send(Message.SET_MODEL, parent, coordinates, diameter)
+
+    def set_colors(self, colors):
+        self._send(Message.SET_COLORS, colors)
+
+    def set_visible(self, visible):
+        self._send(Message.SET_VISIBLE, visible)
+
+    def set_background(self, color):
+        self._send(Message.SET_BACKGND, color)
+
+    def set_text(self, text):
+        self._send(Message.SET_TEXT, text)
+
+    def get_selected(self) -> 'Segment-Index':
+        return None
+        if self._process.stdout.poll():
+            segment_index = self.process.stdout.recv()
+            segment_index = int(segment_index)
+            return segment_index
+
 class Message(enum.Enum):
-    OPEN            = enum.auto()
-    SET_SCENE       = enum.auto()
-    SET_COLORMAP    = enum.auto()
-    SET_VALUES      = enum.auto()
+    CLOSE           = enum.auto()
+    SET_MODEL       = enum.auto()
+    SET_COLORS      = enum.auto()
     SET_VISIBLE     = enum.auto()
-    SET_BACKGROUND  = enum.auto()
-    SHOW_TEXT       = enum.auto()
-    SHOW_TIME       = enum.auto()
-    SHOW_TYPE       = enum.auto()
-    QUIT            = enum.auto()
+    SET_BACKGND     = enum.auto()
+    SET_TEXT        = enum.auto()
 
-class _Clock:
-    def __init__(self, fps):
-        self._period    = 1 / fps
-        self._prev_tick = time.time()
-
-    def tick(self):
-        t       = time.time()
-        dt      = t - self._prev_tick
-        delay   = self._period - dt
-        if delay > 0:
-            time.sleep(delay)
-            t  = time.time()
-            dt = t - self._prev_tick
-        self._prev_tick = t
-        return dt
-
-class Viewport:
-    """
-    This class opens the viewport window, embeds the rendered scene,
-    and handles the user input.
-    """
-    def __init__(self,
+class ViewportImpl:
+    def __init__(self, window_size,
                 move_speed = .02,
                 mouse_sensitivity = .001,
                 sprint_modifier = 5):
+        self.window_size    = window_size
         self.move_speed     = float(move_speed)
         self.turn_speed     = float(mouse_sensitivity)
         self.sprint_mod     = float(sprint_modifier) # Shift key move_speed multiplier.
-        self.control_queue  = queue.Queue()
-        self._coloration    = Coloration()
-        self._text_overlay  = TextOverlay()
         self._is_open       = False
         self._scene         = None
+        self._coloration    = Coloration()
+        self._text_overlay  = TextOverlay()
 
-    def _update_control(self):
-        while True:
-            try:
-                m = self.control_queue.get_nowait()
-            except queue.Empty:
-                return
-            if isinstance(m, collections.abc.Iterable):
-                m, payload = m
-            assert isinstance(m, Message)
+    def mainloop(self, pipe):
+        self._pipe = pipe
+        self._open()
+        while self._is_open:
+            self._tick()
+            self._recv_messages()
 
-            if   m == Message.OPEN:         self._open(payload)
-            elif m == Message.SET_SCENE:    self._set_scene(payload)
-            elif m == Message.SET_COLORMAP: self._coloration.set_colormap(payload)
-            elif m == Message.SET_VALUES:   self._coloration.set_segment_values(payload)
-            elif m == Message.SET_VISIBLE:  self._coloration.set_visible_segments(payload)
-            elif m == Message.SET_BACKGROUND: self._coloration.set_background_color(payload)
-            elif m == Message.SHOW_TEXT:    self._text_overlay.show_text(payload)
-            elif m == Message.SHOW_TIME:    self._text_overlay.show_time(payload)
-            elif m == Message.SHOW_TYPE:    self._text_overlay.show_type(payload)
-            elif m == Message.QUIT:         self._close()
-            else: raise NotImplementedError(m)
-
-    def _open(self, window_size):
-        if self._is_open:
-            return
+    def _open(self):
+        self._is_open = True
         self._left_click = False
-        self._is_open       = True
         # Setup pygame.
         pygame.init()
         pygame.font.init()
-        self.screen = pygame.display.set_mode(window_size, OPENGL)
+        self.screen = pygame.display.set_mode(self.window_size, OPENGL)
         self.font   = pygame.font.SysFont(None, 24)
         self.clock  = pygame.time.Clock()
         self.camera = Camera(pygame.display.get_window_size(), 45, 10e3)
 
     def _close(self):
-        if not self._is_open:
-            return
         pygame.mouse.set_visible(True)
         pygame.display.quit()
         pygame.quit()
-        self._is_open   = False
-        self._scene     = None
-        self._coloration.clear_data()
+        self._is_open = False
 
-    def is_open(self):
-        return self._is_open
+    def _recv_messages(self):
+        while self._pipe.poll():
+            m, args = self._pipe.recv()
+            if   m == Message.SET_MODEL:    self._set_model(*args)
+            elif m == Message.SET_COLORS:   self._coloration.set_colormap(*args)
+            elif m == Message.SET_VISIBLE:  self._coloration.set_visible_segments(*args)
+            elif m == Message.SET_BACKGND:  self._coloration.set_background_color(*args)
+            elif m == Message.SET_TEXT:     self._text_overlay.show_text(*args)
+            elif m == Message.CLOSE:        self._close()
+            else: raise NotImplementedError(m)
 
-    def _set_scene(self, model):
-        self._scene = Scene(model)
+    def _set_model(self, *args):
+        self._scene = Scene(*args)
         self._coloration.set_segment_values(np.zeros(self._scene.num_seg))
         self._coloration.set_visible_segments(np.arange(self._scene.num_seg))
 
-    def tick(self):
-        self._update_control()
-        if not self._is_open:
-            return
+    def _tick(self):
         dt = self.clock.tick()
         # Process queued events.
         right_click = False
@@ -142,18 +147,19 @@ class Viewport:
             self._mouse_movement(dt)
             self._keyboard_movement(dt)
         # Press right mouse button to select a segment.
-        if right_click or self._text_overlay._show_type:
+        if self._scene and (right_click or self._text_overlay._show_type):
             segment = self._scene.get_segment(self.camera, self._coloration, pygame.mouse.get_pos())
         else:
             segment = None
         # 
-        self._scene.draw(self.camera, self._coloration)
+        if self._scene:
+            self._scene.draw(self.camera, self._coloration)
         overlay = self._text_overlay._get(segment)
         self._draw_text_overlay(overlay, (40, 50))
         pygame.display.flip()
         # 
         if right_click:
-            return segment
+            print(segment)
 
     def _mouse_movement(self, dt):
         # Get the relative movement of the mouse cursor.
@@ -202,3 +208,20 @@ class Viewport:
             GL.glWindowPos2d(x, y)
             GL.glDrawPixels(width, height, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, data)
             y -= round(height * 1.10)
+
+
+class _Clock:
+    def __init__(self, fps):
+        self._period    = 1 / fps
+        self._prev_tick = time.time()
+
+    def tick(self):
+        t       = time.time()
+        dt      = t - self._prev_tick
+        delay   = self._period - dt
+        if delay > 0:
+            time.sleep(delay)
+            t  = time.time()
+            dt = t - self._prev_tick
+        self._prev_tick = t
+        return dt

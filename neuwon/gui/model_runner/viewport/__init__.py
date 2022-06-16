@@ -1,2 +1,2 @@
-from .viewport import Viewport, Message, Coloration
-__all__ = ('Viewport', 'Message', 'Coloration')
+from .viewport import ViewportAPI as Viewport
+__all__ = ('Viewport',)

@@ -5,14 +5,19 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
-from neuwon.database import Pointer
+from neuwon.database import Pointer, NULL
 from .primatives import Sphere, Cylinder
 
 class Camera:
     def __init__(self, size, fov, dist):
-        self.size    = size # Window size
-        self.fov     = fov  # Field of view
-        self.dist    = dist # Maximum view distance
+        """
+        Argument size is the window size.
+        Argument fov is the angle of the field of view.
+        Argument dist is the maximum view distance.
+        """
+        self.size    = (int(size[0]), int(size[1]))
+        self.fov     = float(fov)
+        self.dist    = float(dist)
         self.pos     = np.zeros(3)
         self.pitch   = 0.0
         self.yaw     = 0.0
@@ -50,25 +55,29 @@ class Camera:
 
 class Scene:
     """ This class generates the 3D mesh and renders it using OpenGL. """
-    def __init__(self, database, lod=2.5):
+    def __init__(self, parent, coordinates, diameter, lod=2.5):
         self._init_opengl_settings()
-        if hasattr(database, "get_database"):
-            database = database.get_database()
-        assert database.is_sorted()
-        self.Segment = database.get("Segment")
-        self.num_seg = num_seg = len(self.Segment)
         # Collect all of the 3D objects, one per segment.
-        self.objects = np.zeros(num_seg, dtype=object)
+        self.num_seg = num_seg = len(parent)
+        self.objects = objects = np.zeros(num_seg, dtype=object)
         for idx in range(num_seg):
-            seg = self.Segment.index_to_object(idx)
-            nslices = max(3, int(lod * seg.diameter))
-            if seg.is_sphere():
-                self.objects[idx] = Sphere(seg.coordinates, 0.5 * seg.diameter, nslices)
-            elif seg.is_cylinder():
-                self.objects[idx] = Cylinder(seg.coordinates, seg.parent.coordinates,
-                                        seg.diameter, nslices)
+            p       = parent[idx]
+            coords  = coordinates[idx]
+            diam    = diameter[idx]
+            nslices = max(3, int(lod * diam))
+            if p == NULL:
+                objects[idx] = Sphere(coords, 0.5 * diam, nslices)
             else:
-                raise NotImplementedError
+                p_coords = coordinates[p]
+                objects[idx] = Cylinder(coords, p_coords, diam, nslices)
+
+    def _init_opengl_settings(self):
+        glEnable(GL_DEPTH_TEST)
+        glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
+        glDisable(GL_CULL_FACE)
+        # Setup transparency for overlaying text.
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
     def compile_visible(self, visible_segments):
         """ Combine all of the visible objects into one big object. """
@@ -101,14 +110,6 @@ class Scene:
 
         # TODO: Move these arrays to the GPU now, instead of copying them at
         # render time. Use VBO's?
-
-    def _init_opengl_settings(self):
-        glEnable(GL_DEPTH_TEST)
-        glShadeModel(GL_FLAT) # Or "GL_SMOOTH"
-        glDisable(GL_CULL_FACE)
-        # Setup transparency for overlaying text.
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
     def draw(self, camera, coloration):
         camera.setup_opengl()
@@ -174,6 +175,6 @@ class Scene:
         glDisable(GL_SCISSOR_TEST)
 
         if segment_index == background:
-            return None
+            return NULL
         else:
-            return self.Segment.index_to_object(segment_index)
+            return segment_index

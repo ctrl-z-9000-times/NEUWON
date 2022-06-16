@@ -1,4 +1,4 @@
-from neuwon.gui.rotate_align import rotate_align, magnitude
+from neuwon.gui.model_runner.viewport.rotate_align import rotate_align, magnitude
 import numpy as np
 import pytest
 

@@ -5,7 +5,7 @@ from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message as M_CMD
 from .signal_generator import SignalGenerator
 from .data_recorder import DataRecorder
-from .viewport.viewport import Viewport, Coloration, Message as V_CMD
+from .viewport import Viewport
 from neuwon import Model
 from tkinter import messagebox
 import queue
@@ -20,7 +20,7 @@ class ModelRunner(OrganizerPanel):
         self.exported   = self.project.export()
         self.root       = ThemedTk()
         self.runner     = ModelThread()
-        self.viewport   = Viewport()
+        self.viewport   = Viewport(window_resolution)
         self._initialize_model()
         set_theme(self.root)
         self.root.rowconfigure(   0, weight=1)
@@ -46,8 +46,7 @@ class ModelRunner(OrganizerPanel):
         self.model.get_database().sort()
         self.runner.control_queue.put((M_CMD.INSTANCE, self.model))
         self.runner.control_queue.put((M_CMD.HEADLESS, False))
-        self.viewport.control_queue.put((V_CMD.OPEN, window_resolution))
-        self.viewport.control_queue.put((V_CMD.SET_SCENE, self.model))
+        self.viewport.set_model(self.model)
 
     def _open_viewport(self):
         if not self.viewport.is_open():
@@ -133,7 +132,7 @@ class ModelRunner(OrganizerPanel):
 
     def close(self, event=None):
         self.runner.control_queue.put(M_CMD.QUIT)
-        self.viewport.control_queue.put(V_CMD.QUIT)
+        self.viewport = None
         if event is None or event.type != tk.EventType.Destroy:
             self.root.destroy()
 
@@ -142,12 +141,13 @@ class ModelRunner(OrganizerPanel):
         #     self.runner.control_queue.put((M_CMD.HEADLESS, True))
         #     return
         start_time = time.time()
-        selected_segment = self.viewport.tick()
+        selected_segment = self.viewport.get_selected()
         render_time = 1000 * (time.time() - start_time)
         max_fps = 30
         self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
 
         if selected_segment is not None:
+            selected_segment = self.model.Segment.index_to_object(selected_segment)
             tab = self.current_tab()
             if tab == 'signal_generator':
                 self.signal_generator.create(selected_segment)
@@ -182,9 +182,9 @@ class ModelRunner(OrganizerPanel):
                 if self.current_tab() == 'data_recorder':
                     self.data_recorder.update_plot()
 
-                if self.viewport.is_open():
-                    if self.run_control.video.get_parameters()['show_time']:
-                        self.viewport.control_queue.put((V_CMD.SHOW_TIME, timestamp))
+                if self.viewport:
+                    # if self.run_control.video.get_parameters()['show_time']:
+                    #     self.viewport.control_queue.put((V_CMD.SHOW_TIME, timestamp))
                     # Normalize the render_data into the range [0,1]
                     render_data = np.array(render_data, dtype=np.float32)
                     component = self.run_control.video.get_parameters()['component']
@@ -197,7 +197,7 @@ class ModelRunner(OrganizerPanel):
                     render_data -= vmin
                     render_data /= (vmax - vmin)
                     np.nan_to_num(render_data, copy=False)
-                    self.viewport.control_queue.put((V_CMD.SET_VALUES, render_data))
+                    # self.viewport.set_colors(render_data)
                     # TODO: Read these values from the parameters & model.clock!
                     slowdown = 1000
                     dt = .1
@@ -294,20 +294,20 @@ def VideoSettings(parent, runner, viewport):
             default  = 'voltage',
             callback = set_component)
 
-    self.add_dropdown('colormap', Coloration.get_all_colormaps(),
-            default  = 'turbo',
-            callback = lambda x: viewport.control_queue.put((V_CMD.SET_COLORMAP, x)))
+    # self.add_dropdown('colormap', Coloration.get_all_colormaps(),
+    #         default  = 'turbo',
+    #         callback = lambda x: viewport.control_queue.put((V_CMD.SET_COLORMAP, x)))
 
     self.add_checkbox('show_scale', default=True)
 
-    self.add_checkbox('show_type', default=True,
-            callback= lambda x: viewport.control_queue.put((V_CMD.SHOW_TYPE, x)))
+    # self.add_checkbox('show_type', default=True,
+    #         callback= lambda x: viewport.control_queue.put((V_CMD.SHOW_TYPE, x)))
 
     self.add_checkbox('show_time', default=True)
 
     self.add_radio_buttons('background', ['Black', 'White'],
             default  = 'Black',
-            callback = lambda x: viewport.control_queue.put((V_CMD.SET_BACKGROUND, x)))
+            callback = lambda x: viewport.set_background(x))
 
     return self
 
@@ -346,7 +346,7 @@ class FilterVisible(Panel):
         neuron_types  = [nt for nt, v in self.neurons.get_parameters().items() if v]
         segment_types = [st for st, v in self.segments.get_parameters().items() if v]
         visible_segment = self.model.filter_segments_by_type(neuron_types, segment_types, _return_objects=False)
-        self.viewport.control_queue.put((V_CMD.SET_VISIBLE, visible_segment))
+        self.viewport.set_visible(visible_segment)
 
 
 if __name__ == '__main__':
