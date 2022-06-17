@@ -140,14 +140,16 @@ class ModelRunner(OrganizerPanel):
         # if not self.viewport.is_open():
         #     self.runner.control_queue.put((M_CMD.HEADLESS, True))
         #     return
-        start_time = time.time()
+        mouseover_segment = self.viewport.get_mouseover()
         selected_segment = self.viewport.get_selected()
-        render_time = 1000 * (time.time() - start_time)
+
         max_fps = 30
-        self.root.after(round(1000 / max_fps - render_time), self._viewport_tick)
+        self.root.after(round(1000 / max_fps), self._viewport_tick)
+
+        if mouseover_segment is not None:
+            print(mouseover_segment)
 
         if selected_segment is not None:
-            selected_segment = self.model.Segment.index_to_object(selected_segment)
             tab = self.current_tab()
             if tab == 'signal_generator':
                 self.signal_generator.create(selected_segment)
@@ -305,9 +307,9 @@ def VideoSettings(parent, runner, viewport):
 
     self.add_checkbox('show_time', default=True)
 
-    self.add_radio_buttons('background', ['Black', 'White'],
-            default  = 'Black',
-            callback = lambda x: viewport.set_background(x))
+    # self.add_radio_buttons('background', ['Black', 'White'],
+    #         default  = 'Black',
+    #         callback = lambda x: viewport.set_background(x))
 
     return self
 

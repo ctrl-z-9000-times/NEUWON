@@ -1,5 +1,5 @@
 from .scene import Camera, Scene
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Value
 from neuwon.database import Pointer, NULL
 from OpenGL import GL
 from pygame.locals import *
@@ -13,7 +13,8 @@ class ViewportAPI:
     def __init__(self, window_size):
         viewport = ViewportImpl(window_size)
         self._pipe, other_end = Pipe()
-        self._process = Process(target=viewport.mainloop, args=(other_end,),
+        self._mouseover = Value('Q', NULL)
+        self._process = Process(target=viewport.mainloop, args=(other_end, self._mouseover),
                                 name="Viewport")
         self._process.start()
 
@@ -34,6 +35,7 @@ class ViewportAPI:
         coordinates = database.get_data('Segment.coordinates')
         diameter    = database.get_data('Segment.diameter')
         self._send(Message.SET_MODEL, parent, coordinates, diameter)
+        self._index_to_segment = database.get_class('Segment').index_to_object
 
     def set_colors(self, colors):
         assert isinstance(colors, np.ndarray)
@@ -44,7 +46,7 @@ class ViewportAPI:
 
     def set_visible(self, visible):
         assert isinstance(visible, np.ndarray)
-        assert visible.dtype == Pointer
+        assert visible.dtype in (Pointer, np.int64)
         assert visible.ndim == 1
         self._send(Message.SET_VISIBLE, visible)
 
@@ -57,13 +59,12 @@ class ViewportAPI:
         assert isinstance(text, str)
         self._send(Message.SET_TEXT, text)
 
-    def get_selected(self) -> 'Segment-Index':
-        # TODO!
-        return NULL
-        if self._process.stdout.poll():
-            segment_index = self.process.stdout.recv()
-            segment_index = int(segment_index)
-            return segment_index
+    def get_mouseover(self) -> 'Segment':
+        return self._index_to_segment(self._mouseover.value)
+
+    def get_selected(self) -> 'Segment':
+        selected = self._pipe.recv() if self._pipe.poll() else None
+        return self._index_to_segment(selected)
 
 class Message(enum.Enum):
     SET_MODEL       = enum.auto()
@@ -75,11 +76,11 @@ class Message(enum.Enum):
 
 class ViewportImpl:
     def __init__(self, window_size,
-                move_speed = .02,
+                move_speed: 'microns/second' = 50,
                 mouse_sensitivity = .001,
                 sprint_modifier = 5):
         self.window_size    = window_size
-        self.move_speed     = float(move_speed)
+        self.move_speed     = float(move_speed) / 1000
         self.turn_speed     = float(mouse_sensitivity)
         self.sprint_mod     = float(sprint_modifier) # Shift key move_speed multiplier.
         self._is_open       = False
@@ -88,8 +89,9 @@ class ViewportImpl:
         self._backgnd       = (0.0, 0.0, 0.0)
         self._text          = ""
 
-    def mainloop(self, pipe):
-        self._pipe = pipe
+    def mainloop(self, pipe, mouseover):
+        self._pipe      = pipe
+        self._mouseover = mouseover
         self._open()
         while self._is_open:
             if self._scene:
@@ -158,14 +160,14 @@ class ViewportImpl:
             self._keyboard_movement(dt)
         # Press right mouse button to select a segment.
         segment = self._scene.get_segment(self.camera, pygame.mouse.get_pos())
-        # 
+        self._mouseover.value = segment
+        if right_click:
+            self._pipe.send(segment)
+        # Render the next frame.
         if self._scene:
             self._scene.draw(self.camera, self._colors, self._backgnd)
         self._draw_text_overlay(self._text, (40, 50))
         pygame.display.flip()
-        # 
-        if right_click:
-            print(segment)
 
     def _mouse_movement(self, dt):
         # Get the relative movement of the mouse cursor.
