@@ -221,11 +221,22 @@ class Database:
         for db_class in reversed(self._sort_order):
             db_class._sort()
 
-    def save_sqlite3(self, filename):
-        save_sqlite3(self, filename)
+    def save_sqlite(self, filename):
+        """ Save this Database to an SQLite database.
 
-    def load_sqlite3(self, filename):
-        load_sqlite3(self, filename)
+        Argument filename will be overwritten!
+        """
+        save_sqlite(self, filename)
+
+    def load_sqlite(self, filename):
+        """ Load an SQLite database into this Database.
+
+        This Database and the given database must have identical schema.
+
+        The contents of the given file are appended to this Database
+        and the current contents of this Database are retained (not modified).
+        """
+        load_sqlite(self, filename)
 
     def check(self, name:str=None):
         """ Run all configured checks on the database.
@@ -644,4 +655,4 @@ Database.add_class.__doc__ = DB_Class.__init__.__doc__
 from .data_components import (DataComponent, ClassAttribute, Attribute,
                               SparseMatrix, ConnectivityMatrix)
 from .compute import Compute
-from .sql import save_sqlite3, load_sqlite3
+from .sql import save_sqlite, load_sqlite

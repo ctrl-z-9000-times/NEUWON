@@ -16,7 +16,7 @@ def schema(database) -> str:
                 continue
             dtype = db_component.dtype
             if db_component.is_reference():
-                raise NotImplementedError
+                raise NotImplementedError # TODO: References.
             elif dtype == np.float32:   sql_dtype = 'FLOAT'
             elif dtype == np.float64:   sql_dtype = 'REAL'
             elif dtype == np.bool_:     sql_dtype = 'BOOLEAN'

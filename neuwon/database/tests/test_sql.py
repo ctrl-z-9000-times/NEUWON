@@ -15,6 +15,7 @@ all_dtypes = {
         'h': np.dtype('u4'),
         'i': np.dtype('i8'),
         'j': np.dtype('u8'),
+        'h': np.dtype('b'),
 }
 
 def make_model(db):
@@ -43,29 +44,29 @@ def test_sql():
 
     db = Database()
     Foobar = make_model(db)
-    db.save_sqlite3(db_filename)
-    db.load_sqlite3(db_filename)
+    db.save_sqlite(db_filename)
+    db.load_sqlite(db_filename)
     # Re-create the same model and make sure it can load the saved data.
     db = Database()
     Foobar = make_model(db)
-    db.load_sqlite3(db_filename)
+    db.load_sqlite(db_filename)
     # Add data to the database and save it.
     for _ in range(10):
         x = Foobar()
-    db.save_sqlite3(db_filename)
+    db.save_sqlite(db_filename)
     # Re-create the same model and make sure it can load the saved data.
     db2 = Database()
     Foobar2 = make_model(db2)
-    db2.load_sqlite3(db_filename)
+    db2.load_sqlite(db_filename)
     assert len(Foobar.get_database_class()) == 10
     Foobar  = Foobar.get_database_class()
     Foobar2 = Foobar2.get_database_class()
     for name in all_dtypes.keys():
         assert all(Foobar.get_data(name) == Foobar2.get_data(name))
     # Check that loading appends to database, not overwriting it.
-    db.load_sqlite3(db_filename)
+    db.load_sqlite(db_filename)
     assert len(Foobar) == 20
-    db2.load_sqlite3(db_filename)
+    db2.load_sqlite(db_filename)
     assert len(Foobar2) == 20
 
     os.remove(db_filename)
