@@ -2,70 +2,102 @@
 
 from .data_components import *
 from .dtypes import *
+from collections.abc import Iterable
 import numpy as np
 import sqlite3
 import struct
 
-def schema(database) -> str:
+def _numpy_to_sql_dtype(dtype):
+    if   dtype == np.bool_:     return 'BOOLEAN'
+    elif dtype == np.int8:      return 'SMALLINT'
+    elif dtype == np.uint8:     return 'SMALLINT'
+    elif dtype == np.int16:     return 'MEDIUMINT'
+    elif dtype == np.uint16:    return 'MEDIUMINT'
+    elif dtype == np.int32:     return 'INT'
+    elif dtype == np.uint32:    return 'INT'
+    elif dtype == np.int64:     return 'BIGINT'
+    elif dtype == np.uint64:    return 'BIGINT'
+    elif dtype == np.float32:   return 'FLOAT'
+    elif dtype == np.float64:   return 'REAL'
+    else: raise NotImplementedError(dtype)
+
+def _make_column(attribute):
+    name        = attribute.get_name()
+    sql_type    = _numpy_to_sql_dtype(attribute.get_dtype())
+    column_spec = f'{name} {sql_type}'
+    assert attribute.get_shape() == (1,) # TODO!
+    if attribute.is_reference():
+        column_spec += f' REFERENCES {attribute.reference}(_idx)'
+        if not attribute.allow_invalid:
+            column_spec += ' NOT NULL'
+    else:
+        default = attribute.get_initial_value()
+        if default is not None and not isinstance(default, Iterable):
+            column_spec += f' DEFAULT {default}'
+        else:
+            column_spec += ' NOT NULL'
+        # 
+        min_, max_ = attribute.get_valid_range()
+        if min_ is not None and max_ is not None:
+            column_spec += f' CHECK ({attr} >= {min_} & {attr} <= {max_})'
+        elif min_ is not None:
+            column_spec += f' CHECK ({attr} >= {min_})'
+        elif max_ is not None:
+            column_spec += f' CHECK ({attr} <= {max_})'
+        if not attribute.allow_invalid:
+            pass # TODO: Check for NaN's.
+    return column_spec
+
+def sqlite3_schema(database) -> str:
     tables = []
-    # Create tables for every class to store its attributes.
+    # Create two tables for every class to store its instances and class-attributes.
     for db_class in database.get_all_classes():
-        columns = []
+        cls_name        = db_class.get_name()
+        inst_columns    = [f'_idx {_numpy_to_sql_dtype(Pointer)} NOT NULL']
+        cls_columns     = []
         for db_component in db_class.get_all_components():
-            if not isinstance(db_component, Attribute):
-                continue
-            dtype = db_component.dtype
-            if db_component.is_reference():
-                raise NotImplementedError # TODO: References.
-            elif dtype == np.float32:   sql_dtype = 'FLOAT'
-            elif dtype == np.float64:   sql_dtype = 'REAL'
-            elif dtype == np.bool_:     sql_dtype = 'BOOLEAN'
-            elif dtype == np.int8:      sql_dtype = 'SMALLINT'
-            elif dtype == np.uint8:     sql_dtype = 'SMALLINT'
-            elif dtype == np.int16:     sql_dtype = 'MEDIUMINT'
-            elif dtype == np.uint16:    sql_dtype = 'MEDIUMINT'
-            elif dtype == np.int32:     sql_dtype = 'INT'
-            elif dtype == np.uint32:    sql_dtype = 'INT'
-            elif dtype == np.int64:     sql_dtype = 'BIGINT'
-            elif dtype == np.uint64:    sql_dtype = 'BIGINT'
-            else: raise NotImplementedError(dtype)
-            columns.append(f'{db_component.get_name()} {sql_dtype}')
-        columns = ', '.join(columns)
-        tables.append(f'CREATE TABLE {db_class.get_name()} ({columns});')
-    # Create one table for all class attributes.
-    for db_class in database.get_all_classes():
-        for db_component in db_class.get_all_components():
-            if not isinstance(db_component, ClassAttribute):
-                continue
-            raise NotImplementedError
-    # TODO: How to deal with sparse matrices?
+            specification = _make_column(db_component)
+            if isinstance(db_component, Attribute):
+                inst_columns.append(specification)
+            elif isinstance(db_component, ClassAttribute):
+                cls_columns.append(specification)
+        inst_columns.append('PRIMARY KEY (_idx)')
+        inst_columns = ', '.join(inst_columns)
+        tables.append(f'CREATE TABLE {cls_name} ({inst_columns});')
+        if cls_columns:
+            cls_columns = ', '.join(cls_columns)
+            tables.append(f'CREATE TABLE {cls_name}_cls_attrs ({cls_columns});')
+    # Create a join table for every sparse matrix.
     for db_class in database.get_all_classes():
         for db_component in db_class.get_all_components():
             if not isinstance(db_component, SparseMatrix):
                 continue
-            raise NotImplementedError
-    return tables
+            raise NotImplementedError # TODO: matrices
+    return '\n'.join(tables)
 
-def save_sqlite3(database, filename):
+def sqlite3_save(database, filename):
     database.sort()
     open(filename, 'w').close() # Truncate the file.
     con = sqlite3.connect(filename)
     cur = con.cursor()
-    cur.executescript('\n'.join(schema(database)))
+    print(sqlite3_schema(database))
+    cur.executescript(sqlite3_schema(database))
 
     for db_class in database.get_all_classes():
-        attributes   = [x for x in db_class.get_all_components() if isinstance(x, Attribute)]
-        attrs_list   = ', '.join(x.get_name() for x in attributes)
-        placeholders = ', '.join(['?'] * len(attributes))
-        sql = f"INSERT INTO {db_class.get_name()}({attrs_list}) VALUES ({placeholders})"
-        for inst in db_class.get_all_instances():
-            attrs_values = tuple(getattr(inst, x.get_name()) for x in attributes)
+        attributes = [x.get_name() for x in db_class.get_all_components() if isinstance(x, Attribute)]
+        columns = ', '.join(attributes)
+        columns = ', '.join((columns, '_idx'))
+        placeholders = ', '.join('?' for _ in range(len(attributes) + 1))
+        sql = f"INSERT INTO {db_class.get_name()}({columns}) VALUES ({placeholders})"
+        for idx, inst in enumerate(db_class.get_all_instances()):
+            attrs_values = [getattr(inst, x) for x in attributes]
+            attrs_values.append(idx)
             cur.execute(sql, attrs_values);
 
     con.commit()
     con.close()
 
-def load_sqlite3(database, filename):
+def sqlite3_load(database, filename):
     con = sqlite3.connect(filename)
     cur = con.cursor()
     for db_class in database.get_all_classes():
@@ -79,6 +111,9 @@ def load_sqlite3(database, filename):
                 dtype = component.get_dtype()
 
                 # print(component.name, dtype, data)
+
+                if component.is_reference():
+                    raise NotImplementedError
 
                 if dtype.kind == 'u':
                     data = [int.from_bytes(x, 'little', signed=False) for (x,) in data]

@@ -226,7 +226,7 @@ class Database:
 
         Argument filename will be overwritten!
         """
-        save_sqlite(self, filename)
+        sqlite3_save(self, filename)
 
     def load_sqlite(self, filename):
         """ Load an SQLite database into this Database.
@@ -236,7 +236,7 @@ class Database:
         The contents of the given file are appended to this Database
         and the current contents of this Database are retained (not modified).
         """
-        load_sqlite(self, filename)
+        sqlite3_load(self, filename)
 
     def check(self, name:str=None):
         """ Run all configured checks on the database.
@@ -655,4 +655,4 @@ Database.add_class.__doc__ = DB_Class.__init__.__doc__
 from .data_components import (DataComponent, ClassAttribute, Attribute,
                               SparseMatrix, ConnectivityMatrix)
 from .compute import Compute
-from .sql import save_sqlite, load_sqlite
+from .sql import sqlite3_save, sqlite3_load
