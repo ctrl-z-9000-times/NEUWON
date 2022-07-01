@@ -1,0 +1,170 @@
+@import "colors.css";
+@import "fonts.css";
+
+/* Document wide default settings */
+html {
+  --pad: 7px;
+  --pad2: calc(2 * var(--pad));
+}
+
+body {
+  display: inline-block;
+  background-color: var(--bg2);
+  padding: var(--pad);
+  border: 2px solid;
+}
+
+button, select {
+  color: var(--bold);
+  background-color: var(--bg1);
+  border: 1px solid var(--txt);
+  border-radius: 0px;
+}
+button:hover, select:hover {
+  background-color: var(--hvr);
+}
+
+input {
+  color: var(--txt);
+  background-color: var(--bg2);
+  border-color: var(--txt);
+}
+input:disabled {
+  background-color: #DDD;
+}
+input[type="number"], input[type="range"] {
+  width: 23ch;
+}
+input:focus {
+  z-index: 99;
+}
+
+/* Main Menu */
+.menu-bar {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  gap: var(--pad);
+  margin: var(--pad);
+}
+.menu-btn {
+  border-radius: 3px;
+}
+h1 {
+  grid-row-start: 1;
+  grid-row-end: 3;
+  grid-column: 4;
+  position: relative;
+  left: 100px;
+}
+
+/* Tabs */
+.tablinks {
+  border: 1px solid var(--txt);
+  border-radius: 10px 10px 0 0;
+  border-bottom: 0;
+  background-color: var(--bg1);
+  padding: var(--pad) var(--pad2);
+  margin-top: var(--pad);
+  font-size: var(--font-lg);
+}
+.tablinks.active {
+  background-color: var(--act);
+}
+.tablinks:hover {
+  background-color: var(--hvr);
+}
+.tabcontent {
+  padding: var(--pad);
+  padding-top: var(--pad2);
+  border: 1px solid var(--txt);
+  min-height: 100px;
+  display: none;
+}
+.tabcontent.active {
+  display: block;
+}
+
+/* Selector Panels */
+.selector-box {
+  display: inline-grid;
+  float: left;
+  margin-right: var(--pad);
+  margin-bottom: var(--pad);
+  grid-template-columns: max-content max-content;
+  grid-auto-rows: minmax(4ex, auto);
+  width: fit-content;
+  height: fit-content;
+  border: 1px solid var(--txt);
+}
+.selector-box > * {
+  border: 1px solid var(--txt);
+}
+.selector-box > label:first-child {
+  padding: var(--pad);
+  grid-column: 1 / 3;
+  text-align: center;
+  font-size: var(--font-lg);
+  color: var(--bold);
+}
+.selector-box > label:not(:first-child) {
+  display: flex;
+  align-items: center;
+  padding-left: var(--pad);
+}
+.selector-box > button, .selector-box > select {
+  min-width: 11em;
+}
+.input-name {
+  grid-column: 1 / 3;
+  text-align: center;
+}
+.selector-list {
+  display: grid;
+  grid-column: 1 / 3;
+  grid-auto-columns: auto;
+}
+.selector-list-btn {
+  border-style: none;
+  background: var(--bg2);
+  width: 100%;
+  text-align: left;
+}
+.selector-list-btn.selected {
+  background: var(--bg1);
+}
+
+/* Settings Panels */
+.settings-grid {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  row-gap: var(--pad);
+  column-gap: var(--pad2);
+  padding-bottom: var(--pad);
+}
+.settings-grid > label {
+  display: contents;
+}
+.spancol {
+  grid-column: 1 / 3;
+}
+.custom_invalid, input[data-strict-step]:invalid, select:invalid {
+  border: 4px solid red;
+  border-radius: 2px;
+}
+fieldset {
+  border: 2px solid var(--txt);
+}
+
+/* Display Mechanism Source Files */
+.code {
+  font-family: Consolas,"courier new";
+  color: black;
+  background-color: lightgrey;
+}
+.code-bg {
+  background-color: lightgrey;
+  padding: var(--pad);
+  margin-bottom: var(--pad);
+  padding-top: 0px;
+  border: 1px solid;
+}

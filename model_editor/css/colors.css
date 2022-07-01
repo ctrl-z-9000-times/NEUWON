@@ -1,0 +1,32 @@
+/* Light mode, default color scheme */
+html {
+  --bg3:  hsl(40, 100%, 97%);
+  --bg2:  hsl(36, 100%, 90%);
+  --bg1:  hsl(35, 100%, 83%);
+  --hvr:  hsl(34,  44%, 69%);
+  --act:  hsl(43,  89%, 38%);
+  --txt:  hsl( 0, 100%, 15%);
+  --bold: hsl( 0, 100%, 25%);
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    --hue: 120; /* green */
+
+    --bg3:  hsl(0, 0%,  0%);
+    --bg2:  hsl(0, 0%,  0%);
+    --bg1:  hsl(0, 0%, 20%);
+    --act:  hsl(0, 0%, 30%);
+    --hvr:  hsl(0, 0%, 40%);
+    --txt:  hsl(var(--hue), 100%, 50%);
+    --bold: hsl(var(--hue), 100%, 50%);
+  }
+}
+
+html {
+  color: var(--txt);
+  background-color: var(--bg3);
+}
+h1, h2, h3, a {
+  color: var(--bold);
+}
