@@ -333,6 +333,9 @@ class DB_Class(Documentation):
         if users_class:
             assert isinstance(users_class, type)
             for cls in users_class.mro()[:-1]:
+                # Note: this could add "__slots__ = ()" to the users class but chooses not to.
+                # It would magically alter the semantics of the users class behind their back.
+                # This way forces them to accept the required semantics up front.
                 if "__slots__" not in vars(cls):
                     raise TypeError(f"Class \"{cls.__name__}\" does not define \"__slots__ = ()\"!")
                 if len(cls.__slots__) != 0:

@@ -1,33 +1,53 @@
 from collections.abc import Iterable, Mapping, Hashable
 from .electric import Electric
 from .geometry import Geometry
-from .tree     import Tree
 from ..mechanisms import Mechanism
 from neuwon.database import Real, epsilon, Pointer, NULL, Compute
 import numpy as np
 
-class Segment(Tree, Geometry, Electric):
+class Segment(Geometry, Electric):
     """ """
     __slots__ = ()
     @staticmethod
     def _initialize(database, **electric_arguments):
-        Tree._initialize(database)
+        db_class = database.get_class('Segment')
+        inst_cls = db_class.get_instance_type()
+        db_class.add_attribute("parent", dtype=db_class, allow_invalid=True,
+                doc="Segments are organized in a tree.")
+        db_class.add_connectivity_matrix("children", db_class,
+                doc="Segments are organized in a tree.")
         Geometry._initialize(database)
         Electric._initialize(database, **electric_arguments)
         # Add type information.
-        segment_data = database.get_class('Segment')
-        segment_data.add_attribute('segment_type_id', NULL, dtype=Pointer) # TODO: Document what this is and how to use it.
-        segment_cls = segment_data.get_instance_type()
-        segment_cls.segment_types_list = []
-        return segment_cls
+        db_class.add_attribute('segment_type_id', NULL, dtype=Pointer,
+                doc="Index into the segment_types_list")
+        inst_cls.segment_types_list = []
+        return inst_cls
 
     def __init__(self, parent, coordinates, diameter, *, segment_type=None):
         self.segment_type = segment_type
-        Tree.__init__(self, parent)
+        self.parent = parent
+        # Add ourselves to the parent's children list.
+        parent = self.parent
+        if parent is not None:
+            siblings = parent.children
+            siblings.append(self)
+            parent.children = siblings
         Geometry.__init__(self, coordinates, diameter)
         Electric.__init__(self)
         if self.parent is not None:
             self.neuron = self.parent.neuron
+
+    @Compute
+    def is_root(self) -> bool:
+        return self.parent == NULL
+
+    def set_diameter(self, new_diameter):
+        self.diameter = new_diameter
+        Electric.__init__(self)
+        self._compute_surface_area()
+        self._compute_cross_sectional_area()
+        self._compute_intracellular_volume()
 
     @property
     def segment_type(self):
