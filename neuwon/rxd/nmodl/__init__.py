@@ -435,18 +435,19 @@ class NMODL(Mechanism):
     @staticmethod
     def _instance__init__(self, segment, magnitude=1.0, *other_mechanisms, outside=None):
         """ Insert this mechanism onto the given segment. """
+        cls = type(self)
         self.segment = segment
-        if self._point_process:
+        if cls._point_process:
             self.magnitude = magnitude
         else:
             self.magnitude = magnitude * segment.surface_area
-        if self._outside:
+        if cls._outside:
             if outside is not None:
                 self.outside = outside
             else:
                 self.outside = segment.outside
-        assert len(self._other_mechanisms) == len(other_mechanisms)
-        for name, ref in zip(self._other_mechanisms, other_mechanisms):
+        assert len(cls._other_mechanisms) == len(other_mechanisms)
+        for name, ref in zip(cls._other_mechanisms, other_mechanisms):
             setattr(self, name, ref)
 
 class ParameterTable(dict):
