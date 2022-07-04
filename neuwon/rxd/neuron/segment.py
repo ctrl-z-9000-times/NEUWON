@@ -134,9 +134,6 @@ class Segment(Geometry, Electric):
             raise ValueError(f'Expected dictionary, not "{type(mechanisms)}"')
         if outside is None:
             outside = self.outside
-        kwargs = {
-                'outside': outside,
-        }
         # Setup and get ready for recusion.
         all_mechanisms = type(self)._model.mechanisms
         dependencies = all_mechanisms._local_dependencies
@@ -154,7 +151,7 @@ class Segment(Geometry, Electric):
             assert issubclass(mechanism_class, Mechanism) and not mechanism_class.omnipresent
             other_mechanisms = dependencies[mechanism_name]
             other_mechanisms = (insert_recusive(x) for x in other_mechanisms)
-            mechanism = mechanism_class(self, magnitude, *other_mechanisms, **kwargs)
+            mechanism = mechanism_class(self, outside, magnitude, *other_mechanisms)
             instances[mechanism_name] = mechanism
             return mechanism
         # 

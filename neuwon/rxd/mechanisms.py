@@ -9,9 +9,9 @@ class Mechanism:
     Mechanisms can be inserted onto segments and can interact with other
     Mechanisms which are inserted onto the same segment.
 
-    Use the "omnipresent" class attribute to specify mechanisms which exist
+    Use the "omnipresent" class attribute to specify that the mechanism exists
     everywhere throughout the model. These mechanisms can only interact with
-    other omnipresent entities, and they will not be inserted into any specific
+    other omnipresent entities, and they can not be inserted into any specific
     place in the model.
     """
     __slots__ = ()
@@ -19,15 +19,14 @@ class Mechanism:
     omnipresent = False
 
     @classmethod
-    def get_parameters(cls) -> {}:
-        """ Define the parameters for the graphical user interface. """
-        return {}
+    def get_name(cls) -> str:
+        raise NotImplementedError(cls)
 
     @classmethod
-    def initialize(cls, model, mechanism_name:str, **parameters) -> 'Mechanism':
+    def initialize(cls, model) -> 'Mechanism':
         """ Method to setup this mechanism.
 
-        Returns a "Mechanism" subclass which implements this mechanism.
+        Optionally returns a new "Mechanism" subclass to implement this mechanism.
         """
         pass
 
@@ -41,7 +40,7 @@ class Mechanism:
         """
         return []
 
-    def __init__(self, segment, magnitude, *other_mechanisms, outside):
+    def __init__(self, segment, outside, magnitude, *other_mechanisms):
         """
         Inserts a new instance of this Mechanism.
 
@@ -52,46 +51,46 @@ class Mechanism:
 
     @classmethod
     def advance(cls):
-        """ Advance this mechanism. """
+        """ Advance the state of all instances of this mechanism. """
         raise NotImplementedError(cls)
 
-class MechanismsFactory(dict):
-    def __init__(self, model, parameters:dict):
+class _MechanismsFactory(dict):
+    def __init__(self, model, parameters:list):
         super().__init__()
         self._model = model
         self._local_dependencies = {}
-        self.add_parameters(parameters)
+        for mechanism in parameters:
+            self._load_mechanism(mechanism)
 
-    def add_parameters(self, parameters:dict) -> '[Mechanism]':
-        new_mechanisms = []
-        for name, mechanism in parameters.items():
-            if isinstance(mechanism, Iterable):
-                mechanism, parameters = mechanism
-            else:
-                parameters = {}
-            self.add_mechanism(name, mechanism, parameters)
-
-    def add_mechanism(self, name, mechanism, parameters={}) -> 'Mechanism':
-        """ """
-        # Unpack the specification & parameters.
-        name = str(name)
-        assert name not in self
-        # Load the Mechanism class.
-        if isinstance(mechanism, str):
-            if mechanism.endswith(".mod"):
-                mechanism = neuwon.rxd.nmodl.NMODL(mechanism)
-            elif mechanism.endswith(".py"):
-                mechanism = import_python_mechanism(mechanism)
+    def _load_mechanism(self, mechanism_file):
+        if isinstance(mechanism_file, str):
+            if mechanism_file.endswith(".mod"):
+                x = neuwon.rxd.nmodl.NMODL(mechanism_file)
+                self._add_mechanism(x)
+            elif mechanism_file.endswith(".py"):
+                for x in _import_python_mechanisms(mechanism_file):
+                    self._add_mechanism(x)
             else:
                 raise ValueError("File extension not understood")
+        else:
+            self._add_mechanism(mechanism_file) # Developers API.
+
+    def _add_mechanism(self, mechanism):
+        """ """
         assert (isinstance(mechanism, Mechanism) or
                 (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
+        name = str(mechanism.get_name())
+        assert name not in self
         # Initialize the mechanism.
-        mechanism = mechanism.initialize(self._model, name, **parameters)
-        assert (isinstance(mechanism, Mechanism) or
-                (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
+        retval = mechanism.initialize(self._model)
+        if retval is not None:
+            mechanism = retval
         # 
-        if not mechanism.omnipresent:
+        if mechanism.omnipresent:
+            assert (isinstance(mechanism, Mechanism) or
+                    (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
+        else:
+            assert isinstance(mechanism, type) and issubclass(mechanism, Mechanism)
             dependencies = mechanism.other_mechanisms()
             if isinstance(dependencies, str):
                 self._local_dependencies[name] = (dependencies,)
@@ -99,16 +98,17 @@ class MechanismsFactory(dict):
                 self._local_dependencies[name] = tuple(str(x) for x in dependencies)
         # 
         self[name] = mechanism
-        return mechanism
 
-def import_python_mechanism(filename):
+def _import_python_mechanisms(filename):
     assert filename.endswith(".py")
     with open(filename, 'rt') as f:
         src = f.read()
     globals_ = {}
     exec(src, globals_)
+    mechanisms = []
     for x in globals_.values():
         if isinstance(x, type) and issubclass(x, Mechanism) and (x is not Mechanism):
-            return x
+            mechanisms.append(x)
+    return mechanisms
 
 import neuwon.rxd.nmodl # Import namespace after defining the Mechanisms API to prevent circular dependency.

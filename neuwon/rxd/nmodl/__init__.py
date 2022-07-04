@@ -32,8 +32,8 @@ class NMODL(Mechanism):
             try:
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
-                self.nmodl_name, self.point_process,  self.title, self.description = parser.gather_documentation()
-                self.parameters = ParameterTable(parser.gather_parameters(), self.nmodl_name)
+                self.name, self.point_process,  self.title, self.description = parser.gather_documentation()
+                self.parameters = ParameterTable(parser.gather_parameters(), self.name)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
                 self.all_blocks = list(blocks.values())
@@ -48,15 +48,13 @@ class NMODL(Mechanism):
                 raise
             cache.save(self.filename, self)
 
-    def initialize(self, rxd_model, name, **parameters):
+    def initialize(self, rxd_model):
         try:
             database = rxd_model.get_database()
             builtin_parameters = {
                     "dt":       rxd_model.get_time_step(),
                     "celsius":  rxd_model.get_temperature(),
             }
-            self.name = str(name)
-            self.parameters.update(parameters, strict=True)
             self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
             self.parameters.update(builtin_parameters, strict=True, override=False)
             self._run_initial_block(database)
@@ -68,11 +66,14 @@ class NMODL(Mechanism):
             for (ion, e_variable) in self.nonspecific_conductances.items():
                 e, e_units = self.parameters[e_variable]
                 if e_units is not None: assert e_units.lower() == 'mv'
-                rxd_model.species.add_nonspecific_conductance(ion, cls, e)
+                rxd_model.register_nonspecific_conductance(cls, ion, e)
             return cls
         except Exception:
             print("ERROR while loading file", self.filename, flush=True)
             raise
+
+    def get_name(self):
+        return self.name
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -408,6 +409,7 @@ class NMODL(Mechanism):
         mechanism_superclass = type(self.name, (NmodlMechanism,), {
             '__doc__':              self.title + "\n\n" + self.description,
             '__slots__':            (),
+            'name':                 self.name,
             '__init__':             NMODL._instance__init__,
             '_point_process':       self.point_process,
             '_outside':             self.outside,
@@ -433,7 +435,7 @@ class NMODL(Mechanism):
         return mech_data.get_instance_type()
 
     @staticmethod
-    def _instance__init__(self, segment, magnitude=1.0, *other_mechanisms, outside=None):
+    def _instance__init__(self, segment, outside=None, magnitude=1.0, *other_mechanisms):
         """ Insert this mechanism onto the given segment. """
         cls = type(self)
         self.segment = segment
@@ -524,6 +526,9 @@ class ParameterTable(dict):
 
 class NmodlMechanism(Mechanism):
     __slots__ = ()
+    @classmethod
+    def get_name(cls):
+        return cls.name
     @classmethod
     def other_mechanisms(cls):
         return cls._other_mechanisms

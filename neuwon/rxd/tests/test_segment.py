@@ -50,9 +50,7 @@ def test_swc():
 
 def test_insert_smoke_test():
     my_model = RxD_Model(
-        mechanisms= {
-            'hh': ('./nmodl_library/artificial/hh.mod', {}),
-        },)
+            mechanisms= ['./nmodl_library/artificial/hh.mod',])
     my_neuron   = my_model.Neuron([0,0,0], 10)
     my_root     = my_neuron.root
     my_segments = my_root.add_section([100,0,0], 3, maximum_segment_length=10)
@@ -72,15 +70,15 @@ def test_insert_interacting_mechanisms():
     my_model = RxD_Model(
         time_step = 0.1,
         temperature = 6.3,
-        mechanisms = {
-            'hh':    ('./nmodl_library/artificial/hh.mod', {}),
-            'local': ('./neuwon/rxd/tests/local.mod', {}),
-        },
-        species = {
-            'na': {'reversal_potential': +60,},
-            'k': {'reversal_potential': -88,},
-            'l': {'reversal_potential': -54.3,},
-        },)
+        mechanisms = [
+                './nmodl_library/artificial/hh.mod',
+                './neuwon/rxd/tests/local.mod',
+        ],
+        species = [
+                {'name': 'na', 'reversal_potential': +60,},
+                {'name': 'k',  'reversal_potential': -88,},
+                {'name': 'l',  'reversal_potential': -54.3,},
+        ],)
     my_neuron   = my_model.Neuron([0,0,0], 10)
     my_root     = my_neuron.root
     instances   = my_root.insert({'hh': 1, 'local': 1})

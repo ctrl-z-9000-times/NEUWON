@@ -1,7 +1,7 @@
 from neuwon.database import Database, Clock
 from neuwon.rxd.neuron import Neuron
 from neuwon.rxd.extracellular import Extracellular
-from neuwon.rxd.mechanisms import MechanismsFactory
+from neuwon.rxd.mechanisms import _MechanismsFactory
 from neuwon.rxd.species import _SpeciesFactory, _NonspecificConductance
 import numpy as np
 
@@ -14,7 +14,7 @@ class RxD_Model:
                 extracellular_tortuosity = 1.55,
                 extracellular_max_distance: 'μm' = 20e-6,
                 species=[],
-                mechanisms={},):
+                mechanisms=[],):
         """ """
         self.time_step      = float(time_step)
         self.temperature    = float(temperature)
@@ -32,9 +32,9 @@ class RxD_Model:
                 tortuosity       = extracellular_tortuosity,
                 maximum_distance = extracellular_max_distance,)
         self.species = _SpeciesFactory(species, db, self.input_hook, self.temperature)
-        self.mechanisms = MechanismsFactory(self, mechanisms)
+        self.mechanisms = _MechanismsFactory(self, mechanisms)
 
-    def get_temperature(self) -> float: return self.temperature
+    def get_temperature(self) -> '°C':  return self.temperature
     def get_clock(self):                return self.clock
     def get_database(self):             return self.database
     def get_Extracellular(self):        return self.Extracellular
@@ -42,11 +42,12 @@ class RxD_Model:
     def get_Neuron(self):               return self.Neuron
     def get_Segment(self):              return self.Segment
     def get_species(self) -> dict:      return dict(self.species)
-    def get_time_step(self) -> float:   return self.time_step
+    def get_time_step(self) -> 'ms':    return self.time_step
 
     def register_input_callback(self, function: 'f() -> bool'):
         """ """
         self.input_hook.register_callback(function)
+
     def register_advance_callback(self, function: 'f() -> bool'):
         """ """
         self.advance_hook.register_callback(function)

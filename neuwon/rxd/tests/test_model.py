@@ -37,9 +37,9 @@ def test_model_hh(debug=False, measure_correct=False):
     if not measure_correct:
         dt *= 10 # Run faster with larger `dt`.
     m = RxD_Model(time_step = dt, temperature = 6.3,
-            mechanisms = {
-                'hh': NMODL("./nmodl_library/artificial/hh.mod", use_cache=False)
-            })
+            mechanisms = [
+                NMODL("./nmodl_library/artificial/hh.mod", use_cache=False)
+            ])
     hh = m.mechanisms['hh']
     print(hh._advance_pycode)
     print('Initial Values:')
