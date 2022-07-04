@@ -1,6 +1,6 @@
 from neuwon.database import Database, Clock
 from neuwon.rxd.neuron import Neuron as NeuronSuperclass
-from neuwon.rxd.species import SpeciesInstance, SpeciesFactory
+from neuwon.rxd.species import _SpeciesInstance
 from neuwon.rxd.rxd_model import RxD_Model
 import pytest
 import math
@@ -11,19 +11,19 @@ def test_instances():
     dt = .1
     Loc = db.add_class('Location')
 
-    const = SpeciesInstance(dt, Loc, 'const',
+    const = _SpeciesInstance(dt, Loc, 'const',
                 initial_concentration   = 1.11,
                 global_constant         = True,
                 decay_period            = math.inf,
                 diffusivity             = 0,
                 geometry_component      = None,)
-    na  = SpeciesInstance(dt, Loc, 'na',
+    na  = _SpeciesInstance(dt, Loc, 'na',
                 initial_concentration   = 3,
                 global_constant         = False,
                 decay_period            = math.inf,
                 diffusivity             = 0,
                 geometry_component      = None,)
-    glu = SpeciesInstance(dt, Loc, 'glu',
+    glu = _SpeciesInstance(dt, Loc, 'glu',
                 initial_concentration   = 1,
                 global_constant         = False,
                 decay_period            = 3,
@@ -67,7 +67,7 @@ def test_diffusion_simple():
     Loc = db.add_class('Location')
     Loc.add_sparse_matrix('x', Loc, doc='xarea/dist')
 
-    species = SpeciesInstance(dt, Loc, 'species', 2, diffusivity=6, geometry_component='x')
+    species = _SpeciesInstance(dt, Loc, 'species', 2, diffusivity=6, geometry_component='x')
 
     Loc = Loc.get_instance_type()
     l1  = Loc()
@@ -90,38 +90,37 @@ def test_diffusion_simple():
 
 
 def test_species_containers():
-    m = RxD_Model()
-    db = m.get_database()
-    Neuron = m.Neuron
-    all_s = m.species
 
-    test_parameters = {
-        'const_e': {
+    test_parameters = [
+        {
+            'name': 'const_e',
             'reversal_potential': -60,
         },
         # TODO: Test all of the other configurations for computing reversal potential:
         #           Constant species values,
         #           Diffusive species values,
         #           Nerst, GHK
-    }
+    ]
+    m = RxD_Model(species=test_parameters)
+    db = m.get_database()
+    Neuron = m.Neuron
 
-    all_s.add_parameters(test_parameters)
     m.check()
-    for name, s in all_s.items():
-        assert s.get_name() in repr(s)
+    for name, s in m.species.items():
+        assert s.name in repr(s)
     # Check that it doesn't crash with no data.
-    for s in all_s.values():
+    for s in m.species.values():
         s._zero_accumulators()
         s._advance()
-    all_s.input_hook.tick()
+    m.species.input_hook.tick()
     m.check()
     # Check that it doesn't crash with data.
     Neuron([1,2,3], 7)
     Neuron([4,5,6], 7)
     Neuron([7,8,9], 7)
-    for s in all_s.values():
+    for s in m.species.values():
         s._zero_accumulators()
         s._advance()
-    all_s.input_hook.tick()
+    m.species.input_hook.tick()
     m.check()
 

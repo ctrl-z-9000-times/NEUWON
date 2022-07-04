@@ -1,8 +1,6 @@
-from collections.abc import Callable, Iterable, Mapping
 from scipy.sparse import csr_matrix, csc_matrix
 import scipy.sparse
 import scipy.sparse.linalg
-from neuwon.database import Clock
 import cupy as cp
 import math
 import numba.cuda
@@ -12,7 +10,7 @@ F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
 R = 8.31446261815324 # Universal gas constant
 zero_c = 273.15 # Temperature, in Kelvins.
 
-class SpeciesInstance:
+class _SpeciesInstance:
     """ A species in a location. """
     def __init__(self, time_step, db_class, name, *, initial_concentration,
                  global_constant, decay_period, diffusivity, geometry_component):
@@ -85,8 +83,8 @@ class SpeciesInstance:
         db_cls.get("electric_propagator_matrix").free().to_csr().set_data(matrix)
         self._matrix_valid = True
 
-class SpeciesType:
-    def __init__(self, name, factory, *,
+class _SpeciesType:
+    def __init__(self, factory, *, name,
                 charge              = 0,
                 reversal_potential  = None,
                 diffusivity         = 0.0,
@@ -96,19 +94,19 @@ class SpeciesType:
                 outside_initial_concentration   = 0.0,
                 outside_global_constant         = True,):
         self.name       = str(name)
-        self.factory    = factory
+        self._factory   = factory
         self.charge     = int(charge)
 
-        db_class = self.factory.database.get_class("Segment")
-        self.inside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+        db_class = factory.database.get_class("Segment")
+        self.inside = _SpeciesInstance(factory.time_step, db_class, self.name,
                 initial_concentration   = inside_initial_concentration,
                 global_constant         = inside_global_constant,
                 decay_period            = decay_period,
                 diffusivity             = diffusivity,
                 geometry_component      = None) # TODO: geometry_component
 
-        db_class = self.factory.database.get_class("Extracellular")
-        self.outside = SpeciesInstance(self.factory.time_step, db_class, self.name,
+        db_class = factory.database.get_class("Extracellular")
+        self.outside = _SpeciesInstance(factory.time_step, db_class, self.name,
                 initial_concentration   = outside_initial_concentration,
                 global_constant         = outside_global_constant,
                 decay_period            = decay_period,
@@ -143,9 +141,6 @@ class SpeciesType:
                         f"{self.name}_reversal_potential",
                         initial_value=0.0,
                         units="mV")
-
-    def get_name(self) -> str:
-        return self.name
 
     def __repr__(self):
         return f'<Species: {self.name}>'
@@ -229,15 +224,15 @@ def _efun(z):
     else:
         return z / (math.exp(z) - 1)
 
-class NonspecificConductance(SpeciesType):
+class _NonspecificConductance(_SpeciesType):
     """ Attach an ion channel to a DB_Class.
 
-    This conductance will not factor into the concentrations of any species.
+    This conductance will not affect the concentration of any species.
 
     The db_class must have a reference named "segment".
     """
-    def __init__(self, factory, name, db_class, reversal_potential):
-        self.factory    = factory
+    def __init__(self, factory, db_class, name, reversal_potential):
+        self._factory   = factory
         self.location   = factory.database.get_class(db_class)
         ion_name        = str(name)
         self.name       = f'{self.location.get_name()}_{ion_name}'
@@ -251,9 +246,6 @@ class NonspecificConductance(SpeciesType):
                 f"{ion_name}_reversal_potential",
                 initial_value=reversal_potential,
                 units="mV")
-
-    def get_name(self) -> str:
-        return self.name
 
     def __repr__(self):
         return f'<NonspecificConductance: {self.name}>'
@@ -274,30 +266,13 @@ class NonspecificConductance(SpeciesType):
     def _advance(self):
         pass
 
-class SpeciesFactory(dict):
-    def __init__(self, parameters: dict, database, input_hook, temperature):
+class _SpeciesFactory(dict):
+    def __init__(self, parameters: list, database, input_hook, temperature):
         super().__init__()
         self.database       = database
         self.input_hook     = input_hook
         self.time_step      = input_hook.get_time_step()
         self.temperature    = temperature
-        self.add_parameters(parameters)
-
-    def add_parameters(self, parameters: dict):
-        for name, species_kwargs in parameters.items():
-            self.add_species(name, species_kwargs)
-
-    def add_species(self, name, species_kwargs) -> SpeciesType:
-        if name in self:
-            species = self[name]
-        elif isinstance(species_kwargs, SpeciesType):
-            self[name] = species = species_kwargs
-        else:
-            self[name] = species = SpeciesType(name, self, **species_kwargs)
-        return species
-
-    def add_nonspecific_conductance(self, name, db_class, reversal_potential):
-        name = str(name)
-        self[name] = species = NonspecificConductance(self, name, db_class, reversal_potential)
-        return species
-    add_nonspecific_conductance.__doc__ = NonspecificConductance.__doc__
+        for species_kwargs in parameters:
+            x = _SpeciesType(self, **species_kwargs)
+            self[x.name] = x

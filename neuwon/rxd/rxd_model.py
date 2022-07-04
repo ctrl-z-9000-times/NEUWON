@@ -2,18 +2,18 @@ from neuwon.database import Database, Clock
 from neuwon.rxd.neuron import Neuron
 from neuwon.rxd.extracellular import Extracellular
 from neuwon.rxd.mechanisms import MechanismsFactory
-from neuwon.rxd.species import SpeciesFactory
+from neuwon.rxd.species import _SpeciesFactory, _NonspecificConductance
 import numpy as np
 
 class RxD_Model:
     def __init__(self, time_step: 'ms' = 0.1, *,
-                temperature: 'celsius' = 37,
+                temperature: '°C' = 37,
                 initial_voltage: 'mV' = -70,
                 cytoplasmic_resistance: 'ohm-cm' = 100,
                 membrane_capacitance: 'μF/cm²' = 1,
                 extracellular_tortuosity = 1.55,
                 extracellular_max_distance: 'μm' = 20e-6,
-                species={},
+                species=[],
                 mechanisms={},):
         """ """
         self.time_step      = float(time_step)
@@ -31,7 +31,7 @@ class RxD_Model:
         self.Extracellular = Extracellular._initialize(db,
                 tortuosity       = extracellular_tortuosity,
                 maximum_distance = extracellular_max_distance,)
-        self.species = SpeciesFactory(species, db, self.input_hook, self.temperature)
+        self.species = _SpeciesFactory(species, db, self.input_hook, self.temperature)
         self.mechanisms = MechanismsFactory(self, mechanisms)
 
     def get_temperature(self) -> float: return self.temperature
@@ -50,6 +50,11 @@ class RxD_Model:
     def register_advance_callback(self, function: 'f() -> bool'):
         """ """
         self.advance_hook.register_callback(function)
+
+    def register_nonspecific_conductance(self, db_class, ion_name, reversal_potential: 'mV'):
+        x = _NonspecificConductance(self, db_class, ion_name, reversal_potential)
+        self.species[x.name] = x
+    register_nonspecific_conductance.__doc__ = _NonspecificConductance.__doc__
 
     def check(self):
         self.database.check()
