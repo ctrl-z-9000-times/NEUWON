@@ -137,54 +137,54 @@ class NMODL(Mechanism):
             assert not nonspecific
             if var_name in equilibrium:
                 pass # Ignored, mechanisms output conductances instead of currents.
-                # self.pointers[var_name] = f"self.segment.{ion}_reversal_potential"
+                # self.pointers[var_name] = f'self.segment.{ion}_reversal_potential'
             elif var_name in inside:
-                self.pointers[var_name] = f"self.segment.{ion}"
+                self.pointers[var_name] = f'self.segment.{ion}'
             elif var_name in outside:
-                self.pointers[var_name] = f"self.outside.{ion}"
+                self.pointers[var_name] = f'self.outside.{ion}'
                 self.outside = True
             else:
-                raise ValueError(f"Unrecognized USEION READ: \"{var_name}\".")
+                raise ValueError(f'Unrecognized USEION READ: "{var_name}".')
         for var_name in write_vars:
             if var_name in equilibrium:
-                self.pointers[var_name] = f"self.segment.{ion}_reversal_potential"
+                self.pointers[var_name] = f'self.segment.{ion}_reversal_potential'
                 self.nonspecific_conductances[ion] = var_name
             elif var_name in current:
                 if nonspecific:
-                    self.pointers[var_name] = f"self.segment.nonspecific_current"
+                    self.pointers[var_name] = f'self.segment.nonspecific_current'
                 else:
-                    self.pointers[var_name] = f"self.segment.{ion}_current"
+                    self.pointers[var_name] = f'self.segment.{ion}_current'
                 self.accumulators.add(var_name)
             elif var_name in conductance:
                 if nonspecific:
-                    self.pointers[var_name] = f"self.{ion}_conductance"
+                    self.pointers[var_name] = f'self.{ion}_conductance'
                 else:
-                    self.pointers[var_name] = f"self.segment.{ion}_conductance"
+                    self.pointers[var_name] = f'self.segment.{ion}_conductance'
                 self.accumulators.add(var_name)
             elif var_name in inside:
                 assert not nonspecific
-                self.pointers[var_name] = f"self.segment.{ion}_derivative"
+                self.pointers[var_name] = f'self.segment.{ion}_derivative'
                 self.accumulators.add(var_name)
             elif var_name in outside:
                 assert not nonspecific
-                self.pointers[var_name] = f"self.outside.{ion}_derivative"
+                self.pointers[var_name] = f'self.outside.{ion}_derivative'
                 self.accumulators.add(var_name)
                 self.outside = True
             else:
-                raise ValueError(f"Unrecognized USEION WRITE: \"{var_name}\".")
+                raise ValueError(f'Unrecognized USEION WRITE: "{var_name}".')
 
     def _gather_conductance_hints(self, parser):
         for x in parser.lookup(ANT.CONDUCTANCE_HINT):
             var_name = x.conductance.get_node_name()
             if var_name not in self.pointers:
                 ion = x.ion.get_node_name()
-                self.pointers[var_name] = f"self.segment.{ion}_conductance"
+                self.pointers[var_name] = f'self.segment.{ion}_conductance'
                 self.accumulators.add(var_name)
 
     def _gather_nonspecific_currents(self, parser):
         for x in parser.lookup(ANT.NONSPECIFIC_CUR_VAR):
             var_name = x.get_node_name()
-            self.pointers[var_name] = f"self.segment.nonspecific_current"
+            self.pointers[var_name] = f'self.segment.nonspecific_current'
             self.accumulators.add(var_name)
 
     def _gather_other_mechanisms_IO(self, parser):
@@ -192,7 +192,7 @@ class NMODL(Mechanism):
         for x in parser.lookup(ANT.POINTER_VAR):
             var_name = x.get_node_name()
             self.other_mechanisms_.append(var_name)
-            self.pointers[var_name] = f"self.{var_name}.magnitude"
+            self.pointers[var_name] = f'self.{var_name}.magnitude'
         self.other_mechanisms_ = tuple(sorted(self.other_mechanisms_))
 
     def _solve_ode_single(self):
@@ -299,7 +299,7 @@ class NMODL(Mechanism):
         py  = f'def __{solve_name}_steadystate():\n'
         py += f'    global {state_list}\n'
         if solve_method == 'sparse':
-            py += textwrap.indent(self._derivative_block_to_python(solve_block), "    ")
+            py += textwrap.indent(self._derivative_block_to_python(solve_block), '    ')
             py +=  '    import numpy as np\n'
             py +=  '    from scipy.linalg import expm\n'
             py += f'    irm = np.empty(({nstates}, {nstates}))\n'
@@ -310,13 +310,13 @@ class NMODL(Mechanism):
             py += f'    return irm.dot([{state_list}])\n'
         else:
             assert not solve_block.derivative # Should already be solved!
-            py += f"    prev_state = [{state_list}]\n"
-            py += f"    for _ in range(int(round({max_time} / dt))):\n"
-            py += textwrap.indent(code_gen.to_python(solve_block), "        ")
-            py += f"        state = [{state_list}]\n"
-            py += f"        if max(abs(a-b) for a,b in zip(prev_state, state)) < {max_delta}: break\n"
-            py +=  "        prev_state = state\n"
-            py += f"    return state\n"
+            py += f'    prev_state = [{state_list}]\n'
+            py += f'    for _ in range(int(round({max_time} / dt))):\n'
+            py += textwrap.indent(code_gen.to_python(solve_block), '        ')
+            py += f'        state = [{state_list}]\n'
+            py += f'        if max(abs(a-b) for a,b in zip(prev_state, state)) < {max_delta}: break\n'
+            py +=  '        prev_state = state\n'
+            py += f'    return state\n'
         py += f'{state_list} = __{solve_name}_steadystate()\n'
         return [py]
 
@@ -370,9 +370,9 @@ class NMODL(Mechanism):
         self.parameters.substitute(self.breakpoint_block)
         # 
         self.advance_pycode = (
-                "@Compute\n"
-                "def advance(self):\n"
-                + code_gen.to_python(self.breakpoint_block, "    "))
+                '@Compute\n'
+                'def advance(self):\n'
+                + code_gen.to_python(self.breakpoint_block, '    '))
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
 
@@ -401,7 +401,7 @@ class NMODL(Mechanism):
 
     def _initialize_local_mechanism_class(self, database):
         mechanism_superclass = type(self.name, (NmodlMechanism,), {
-            '__doc__':              self.title + "\n\n" + self.description,
+            '__doc__':              self.title + '\n\n' + self.description,
             '__slots__':            (),
             'name':                 self.name,
             '__init__':             NMODL._instance__init__,
@@ -412,14 +412,14 @@ class NMODL(Mechanism):
             '_advance_pycode':      self.advance_pycode,
         })
         mech_data = database.add_class(mechanism_superclass)
-        mech_data.add_attribute("segment", dtype="Segment")
+        mech_data.add_attribute('segment', dtype='Segment')
         if self.outside:
-            mech_data.add_attribute("outside", dtype="Extracellular")
+            mech_data.add_attribute('outside', dtype='Extracellular')
         if self.point_process:
-            mech_data.add_attribute("magnitude", 1.0,
+            mech_data.add_attribute('magnitude', 1.0,
                     doc="") # TODO?
         else:
-            mech_data.add_attribute("magnitude",
+            mech_data.add_attribute('magnitude',
                     units = database.get('Segment.surface_area').get_units(),
                     doc="") # TODO?
         for name in self.states:
@@ -450,8 +450,8 @@ class ParameterTable(dict):
     """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
 
     builtin_parameters = {
-        "celsius": (None, "degC"),
-        "dt":      (None, "ms"),
+        'celsius': (None, 'degC'),
+        'dt':      (None, 'ms'),
     }
 
     def __init__(self, parameters, mechanism_name):
@@ -471,10 +471,10 @@ class ParameterTable(dict):
                 old_value, old_units = self[name]
                 if units is None: units = old_units
                 elif old_units is not None and (strict or not override):
-                    assert units == old_units, "Parameter \"%s\" units changed."%name
+                    assert units == old_units, f'Parameter "{name}" units changed'
                 if old_value is not None and not override:
                     value = old_value
-            elif strict: raise ValueError("Invalid parameter override \"%s\"."%name)
+            elif strict: raise ValueError(f'Invalid parameter override "{name}"')
             self[name] = (value, units)
         return self
 
@@ -491,13 +491,13 @@ class ParameterTable(dict):
         for name, (value, units) in self.items():
             if units:
                 if point_process:
-                    if "/" + self.mechanism_name in units:
+                    if '/' + self.mechanism_name in units:
                         parameters[name] = (value, units)
                 else:
-                    if "/cm2" in units:
+                    if '/cm2' in units:
                         # Convert from NEUWONs um^2 to NEURONs cm^2.
                         value *= (1e-6 * 1e-6) / (1e-2 * 1e-2)
-                        units  = units.replace("/cm2", '')
+                        units  = units.replace('/cm2', '')
                         parameters[name] = (value, units)
         return parameters
 
