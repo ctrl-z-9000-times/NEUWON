@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from neuwon.database import Real, DB_Object
 from neuwon.database.data_components import Attribute
 
@@ -19,16 +18,16 @@ class Mechanism:
     omnipresent = False
 
     @classmethod
-    def get_name(cls) -> str:
-        raise NotImplementedError(cls)
-
-    @classmethod
     def initialize(cls, model) -> 'Mechanism':
         """ Method to setup this mechanism.
 
         Optionally returns a new "Mechanism" subclass to implement this mechanism.
         """
         pass
+
+    @classmethod
+    def get_name(cls) -> str:
+        raise NotImplementedError(cls)
 
     @classmethod
     def other_mechanisms(self) -> [str]:
@@ -79,13 +78,12 @@ class _MechanismsFactory(dict):
         """ """
         assert (isinstance(mechanism, Mechanism) or
                 (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
-        name = str(mechanism.get_name())
-        assert name not in self
         # Initialize the mechanism.
         retval = mechanism.initialize(self._model)
         if retval is not None:
             mechanism = retval
         # 
+        name = str(mechanism.get_name())
         if mechanism.omnipresent:
             assert (isinstance(mechanism, Mechanism) or
                     (isinstance(mechanism, type) and issubclass(mechanism, Mechanism)))
@@ -97,6 +95,7 @@ class _MechanismsFactory(dict):
             else:
                 self._local_dependencies[name] = tuple(str(x) for x in dependencies)
         # 
+        assert name not in self
         self[name] = mechanism
 
 def _import_python_mechanisms(filename):
