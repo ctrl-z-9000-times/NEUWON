@@ -4,7 +4,6 @@ Backend for generating the run-time program, compiling it, and loading it into p
 
 from .inputs import LinearInput, LogarithmicInput
 import ctypes
-import datetime
 import numpy as np
 import os
 import subprocess
@@ -29,7 +28,6 @@ class Codegen:
         assert self.target in ('host', 'cuda')
         self.source_code = (
                 self._preamble() +
-                # self._initial_state() +
                 self._table_data() +
                 self._kernel() +
                 self._entrypoint())
@@ -38,7 +36,6 @@ class Codegen:
         c = (f"/{'*'*69}\n"
              f"Model Name   : {self.name}\n"
              f"Filename     : {self.model.nmodl_filename}\n"
-             f"Created      : {datetime.datetime.now()}\n"
              f"Time Step    : {self.model.time_step} ms\n"
              f"Temperature  : {self.model.temperature} C\n"
              f"Max Error    : {getattr(self.model, 'target_error', None)}\n"
@@ -53,13 +50,6 @@ class Codegen:
         elif self.float_dtype == np.float64:
             c +=  "typedef double real;\n\n"
         else: raise NotImplementedError(self.float_dtype)
-        return c
-
-    def _initial_state(self):
-        c = ""
-        for name, value in sorted(self.initial_state.items()):
-            c += f"const real {name}0 = {value};\n"
-        c += "\n"
         return c
 
     def _table_data(self):
@@ -240,7 +230,6 @@ class Codegen:
             scope["_entrypoint"] = self._load_entrypoint_cuda()
         exec(pycode, scope)
         self._load_cache = fn = scope[fn_name]
-        fn._call_from_NEURON = self._call_from_NEURON()
         return fn
 
     def _load_entrypoint_host(self):
@@ -272,10 +261,3 @@ class Codegen:
                                 name_expressions=[fn_name],
                                 options=('--std=c++11',),)
         return module.get_function(fn_name)
-
-    def _call_from_NEURON(self):
-        inputs = ", ".join(self.input_names)
-        states = ", ".join(f'& {x}' for x in self.state_names)
-        return (
-            f"real* state[{self.num_states}] = {{{states}}};\n"
-            f"{self.name}_kernel({inputs}, state);")
