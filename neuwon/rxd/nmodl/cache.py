@@ -4,15 +4,17 @@ from sys import stderr
 from zlib import crc32
 import pickle
 
-def _dir_and_file(filename):
-    cache_dir = abspath(".nmodl_cache")
-    filename  = abspath(filename)
+def _dir_and_file(filename, parameters: dict):
+    cache_dir  = abspath(".nmodl_cache")
+    filename   = abspath(filename)
+    parameters = ','.join(str(v) for k,v in sorted(parameters.items()))
+    hash_src   = f'{filename},{parameters}'
     cache_file = join(cache_dir, "%X.pickle"%crc32(bytes(filename, 'utf8')))
     return (cache_dir, cache_file)
 
-def try_loading(filename, obj):
+def try_loading(filename, parameters, obj):
     """ Returns True on success, False indicates that no changes were made to the object. """
-    cache_dir, cache_file = _dir_and_file(filename)
+    cache_dir, cache_file = _dir_and_file(filename, parameters)
     if not exists(cache_file): return False
     # Check file modification time stamps.
     try:
@@ -37,8 +39,8 @@ def try_loading(filename, obj):
     obj.__dict__.update(cache_obj.__dict__)
     return True
 
-def save(filename, obj):
-    cache_dir, cache_file = _dir_and_file(filename)
+def save(filename, parameters, obj):
+    cache_dir, cache_file = _dir_and_file(filename, parameters)
     try:
         makedirs(cache_dir, exist_ok=True)
         with open(cache_file, 'wb') as f:

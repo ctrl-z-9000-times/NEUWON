@@ -8,14 +8,15 @@ class _TestMechanism:
 def test_cache():
     file = tempfile.NamedTemporaryFile(suffix=".mod", delete=False)
     file.close()
+    parameters = {'a': 4, 'b':5}
 
     py_obj = _TestMechanism()
-    assert not cache.try_loading(file.name, py_obj)
+    assert not cache.try_loading(file.name, parameters, py_obj)
     assert py_obj.data is None
 
     py_obj.data = "Hello cache!"
-    cache.save(file.name, py_obj)
+    cache.save(file.name, parameters, py_obj)
 
     py_obj2 = _TestMechanism()
-    assert cache.try_loading(file.name, py_obj2)
+    assert cache.try_loading(file.name, parameters, py_obj2)
     assert py_obj.data == py_obj2.data
