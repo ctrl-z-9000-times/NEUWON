@@ -6,34 +6,39 @@ from .parser import (NmodlParser, ANT,
         SolveStatement,
         AssignStatement,
         ConserveStatement)
+import neuwon.rxd.lti_sim
 import copy
 import os.path
 import re
 import sympy
 import textwrap
 
-__all__ = ["NMODL"]
+__all__ = ['NMODL']
 
-
-# TODO: support for arrays? - arrays should really be unrolled in an AST pass...
 
 class NMODL(Mechanism):
     def __init__(self, filename, use_cache=True):
         """
         Argument filename is an NMODL file to load.
                 The standard NMODL file name extension is ".mod"
-
-        Argument parameters is a mapping of parameter names to custom
-                floating-point values.
         """
         self.filename = os.path.abspath(str(filename))
-        if use_cache and cache.try_loading(self.filename, self): pass
-        else:
-            try:
+        self._use_cache = bool(use_cache)
+
+    def initialize(self, rxd_model):
+        builtin_parameters = {
+                'dt':       rxd_model.get_time_step(),
+                'celsius':  rxd_model.get_temperature(),
+        }
+        try:
+            if self._use_cache and cache.try_loading(self.filename, builtin_parameters, self): pass
+            else:
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self.name, self.point_process,  self.title, self.description = parser.gather_documentation()
                 self.parameters = ParameterTable(parser.gather_parameters(), self.name)
+                self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
+                self.parameters.update(builtin_parameters, strict=True, override=False)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
                 self.all_blocks = list(blocks.values())
@@ -41,39 +46,23 @@ class NMODL(Mechanism):
                 self.breakpoint_block = blocks['BREAKPOINT']
                 self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
-                self._solve_equation()
+                self._solve_ode_single()
                 self._fixup_breakpoint_IO()
-            except Exception:
-                print("ERROR while loading file", self.filename, flush=True)
-                raise
-            cache.save(self.filename, self)
+            cache.save(self.filename, builtin_parameters, self)
 
-    def initialize(self, rxd_model):
-        try:
-            database = rxd_model.get_database()
-            builtin_parameters = {
-                    "dt":       rxd_model.get_time_step(),
-                    "celsius":  rxd_model.get_temperature(),
-            }
-            self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
-            self.parameters.update(builtin_parameters, strict=True, override=False)
-            self._run_initial_block(database)
+            # self._solve_ode_system()
+
+            self._run_initial_block(rxd_model.database)
             self._compile_breakpoint_block()
             if self.omnipresent:
-                cls = self._initialize_omnipresent_mechanism_class(database)
+                cls = self._initialize_omnipresent_mechanism_class(rxd_model.database)
             else:
-                cls = self._initialize_local_mechanism_class(database)
-            for (ion, e_variable) in self.nonspecific_conductances.items():
-                e, e_units = self.parameters[e_variable]
-                if e_units is not None: assert e_units.lower() == 'mv'
-                rxd_model.register_nonspecific_conductance(cls, ion, e)
+                cls = self._initialize_local_mechanism_class(rxd_model.database)
+            self._register_nonspecific_conductances(rxd_model, cls)
             return cls
         except Exception:
             print('ERROR while loading file', self.filename, flush=True)
             raise
-
-    def get_name(self):
-        return self.name
 
     def _check_for_unsupported(self, parser):
         # TODO: support for NONLINEAR?
@@ -206,10 +195,11 @@ class NMODL(Mechanism):
             self.pointers[var_name] = f"self.{var_name}.magnitude"
         self.other_mechanisms_ = tuple(sorted(self.other_mechanisms_))
 
-    def _solve_equation(self):
+    def _solve_ode_single(self):
         """
-        Replace SolveStatements with the solved equations to advance the systems
-        of differential equations.
+        Replace SolveStatements with the solved equations to advance the equations.
+        This assumes that every statment is independent, ie not part of a system
+        of equations.
         """
         ode_methods = {
             'euler':            solver.forward_euler,
@@ -386,7 +376,11 @@ class NMODL(Mechanism):
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
 
-
+    def _register_nonspecific_conductances(self, rxd_model, db_class):
+        for (ion, e_variable) in self.nonspecific_conductances.items():
+            e, e_units = self.parameters[e_variable]
+            if e_units is not None: assert e_units.lower() == 'mv'
+            rxd_model.register_nonspecific_conductance(db_class, ion, e)
 
     def _initialize_omnipresent_mechanism_class(self, database):
         1/0 # TODO
