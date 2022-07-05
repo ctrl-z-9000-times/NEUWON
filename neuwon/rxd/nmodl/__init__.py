@@ -69,7 +69,7 @@ class NMODL(Mechanism):
                 rxd_model.register_nonspecific_conductance(cls, ion, e)
             return cls
         except Exception:
-            print("ERROR while loading file", self.filename, flush=True)
+            print('ERROR while loading file', self.filename, flush=True)
             raise
 
     def get_name(self):
@@ -80,14 +80,14 @@ class NMODL(Mechanism):
         # TODO: support for INCLUDE?
         # TODO: support for COMPARTMENT?
         disallow = (
-            "FUNCTION_TABLE_BLOCK",
-            "LON_DIFUSE",
-            "TABLE_STATEMENT",
-            "VERBATIM",
+            'FUNCTION_TABLE_BLOCK',
+            'LON_DIFUSE',
+            'TABLE_STATEMENT',
+            'VERBATIM',
         )
         for x in disallow:
             if parser.lookup(getattr(ANT, x)):
-                raise ValueError("\"%s\"s are not allowed."%x)
+                raise ValueError('"%s"s are not allowed.'%x)
 
     def _gather_conserve_statements(self):
         conserve_statements = []
@@ -122,14 +122,14 @@ class NMODL(Mechanism):
         self.breakpoint_block.gather_arguments()
         self.initial_block.gather_arguments()
         all_args = self.breakpoint_block.arguments + self.initial_block.arguments
-        if "v" in all_args:
-            self.pointers["v"] = "self.segment.voltage"
-        if "diam" in all_args:
-            self.pointers["diam"] = "self.segment.diameter"
-        if "area" in all_args:
-            self.pointers["area"] = "self.segment.surface_area"
-        if "volume" in all_args:
-            self.pointers["volume"] = "self.segment.inside_volume"
+        if 'v' in all_args:
+            self.pointers['v'] = 'self.segment.voltage'
+        if 'diam' in all_args:
+            self.pointers['diam'] = 'self.segment.diameter'
+        if 'area' in all_args:
+            self.pointers['area'] = 'self.segment.surface_area'
+        if 'volume' in all_args:
+            self.pointers['volume'] = 'self.segment.inside_volume'
 
     def _process_useion_statement(self, stmt):
         ion = stmt.name.value.eval()
