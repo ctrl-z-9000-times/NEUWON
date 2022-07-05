@@ -1,4 +1,4 @@
-from lti_sim import main, LinearInput, LogarithmicInput
+from neuwon.rxd.lti_sim import main, LinearInput, LogarithmicInput
 import argparse
 import numpy as np
 

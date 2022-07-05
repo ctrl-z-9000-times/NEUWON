@@ -1,6 +1,6 @@
-from lti_sim import LinearInput, LogarithmicInput
-from lti_sim.lti_model import LTI_Model
-from lti_sim.nmodl_compiler import NMODL_Compiler
+from neuwon.rxd.lti_sim import LinearInput, LogarithmicInput
+from neuwon.rxd.lti_sim.lti_model import LTI_Model
+from neuwon.rxd.lti_sim.nmodl_compiler import NMODL_Compiler
 import os
 import pytest
 

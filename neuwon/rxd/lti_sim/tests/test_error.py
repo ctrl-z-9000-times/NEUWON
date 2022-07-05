@@ -1,6 +1,6 @@
-from lti_sim import LinearInput, LogarithmicInput
-from lti_sim.approx import MatrixSamples, Approx1D, Approx2D
-from lti_sim.lti_model import LTI_Model
+from neuwon.rxd.lti_sim import LinearInput, LogarithmicInput
+from neuwon.rxd.lti_sim.approx import MatrixSamples, Approx1D, Approx2D
+from neuwon.rxd.lti_sim.lti_model import LTI_Model
 import math
 import numpy as np
 import os

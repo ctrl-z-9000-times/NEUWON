@@ -1,4 +1,4 @@
-from lti_sim.inputs import *
+from neuwon.rxd.lti_sim.inputs import *
 import pytest
 import random
 
