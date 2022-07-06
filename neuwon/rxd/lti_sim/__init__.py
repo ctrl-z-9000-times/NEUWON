@@ -33,6 +33,8 @@ def main(nmodl_filename, inputs, time_step, temperature,
         best.approx.plot(model.name)
     return (model.get_initial_state(), best.backend.load())
 
+
+# DEBUGGING:
 if __name__ == '__main__':
 
     nmodl_filename = "nmodl_library/kinetic/Nav11.mod"

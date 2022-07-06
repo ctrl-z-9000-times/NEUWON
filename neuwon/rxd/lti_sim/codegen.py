@@ -5,10 +5,7 @@ Backend for generating the run-time program, compiling it, and loading it into p
 from .inputs import LinearInput, LogarithmicInput
 from neuwon.database import Real, Database, Compute
 from neuwon.rxd.nmodl.code_gen import exec_string
-import ctypes
 import numpy as np
-import os
-import tempfile
 import time
 
 class Codegen:
@@ -43,7 +40,7 @@ class Codegen:
         # Flatten the input dimensions.
         table_data = self.table.reshape(-1, self.num_states, self.num_states, self.polynomial.num_terms)
         table_data = table_data.transpose(0, 2, 1, 3) # Switch from row-major to column-major format.
-        return np.array(table_data, dtype=Real)
+        return np.array(table_data, dtype=Real, order='C')
 
     def _kernel(self):
         c  =   "@Compute\n"

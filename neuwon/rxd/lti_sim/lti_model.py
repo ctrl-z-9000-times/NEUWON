@@ -1,13 +1,22 @@
-from .nmodl_compiler import NMODL_Compiler
 import numpy as np
 import scipy.linalg
 
-class LTI_Model(NMODL_Compiler):
-    """ Specialization of NMODL_Compiler for Linear & Time-Invariant models. """
-    def __init__(self, nmodl_filename, inputs, time_step, temperature):
-        super().__init__(nmodl_filename, inputs, temperature)
-        self.time_step = float(time_step)
+class LTI_Model:
+    def __init__(self, name, inputs, states, derivative, conserve_sum, time_step):
+        self.name       = str(name)
+        # TODO: Don't sort these? Use the given order since I'm assuming that
+        # the derivative also expects them in the given order...
+        self.inputs     = sorted(inputs, key=lambda inp: inp.name)
+        self.num_inputs = len(inputs)
+        self.states     = sorted(str(x) for x in states)
+        self.num_states = len(states)
+        self.derivative = derivative
+        self.conserve_sum = float(conserve_sum) if conserve_sum else None
+        self.time_step  = float(time_step)
         assert self.time_step > 0.0
+        # Make aliases "input1", "input2", etc.
+        for idx, inp in enumerate(self.inputs):
+            setattr(self, f"input{idx+1}", inp)
         self._check_is_LTI()
 
     def _check_is_LTI(self):
