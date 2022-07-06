@@ -66,13 +66,7 @@ class Parameters:
         self.backend = Codegen(
                 self.approx,
                 self.optimizer.target)
-        from . import _measure_speed # Import just before using to avoid circular imports.
-        self.runtime = _measure_speed(
-                self.backend.load(),
-                self.model.num_states,
-                self.model.inputs,
-                self.model.conserve_sum,
-                self.optimizer.target)
+        self.runtime = self.backend.runtime
         self.table_size = self.approx.table.nbytes
         if self.verbose: print(f"Result: {round(self.runtime, 3)} ns/Δt\n")
 
