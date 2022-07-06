@@ -18,7 +18,7 @@ nav11_mod = os.path.join(py_dir, "tests", "Nav11.mod")
 ampa_mod  = os.path.join(py_dir, "tests", "ampa13.mod")
 nmda_mod  = os.path.join(py_dir, "tests", "NMDA.mod")
 
-lti_kwargs = {'temperature': 37.0, 'float_dtype': np.float64, 'target': 'host'}
+lti_kwargs = {'temperature': 37.0, 'target': 'host'}
 nav11_lti_sim = lambda ts, err: lti_sim.main(nav11_mod, [voltage_input], ts, error=err, **lti_kwargs)[1]
 ampa_lti_sim = lambda ts, err: lti_sim.main(ampa_mod, [glu_input], ts, error=err, **lti_kwargs)[1]
 nmda_lti_sim = lambda ts, err: lti_sim.main(nmda_mod, [glu_input, voltage_input], ts, error=err, **lti_kwargs)[1]
@@ -157,7 +157,7 @@ def plot_accuracy_vs_timestep():
 
 def measure_speed(fn, num_states, inputs):
     return lti_sim._measure_speed(fn, num_states, inputs, conserve_sum = 1.0,
-                                  float_dtype = np.float64, target = 'host')
+                                  target = 'host')
 
 def plot_speed():
     err = 1e-4

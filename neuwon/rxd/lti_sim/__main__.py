@@ -27,8 +27,6 @@ sim.add_argument('-e', '--error', type=float, default=1e-4,
         help="maximum error per time step. default: 10^-4")
 sim.add_argument('--target', choices=['host','cuda'], default='host',
         help="default: host")
-sim.add_argument('-f', '--float', choices=['32','64'], default='64',
-        help="default: 64")
 sim.add_argument('-o', '--output', type=str, default=True,
         metavar='FILE',
         help="")
@@ -37,9 +35,6 @@ parser.add_argument('--plot', action='store_true',
 parser.add_argument('-v', '--verbose', action='count', default=0,
         help="show diagnostic information, give twice for trace info")
 args = parser.parse_args()
-
-if   args.float == '32': float_dtype = np.float32
-elif args.float == '64': float_dtype = np.float64
 
 # Gather & organize all information about the inputs.
 inputs = {}
@@ -62,5 +57,5 @@ for name, initial_value in args.initial:
 inputs = [input_type(*args) for (input_type, args) in inputs.values()]
 
 main(args.nmodl_filename, inputs, args.time_step, args.celsius,
-     error=args.error, target=args.target, float_dtype=float_dtype,
+     error=args.error, target=args.target,
      outfile=args.output, verbose=args.verbose, plot=args.plot,)

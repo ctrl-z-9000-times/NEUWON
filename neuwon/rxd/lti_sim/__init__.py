@@ -12,13 +12,14 @@ For more information see:
 from .inputs import LinearInput, LogarithmicInput
 from .lti_model import LTI_Model
 from .optimizer import Optimize1D, Optimize2D
+from neuwon.database import Real
 import numpy as np
 import time
 
 __all__ = ('main', 'LinearInput', 'LogarithmicInput')
 
 def main(nmodl_filename, inputs, time_step, temperature,
-         error, float_dtype, target,
+         error, target,
          outfile=False, verbose=False, plot=False,):
     # Read, parse, and preprocess the input file.
     model = LTI_Model(nmodl_filename, inputs, time_step, temperature)
@@ -26,7 +27,7 @@ def main(nmodl_filename, inputs, time_step, temperature,
     if   model.num_inputs == 1: OptimizerClass = Optimize1D
     elif model.num_inputs == 2: OptimizerClass = Optimize2D
     else: raise NotImplementedError('too many inputs.')
-    optimized = OptimizerClass(model, error, float_dtype, target, (verbose >= 2)).best
+    optimized = OptimizerClass(model, error, target, (verbose >= 2)).best
     # 
     if outfile:
         optimized.backend.write(outfile)
@@ -39,7 +40,7 @@ def main(nmodl_filename, inputs, time_step, temperature,
         optimized.approx.plot(model.name)
     return (model.get_initial_state(), optimized.backend.load())
 
-def _measure_speed(f, num_states, inputs, conserve_sum, float_dtype, target):
+def _measure_speed(f, num_states, inputs, conserve_sum, target):
     num_instances = 10 * 1000
     num_repetions = 200
     # 
@@ -51,7 +52,7 @@ def _measure_speed(f, num_states, inputs, conserve_sum, float_dtype, target):
         start_event = cupy.cuda.Event()
         end_event   = cupy.cuda.Event()
     # Generate valid initial states.
-    state = [xp.array(xp.random.uniform(size=num_instances), dtype=float_dtype)
+    state = [xp.array(xp.random.uniform(size=num_instances), dtype=Real)
                 for x in range(num_states)]
     if conserve_sum is not None:
         conserve_sum = float(conserve_sum)
@@ -67,7 +68,7 @@ def _measure_speed(f, num_states, inputs, conserve_sum, float_dtype, target):
     for trial in range(num_repetions):
         input_arrays = []
         for inp in inputs:
-            input_arrays.append(inp.random(num_instances, float_dtype, xp))
+            input_arrays.append(inp.random(num_instances, Real, xp))
             input_arrays.append(input_indicies)
         _clear_cache(xp)
         time.sleep(0) # Try to avoid task switching while running.

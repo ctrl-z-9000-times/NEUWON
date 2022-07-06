@@ -3,6 +3,7 @@ Backend for generating the run-time program, compiling it, and loading it into p
 """
 
 from .inputs import LinearInput, LogarithmicInput
+from neuwon.database import Real as float_dtype
 import ctypes
 import numpy as np
 import os
@@ -10,11 +11,10 @@ import subprocess
 import tempfile
 
 class Codegen:
-    def __init__(self, table, float_dtype, target):
+    def __init__(self, table, target):
         self.model          = table.model
         self.table          = table.table
         self.polynomial     = table.polynomial
-        self.float_dtype    = float_dtype
         self.target         = target
         self.name           = self.model.name
         self.inputs         = self.model.inputs
@@ -24,7 +24,7 @@ class Codegen:
         self.conserve_sum   = self.model.conserve_sum
         self.initial_state  = self.model.get_initial_state()
         assert self.num_states >= 0
-        assert self.float_dtype in (np.float32, np.float64)
+        assert float_dtype in (np.float32, np.float64)
         assert self.target in ('host', 'cuda')
         self.source_code = (
                 self._preamble() +
