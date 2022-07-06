@@ -20,25 +20,21 @@ __all__ = ('main', 'LinearInput', 'LogarithmicInput')
 
 def main(nmodl_filename, inputs, time_step, temperature,
          error, target,
-         outfile=False, verbose=False, plot=False,):
+         verbose=False, plot=False,):
     # Read, parse, and preprocess the input file.
     model = LTI_Model(nmodl_filename, inputs, time_step, temperature)
     # 
     if   model.num_inputs == 1: OptimizerClass = Optimize1D
     elif model.num_inputs == 2: OptimizerClass = Optimize2D
     else: raise NotImplementedError('too many inputs.')
-    optimized = OptimizerClass(model, error, target, (verbose >= 2)).best
+    best = OptimizerClass(model, error, target, (verbose >= 2)).best
     # 
-    if outfile:
-        optimized.backend.write(outfile)
-        if outfile != optimized.backend.filename:
-            print(f'Output written to: "{optimized.backend.filename}"')
     if verbose or plot:
-        print(str(optimized.approx) +
-              f"Run speed:    {round(optimized.runtime)} ns/Δt")
+        print(str(best.approx) +
+              f"Run speed:    {round(best.runtime)} ns/Δt")
     if plot:
-        optimized.approx.plot(model.name)
-    return (model.get_initial_state(), optimized.backend.load())
+        best.approx.plot(model.name)
+    return (model.get_initial_state(), best.backend.load())
 
 def _measure_speed(f, num_states, inputs, conserve_sum, target):
     num_instances = 10 * 1000

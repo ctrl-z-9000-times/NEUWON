@@ -48,14 +48,3 @@ class LTI_Model(NMODL_Compiler):
             initial_state   = matrix.dot(valid_state)
         self._initial_state_cache = x = dict(zip(self.state_names, initial_state))
         return x
-
-    def shrink_input_space(self, accuracy):
-        raise NotImplementedError
-        # Contract the range of the inputs. Find areas at the extremities that
-        # have a constant matrix, where "constant" is quantified by the given accuracy.
-        # 
-        # This should marginally improve performance:
-        #       * Only if user gives excessively large input space.
-        #       * Fewer buckets in table, less memory.
-        # 
-        # Note: do not shrink LogarithmicInput minimum values, they're always zero.
