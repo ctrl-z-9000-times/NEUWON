@@ -29,6 +29,7 @@ class NMODL(Mechanism):
         builtin_parameters = {
                 'dt':       rxd_model.get_time_step(),
                 'celsius':  rxd_model.get_temperature(),
+                # TODO: Allow NMODL file to override temperature.
         }
         try:
             if self._use_cache and cache.try_loading(self.filename, builtin_parameters, self): pass
@@ -47,10 +48,9 @@ class NMODL(Mechanism):
                 self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
                 self._solve_ode_single()
+                self._solve_ode_system()
                 self._fixup_breakpoint_IO()
             cache.save(self.filename, builtin_parameters, self)
-
-            # self._solve_ode_system()
 
             self._run_initial_block(rxd_model.database)
             self._compile_breakpoint_block()
@@ -84,6 +84,12 @@ class NMODL(Mechanism):
             for stmt in block:
                 if isinstance(stmt, ConserveStatement):
                     conserve_statements.append(stmt)
+
+        if len(conserve_statements) > 1:
+            raise ValueError("Multiple CONSERVE statements are not supported.")
+        # states  = nmodl.dsl.to_nmodl(stmt.react).split('+')
+        # if set(states) != set(self.state_names) or not stmt.expr.is_number():
+        #     raise ValueError('CONSERVE statement must be in the form: sum-of-all-states = number.')
         return conserve_statements
 
     def _gather_IO(self, parser):
@@ -229,12 +235,28 @@ class NMODL(Mechanism):
             return [copy.copy(x) for x in solve_block.statements]
         self.breakpoint_block.map(solve)
 
-    def _fixup_breakpoint_IO(self):
-        for stmt in self.breakpoint_block:
-            if isinstance(stmt, AssignStatement):
-                if stmt.lhsn in self.accumulators:
-                    stmt.operation = '+='
-        self.breakpoint_block.rename_variables(self.pointers)
+    def _solve_ode_system(self):
+        """ Call the LTI_SIM program. """
+        # First split out all of the calls to "SOLVE x METHOD sparse"
+        sparse_blocks = []
+        self.lti_advance = []
+        def solve(solve_stmt):
+            if not isinstance(solve_stmt, SolveStatement):
+                return [solve_stmt]
+            solve_block  = solve_stmt.block
+            solve_method = solve_stmt.method
+            if solve_method != 'sparse':
+                return [solve_stmt]
+            sparse_blocks.append(solve_block)
+            return []
+        self.breakpoint_block.map(solve)
+        # No sparse blocks, nothing to do.
+        if not sparse_blocks:
+            return
+
+        # Call the lti_sim program.
+        initial, advance = lti_sim.main()
+        self.lti_advance = advance
 
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
@@ -334,6 +356,20 @@ class NMODL(Mechanism):
         deriv_pycode += f"    return [{', '.join(f'_d_{state}' for state in self.states)}]\n\n"
         return deriv_pycode
 
+    def _compile_derivative_block(self, temperature):
+        scope = {'celsius': float(temperature)} # Allow NMODL file to override temperature.
+        scope.update(self.parameters)
+        pycode = self.initial_block.to_python()
+        arguments = [inp.name for inp in self.inputs] + self.state_names
+        pycode += f"def {self.name}_derivative_({', '.join(arguments)}):\n"
+        for state in self.state_names:
+            pycode += f"    __d_{state} = 0.0\n"
+        pycode += self.derivative_block.to_python("    ")
+        pycode += f"    return [{', '.join(f'__d_{state}' for state in self.state_names)}]\n\n"
+        _exec_string(pycode, scope)
+        self.derivative = scope[f"{self.name}_derivative_"]
+        self.temperature = scope['celsius']
+
     def _substitute_initial_scope(self, block):
         block.gather_arguments()
         for arg, value in self.initial_scope.items():
@@ -343,6 +379,13 @@ class NMODL(Mechanism):
                 continue
             block.statements.insert(0, AssignStatement(arg, value))
             block.arguments.remove(arg)
+
+    def _fixup_breakpoint_IO(self):
+        for stmt in self.breakpoint_block:
+            if isinstance(stmt, AssignStatement):
+                if stmt.lhsn in self.accumulators:
+                    stmt.operation = '+='
+        self.breakpoint_block.rename_variables(self.pointers)
 
     def _compile_breakpoint_block(self):
         globals_ = {
@@ -375,6 +418,14 @@ class NMODL(Mechanism):
                 + code_gen.to_python(self.breakpoint_block, '    '))
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
+
+        if self.lti_advance:
+            solve_block = self.lti_advance
+            breakpoint_block = self.advance_bytecode
+            def advance(self):
+                solve_block(self)
+                breakpoint_block(self)
+            self.advance_bytecode = advance
 
     def _register_nonspecific_conductances(self, rxd_model, db_class):
         for (ion, e_variable) in self.nonspecific_conductances.items():
