@@ -7,8 +7,6 @@ For more information see:
     https://doi.org/10.1007/s004220050570
 """
 
-# Written by David McDougall, 2022
-
 from .inputs import LinearInput, LogarithmicInput
 from .lti_model import LTI_Model
 from .optimizer import Optimize1D, Optimize2D

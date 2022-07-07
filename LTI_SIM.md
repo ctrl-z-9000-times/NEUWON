@@ -39,12 +39,12 @@ The approximation is structured as follows:
 
 The optimization proceeds as follows:
 
-1. Start with an initial configuration, which consists of a polynomial degree and a
-number of input bins.  
+1. Start with an initial configuration, which consists of a polynomial degree
+and a number of input bins.  
 For example models with one input start with a cubic polynomial and 10 input bins.
 
 2. Determine the number of input bins which yields the target accuracy.  
-   The accuracy is directly proportional to the number of input bins.
+The accuracy is directly proportional to the number of input bins.
 
 3. Measure the speed performance of the configuration by running a small but
 realistic benchmark.

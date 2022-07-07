@@ -1,11 +1,11 @@
 from ..control_panels import *
 from ..project_container import ProjectContainer
 from ..themes import ThemedTk, set_theme, pick_theme
+from ..viewport import Viewport
+from .data_recorder import DataRecorder
 from .embedded_plot import MatplotlibEmbed
 from .model_thread import ModelThread, Message as M_CMD
 from .signal_generator import SignalGenerator
-from .data_recorder import DataRecorder
-from ..viewport import Viewport
 from neuwon import Model
 from tkinter import messagebox
 import queue

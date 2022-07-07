@@ -49,13 +49,13 @@ def exec_string(python, globals_, locals_=None):
     with tempfile.NamedTemporaryFile(mode='w+t', delete=False) as f:
         f.write(python)
         f.flush()
-    globals_["math"] = math
+    globals_.setdefault("math", math)
     try:
         bytecode = compile(python, f.name, mode='exec')
         exec(bytecode, globals_, locals_)
     except:
         for noshow in ("__builtins__", "math"):
-            if noshow in globals_: globals_.pop(noshow)
+            globals_[noshow] = '...'
         err_msg = "Error while exec'ing the following python program:\n" + python
         err_msg + "\nglobals(): %s"%repr(globals_)
         err_msg + "\nlocals(): %s"%repr(locals_)
