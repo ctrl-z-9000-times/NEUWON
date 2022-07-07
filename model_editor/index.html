@@ -42,11 +42,26 @@
       style="display: none;">
   <button class="menu-btn" onclick="alert('unimplemented!')">Help</button>
   <button class="menu-btn" onclick="reset()">New</button>
-  <button class="menu-btn" onclick="alert('unimplemented!')">Run</button>
+  <button class="menu-btn" onclick="run()">Run</button>
   <button class="menu-btn" onclick="open_about_page()">About</button>
   <script>
     function open_about_page() {
       const popup = window.open("about.html", "About_NEUWON", "height=300,width=400")
+    }
+
+    function run() {
+      let xhr = new XMLHttpRequest()
+      let url = "submit.php"
+      xhr.open("POST", url, true)
+      xhr.setRequestHeader("Content-Type", "application/json")
+      // Create a state change callback
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          // Print received data from server
+          result.innerHTML = this.responseText
+        }
+      }
+      xhr.send(get_parameters())
     }
   </script>
 
@@ -611,6 +626,7 @@
           <input type="number" required
               name="carrier_point_density"
               step="any"
+              min="0"
               value="3" />
         </label>
 
@@ -618,6 +634,7 @@
           <input type="number" required
               name="diameter"
               step="0.1"
+              min="0"
               value="3" />
         </label>
 
