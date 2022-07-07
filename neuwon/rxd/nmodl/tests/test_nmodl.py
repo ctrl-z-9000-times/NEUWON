@@ -8,14 +8,14 @@ dirname = os.path.dirname(__file__)
 
 def test_hh():
     m = RxD_Model(time_step = .1,
-        mechanisms=[NMODL(dirname + "/mod/hh.mod", use_cache=False)],
-        species=[
+        mechanisms = [NMODL(dirname + "/mod/hh.mod", use_cache=False)],
+        species = [
             {'name': 'na', 'reversal_potential': +60,},
             {'name': 'k',  'reversal_potential': -88,},
             {'name': 'l',  'reversal_potential': -54.3,},
         ],
     )
-    m.database.check()
+    m.check()
 
     hh = m.mechanisms['hh']
     help(hh)
@@ -31,10 +31,41 @@ def test_hh():
     hh(m.Neuron([40,0,0], 12).root, 0.42)
     for _ in range(40):
         hh.advance()
-    m.database.check()
+    m.check()
     assert my_seg.na_conductance > 0
 
 
+def test_sparse_solver():
+    m = RxD_Model(
+        time_step = 0.1,
+        mechanisms = [
+            NMODL(dirname + "/mod/Nav11.mod", use_cache=False),
+            NMODL(dirname + "/mod/Kv11.mod",  use_cache=False),
+        ],
+        species = [
+            {'name': 'na', 'reversal_potential': +60,},
+            {'name': 'k',  'reversal_potential': -88,},
+        ],
+    )
+    m.check()
+
+    Nav11 = m.mechanisms['Nav11']
+    help(Nav11)
+    print('ADVANCE PYCODE Nav11:\n' + Nav11._advance_pycode)
+
+    Kv11  = m.mechanisms['Kv11']
+    help(Kv11)
+    print('ADVANCE PYCODE Kv11:\n' + Kv11._advance_pycode)
+
+    my_seg = m.Neuron([0,0,0], 12).root
+    Nav11(my_seg)
+    Kv11(my_seg)
+
+    m.advance()
+    m.check()
+
+
+# TODO: Merge this testcase into the sparse test case?
 @pytest.mark.skip()
 def test_ampa():
     m = RxD_Model(time_step = .1,
@@ -76,28 +107,3 @@ def test_ampa():
     assert my_seg.voltage > -50
     m.check()
 
-
-@pytest.mark.skip()
-def test_kinetic_model():
-    m = RxD_Model(
-        mechanisms={
-            'Nav11': NMODL(dirname + "/mod/Nav11.mod", use_cache=False),
-            'Kv11':  NMODL(dirname + "/mod/Kv11.mod",  use_cache=False),
-        },
-        species={
-            'na': {'reversal_potential': +60,},
-            'k': {'reversal_potential': -88,},
-            'l': {'reversal_potential': -54.3,},
-        },
-    )
-    m.check()
-
-    Nav11 = m.mechanisms['Nav11']
-    help(Nav11)
-    print('ADVANCE PYCODE Nav11:\n' + Nav11._advance_pycode)
-
-    Kv11  = m.mechanisms['Kv11']
-    help(Kv11)
-    print('ADVANCE PYCODE Kv11:\n' + Kv11._advance_pycode)
-
-    1/0
