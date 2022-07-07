@@ -2,11 +2,11 @@ from collections.abc import Callable, Iterable, Mapping
 from neuwon.database import Compute
 from neuwon.rxd.mechanisms import Mechanism
 from . import code_gen, cache, solver
+from .. import lti_sim
 from .parser import (NmodlParser, ANT,
         SolveStatement,
         AssignStatement,
         ConserveStatement)
-import neuwon.rxd.lti_sim
 import copy
 import os.path
 import re
@@ -47,8 +47,7 @@ class NMODL(Mechanism):
                 self.breakpoint_block = blocks['BREAKPOINT']
                 self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
-                self._solve_ode_single()
-                self._solve_ode_system()
+                self._solve()
                 self._fixup_breakpoint_IO()
             cache.save(self.filename, builtin_parameters, self)
 
@@ -68,6 +67,7 @@ class NMODL(Mechanism):
         # TODO: support for NONLINEAR?
         # TODO: support for INCLUDE?
         # TODO: support for COMPARTMENT?
+        # TODO: support for ARRAY?
         disallow = (
             'FUNCTION_TABLE_BLOCK',
             'LON_DIFUSE',
@@ -201,62 +201,53 @@ class NMODL(Mechanism):
             self.pointers[var_name] = f'self.{var_name}.magnitude'
         self.other_mechanisms_ = tuple(sorted(self.other_mechanisms_))
 
-    def _solve_ode_single(self):
+    def _solve(self):
         """
         Replace SolveStatements with the solved equations to advance the equations.
-        This assumes that every statment is independent, ie not part of a system
-        of equations.
         """
-        ode_methods = {
+        # These solver methods assume that every statement is independent,
+        # ie: not part of a system of equations.
+        independent_methods = {
             'euler':            solver.forward_euler,
             'derivimplicit':    solver.backward_euler,
             '':                 solver.backward_euler,
             'cnexp':            solver.crank_nicholson,
         }
-        def solve(solve_stmt):
-            # Solve in-place and return a copy.
-            if not isinstance(solve_stmt, SolveStatement):
-                return [solve_stmt]
-            solve_block  = solve_stmt.block
-            solve_method = solve_stmt.method
-            if solve_method not in ode_methods:
-                return [solve_stmt]
-            # Move the CONSERVE statements to the end of the block.
-            solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
-            # Replace CONSERVE statements with a simple multiplicative solution.
-            solve_block.map(solver.conserve_statement_solution)
-            # 
-            method = ode_methods[solve_method]
-            assert solve_block.derivative
-            solve_block.derivative = False
-            for stmt in solve_block:
-                if isinstance(stmt, AssignStatement) and stmt.derivative:
-                    method(stmt)
-            return [copy.copy(x) for x in solve_block.statements]
-        self.breakpoint_block.map(solve)
-
-    def _solve_ode_system(self):
-        """ Call the LTI_SIM program. """
-        # First split out all of the calls to "SOLVE x METHOD sparse"
-        sparse_blocks = []
-        self.lti_advance = []
-        def solve(solve_stmt):
-            if not isinstance(solve_stmt, SolveStatement):
-                return [solve_stmt]
-            solve_block  = solve_stmt.block
-            solve_method = solve_stmt.method
-            if solve_method != 'sparse':
-                return [solve_stmt]
-            sparse_blocks.append(solve_block)
+        # First split all of the calls to "SOLVE my_block METHOD my_method" out
+        # of the breakpoint block.
+        solve_stmts = []
+        def find_solve_stmts(stmt):
+            if not isinstance(stmt, SolveStatement):
+                return [stmt]
+            solve_stmts.append(stmt)
             return []
-        self.breakpoint_block.map(solve)
-        # No sparse blocks, nothing to do.
-        if not sparse_blocks:
-            return
+        self.breakpoint_block.map(find_solve_stmts)
+        # Then solve the target blocks.
+        self.solved_blocks = []
+        for stmt in solve_stmts:
+            solve_block  = stmt.block
+            solve_method = stmt.method
+            assert solve_block.derivative
 
-        # Call the lti_sim program.
-        initial, advance = lti_sim.main()
-        self.lti_advance = advance
+            if method := independent_methods.get(solve_method, False):
+                # Move the CONSERVE statements to the end of the block.
+                solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
+                # Replace CONSERVE statements with a simple multiplicative solution.
+                solve_block.map(solver.conserve_statement_solution)
+                # Solve each equation in-place.
+                for stmt in solve_block:
+                    if isinstance(stmt, AssignStatement) and stmt.derivative:
+                        method(stmt)
+                solve_block.derivative = False
+                # Prepend the solved block directly into the breakpoint block.
+                self.breakpoint_block.statements = solve_block.statements + self.breakpoint_block.statements
+
+            elif solve_method == 'sparse':
+                # Call the LTI_SIM program.
+                1/0 # TODO
+
+            else:
+                raise NotImplementedError(solve_method)
 
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
@@ -419,13 +410,13 @@ class NMODL(Mechanism):
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
 
-        if self.lti_advance:
-            solve_block = self.lti_advance
-            breakpoint_block = self.advance_bytecode
-            def advance(self):
-                solve_block(self)
-                breakpoint_block(self)
-            self.advance_bytecode = advance
+        # if self.lti_advance:
+        #     solve_block = self.lti_advance
+        #     breakpoint_block = self.advance_bytecode
+        #     def advance(self):
+        #         solve_block(self)
+        #         breakpoint_block(self)
+        #     self.advance_bytecode = advance
 
     def _register_nonspecific_conductances(self, rxd_model, db_class):
         for (ion, e_variable) in self.nonspecific_conductances.items():
