@@ -26,20 +26,18 @@ class NMODL(Mechanism):
         self._use_cache = bool(use_cache)
 
     def initialize(self, rxd_model):
-        builtin_parameters = {
+        external_parameters = {
                 'dt':       rxd_model.get_time_step(),
                 'celsius':  rxd_model.get_temperature(),
-                # TODO: Allow NMODL file to override temperature.
         }
         try:
-            if self._use_cache and cache.try_loading(self.filename, builtin_parameters, self): pass
+            if self._use_cache and cache.try_loading(self.filename, external_parameters, self): pass
             else:
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self.name, self.point_process,  self.title, self.description = parser.gather_documentation()
-                self.parameters = ParameterTable(parser.gather_parameters(), self.name)
-                self.instance_parameters = self.parameters.split_instance_parameters(self.point_process)
-                self.parameters.update(builtin_parameters, strict=True, override=False)
+                self.parameters, self.instance_parameters, self.units = process_parameters(
+                        parser.gather_parameters(), self.name, self.point_process, **external_parameters)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
                 self.all_blocks = list(blocks.values())
@@ -49,7 +47,9 @@ class NMODL(Mechanism):
                 self._gather_IO(parser)
                 self._solve()
                 self._fixup_breakpoint_IO()
-            cache.save(self.filename, builtin_parameters, self)
+                for block in self.all_blocks:
+                    block.substitute_parameters(self.parameters)
+            cache.save(self.filename, external_parameters, self)
 
             self._run_initial_block(rxd_model.database)
             self._compile_breakpoint_block()
@@ -274,7 +274,6 @@ class NMODL(Mechanism):
             try: self.initial_block.arguments.remove(state)
             except ValueError: pass
         # 
-        self.parameters.substitute(self.initial_block)
         # Get the initial values from the database for any pointers that have them.
         for arg in list(self.initial_block.arguments):
             if arg not in self.pointers:
@@ -397,11 +396,10 @@ class NMODL(Mechanism):
                 raise ValueError(f'Unsupported SOLVE method {solve_method}.')
         # 
         magnitude = sympy.Symbol('self.magnitude')
-        for name, (value, units) in self.instance_parameters.items():
+        for name, value in self.instance_parameters.items():
             self.breakpoint_block.statements.insert(0, AssignStatement(name, value * magnitude))
         # 
         self._substitute_initial_scope(self.breakpoint_block)
-        self.parameters.substitute(self.breakpoint_block)
         # 
         self.advance_pycode = (
                 '@Compute\n'
@@ -420,9 +418,10 @@ class NMODL(Mechanism):
 
     def _register_nonspecific_conductances(self, rxd_model, db_class):
         for (ion, e_variable) in self.nonspecific_conductances.items():
-            e, e_units = self.parameters[e_variable]
+            e_value = self.parameters[e_variable]
+            e_units = self.units[e_variable]
             if e_units is not None: assert e_units.lower() == 'mv'
-            rxd_model.register_nonspecific_conductance(db_class, ion, e)
+            rxd_model.register_nonspecific_conductance(db_class, ion, e_value)
 
     def _initialize_omnipresent_mechanism_class(self, database):
         1/0 # TODO
@@ -488,77 +487,38 @@ class NMODL(Mechanism):
         for name, ref in zip(cls._other_mechanisms, other_mechanisms):
             setattr(self, name, ref)
 
-class ParameterTable(dict):
-    """ Dictionary mapping from nmodl parameter name to pairs of (value, units). """
+def process_parameters(parameters, mechanism_name, point_process, *, dt, celsius):
+    """
+    Return parameters is dictionary of parameter -> values.
 
-    builtin_parameters = {
-        'celsius': (None, 'degC'),
-        'dt':      (None, 'ms'),
-    }
+    Return units is dictionary of parameter -> units.
 
-    def __init__(self, parameters, mechanism_name):
-        dict.__init__(self)
-        self.mechanism_name = mechanism_name
-        self.update(self.builtin_parameters)
-        self.update(parameters)
-
-    def update(self, parameters, strict=False, override=True):
-        for name, value in parameters.items():
-            name = str(name)
-            if not isinstance(value, Iterable): value = (value, None)
-            value, units = value
-            value = float(value) if value is not None else None
-            units = str(units)   if units is not None else None
-            if name in self:
-                old_value, old_units = self[name]
-                if units is None: units = old_units
-                elif old_units is not None and (strict or not override):
-                    assert units == old_units, f'Parameter "{name}" units changed'
-                if old_value is not None and not override:
-                    value = old_value
-            elif strict: raise ValueError(f'Invalid parameter override "{name}"')
-            self[name] = (value, units)
-        return self
-
-    def get_instance_parameters(self, point_process):
-        """ Returns the instance_parameters.
-
+    Return instance_parameters
         The surface area parameters are special because each segment of neuron
         has its own surface area and so their actual values are different for
-        each instance of the mechanism. They are not in-lined directly into the
-        source code, instead they are stored alongside the state variables and
-        accessed at run time. 
-        """
-        parameters = {}
-        for name, (value, units) in self.items():
-            if units:
-                if point_process:
-                    if '/' + self.mechanism_name in units:
-                        parameters[name] = (value, units)
-                else:
-                    if '/cm2' in units:
-                        # Convert from NEUWONs um^2 to NEURONs cm^2.
-                        value *= (1e-6 * 1e-6) / (1e-2 * 1e-2)
-                        units  = units.replace('/cm2', '')
-                        parameters[name] = (value, units)
-        return parameters
-
-    def split_instance_parameters(self, point_process):
-        """ Removes and returns the instance_parameters. """
-        parameters = self.get_instance_parameters(point_process)
-        for name in parameters:
-            self.pop(name)
-        return parameters
-
-    def substitute(self, block):
-        block.gather_arguments()
-        for name, (value, units) in self.items():
-            if value is None:
-                continue
-            if name not in block.arguments:
-                continue
-            block.statements.insert(0, AssignStatement(name, value))
-            block.arguments.remove(name)
+        each instance of the mechanism. Point processes also have a special
+        unit for instance parameters, which defaults to 1. These parameters are
+        not in-lined directly into the source code, instead they are stored
+        alongside the state variables and accessed at run time.
+    """
+    parameters.setdefault('celsius', (celsius, 'degC')) # Allow NMODL file to override temperature.
+    assert 'dt' not in parameters, 'Parameter "dt" is reserved.'
+    parameters['dt'] = (dt, 'ms')
+    # Split parameters and units into separate dictionaries.
+    units_dict = {k: u for k, (v,u) in parameters.items()}
+    parameters = {k: v for k, (v,u) in parameters.items()}
+    # Split off the instance_parameters.
+    instance_parameters = {}
+    for name, units in units_dict.items():
+        if units is not None:
+            if point_process and ('/' + mechanism_name) in units:
+                instance_parameters[name] = parameters.pop(name)
+            elif '/cm2' in units:
+                # Convert from NEURONs cm^2 to NEUWONs um^2.
+                units_dict[name] = units.replace('/cm2', '/um2')
+                x = (1e-6 * 1e-6) / (1e-2 * 1e-2)
+                instance_parameters[name] = parameters.pop(name) * x
+    return (parameters, instance_parameters, units_dict)
 
 class NmodlMechanism(Mechanism):
     __slots__ = ()

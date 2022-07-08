@@ -241,6 +241,16 @@ class CodeBlock:
         self.arguments = sorted(self.arguments)
         self.assigned  = sorted(self.assigned)
 
+    def substitute_parameters(self, parameters):
+        self.gather_arguments()
+        for name, value in parameters.items():
+            if value is None:
+                continue
+            if name not in self.arguments:
+                continue
+            self.statements.insert(0, AssignStatement(name, value))
+            self.arguments.remove(name)
+
 class EmptyCodeBlock(CodeBlock):
     def __init__(self, name):
         self.name = str(name)
