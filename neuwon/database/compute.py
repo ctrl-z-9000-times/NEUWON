@@ -158,10 +158,10 @@ class _JIT:
         module_ast     = ast.parse(self.func_text, self.filename)
         for _ in range(self.lineno): ast.increment_lineno(module_ast)
         self.body_ast  = module_ast.body[0]
-        nonlocals, globals, builtins, unbound = inspect.getclosurevars(function)
+        nonlocals, globals_, builtins, unbound = inspect.getclosurevars(function)
         self.closure = {}
         self.closure.update(builtins)
-        self.closure.update(globals)
+        self.closure.update(globals_)
         self.closure.update(nonlocals)
         self.parameters = []
         parameters_iter = iter(self.signature.parameters.items())

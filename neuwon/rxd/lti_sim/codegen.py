@@ -34,7 +34,7 @@ class Codegen:
         # Flatten the input dimensions.
         table_data = self.table.reshape(-1, self.num_states, self.num_states, self.polynomial.num_terms)
         table_data = table_data.transpose(0, 2, 1, 3) # Switch from row-major to column-major format.
-        return np.array(table_data, dtype=Real, order='C')
+        return np.array(table_data, dtype=Real, order='C').reshape(-1)
 
     def _kernel(self):
         c  =   "@Compute\n"
@@ -72,7 +72,8 @@ class Codegen:
             if factors:
                 c += f"    term{term_idx} = {' * '.join(factors)}\n"
         c += ("    # Compute the dot product into the scratch buffer.\n"
-             f"    scratch[{self.num_states}] = {{0.0}}\n"
+             f"    state = [{', '.join(f'self.{x}' for x in self.state_names)}]\n"
+             f"    scratch = [{', '.join('0.0' for _ in range(self.num_states))}]\n"
              f"    for col in range({self.num_states}):\n"
               "        s = state[col]\n"
              f"        for row in range({self.num_states}):\n"
@@ -97,13 +98,14 @@ class Codegen:
                   "        scratch[x] *= correction_factor\n")
         c += "    # Move the results into the state arrays.\n"
         for i, x in enumerate(self.state_names):
-            c += f"        self.{x} = scratch[{i}]\n"
+            c += f"    self.{x} = scratch[{i}]\n"
+        print(c)
         return c
 
     def load(self):
         if fn := getattr(self, "_load_cache", False): return fn
         fn_name  = self.name + "_advance"
-        scope    = {"numpy": np, "Compute": Compute}
+        scope    = {"numpy": np, "Compute": Compute, "table": self.table_data}
         exec_string(self.source_code, scope)
         self._load_cache = fn = scope[fn_name]
         return fn
