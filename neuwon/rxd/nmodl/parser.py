@@ -1,3 +1,4 @@
+import copy
 import itertools
 import nmodl.ast
 import nmodl.dsl
@@ -288,13 +289,28 @@ class SolveStatement:
     def __init__(self, AST):
         # The "block" attribute gets rewritten by the method gather_code_blocks().
         self.block = AST.block_name.get_node_name()
+        self.steadystate = False
+        self.breakpoint  = False
         if AST.steadystate:
             self.method = AST.steadystate.get_node_name()
+            self.steadystate = True
         elif AST.method:
             self.method = AST.method.get_node_name()
+            self.breakpoint = True
         else:
             self.method = ""
+            self.breakpoint = True
         assert not AST.ifsolerr # Block to be executed on error, is not supported.
+
+    def merge(self, other):
+        """ Consolidate these two solve statements, returns a new object. """
+        assert type(self) is type(other)
+        assert self.block is other.block
+        assert self.method == other.method
+        new = copy.copy(self)
+        new.steadystate = self.steadystate or other.steadystate
+        new.breakpoint  = self.breakpoint  or other.breakpoint
+        return new
 
 class ConserveStatement:
     def __init__(self, AST):
@@ -309,19 +325,3 @@ class ConserveStatement:
         if len(sum_solution) != 1:
             raise ValueError('CONSERVE statements must be in the form: "sum-of-states = number"')
         self.conserve_sum = sum_solution[0].evalf()
-
-    @staticmethod
-    def solve_with_correction_factor(self):
-        """ Usage: CodeBlock.map(ConserveStatement.solve_with_correction_factor) """
-        if not isinstance(self, ConserveStatement):
-            return [self]
-        if not self.states:
-            return []
-        true_sum = self.states[0]
-        for state in self.states[1:]:
-            true_sum = true_sum + state
-        replacement = [AssignStatement('_CORRECTION_FACTOR', self.conserve_sum / true_sum)]
-        for state in self.states:
-            replacement.append(
-                    AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))
-        return replacement

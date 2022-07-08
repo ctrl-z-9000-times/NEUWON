@@ -1,4 +1,4 @@
-from neuwon.rxd.nmodl.parser import AssignStatement, ConserveStatement
+from neuwon.rxd.nmodl.parser import AssignStatement, ConserveStatement, CodeBlock
 import sympy
 
 dt = sympy.Symbol("dt", real=True, positive=True)
@@ -127,3 +127,37 @@ def crank_nicholson(self: AssignStatement):
     assert len(backward_euler) == 1, backward_euler
     self.rhs = backward_euler.pop() * 2 - init_state
     self.rhs = self.rhs.simplify()
+
+def solve_block(self: CodeBlock, solver_method):
+    """ Solve the given block in-place. """
+    assert self.derivative
+    self.derivative = False
+    # Move the CONSERVE statements to the end of the block and
+    # replace them with a simple multiplicative solution.
+    self.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
+    self.map(_solve_conserve_with_correction_factor)
+    # Solve each equation in-place.
+    next_states = [] # Don't modify the state until all equations are computed.
+    for stmt in self:
+        if isinstance(stmt, AssignStatement) and stmt.derivative:
+            solver_method(stmt)
+            next_states.append(stmt.lhsn)
+            stmt.lhsn = f'_next_{stmt.lhsn}'
+    # Update all states instantaneously.
+    for x in next_states:
+        self.statements.append(AssignStatement(x, f'_next_{x}'))
+
+def _solve_conserve_with_correction_factor(self: ConserveStatement):
+    """ Usage: CodeBlock.map(_solve_conserve_with_correction_factor) """
+    if not isinstance(self, ConserveStatement):
+        return [self]
+    if not self.states:
+        return []
+    true_sum = self.states[0]
+    for state in self.states[1:]:
+        true_sum = true_sum + state
+    replacement = [AssignStatement('_CORRECTION_FACTOR', self.conserve_sum / true_sum)]
+    for state in self.states:
+        replacement.append(
+                AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))
+    return replacement

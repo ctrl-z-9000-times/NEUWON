@@ -28,7 +28,7 @@ def to_python(self, indent=''):
                 rhs = sympy_to_pycode(self.rhs.simplify())
             else:
                 rhs = str(self.rhs)
-            py += indent + self.lhsn + self.operation + rhs
+            py += indent + self.lhsn + ' ' + self.operation + ' ' + rhs
         except Exception:
             print('Failed at:', repr(self), flush=True)
             raise

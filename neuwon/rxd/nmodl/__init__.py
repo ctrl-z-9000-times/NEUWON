@@ -8,6 +8,7 @@ from .parser import (NmodlParser, ANT,
         AssignStatement,
         ConserveStatement)
 import copy
+import math
 import os.path
 import re
 import sympy
@@ -253,48 +254,54 @@ class NMODL(Mechanism):
             'cnexp':            solver.crank_nicholson,
         }
         # First split all of the calls to "SOLVE my_block METHOD my_method" out
-        # of the breakpoint block.
-        solve_stmts = []
+        # of the INITIAL and BREAKPOINT blocks.
+        solve_stmts = {} # Organized by block-name.
         def find_solve_stmts(stmt):
             if not isinstance(stmt, SolveStatement):
                 return [stmt]
-            solve_stmts.append(stmt)
+            name = stmt.block.name
+            if name not in solve_stmts:
+                solve_stmts[name] = stmt
+            else:
+                solve_stmts[name] = solve_stmts[name].merge(stmt)
             return []
+        self.initial_block.map(find_solve_stmts)
         self.breakpoint_block.map(find_solve_stmts)
-        # Then solve the target blocks.
+        # Now solve the target blocks.
         self.solved_blocks = []
-        for stmt in solve_stmts:
+        for stmt in solve_stmts.values():
             solve_block  = stmt.block
             solve_method = stmt.method
             assert solve_block.derivative
 
             if method := independent_methods.get(solve_method, False):
-                # Move the CONSERVE statements to the end of the block and
-                # replace them with a simple multiplicative solution.
-                solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
-                solve_block.map(ConserveStatement.solve_with_correction_factor)
-                # Solve each equation in-place.
-                solve_block.derivative = False
-                next_states = [] # Don't modify the state until all equations are computed.
-                for stmt in solve_block:
-                    if isinstance(stmt, AssignStatement) and stmt.derivative:
-                        method(stmt)
-                        next_states.append(stmt.lhsn)
-                        stmt.lhsn = f'_next_{stmt.lhsn}'
-                # Update all states instantaneously.
-                for x in next_states:
-                    solve_block.statements.append(AssignStatement(x, f'_next_{x}'))
-                # Prepend the solved block directly into the breakpoint block.
-                self.breakpoint_block.statements = solve_block.statements + self.breakpoint_block.statements
+                solver.solve_block(solve_block, method)
+                if stmt.steadystate:
+                    # Append the solved block to the initial block.
+                    max_time = 60*60*1000 # 1 hour in milliseconds.
+                    # TODO: Consider an iterative solver instead of trying to
+                    # get a solution with a single big time step? It would
+                    # probably be more accurate, but also more complex and
+                    # potentially time consuming to run.
+                    # max_delta  = 1e-3
+                    # py += f'prev_state = [{state_list}]\n'
+                    # py += f'for _ in range(int(round({max_time} / dt))):\n'
+                    # py += textwrap.indent(code_gen.to_python(solve_block), '    ')
+                    # py += f'    state = [{state_list}]\n'
+                    # py += f'    if max(abs(a-b) for a,b in zip(prev_state, state)) < {max_delta}: break\n'
+                    # py +=  '    prev_state = state\n'
+                    self.initial_block.statements.append(AssignStatement('dt', float(max_time)))
+                    self.initial_block.statements.extend(solve_block.statements)
+                if stmt.breakpoint:
+                    # Prepend the solved block to the breakpoint block.
+                    self.breakpoint_block.statements = solve_block.statements + self.breakpoint_block.statements
 
             elif solve_method == 'sparse':
                 # Call the LTI_SIM program.
                 inputs = self._gather_inputs(solve_block)
-                lti_sim.LTI_Model(self.name,
-                        inputs,
-                        self.states,
+                lti_sim.LTI_Model(self.name, inputs, self.states,
                         self._compile_derivative_block(solve_block, inputs),
-                        1.0, # TODO: conserve_sum?
+                        self.conserve_sum,
                         self.parameters['dt'])
 
                 1/0 # TODO
@@ -322,6 +329,44 @@ class NMODL(Mechanism):
             inputs.append(inp)
         return inputs
 
+    def _run_initial_block(self, database):
+        """
+        Use pythons built-in "exec" function to run the INITIAL_BLOCK.
+        Sets: initial_state and initial_scope.
+        """
+        self._initial_block_to_python()
+        # Get the initial values from the database for any pointers that have them.
+        self.initial_scope = {}
+        for arg in list(self.initial_block.arguments):
+            assert arg in self.pointers
+            if database is not None:
+                db_access = self.pointers[arg]
+                db_access = re.sub(r'^self\.segment\.', 'Segment.', db_access)
+                db_access = re.sub(r'^self\.inside\.',  'Inside.',  db_access)
+                db_access = re.sub(r'^self\.outside\.', 'Outside.', db_access)
+                value = database.get(db_access).get_initial_value()
+                if value is None:
+                    value = database.get(db_access).get_valide_range()[0]
+                if value is None or not math.isfinite(value):
+                    raise ValueError(f"Missing initial values for {arg}")
+                self.initial_scope[arg] = value
+            else:
+                self.initial_scope[arg] = math.nan
+        # 
+        code_gen.exec_string(self.initial_python, self.initial_scope)
+        self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
+        for x in self.pointers:
+            self.initial_scope.pop(x, None)
+
+    def _initial_block_to_python(self):
+        """ Sets: initial_python. """
+        if not hasattr(self, 'initial_python'):
+            # Initialize the state variables.
+            for state, value in self._estimate_initial_state().items():
+                self.initial_block.statements.insert(0, AssignStatement(state, value))
+            self.initial_block.gather_arguments()
+            self.initial_python = code_gen.to_python(self.initial_block)
+
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
         init_state = {state: 0.0 for state in self.states}
@@ -333,75 +378,6 @@ class NMODL(Mechanism):
                 init_state[state] += init_value
         return init_state
 
-    def _run_initial_block(self, database):
-        """
-        Use pythons built-in "exec" function to run the INITIAL_BLOCK.
-        Sets: initial_state and initial_scope.
-        """
-        # Initialize the state variables.
-        for state, value in self._estimate_initial_state().items():
-            self.initial_block.statements.insert(0, AssignStatement(state, value))
-            try: self.initial_block.arguments.remove(state)
-            except ValueError: pass
-        # 
-        # Get the initial values from the database for any pointers that have them.
-        for arg in list(self.initial_block.arguments):
-            if arg not in self.pointers:
-                continue
-            db_access = self.pointers[arg]
-            db_access = re.sub(r'^self\.segment\.', 'Segment.', db_access)
-            db_access = re.sub(r'^self\.inside\.',  'Inside.',  db_access)
-            db_access = re.sub(r'^self\.outside\.', 'Outside.', db_access)
-            value = database.get(db_access).get_initial_value()
-            if value is not None:
-                self.initial_block.statements.insert(0, AssignStatement(arg, value))
-                self.initial_block.arguments.remove(arg)
-        # 
-        if self.initial_block.arguments:
-            raise ValueError(f"Missing initial values for {', '.join(self.initial_block.arguments)}.")
-        # 
-        self.initial_block.map(self._solve_steadystate)
-        # 
-        self.initial_python = code_gen.to_python(self.initial_block)
-        self.initial_scope = {}
-        code_gen.exec_string(self.initial_python, self.initial_scope)
-        self.initial_state = {x: self.initial_scope.pop(x) for x in self.states}
-
-    def _solve_steadystate(self, solve_stmt):
-        """ Replace SOLVE STEADYSTATE statements with python code to solve them. """
-        if not isinstance(solve_stmt, SolveStatement):
-            return [solve_stmt]
-        solve_block  = solve_stmt.block
-        solve_name   = solve_block.name
-        solve_method = solve_stmt.method
-        state_list = ', '.join(sorted(self.states))
-        max_time   = 60*60*1000 # 1 hour in milliseconds.
-        max_delta  = 1e-3
-        nstates    = len(self.states)
-        py  = f'def __{solve_name}_steadystate():\n'
-        py += f'    global {state_list}\n'
-        if solve_method == 'sparse':
-            py += textwrap.indent(self._derivative_block_to_python(solve_block), '    ')
-            py +=  '    import numpy as np\n'
-            py +=  '    from scipy.linalg import expm\n'
-            py += f'    irm = np.empty(({nstates}, {nstates}))\n'
-            py += f'    for idx in range({nstates}):\n'
-            py += f'        impulse = [int(x == idx) for x in range({nstates})]\n'
-            py += f'        irm[:,idx] = {solve_name}(*impulse)\n'
-            py += f'    irm = expm(irm * {max_time})\n'
-            py += f'    return irm.dot([{state_list}])\n'
-        else:
-            assert not solve_block.derivative # Should already be solved!
-            py += f'    prev_state = [{state_list}]\n'
-            py += f'    for _ in range(int(round({max_time} / dt))):\n'
-            py += textwrap.indent(code_gen.to_python(solve_block), '        ')
-            py += f'        state = [{state_list}]\n'
-            py += f'        if max(abs(a-b) for a,b in zip(prev_state, state)) < {max_delta}: break\n'
-            py +=  '        prev_state = state\n'
-            py += f'    return state\n'
-        py += f'{state_list} = __{solve_name}_steadystate()\n'
-        return [py]
-
     def _compile_derivative_block(self, block, inputs):
         assert block.derivative
         for stmt in block:
@@ -409,7 +385,10 @@ class NMODL(Mechanism):
                 assert stmt.lhsn in self.states
                 stmt.lhsn = f'__d_{stmt.lhsn}'
                 stmt.derivative = False
-        1/0 # INITIAL SCOPE!
+
+        self._run_initial_block(None)
+        block.substitute_parameters(self.initial_scope)
+
         arguments = [inp.name for inp in inputs] + self.states
         pycode = f"def {block.name}({', '.join(arguments)}):\n"
         for state in self.states:
@@ -419,16 +398,6 @@ class NMODL(Mechanism):
         scope = {}
         code_gen.exec_string(pycode, scope)
         return scope[block.name]
-
-    def _substitute_initial_scope(self, block):
-        block.gather_arguments()
-        for arg, value in self.initial_scope.items():
-            if arg in self.pointers:
-                continue
-            if arg not in block.arguments:
-                continue
-            block.statements.insert(0, AssignStatement(arg, value))
-            block.arguments.remove(arg)
 
     def _fixup_breakpoint_IO(self):
         for stmt in self.breakpoint_block:
@@ -447,7 +416,7 @@ class NMODL(Mechanism):
         for name, value in self.instance_parameters.items():
             self.breakpoint_block.statements.insert(0, AssignStatement(name, value * magnitude))
         # 
-        self._substitute_initial_scope(self.breakpoint_block)
+        self.breakpoint_block.substitute_parameters(self.initial_scope)
         # 
         self.advance_pycode = (
                 '@Compute\n'

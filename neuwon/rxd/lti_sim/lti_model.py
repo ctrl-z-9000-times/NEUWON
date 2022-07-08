@@ -27,6 +27,7 @@ class LTI_Model:
             d1 = self.derivative(*inputs, *state1)
             d2 = self.derivative(*inputs, *state2)
             for s1, s2 in zip(d1, d2):
+                assert np.isfinite(s1) and np.isfinite(s2)
                 assert abs(s1 - s2 / 2.0) < 1e-12, "Non-linear system detected!"
 
     def make_matrix(self, inputs, time_step=None):
