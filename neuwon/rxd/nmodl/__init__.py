@@ -36,8 +36,7 @@ class NMODL(Mechanism):
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self.name, self.point_process,  self.title, self.description = parser.gather_documentation()
-                self.parameters, self.instance_parameters, self.units = process_parameters(
-                        parser.gather_parameters(), self.name, self.point_process, **external_parameters)
+                self._process_parameters(parser.gather_parameters(), **external_parameters)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
                 self.all_blocks         = list(blocks.values())
@@ -77,6 +76,43 @@ class NMODL(Mechanism):
         for x in disallow:
             if parser.lookup(getattr(ANT, x)):
                 raise ValueError('"%s"s are not allowed.'%x)
+
+    def _process_parameters(self, parameters, *, dt, celsius):
+        """
+        Attribute parameters is dictionary of parameter -> values.
+
+        Attribute units is dictionary of parameter -> units.
+
+        Attribute instance_parameters
+            The surface area parameters are special because each segment of neuron
+            has its own surface area and so their actual values are different for
+            each instance of the mechanism. Point processes also have a special
+            unit for instance parameters, which defaults to 1. These parameters are
+            not in-lined directly into the source code, instead they are stored
+            alongside the state variables and accessed at run time.
+        """
+        # Split parameters and units into separate dictionaries.
+        self.units      = units_dict = {k: u for k, (v,u) in parameters.items()}
+        self.parameters = parameters = {k: v for k, (v,u) in parameters.items()}
+        # Split off the instance_parameters.
+        self.instance_parameters = {}
+        for name, units in units_dict.items():
+            if units is not None:
+                if self.point_process and ('/' + self.mechanism_name) in units:
+                    self.instance_parameters[name] = parameters.pop(name)
+                elif '/cm2' in units:
+                    # Convert from NEURONs cm^2 to NEUWONs um^2.
+                    units_dict[name] = units.replace('/cm2', '/um2')
+                    x = (1e-6 * 1e-6) / (1e-2 * 1e-2)
+                    self.instance_parameters[name] = parameters.pop(name) * x
+        # Fill in external parameters.
+        assert parameters.get('dt', None) is None, 'Parameter "dt" is reserved.'
+        parameters['dt'] = dt
+        if units_dict.get('dt', None) is None: units_dict['dt'] = 'ms'
+        # Allow NMODL file to override temperature.
+        if parameters.get('celsius', None) is None: parameters['celsius'] = celsius
+        if units_dict.get('celsius', None) is None: units_dict['celsius'] = 'degC'
+        assert units_dict['celsius'] == 'degC'
 
     def _gather_conserve_statements(self):
         conserve_statements = []
@@ -493,44 +529,6 @@ class NMODL(Mechanism):
         assert len(cls._other_mechanisms) == len(other_mechanisms)
         for name, ref in zip(cls._other_mechanisms, other_mechanisms):
             setattr(self, name, ref)
-
-def process_parameters(parameters, mechanism_name, point_process, *, dt, celsius):
-    """
-    Return parameters is dictionary of parameter -> values.
-
-    Return units is dictionary of parameter -> units.
-
-    Return instance_parameters
-        The surface area parameters are special because each segment of neuron
-        has its own surface area and so their actual values are different for
-        each instance of the mechanism. Point processes also have a special
-        unit for instance parameters, which defaults to 1. These parameters are
-        not in-lined directly into the source code, instead they are stored
-        alongside the state variables and accessed at run time.
-    """
-    # Split parameters and units into separate dictionaries.
-    units_dict = {k: u for k, (v,u) in parameters.items()}
-    parameters = {k: v for k, (v,u) in parameters.items()}
-    # Split off the instance_parameters.
-    instance_parameters = {}
-    for name, units in units_dict.items():
-        if units is not None:
-            if point_process and ('/' + mechanism_name) in units:
-                instance_parameters[name] = parameters.pop(name)
-            elif '/cm2' in units:
-                # Convert from NEURONs cm^2 to NEUWONs um^2.
-                units_dict[name] = units.replace('/cm2', '/um2')
-                x = (1e-6 * 1e-6) / (1e-2 * 1e-2)
-                instance_parameters[name] = parameters.pop(name) * x
-    # Fill in external parameters.
-    assert parameters.get('dt', None) is None, 'Parameter "dt" is reserved.'
-    parameters['dt'] = dt
-    if units_dict.get('dt', None) is None: units_dict['dt'] = 'ms'
-    # Allow NMODL file to override temperature.
-    if parameters.get('celsius', None) is None: parameters['celsius'] = celsius
-    if units_dict.get('celsius', None) is None: units_dict['celsius'] = 'degC'
-    assert units_dict['celsius'] == 'degC'
-    return (parameters, instance_parameters, units_dict)
 
 class NmodlMechanism(Mechanism):
     __slots__ = ()
