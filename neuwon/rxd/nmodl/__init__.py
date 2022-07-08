@@ -44,7 +44,7 @@ class NMODL(Mechanism):
                 self.breakpoint_block   = blocks['BREAKPOINT']
                 for block in self.all_blocks:
                     block.substitute_parameters(self.parameters)
-                self.conserve_statements = self._gather_conserve_statements()
+                self._gather_conserve_statements()
                 self._gather_IO(parser)
                 self._solve()
                 self._fixup_breakpoint_IO()
@@ -121,12 +121,15 @@ class NMODL(Mechanism):
                 if isinstance(stmt, ConserveStatement):
                     conserve_statements.append(stmt)
 
-        if len(conserve_statements) > 1:
-            raise ValueError("Multiple CONSERVE statements are not supported.")
-        # states  = nmodl.dsl.to_nmodl(stmt.react).split('+')
-        # if set(states) != set(self.state_names) or not stmt.expr.is_number():
-        #     raise ValueError('CONSERVE statement must be in the form: sum-of-all-states = number.')
-        return conserve_statements
+        if len(conserve_statements) == 0:
+            self.conserve_sum = None
+        elif len(conserve_statements) == 1:
+            stmt = conserve_statements[0]
+            if set(self.states) != set(str(x) for x in stmt.states):
+                raise ValueError('CONSERVE statement must use all states')
+            self.conserve_sum = stmt.conserve_sum
+        elif len(conserve_statements) > 1:
+            raise ValueError("Multiple CONSERVE statements are not supported")
 
     def _gather_IO(self, parser):
         """
@@ -266,10 +269,10 @@ class NMODL(Mechanism):
             assert solve_block.derivative
 
             if method := independent_methods.get(solve_method, False):
-                # Move the CONSERVE statements to the end of the block.
+                # Move the CONSERVE statements to the end of the block and
+                # replace them with a simple multiplicative solution.
                 solve_block.statements.sort(key=lambda stmt: isinstance(stmt, ConserveStatement))
-                # Replace CONSERVE statements with a simple multiplicative solution.
-                solve_block.map(solver.conserve_statement_solution)
+                solve_block.map(ConserveStatement.solve_with_correction_factor)
                 # Solve each equation in-place.
                 solve_block.derivative = False
                 next_states = [] # Don't modify the state until all equations are computed.
@@ -297,7 +300,7 @@ class NMODL(Mechanism):
                 1/0 # TODO
 
             else:
-                raise ValueError(f'Unsupported SOLVE method {solve_method}.')
+                raise ValueError(f'Unsupported SOLVE METHOD {solve_method}.')
 
     def _gather_inputs(self, block) -> '[lti_sim.Input]':
         """
@@ -322,15 +325,12 @@ class NMODL(Mechanism):
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
         init_state = {state: 0.0 for state in self.states}
-        if not self.conserve_statements:
+        if self.conserve_sum is None:
             pass # Zero-init.
-        elif len(self.conserve_statements) == 1:
-            stmt = self.conserve_statements[0]
-            init_value = stmt.conserve_sum / len(stmt.states)
-            for state in stmt.states:
-                init_state[str(state)] += init_value
         else:
-            raise ValueError("Multiple CONSERVE statements are not supported!")
+            init_value = self.conserve_sum / len(self.states)
+            for state in self.states:
+                init_state[state] += init_value
         return init_state
 
     def _run_initial_block(self, database):

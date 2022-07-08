@@ -306,5 +306,22 @@ class ConserveStatement:
         for symbol in conserved_expr.free_symbols:
             assumed_form = assumed_form - symbol
         sum_solution = sympy.solvers.solve(sympy.Eq(conserved_expr, assumed_form), sum_symbol)
-        assert(len(sum_solution) == 1)
+        if len(sum_solution) != 1:
+            raise ValueError('CONSERVE statements must be in the form: "sum-of-states = number"')
         self.conserve_sum = sum_solution[0].evalf()
+
+    @staticmethod
+    def solve_with_correction_factor(self):
+        """ Usage: CodeBlock.map(ConserveStatement.solve_with_correction_factor) """
+        if not isinstance(self, ConserveStatement):
+            return [self]
+        if not self.states:
+            return []
+        true_sum = self.states[0]
+        for state in self.states[1:]:
+            true_sum = true_sum + state
+        replacement = [AssignStatement('_CORRECTION_FACTOR', self.conserve_sum / true_sum)]
+        for state in self.states:
+            replacement.append(
+                    AssignStatement(state, '_CORRECTION_FACTOR', operation = '*='))
+        return replacement
