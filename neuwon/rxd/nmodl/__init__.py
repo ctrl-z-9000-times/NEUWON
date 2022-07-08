@@ -36,7 +36,7 @@ class NMODL(Mechanism):
                 parser = NmodlParser(self.filename)
                 self._check_for_unsupported(parser)
                 self.name, self.point_process,  self.title, self.description = parser.gather_documentation()
-                self._process_parameters(parser.gather_parameters(), **external_parameters)
+                self._gather_parameters(parser.gather_parameters(), **external_parameters)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
                 self.all_blocks         = list(blocks.values())
@@ -77,13 +77,13 @@ class NMODL(Mechanism):
             if parser.lookup(getattr(ANT, x)):
                 raise ValueError('"%s"s are not allowed.'%x)
 
-    def _process_parameters(self, parameters, *, dt, celsius):
+    def _gather_parameters(self, parameters, *, dt, celsius):
         """
-        Attribute parameters is dictionary of parameter -> values.
+        Attribute parameters is dictionary of {parameter -> value}.
 
-        Attribute units is dictionary of parameter -> units.
+        Attribute units is dictionary of {parameter -> units}.
 
-        Attribute instance_parameters
+        Attribute instance_parameters is dictionary of {parameter -> value}.
             The surface area parameters are special because each segment of neuron
             has its own surface area and so their actual values are different for
             each instance of the mechanism. Point processes also have a special
@@ -135,8 +135,8 @@ class NMODL(Mechanism):
         Sets attributes: "pointers", "accumulators", "other_mechanisms_", and
         the following flags: "omnipresent", "outside".
         """
-        self.pointers = {}
-        self.accumulators = set()
+        self.pointers = {} # Dict of {'nmodl_variable': 'database_access'}
+        self.accumulators = set() # NMODL variable names.
         self.nonspecific_conductances = {} # Dict of {'ion_name': 'equilibrium_variable'}
         self.omnipresent = False # TODO!
         self.outside = False
@@ -286,10 +286,38 @@ class NMODL(Mechanism):
 
             elif solve_method == 'sparse':
                 # Call the LTI_SIM program.
+                inputs = self._gather_inputs(solve_block)
+                lti_sim.LTI_Model(self.name,
+                        inputs,
+                        self.states,
+                        self._compile_derivative_block(solve_block, inputs),
+                        1.0, # TODO: conserve_sum?
+                        self.parameters['dt'])
+
                 1/0 # TODO
 
             else:
                 raise ValueError(f'Unsupported SOLVE method {solve_method}.')
+
+    def _gather_inputs(self, block) -> '[lti_sim.Input]':
+        """
+        Determine the external variable inputs to the given block.
+        These inputs effect the derivative on a moment to moment basis.
+        """
+        inputs = []
+        block.gather_arguments()
+        for variable in block.arguments:
+            if variable not in self.pointers: continue
+            if variable in self.states: continue
+            db_access = self.pointers[variable].split('.')
+            db_access.remove('self')
+            db_class_ptr, db_attr = db_access
+            if variable == 'v':
+                inp = lti_sim.LinearInput(variable, -100, 100)
+            else:
+                inp = lti_sim.LogarithmicInput(variable, 0, 1000)
+            inputs.append(inp)
+        return inputs
 
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
@@ -374,33 +402,23 @@ class NMODL(Mechanism):
         py += f'{state_list} = __{solve_name}_steadystate()\n'
         return [py]
 
-    def _derivative_block_to_python(self, block):
+    def _compile_derivative_block(self, block, inputs):
         assert block.derivative
         for stmt in block:
             if isinstance(stmt, AssignStatement) and stmt.derivative:
                 assert stmt.lhsn in self.states
-                stmt.lhsn = f'_d_{stmt.lhsn}'
+                stmt.lhsn = f'__d_{stmt.lhsn}'
                 stmt.derivative = False
-        deriv_pycode = f"def {block.name}({', '.join(self.states)}):\n"
+        1/0 # INITIAL SCOPE!
+        arguments = [inp.name for inp in inputs] + self.states
+        pycode = f"def {block.name}({', '.join(arguments)}):\n"
         for state in self.states:
-            deriv_pycode += f"    _d_{state} = 0.0\n"
-        deriv_pycode += code_gen.to_python(block, "    ")
-        deriv_pycode += f"    return [{', '.join(f'_d_{state}' for state in self.states)}]\n\n"
-        return deriv_pycode
-
-    def _compile_derivative_block(self, temperature):
-        scope = {'celsius': float(temperature)} # Allow NMODL file to override temperature.
-        scope.update(self.parameters)
-        pycode = self.initial_block.to_python()
-        arguments = [inp.name for inp in self.inputs] + self.state_names
-        pycode += f"def {self.name}_derivative_({', '.join(arguments)}):\n"
-        for state in self.state_names:
             pycode += f"    __d_{state} = 0.0\n"
-        pycode += self.derivative_block.to_python("    ")
-        pycode += f"    return [{', '.join(f'__d_{state}' for state in self.state_names)}]\n\n"
-        _exec_string(pycode, scope)
-        self.derivative = scope[f"{self.name}_derivative_"]
-        self.temperature = scope['celsius']
+        pycode += code_gen.to_python(block, "    ")
+        pycode += f"    return [{', '.join(f'__d_{state}' for state in self.states)}]\n\n"
+        scope = {}
+        code_gen.exec_string(pycode, scope)
+        return scope[block.name]
 
     def _substitute_initial_scope(self, block):
         block.gather_arguments()
@@ -424,19 +442,6 @@ class NMODL(Mechanism):
         globals_ = {
                 'Compute': Compute,
         }
-        # Insert parameters & initial-values into the solve blocks.
-        for solve_stmt in self.breakpoint_block:
-            if not isinstance(solve_stmt, SolveStatement):
-                continue
-            solve_block  = solve_stmt.block
-            solve_name   = solve_block.name
-            solve_method = solve_stmt.method
-            self._substitute_initial_scope(solve_block)
-            self.parameters.substitute(solve_block)
-            if solve_method == 'sparse':
-                globals_[solve_name] = self._initialize_kinetic_model(solve_block)
-            else:
-                raise ValueError(f'Unsupported SOLVE method {solve_method}.')
         # 
         magnitude = sympy.Symbol('self.magnitude')
         for name, value in self.instance_parameters.items():
