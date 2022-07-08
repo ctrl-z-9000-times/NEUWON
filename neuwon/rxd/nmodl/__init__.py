@@ -385,10 +385,8 @@ class NMODL(Mechanism):
                 assert stmt.lhsn in self.states
                 stmt.lhsn = f'__d_{stmt.lhsn}'
                 stmt.derivative = False
-
         self._run_initial_block(None)
         block.substitute_parameters(self.initial_scope)
-
         arguments = [inp.name for inp in inputs] + self.states
         pycode = f"def {block.name}({', '.join(arguments)}):\n"
         for state in self.states:
@@ -405,16 +403,16 @@ class NMODL(Mechanism):
                 if stmt.lhsn in self.accumulators:
                     stmt.operation = '+='
         self.breakpoint_block.rename_variables(self.pointers)
-        self.breakpoint_block.substitute_parameters(self.parameters) # Substitute for 'dt'.
+        self.breakpoint_block.statements.insert(0, AssignStatement('dt', self.parameters['dt']))
+        # 
+        magnitude = sympy.Symbol('self.magnitude')
+        for name, value in self.instance_parameters.items():
+            self.breakpoint_block.statements.insert(0, AssignStatement(name, value * magnitude))
 
     def _compile_breakpoint_block(self):
         globals_ = {
                 'Compute': Compute,
         }
-        # 
-        magnitude = sympy.Symbol('self.magnitude')
-        for name, value in self.instance_parameters.items():
-            self.breakpoint_block.statements.insert(0, AssignStatement(name, value * magnitude))
         # 
         self.breakpoint_block.substitute_parameters(self.initial_scope)
         # 
@@ -461,7 +459,7 @@ class NMODL(Mechanism):
         mechanism_superclass = type(self.name, (NmodlMechanism,), {
             '__doc__':              self.title + '\n\n' + self.description,
             '__slots__':            (),
-            'name':                 self.name,
+            '_name':                self.name,
             '__init__':             NMODL._instance__init__,
             '_point_process':       self.point_process,
             '_outside':             self.outside,
@@ -475,13 +473,17 @@ class NMODL(Mechanism):
             mech_data.add_attribute('outside', dtype='Extracellular')
         if self.point_process:
             mech_data.add_attribute('magnitude', 1.0,
+                    valid_range = (0.0, None),
                     doc="") # TODO?
         else:
             mech_data.add_attribute('magnitude',
                     units = database.get('Segment.surface_area').get_units(),
+                    valid_range = (0.0, None),
                     doc="") # TODO?
         for name in self.states:
-            mech_data.add_attribute(name, initial_value=self.initial_state[name], units=name)
+            mech_data.add_attribute(name,
+                    initial_value=self.initial_state[name],
+                    units=self.units.get(name, name))
         for name in self.other_mechanisms_:
             mech_data.add_attribute(name, dtype=name)
         return mech_data.get_instance_type()
@@ -508,7 +510,7 @@ class NmodlMechanism(Mechanism):
     __slots__ = ()
     @classmethod
     def get_name(cls):
-        return cls.name
+        return cls._name
     @classmethod
     def other_mechanisms(cls):
         return cls._other_mechanisms
