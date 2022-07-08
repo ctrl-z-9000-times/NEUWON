@@ -40,15 +40,15 @@ class NMODL(Mechanism):
                         parser.gather_parameters(), self.name, self.point_process, **external_parameters)
                 self.states = parser.gather_states()
                 blocks = parser.gather_code_blocks()
-                self.all_blocks = list(blocks.values())
-                self.initial_block = blocks['INITIAL']
-                self.breakpoint_block = blocks['BREAKPOINT']
+                self.all_blocks         = list(blocks.values())
+                self.initial_block      = blocks['INITIAL']
+                self.breakpoint_block   = blocks['BREAKPOINT']
+                for block in self.all_blocks:
+                    block.substitute_parameters(self.parameters)
                 self.conserve_statements = self._gather_conserve_statements()
                 self._gather_IO(parser)
                 self._solve()
                 self._fixup_breakpoint_IO()
-                for block in self.all_blocks:
-                    block.substitute_parameters(self.parameters)
             cache.save(self.filename, external_parameters, self)
 
             self._run_initial_block(rxd_model.database)
@@ -235,10 +235,16 @@ class NMODL(Mechanism):
                 # Replace CONSERVE statements with a simple multiplicative solution.
                 solve_block.map(solver.conserve_statement_solution)
                 # Solve each equation in-place.
+                solve_block.derivative = False
+                next_states = [] # Don't modify the state until all equations are computed.
                 for stmt in solve_block:
                     if isinstance(stmt, AssignStatement) and stmt.derivative:
                         method(stmt)
-                solve_block.derivative = False
+                        next_states.append(stmt.lhsn)
+                        stmt.lhsn = f'_next_{stmt.lhsn}'
+                # Update all states instantaneously.
+                for x in next_states:
+                    solve_block.statements.append(AssignStatement(x, f'_next_{x}'))
                 # Prepend the solved block directly into the breakpoint block.
                 self.breakpoint_block.statements = solve_block.statements + self.breakpoint_block.statements
 
@@ -247,7 +253,7 @@ class NMODL(Mechanism):
                 1/0 # TODO
 
             else:
-                raise NotImplementedError(solve_method)
+                raise ValueError(f'Unsupported SOLVE method {solve_method}.')
 
     def _estimate_initial_state(self):
         # Find a reasonable initial state which respects any CONSERVE statements.
@@ -376,6 +382,7 @@ class NMODL(Mechanism):
                 if stmt.lhsn in self.accumulators:
                     stmt.operation = '+='
         self.breakpoint_block.rename_variables(self.pointers)
+        self.breakpoint_block.substitute_parameters(self.parameters) # Substitute for 'dt'.
 
     def _compile_breakpoint_block(self):
         globals_ = {
@@ -501,9 +508,6 @@ def process_parameters(parameters, mechanism_name, point_process, *, dt, celsius
         not in-lined directly into the source code, instead they are stored
         alongside the state variables and accessed at run time.
     """
-    parameters.setdefault('celsius', (celsius, 'degC')) # Allow NMODL file to override temperature.
-    assert 'dt' not in parameters, 'Parameter "dt" is reserved.'
-    parameters['dt'] = (dt, 'ms')
     # Split parameters and units into separate dictionaries.
     units_dict = {k: u for k, (v,u) in parameters.items()}
     parameters = {k: v for k, (v,u) in parameters.items()}
@@ -518,6 +522,14 @@ def process_parameters(parameters, mechanism_name, point_process, *, dt, celsius
                 units_dict[name] = units.replace('/cm2', '/um2')
                 x = (1e-6 * 1e-6) / (1e-2 * 1e-2)
                 instance_parameters[name] = parameters.pop(name) * x
+    # Fill in external parameters.
+    assert parameters.get('dt', None) is None, 'Parameter "dt" is reserved.'
+    parameters['dt'] = dt
+    if units_dict.get('dt', None) is None: units_dict['dt'] = 'ms'
+    # Allow NMODL file to override temperature.
+    if parameters.get('celsius', None) is None: parameters['celsius'] = celsius
+    if units_dict.get('celsius', None) is None: units_dict['celsius'] = 'degC'
+    assert units_dict['celsius'] == 'degC'
     return (parameters, instance_parameters, units_dict)
 
 class NmodlMechanism(Mechanism):
