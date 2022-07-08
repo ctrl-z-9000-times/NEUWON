@@ -24,13 +24,7 @@ class Codegen:
         assert self.target in ('host', 'cuda')
         self.table_data = self._table_data()
         self.source_code = self._kernel()
-        self.database = self._make_database()
-        self.runtime = _measure_speed(
-                self.database.get_instance_type(self.name).advance,
-                self.num_states,
-                self.inputs,
-                self.conserve_sum,
-                self.target)
+        self.runtime = self._measure_speed()
 
     def _table_data(self):
         # Check table size matches what's expected.
@@ -48,9 +42,9 @@ class Codegen:
               "    # Locate the input within the look-up table.\n")
         for idx, inp in enumerate(self.inputs):
             if isinstance(inp, LinearInput):
-                c += f"    input{idx} = (self.segment.{inp.name} - {inp.minimum}) * {inp.bucket_frq}\n"
+                c += f"    input{idx} = ({inp.db_access} - {inp.minimum}) * {inp.bucket_frq}\n"
             elif isinstance(inp, LogarithmicInput):
-                c += f"    input{idx} = log2(self.{inp.name} + {inp.scale})\n"
+                c += f"    input{idx} = log2({inp.db_access} + {inp.scale})\n"
                 c += f"    input{idx} = (input{idx} - {inp.log2_minimum}) * {inp.bucket_frq}\n"
             else: raise NotImplementedError(type(inp))
             c += (f"    bucket{idx} = int(input{idx})\n"
@@ -114,64 +108,77 @@ class Codegen:
         self._load_cache = fn = scope[fn_name]
         return fn
 
-    def _make_database(self):
+    def _make_mock_database(self):
         """ Make a mock-up of the database for running the benchmark. """
-        db = Database()
-        model_cls = db.add_class(self.name)
+        database = Database()
+        model_class = database.add_class(self.name)
         for x in self.state_names:
-            model_cls.add_attribute(x)
-        for x in self.inputs:
-            inp_cls = db.add_class('Segment') # TODO: This should be part of the input structure.
-            inp_cls.add_attribute(x.name)
-            model_cls.add_attribute('segment', dtype=inp_cls)
-        model_inst = model_cls.get_instance_type()
-        model_inst.advance = model_cls.add_method(self.load())
-        return db
+            model_class.add_attribute(x, initial_distribution=('uniform', 0, 1))
+        for inp in self.inputs:
+            obj, ptr, attr = inp.db_access.split('.')
+            assert obj == 'self'
+            inp_class = database.add_class(ptr.title())
+            inp_class.add_attribute(attr)
+            model_class.add_attribute(ptr, dtype=inp_class)
+        model_inst = model_class.get_instance_type()
+        model_inst.advance = model_class.add_method(self.load())
+        return database
 
-def _measure_speed(f, num_states, inputs, conserve_sum, target):
-    num_instances = 10 * 1000
-    num_repetions = 200
-    # 
-    if target == 'host':
-        xp = np
-    elif target == 'cuda':
-        import cupy
-        xp = cupy
-        start_event = cupy.cuda.Event()
-        end_event   = cupy.cuda.Event()
-    # Generate valid initial states.
-    state = [xp.array(xp.random.uniform(size=num_instances), dtype=Real)
-                for x in range(num_states)]
-    if conserve_sum is not None:
-        conserve_sum = float(conserve_sum)
-        sum_states = xp.zeros(num_instances)
-        for data in state:
-            sum_states = sum_states + data
-        correction_factor = conserve_sum / sum_states
-        for data in state:
-            data *= correction_factor
-    # 
-    input_indicies = xp.arange(num_instances, dtype=np.int32)
-    elapsed_times = np.empty(num_repetions)
-    for trial in range(num_repetions):
-        input_arrays = []
-        for inp in inputs:
-            input_arrays.append(inp.random(num_instances, Real, xp))
-            input_arrays.append(input_indicies)
-        _clear_cache(xp)
-        time.sleep(0) # Try to avoid task switching while running.
-        if target == 'cuda':
-            start_event.record()
-            f(num_instances, *input_arrays, *state)
-            end_event.record()
-            end_event.synchronize()
-            elapsed_times[trial] = 1e6 * cupy.cuda.get_elapsed_time(start_event, end_event)
-        elif target == 'host':
-            start_time = time.thread_time_ns()
-            # f(num_instances, *input_arrays, *state)
-            f()
-            elapsed_times[trial] = time.thread_time_ns() - start_time
-    return np.min(elapsed_times) / num_instances
+    def _populate_mock_database(self, database, num_instances):
+        xp = database.get_array_module()
+        # Make instances of each class type.
+        for db_class in database.get_all_classes():
+            inst_type = db_class.get_instance_type()
+            for _ in range(num_instances):
+                inst_type()
+        # Link the model instances to their locations.
+        for inp in self.inputs:
+            obj, ptr, attr = inp.db_access.split('.')
+            database.set_data(f'{self.name}.{ptr}', xp.arange(num_instances))
+        # Generate valid initial states.
+        state = [database.get_data(f'{self.name}.{x}') for x in self.state_names]
+        if self.conserve_sum is not None:
+            sum_states = xp.zeros(num_instances)
+            for array in state:
+                sum_states = sum_states + array
+            correction_factor = float(self.conserve_sum) / sum_states
+            for array in state:
+                array *= correction_factor
+
+    def _randomize_inputs(self, database):
+        for inp in self.inputs:
+            obj, ptr, attr = inp.db_access.split('.')
+            inp_class = database.get_class(ptr.title())
+            inp_class.set_data(attr, inp.random(len(inp_class), Real, database.get_array_module()))
+
+    def _measure_speed(self):
+        num_instances = 10 * 1000
+        num_repetions = 200
+        database = self._make_mock_database()
+        with database.using_memory_space(self.target):
+            self._populate_mock_database(database, num_instances)
+            # 
+            if self.target == 'cuda':
+                start_event = cupy.cuda.Event()
+                end_event   = cupy.cuda.Event()
+            model = database.get_instance_type(self.name)
+            elapsed_times = np.empty(num_repetions)
+            for trial in range(num_repetions):
+                self._randomize_inputs(database)
+                if trial < 3: database.check()
+                _clear_cache(database.get_array_module())
+                time.sleep(0) # Try to avoid task switching while running.
+                if self.target == 'cuda':
+                    start_event.record()
+                    model.advance()
+                    end_event.record()
+                    end_event.synchronize()
+                    elapsed_times[trial] = 1e6 * cupy.cuda.get_elapsed_time(start_event, end_event)
+                elif self.target == 'host':
+                    start_time = time.thread_time_ns()
+                    model.advance()
+                    elapsed_times[trial] = time.thread_time_ns() - start_time
+            return np.min(elapsed_times) / num_instances
 
 def _clear_cache(array_module):
     # Read and then write back 32MB of data. Assuming that the CPU is using a

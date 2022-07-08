@@ -7,8 +7,9 @@ import numpy as np
 
 class Input:
     """ Abstract base class. """
-    def __init__(self, name, minimum, maximum, initial=None):
+    def __init__(self, name, db_access, minimum, maximum, initial=None):
         self.name       = str(name)
+        self.db_access  = str(db_access)
         self.minimum    = float(minimum)
         self.maximum    = float(maximum)
         self.range      = self.maximum - self.minimum
@@ -83,8 +84,8 @@ class LinearInput(Input):
 
 class LogarithmicInput(Input):
     """ """
-    def __init__(self, name, minimum, maximum, initial=None):
-        super().__init__(name, minimum, maximum, initial)
+    def __init__(self, name, db_access, minimum, maximum, initial=None):
+        super().__init__(name, db_access, minimum, maximum, initial)
         assert self.minimum == 0.0, 'Logarithmic inputs must have minimum value of 0.'
 
     def set_num_buckets(self, num_buckets, scale=None):

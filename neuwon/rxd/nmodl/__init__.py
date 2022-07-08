@@ -7,7 +7,6 @@ from .parser import (NmodlParser, ANT,
         SolveStatement,
         AssignStatement,
         ConserveStatement)
-import copy
 import math
 import os.path
 import re
@@ -320,13 +319,11 @@ class NMODL(Mechanism):
         for variable in block.arguments:
             if variable not in self.pointers: continue
             if variable in self.states: continue
-            db_access = self.pointers[variable].split('.')
-            db_access.remove('self')
-            db_class_ptr, db_attr = db_access
+            db_access = self.pointers[variable]
             if variable == 'v':
-                inp = lti_sim.LinearInput(variable, -100, 100)
+                inp = lti_sim.LinearInput(variable, db_access, -100, 100)
             else:
-                inp = lti_sim.LogarithmicInput(variable, 0, 1000)
+                inp = lti_sim.LogarithmicInput(variable, db_access, 0, 1000)
             inputs.append(inp)
         return inputs
 

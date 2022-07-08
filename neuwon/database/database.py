@@ -539,6 +539,10 @@ class DB_Class(Documentation):
         """ Shortcut to: self.get(name).get_data() """
         return self.get(name).get_data()
 
+    def set_data(self, name: str, value):
+        """ Shortcut to: self.get(name).set_data(value) """
+        self.get(name).set_data(value)
+
     def get_all_components(self) -> tuple:
         """
         Returns a tuple containing all data components that are attached to this

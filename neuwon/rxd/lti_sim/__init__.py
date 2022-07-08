@@ -10,4 +10,4 @@ For more information see:
 from .inputs import LinearInput, LogarithmicInput
 from .lti_model import LTI_Model
 
-__all__ = ('main', 'LinearInput', 'LogarithmicInput')
+__all__ = ('LTI_Model', 'LinearInput', 'LogarithmicInput')
