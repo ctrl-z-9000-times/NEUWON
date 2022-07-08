@@ -299,10 +299,11 @@ class NMODL(Mechanism):
             elif solve_method == 'sparse':
                 # Call the LTI_SIM program.
                 inputs = self._gather_inputs(solve_block)
-                lti_sim.LTI_Model(self.name, inputs, self.states,
+                m = lti_sim.LTI_Model(self.name, inputs, self.states,
                         self._compile_derivative_block(solve_block, inputs),
                         self.conserve_sum,
                         self.parameters['dt'])
+                m.optimize(1e-4, 'host', verbose=2)
 
                 1/0 # TODO
 

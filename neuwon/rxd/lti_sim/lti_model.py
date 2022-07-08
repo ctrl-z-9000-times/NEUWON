@@ -1,23 +1,37 @@
 import numpy as np
 import scipy.linalg
+from .optimizer import Optimize1D, Optimize2D
 
 class LTI_Model:
     def __init__(self, name, inputs, states, derivative, conserve_sum, time_step):
         self.name       = str(name)
         # TODO: Don't sort these? Use the given order since I'm assuming that
         # the derivative also expects them in the given order...
-        self.inputs     = sorted(inputs, key=lambda inp: inp.name)
-        self.num_inputs = len(inputs)
-        self.states     = sorted(str(x) for x in states)
-        self.num_states = len(states)
-        self.derivative = derivative
-        self.conserve_sum = float(conserve_sum) if conserve_sum else None
-        self.time_step  = float(time_step)
+        self.inputs         = sorted(inputs, key=lambda inp: inp.name)
+        self.input_names    = list(inp.name for inp in self.inputs)
+        self.num_inputs     = len(inputs)
+        self.state_names    = list(str(x) for x in states)
+        self.num_states     = len(states)
+        self.derivative     = derivative
+        self.conserve_sum   = float(conserve_sum) if conserve_sum else None
+        self.time_step      = float(time_step)
         assert self.time_step > 0.0
         # Make aliases "input1", "input2", etc.
         for idx, inp in enumerate(self.inputs):
             setattr(self, f"input{idx+1}", inp)
         self._check_is_LTI()
+
+    def optimize(self, error, target, verbose=0, plot=False):
+        if self.num_inputs == 0: raise ValueError('zero inputs')
+        elif self.num_inputs == 1: OptimizerClass = Optimize1D
+        elif self.num_inputs == 2: OptimizerClass = Optimize2D
+        else: raise ValueError('too many inputs')
+        best = OptimizerClass(self, error, target, (verbose >= 2)).best
+        if verbose or plot:
+            print(str(best.approx) +
+                  f"Run speed:    {round(best.runtime)} ns/Δt")
+        if plot:
+            best.approx.plot(model.name)
 
     def _check_is_LTI(self):
         for trial in range(3):

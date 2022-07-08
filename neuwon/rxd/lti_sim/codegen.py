@@ -44,13 +44,13 @@ class Codegen:
 
     def _kernel(self):
         c  =   "@Compute\n"
-        c += (f"def {self.name}_advance(instance):\n"
+        c += (f"def {self.name}_advance(self):\n"
               "    # Locate the input within the look-up table.\n")
         for idx, inp in enumerate(self.inputs):
             if isinstance(inp, LinearInput):
-                c += f"    input{idx} = (instance.segment.{inp.name} - {inp.minimum}) * {inp.bucket_frq}\n"
+                c += f"    input{idx} = (self.segment.{inp.name} - {inp.minimum}) * {inp.bucket_frq}\n"
             elif isinstance(inp, LogarithmicInput):
-                c += f"    input{idx} = log2(instance.{inp.name} + {inp.scale})\n"
+                c += f"    input{idx} = log2(self.{inp.name} + {inp.scale})\n"
                 c += f"    input{idx} = (input{idx} - {inp.log2_minimum}) * {inp.bucket_frq}\n"
             else: raise NotImplementedError(type(inp))
             c += (f"    bucket{idx} = int(input{idx})\n"
@@ -103,7 +103,7 @@ class Codegen:
                   "        scratch[x] *= correction_factor\n")
         c += "    # Move the results into the state arrays.\n"
         for i, x in enumerate(self.state_names):
-            c += f"        instance.{x} = scratch[{i}]\n"
+            c += f"        self.{x} = scratch[{i}]\n"
         return c
 
     def load(self):
