@@ -339,11 +339,16 @@ def test_local_allocations():
             for x in data: # Check iterating over locally allocated array.
                 z += x
             return z
+        def baz(self) -> int:
+            return self.bar()
+        def bax(self) -> int:
+            return self.baz()
     db = Database()
     foo_data = db.add_class(Foo)
     Foo = foo_data.get_instance_type()
 
     assert Foo().bar() == 9
+    assert Foo().baz() == 9
     with db.using_memory_space('cuda'):
         assert Foo().bar() == 9
 
@@ -351,4 +356,5 @@ def test_local_allocations():
     assert all(Foo.bar() == 9)
     with db.using_memory_space('cuda'):
         assert all(Foo.bar() == 9)
+        assert all(Foo.bax() == 9)
 

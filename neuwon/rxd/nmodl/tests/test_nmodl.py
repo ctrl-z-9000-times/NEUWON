@@ -40,7 +40,7 @@ def test_sparse_solver():
         time_step = 0.1,
         mechanisms = [
             NMODL(dirname + "/mod/Nav11.mod", use_cache=False),
-            NMODL(dirname + "/mod/Kv11.mod",  use_cache=False),
+            NMODL(dirname + "/mod/AMPA.mod",  use_cache=False),
         ],
         species = [
             {'name': 'na', 'reversal_potential': +60,},
@@ -49,17 +49,17 @@ def test_sparse_solver():
     )
     m.check()
 
-    Nav11 = m.mechanisms['Nav11']
+    Nav11 = m.mechanisms['na11a']
     help(Nav11)
     print('ADVANCE PYCODE Nav11:\n' + Nav11._advance_pycode)
 
-    Kv11  = m.mechanisms['Kv11']
-    help(Kv11)
-    print('ADVANCE PYCODE Kv11:\n' + Kv11._advance_pycode)
+    AMPA  = m.mechanisms['AMPA13']
+    help(AMPA)
+    print('ADVANCE PYCODE AMPA:\n' + AMPA._advance_pycode)
 
     my_seg = m.Neuron([0,0,0], 12).root
     Nav11(my_seg)
-    Kv11(my_seg)
+    AMPA(my_seg)
 
     m.advance()
     m.check()

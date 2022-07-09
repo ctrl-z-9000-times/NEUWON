@@ -27,7 +27,11 @@ class LTI_Model:
         elif self.num_inputs == 2: OptimizerClass = Optimize2D
         else: raise ValueError('too many inputs')
         best = OptimizerClass(self, error, target, (verbose >= 2)).best
+        self.table_data  = best.backend.table_data
+        self.source_code = best.backend.source_code
+        self.runtime     = best.backend.runtime
         if verbose or plot:
+            print(f'LTI Model {self.name}')
             print(str(best.approx) +
                   f"Run speed:    {round(best.runtime)} ns/Δt")
         if plot:

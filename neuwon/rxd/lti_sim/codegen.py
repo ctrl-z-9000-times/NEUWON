@@ -38,13 +38,13 @@ class Codegen:
 
     def _kernel(self):
         c  =   "@Compute\n"
-        c += (f"def {self.name}_advance(self):\n"
+        c += (f"def {self.name}_advance(self: '{self.name}'):\n"
               "    # Locate the input within the look-up table.\n")
         for idx, inp in enumerate(self.inputs):
             if isinstance(inp, LinearInput):
                 c += f"    input{idx}: 'Real' = ({inp.db_access} - {inp.minimum}) * {inp.bucket_frq}\n"
             elif isinstance(inp, LogarithmicInput):
-                c += f"    input{idx}: 'Real' = log2({inp.db_access} + {inp.scale})\n"
+                c += f"    input{idx}: 'Real' = numpy.log2({inp.db_access} + {inp.scale})\n"
                 c += f"    input{idx} = (input{idx} - {inp.log2_minimum}) * {inp.bucket_frq}\n"
             else: raise NotImplementedError(type(inp))
             c += (f"    bucket{idx}: 'Pointer' = int(input{idx})\n"
@@ -103,7 +103,6 @@ class Codegen:
         c += "    # Move the results into the state arrays.\n"
         for i, x in enumerate(self.state_names):
             c += f"    self.{x} = scratch[{i}]\n"
-        print(c)
         return c
 
     def load(self):

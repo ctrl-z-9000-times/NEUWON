@@ -98,7 +98,7 @@ class NMODL(Mechanism):
         self.instance_parameters = {}
         for name, units in units_dict.items():
             if units is not None:
-                if self.point_process and ('/' + self.mechanism_name) in units:
+                if self.point_process and ('/' + self.name) in units:
                     self.instance_parameters[name] = parameters.pop(name)
                 elif '/cm2' in units:
                     # Convert from NEURONs cm^2 to NEUWONs um^2.
@@ -267,7 +267,7 @@ class NMODL(Mechanism):
         self.initial_block.map(find_solve_stmts)
         self.breakpoint_block.map(find_solve_stmts)
         # Now solve the target blocks.
-        self.solved_blocks = []
+        self.lti_advance = False
         for stmt in solve_stmts.values():
             solve_block  = stmt.block
             solve_method = stmt.method
@@ -302,10 +302,8 @@ class NMODL(Mechanism):
                         self._compile_derivative_block(solve_block, inputs),
                         self.conserve_sum,
                         self.parameters['dt'])
-                m.optimize(1e-4, 'host', verbose=2)
-
-                1/0 # TODO
-
+                m.optimize(1e-4, 'host', verbose=1)
+                self.lti_advance = (m.source_code, m.table_data)
             else:
                 raise ValueError(f'Unsupported SOLVE METHOD {solve_method}.')
 
@@ -413,21 +411,25 @@ class NMODL(Mechanism):
         }
         # 
         self.breakpoint_block.substitute_parameters(self.initial_scope)
+
+        if self.lti_advance:
+            lti_src, tbl = self.lti_advance
+            globals_['table'] = tbl
+            call_lti_sim = f"    {self.name}_advance(self)\n"
+        else:
+            lti_src = ""
+            call_lti_sim = ""
         # 
         self.advance_pycode = (
                 '@Compute\n'
                 'def advance(self):\n'
-                + code_gen.to_python(self.breakpoint_block, '    '))
+                + call_lti_sim
+                + code_gen.to_python(self.breakpoint_block, '    ')
+                + '\n'
+                + lti_src)
+
         code_gen.exec_string(self.advance_pycode, globals_)
         self.advance_bytecode = globals_['advance']
-
-        # if self.lti_advance:
-        #     solve_block = self.lti_advance
-        #     breakpoint_block = self.advance_bytecode
-        #     def advance(self):
-        #         solve_block(self)
-        #         breakpoint_block(self)
-        #     self.advance_bytecode = advance
 
     def _register_nonspecific_conductances(self, rxd_model, db_class):
         for (ion, e_variable) in self.nonspecific_conductances.items():
