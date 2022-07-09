@@ -308,3 +308,21 @@ def test_pointer_chains():
     for p in probes:
         assert any(x > -60 for x in p.get_data())
 
+
+def test_type_annotations():
+    class Foo:
+        __slots__ = ()
+        @Compute
+        def bar(self, a) -> float:
+            b: 'i4' = a
+            return b
+    db = Database()
+    foo_data = db.add_class(Foo)
+    Foo = foo_data.get_instance_type()
+
+    assert Foo().bar(4.9) == 4
+
+    # numba.cuda.jit does not support locals :(
+    # with db.using_memory_space('cuda'):
+    #     assert Foo().bar(4.9) == 4
+

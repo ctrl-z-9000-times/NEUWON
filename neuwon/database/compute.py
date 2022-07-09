@@ -28,6 +28,9 @@ import textwrap
 #       Note: python does not like @decorators on __init__.
 #       Instead I should make my own magic "init" method.
 #       Different name, custom implementation, mutually exclusive with "__init__".
+# 
+#   Allow numeric type annotations on function signatures.
+#       If these are correctly given to numba, it will enforce them.
 
 class Compute(Documentation):
     """
@@ -99,12 +102,9 @@ class Compute(Documentation):
         if len(instance) == 0:
             return []
         if isinstance(instance, range):
-            assert instance.step == 1, 'Unimplemented step.'
+            assert instance.step == 1, 'range.step > 1 is unimplemented'
 
-        if target is host:
-            retval = function(instance, *db_args, *args, **kwargs)
-        elif target is cuda:
-            retval = function(instance, *db_args, *args, **kwargs)
+        retval = function(instance, *db_args, *args, **kwargs)
         if single_input and retval is not None:
             return retval[0]
         else:
@@ -113,7 +113,7 @@ class Compute(Documentation):
     def _jit(self, target):
         cached = self._jit_cache.get(target, None)
         if cached is not None: return cached
-        assert self.db_class is not None, "Method not registered with a 'DB_Class'!"
+        assert self.db_class is not None, "Method not registered with a DB_Class"
         jit_data = _JIT(self.original, target, self.db_class, entry_point=True)
         self._jit_cache[target] = function = jit_data.entry_point
         self.db_arguments       = jit_data.db_arguments
@@ -216,6 +216,7 @@ class _JIT:
             self.rewrite_reference(db_class, p.name)
 
     def rewrite_annotated_assignments(self):
+        self.local_types = {}
         for node in ast.walk(self.body_ast):
             if isinstance(node, ast.AnnAssign):
                 if not node.simple: continue
@@ -230,6 +231,10 @@ class _JIT:
                 try:
                     ref_class = self.database.get_class(ref_class)
                 except KeyError:
+                    if   ref_class == 'Real':    dtype = Real
+                    elif ref_class == 'Pointer': dtype = Pointer
+                    else:                        dtype = numpy.dtype(ref_class)
+                    self.local_types[ref_name] = numba.from_dtype(dtype)
                     continue
                 self.rewrite_reference(ref_class, ref_name)
 
@@ -274,9 +279,9 @@ class _JIT:
         self.py_function    = self.closure[self.name]
         # Apply JIT compilation to the function.
         if self.target is host:
-            self.jit_function = host.jit_module.njit(self.py_function)
+            self.jit_function = host.jit_module.njit(self.py_function, locals=self.local_types)
         elif self.target is cuda:
-            self.jit_function = cuda.jit_module.jit(self.py_function, device=True)
+            self.jit_function = cuda.jit_module.jit(self.py_function, device=True, locals=self.local_types)
 
     def write_entry_point(self):
         exec_scope = {
