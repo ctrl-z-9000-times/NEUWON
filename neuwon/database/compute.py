@@ -8,6 +8,7 @@ import ast
 import inspect
 import numba
 import numpy
+import re
 import textwrap
 
 # IDEAS:
@@ -217,6 +218,7 @@ class _JIT:
 
     def rewrite_annotated_assignments(self):
         self.local_types = {}
+        self.local_alloc = {}
         for node in ast.walk(self.body_ast):
             if isinstance(node, ast.AnnAssign):
                 if not node.simple: continue
@@ -231,12 +233,24 @@ class _JIT:
                 try:
                     ref_class = self.database.get_class(ref_class)
                 except KeyError:
-                    if   ref_class == 'Real':    dtype = Real
-                    elif ref_class == 'Pointer': dtype = Pointer
-                    else:                        dtype = numpy.dtype(ref_class)
-                    self.local_types[ref_name] = numba.from_dtype(dtype)
+                    self.process_local_variable_annotation(ref_name, ref_class)
                     continue
                 self.rewrite_reference(ref_class, ref_name)
+
+    def process_local_variable_annotation(self, var_name, dtype):
+        size = 0
+        if m := re.match(r'^[Aa]lloc\((.*)\)\s*$', dtype):
+            size, dtype = m.groups()[0].split(',')
+            size  = int(size.strip())
+            dtype = dtype.strip()
+        if   dtype == 'Real':    dtype = Real
+        elif dtype == 'Pointer': dtype = Pointer
+        else:                    dtype = numpy.dtype(dtype)
+        numba_type = numba.from_dtype(dtype)
+        if size:
+            self.local_alloc[var_name] = (numba_type, size)
+        else:
+            self.local_types[var_name] = numba_type
 
     def rewrite_reference(self, ref_class, ref_name):
         rr = _ReferenceRewriter(ref_class, ref_name, self.body_ast, self.target)
@@ -261,9 +275,14 @@ class _JIT:
                                     key=lambda pair: pair[1].qualname)
         parameters = list(self.signature.parameters.values())
         start = 1 if self.is_method() else 0
-        for arg_name, db_attr in reversed(self.db_arguments):
+        for arg_name, db_attr in self.db_arguments:
             parameters.insert(start, inspect.Parameter(arg_name,
                                         inspect.Parameter.POSITIONAL_OR_KEYWORD))
+            start += 1
+        for var_name, (dtype, size) in self.local_alloc.items():
+            parameters.insert(start, inspect.Parameter(var_name,
+                                        inspect.Parameter.POSITIONAL_OR_KEYWORD))
+            start += 1
         self.signature = self.signature.replace(parameters=parameters)
         # Strip out the type annotations BC they're not needed for this step and
         # they can cause errors: especially if they're complex types EG "np.dtype".
@@ -290,49 +309,58 @@ class _JIT:
                 'numba': numba,
                 'numpy': numpy,
         }
-        arguments = ''.join(f'{arg_name}, ' for arg_name, db_attr in self.db_arguments)
-        arguments += self.parameters
+        db_args    = ''.join(f'{arg_name}, ' for arg_name, db_attr in self.db_arguments)
+        array_args = ''.join(f'{var_name}, ' for var_name in self.local_alloc)
+        arguments  = db_args + self.parameters
+        inner_args = db_args + array_args + self.parameters
+
         if self.target is host:
+            array_alloc = ''.join(f'numpy.empty({sz}, dtype=numpy.{dt}), ' for dt,sz in self.local_alloc.values())
+
             if self.return_type is None:
                 py_code = f'''
                     def entry_point(instances, {arguments}):
+                        ({array_args}) = ({array_alloc})
                         if isinstance(instances, range):
-                            range_entry_point(instances.start, instances.stop, {arguments})
+                            range_entry_point(instances.start, instances.stop, {inner_args})
                         else:
-                            array_entry_point(instances, {arguments})
+                            array_entry_point(instances, {inner_args})
                     @numba.njit()
-                    def range_entry_point(start, stop, {arguments}):
+                    def range_entry_point(start, stop, {inner_args}):
                         for self in numba.prange(start, stop):
-                            function(self, {arguments})
+                            function(self, {inner_args})
                     @numba.njit()
-                    def array_entry_point(instances, {arguments}):
+                    def array_entry_point(instances, {inner_args}):
                         for index in numba.prange(len(instances)):
                             self = instances[index]
-                            function(self, {arguments})
+                            function(self, {inner_args})
                     '''
             else:
                 py_code = f'''
                     def entry_point(instances, {arguments}):
+                        ({array_args}) = ({array_alloc})
                         return_array = numpy.empty(len(instances), dtype=return_type)
                         if isinstance(instances, range):
                             range_entry_point(instances.start, instances.stop,
-                                              return_array, {arguments})
+                                              return_array, {inner_args})
                         else:
-                            array_entry_point(instances, return_array, {arguments})
+                            array_entry_point(instances, return_array, {inner_args})
                         return return_array
                     @numba.njit()
-                    def range_entry_point(start, stop, return_array, {arguments}):
+                    def range_entry_point(start, stop, return_array, {inner_args}):
                         for index in numba.prange(stop - start):
                             self = start + index
-                            return_array[index] = function(self, {arguments})
+                            return_array[index] = function(self, {inner_args})
                     @numba.njit()
-                    def array_entry_point(instances, return_array, {arguments}):
+                    def array_entry_point(instances, return_array, {inner_args}):
                         for index in numba.prange(len(instances)):
                             self = instances[index]
-                            return_array[index] = function(self, {arguments})
+                            return_array[index] = function(self, {inner_args})
                     '''
         elif self.target is cuda:
             exec_scope['cuda'] = cuda.jit_module
+            array_alloc = ''.join(f'numba.cuda.local.array({sz}, numba.{dt}), ' for dt,sz in self.local_alloc.values())
+
             if self.return_type is None:
                 py_code = f'''
                     def entry_point(instances, {arguments}):
@@ -349,13 +377,15 @@ class _JIT:
                         index = cuda.grid(1)
                         if index < range_len:
                             self = start + index
-                            function(self, {arguments})
+                            ({array_args}) = ({array_alloc})
+                            function(self, {inner_args})
                     @cuda.jit()
                     def array_entry_point(instances, {arguments}):
                         index = cuda.grid(1)
                         if index < len(instances):
                             self = instances[index]
-                            function(self, {arguments})
+                            ({array_args}) = ({array_alloc})
+                            function(self, {inner_args})
                     '''
             else:
                 py_code = f'''
@@ -376,13 +406,15 @@ class _JIT:
                         index = cuda.grid(1)
                         if index < range_len:
                             self = start + index
-                            return_array[index] = function(self, {arguments})
+                            ({array_args}) = ({array_alloc})
+                            return_array[index] = function(self, {inner_args})
                     @cuda.jit()
                     def array_entry_point(instances, return_array, {arguments}):
                         index = cuda.grid(1)
                         if index < len(instances):
                             self = instances[index]
-                            return_array[index] = function(self, {arguments})
+                            ({array_args}) = ({array_alloc})
+                            return_array[index] = function(self, {inner_args})
                     '''
         exec(textwrap.dedent(py_code), exec_scope)
         self.entry_point = exec_scope['entry_point']

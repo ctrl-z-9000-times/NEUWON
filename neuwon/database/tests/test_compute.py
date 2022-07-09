@@ -326,3 +326,29 @@ def test_type_annotations():
     # with db.using_memory_space('cuda'):
     #     assert Foo().bar(4.9) == 4
 
+
+def test_local_allocations():
+    class Foo:
+        __slots__ = ()
+        @Compute
+        def bar(self) -> int:
+            data: 'Alloc(3, int32)'
+            for i in range(3):
+                data[i] = 3 # Check indexing into locally allocated array.
+            z: 'int' = 0
+            for x in data: # Check iterating over locally allocated array.
+                z += x
+            return z
+    db = Database()
+    foo_data = db.add_class(Foo)
+    Foo = foo_data.get_instance_type()
+
+    assert Foo().bar() == 9
+    with db.using_memory_space('cuda'):
+        assert Foo().bar() == 9
+
+    for _ in range(24): Foo()
+    assert all(Foo.bar() == 9)
+    with db.using_memory_space('cuda'):
+        assert all(Foo.bar() == 9)
+
