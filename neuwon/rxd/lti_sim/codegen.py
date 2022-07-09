@@ -42,12 +42,12 @@ class Codegen:
               "    # Locate the input within the look-up table.\n")
         for idx, inp in enumerate(self.inputs):
             if isinstance(inp, LinearInput):
-                c += f"    input{idx} = ({inp.db_access} - {inp.minimum}) * {inp.bucket_frq}\n"
+                c += f"    input{idx}: 'Real' = ({inp.db_access} - {inp.minimum}) * {inp.bucket_frq}\n"
             elif isinstance(inp, LogarithmicInput):
-                c += f"    input{idx} = log2({inp.db_access} + {inp.scale})\n"
+                c += f"    input{idx}: 'Real' = log2({inp.db_access} + {inp.scale})\n"
                 c += f"    input{idx} = (input{idx} - {inp.log2_minimum}) * {inp.bucket_frq}\n"
             else: raise NotImplementedError(type(inp))
-            c += (f"    bucket{idx} = int(input{idx})\n"
+            c += (f"    bucket{idx}: 'Pointer' = int(input{idx})\n"
                   f"    if(bucket{idx} > {inp.num_buckets - 1}):\n"
                   f"        bucket{idx} = {inp.num_buckets - 1}\n"
                   f"        input{idx} = 1.0\n")
@@ -63,7 +63,7 @@ class Codegen:
             if stride == 1: nd_index.append(f"bucket{inp_idx}")
             else:           nd_index.append(f"bucket{inp_idx} * {stride}")
             stride *= inp.num_buckets
-        c += (f"    tbl_ptr = {self.num_states**2 * (self.polynomial.num_terms)} * ({' + '.join(nd_index)})\n"
+        c += (f"    tbl_ptr: 'Pointer' = {self.num_states**2 * (self.polynomial.num_terms)} * ({' + '.join(nd_index)})\n"
                "    # Compute the basis of the polynomial.\n")
         for term_idx, powers in enumerate(self.polynomial.terms):
             factors = []
@@ -83,7 +83,7 @@ class Codegen:
               f"        for row in range({self.num_states}):\n"
                "            # Approximate this entry of the matrix.\n")
         terms = []
-        c += "            polynomial = 0.0\n"
+        c += "            polynomial: 'Real' = 0.0\n"
         for term_idx, powers in enumerate(self.polynomial.terms):
             if not any(p > 0 for p in powers):
                 c += "            polynomial += table[tbl_ptr]\n"
@@ -94,8 +94,8 @@ class Codegen:
         c += ("            scratch[row] += polynomial * s\n")
         if self.conserve_sum is not None:
             c += ("    # Conserve the sum of the states.\n"
-                  "    sum_states = 0.0\n"
-                 f"    for x in range({self.num_states}):\n"
+                  "    sum_states = scratch[0]\n"
+                 f"    for x in range(1, {self.num_states}):\n"
                   "        sum_states += scratch[x]\n"
                  f"    correction_factor = {self.conserve_sum} / sum_states\n"
                  f"    for x in range({self.num_states}):\n"
