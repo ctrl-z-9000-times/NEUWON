@@ -72,12 +72,16 @@ class Codegen:
             if factors:
                 c += f"    term{term_idx} = {' * '.join(factors)}\n"
         c += ("    # Compute the dot product into the scratch buffer.\n"
-             f"    state = [{', '.join(f'self.{x}' for x in self.state_names)}]\n"
-             f"    scratch = [{', '.join('0.0' for _ in range(self.num_states))}]\n"
-             f"    for col in range({self.num_states}):\n"
-              "        s = state[col]\n"
-             f"        for row in range({self.num_states}):\n"
-              "            # Approximate this entry of the matrix.\n")
+             f"    state:   'Alloc({self.num_states}, Real)'\n")
+        for i, x in enumerate(self.state_names):
+            c += f"    state[{i}] = self.{x}\n"
+        c += f"    scratch: 'Alloc({self.num_states}, Real)'\n"
+        for i in range(self.num_states):
+            c += f"    scratch[{i}] = 0.0\n"
+        c += (f"    for col in range({self.num_states}):\n"
+               "        s = state[col]\n"
+              f"        for row in range({self.num_states}):\n"
+               "            # Approximate this entry of the matrix.\n")
         terms = []
         c += "            polynomial = 0.0\n"
         for term_idx, powers in enumerate(self.polynomial.terms):
