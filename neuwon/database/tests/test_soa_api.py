@@ -1,6 +1,5 @@
 from neuwon.database import *
 from neuwon.database.memory_spaces import *
-import cupy
 import numpy as np
 import pytest
 
@@ -20,7 +19,7 @@ def test_arrays():
     bar_data.set_data([2,3,4])
     with db.using_memory_space('cuda'):
         data = bar_data.get_data()
-        assert isinstance(data, cupy.ndarray)
+        assert isinstance(data, cuda.array)
         data = data.get()
         assert np.all(data == [2,3,4])
     assert bar_data.get_memory_space() is cuda

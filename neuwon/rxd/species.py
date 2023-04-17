@@ -1,9 +1,8 @@
+from neuwon.database.memory_spaces import get_array_module
 from scipy.sparse import csr_matrix, csc_matrix
 import scipy.sparse
 import scipy.sparse.linalg
-import cupy as cp
 import math
-import numba.cuda
 import numpy as np
 
 F = 96485.3321233100184 # Faraday's constant, Coulombs per Mole of electrons
@@ -205,19 +204,19 @@ class _SpeciesType:
         if self.outside: self.outside._advance()
 
 def _nerst_potential(charge, T, inside_concentration, outside_concentration):
-    xp = cp.get_array_module(inside_concentration)
+    xp = memory_spaces.get_array_module(inside_concentration)
     ratio = xp.divide(outside_concentration, inside_concentration)
     return xp.nan_to_num(1e3 * R * T / F / charge * xp.log(ratio))
 
 def _goldman_hodgkin_katz(charge, T, inside_concentration, outside_concentration, voltages):
-    xp = cp.get_array_module(inside_concentration)
+    xp = memory_spaces.get_array_module(inside_concentration)
     inside_concentration  = inside_concentration * 1e-3  # Convert from millimolar to molar
     outside_concentration = outside_concentration * 1e-3 # Convert from millimolar to molar
     z = (charge * F / (R * T)) * voltages
     return ((1e3 * charge * F) *
             (inside_concentration * _efun(-z) - outside_concentration * _efun(z)))
 
-@cp.fuse()
+# @cp.fuse()
 def _efun(z):
     if abs(z) < 1e-4:
         return 1 - z / 2

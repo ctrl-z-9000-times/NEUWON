@@ -3,7 +3,6 @@ from . import memory_spaces
 from .database import DB_Class, DB_Object, Database
 from .doc import Documentation
 from .dtypes import *
-import cupy
 import numpy as np
 
 class DataComponent(Documentation):
@@ -155,7 +154,7 @@ class DataComponent(Documentation):
         data = self.get_data()
         if isinstance(self, ClassAttribute):  data = np.array([data])
         elif isinstance(self, SparseMatrix): data = data.data
-        xp = cupy.get_array_module(data)
+        xp = self.get_memory_space().get_array_module()
         if not self.allow_invalid:
             if self.is_reference():
                 assert xp.all(xp.less(data, self.reference.size)), f"{self.qualname} is NULL"
@@ -339,7 +338,8 @@ class Attribute(DataComponent):
         pointer_data = self.data[:len(self.db_class)]
         destroyed_mask = self.reference._destroyed_mask
         if destroyed_mask is None: return
-        xp = cupy.get_array_module(destroyed_mask)
+        xp = memory_spaces.get_array_module(destroyed_mask)
+
         target_is_dead = xp.take(destroyed_mask, pointer_data, axis=0, mode='clip')
         target_is_dead[pointer_data == NULL] = True
         target_is_dead = xp.nonzero(target_is_dead)[0]
@@ -610,7 +610,7 @@ class SparseMatrix(DataComponent):
 
     def set_data(self, matrix):
         for mem in (memory_spaces.host, memory_spaces.cuda):
-            if isinstance(matrix, mem.matrix_module.spmatrix):
+            if mem and isinstance(matrix, mem.matrix_module.spmatrix):
                 self.memory_space = mem
                 self.data         = matrix
                 break

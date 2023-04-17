@@ -1,7 +1,5 @@
 from neuwon.database import epsilon, NULL, Compute
 from neuwon.database.time import TimeSeries
-import cupy
-import math
 import numpy as np
 import scipy.sparse
 import scipy.sparse.linalg

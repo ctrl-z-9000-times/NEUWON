@@ -17,12 +17,15 @@ class MemorySpace(enum.Enum):
 
     def __init__(self, array_module, matrix_module, jit_module):
         self.array_module    = array_module
-        self.array           = array_module.array
+        self.array           = array_module.array if self.array_module else None
         self.matrix_module   = matrix_module
         self.jit_module      = jit_module
 
     def __repr__(self):
         return f"<MemorySpace.{self.name}>"
+
+    def __bool__(self):
+        return self.array_module is not None
 
     def get_name(self) -> str:  return self.name
     def get_array_module(self): return self.array_module
@@ -47,3 +50,9 @@ class ContextManager:
 
     def __exit__(self, exception_type, exception, traceback):
         self.database.memory_space = self.prior_memory_space
+
+def get_array_module(arg):
+    if 'numpy' in arg.__class__.__module__:
+        return MemorySpace.host.array_module
+    elif 'cupy' in arg.__class__.__module__:
+        return MemorySpace.cuda.array_module

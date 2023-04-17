@@ -1,9 +1,8 @@
-from neuwon.database import Database, Compute, TimeSeries
+from neuwon.database import Database, Compute, TimeSeries, memory_spaces
 import math
 import pytest
 import random
 import numpy as np
-import cupy
 
 
 def test_basic_method():
@@ -156,7 +155,8 @@ def test_return_value():
         cuda_data = Foo.bar()
     print('CUDA array type:', type(cuda_data))
     assert all(x == 1234 for x in cuda_data)
-    assert isinstance(cuda_data, cupy.ndarray) # Exact type can change, as long as its a GPU array.
+    cupy_ndarray = memory_spaces.cuda.get_array()
+    assert isinstance(cuda_data, cupy_ndarray) # Exact type can change, as long as its a GPU array.
 
 
 @pytest.mark.skip
