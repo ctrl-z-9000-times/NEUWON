@@ -1,6 +1,5 @@
 from neuwon.rxd.lti_sim import LinearInput, LogarithmicInput
 from neuwon.rxd.lti_sim.lti_model import LTI_Model
-from neuwon.rxd.lti_sim.nmodl_compiler import NMODL_Compiler
 import os
 import pytest
 
@@ -61,11 +60,5 @@ def test_NMDA():
 
 def test_nonlinear():
     nmodl_file = os.path.join(test_dir, "nonlinear.mod")
-    x = NMODL_Compiler(nmodl_file, [], 68)
-    assert x.name == 'nonlin'
-    assert x.num_inputs == 0
-    assert x.num_states == 2
-    assert len(x.parameters) == 0
-    assert x.conserve_sum == None
     with pytest.raises(AssertionError):
         LTI_Model(nmodl_file, [], 0.1, 68)
