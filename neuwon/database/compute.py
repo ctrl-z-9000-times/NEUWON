@@ -522,6 +522,8 @@ class _FuncCallRewriter(ast.NodeTransformer):
 
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name) and node.func.id == self.func_name:
+            for var_name in reversed(self.func_jit.local_alloc):
+                node.args.insert(0, ast.Name(id=var_name, ctx=ast.Load()))
             for arg_name, db_attr in reversed(self.func_jit.db_arguments):
                 node.args.insert(0, ast.Name(id=arg_name, ctx=ast.Load()))
         self.generic_visit(node)

@@ -231,7 +231,7 @@ class NeuronGrowthProgram:
         if number is not None:
             coordinates = [region.sample_point() for _ in range(number)]
         else:
-            coordinates = region.sample_points(density)
+            coordinates = region.sample_grid(density)
         diameter = _Distribution(diameter)
 
         new_segments = []
